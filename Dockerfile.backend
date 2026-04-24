@@ -1,0 +1,36 @@
+# Dockerfile pour le backend ISSALAN
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Installer les dépendances système
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    postgresql-client \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copier les fichiers de dépendances
+COPY requirements.txt .
+
+# Installer les dépendances Python
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copier le code source
+COPY packages/shared-bl/ ./packages/shared-bl/
+COPY generated_projects/ ./generated_projects/
+
+# Créer le répertoire pour les logs
+RUN mkdir -p /app/logs
+
+# Exposer le port
+EXPOSE 8000
+
+# Variables d'environnement par défaut
+ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV TZ=UTC
+
+# Commande de démarrage
+CMD ["python", "-m", "packages.shared-bl.api.main"]

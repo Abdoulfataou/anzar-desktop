@@ -1,0 +1,53 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/app",
+    "src/api",
+    "src/components/AnzarLayout.tsx",
+    "src/components/Header.tsx",
+    "src/components/Layout.tsx",
+    "src/components/MetricCard.tsx",
+    "src/components/ModernDesktopInterface.tsx",
+    "src/components/ModernDesktopLayout.tsx",
+    "src/components/PlanValidationModal.tsx",
+    "src/components/ProjectCard.tsx",
+    "src/components/ProjectItem.tsx",
+    "src/components/Sidebar.tsx",
+    "src/components/anzar",
+    "src/stores/authStore.ts",
+    "src/stores/anzarModeStore.ts",
+    "src/services/aiCompletionService.ts",
+    "src/hooks/useAnzarAI.ts",
+    "src/hooks/useDeepSeek.ts",
+    "src/pages/Agents.tsx",
+    "src/pages/Dashboard.tsx",
+    "src/pages/NewProject.tsx",
+    "src/pages/ProjectDetail.tsx",
+    "src/pages/Projects.tsx",
+    "src/pages/Settings.tsx",
+    "src/pages/SectionPage.tsx",
+    "src/pages/ChatExample.tsx",
+    "src/types/auth.ts"
+  ],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

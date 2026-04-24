@@ -1,0 +1,1112 @@
+"""
+ANZAR Backend — Secure AI Proxy + Multi-Agent Pipeline + Prepaid Credits
+Production-ready for Railway deployment.
+
+All AI API keys NEVER leave the server.
+Credits are managed server-side (source of truth).
+"""
+import logging
+import time
+import json
+import uuid
+import secrets
+from typing import Dict, Any, Optional, List
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Request, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel, Field
+import httpx
+
+from config import settings
+from security import (
+    rate_limiter, get_client_ip, validate_messages,
+    create_token, verify_token, get_current_user,
+    sanitize_error, validate_config, calculate_cost_fcfa,
+)
+from database import (
+    init_db, get_user_by_email, create_user,
+    verify_password, update_last_login,
+    update_user_profile, change_user_password, deactivate_user,
+    get_credits, add_credits, deduct_credits, has_credits,
+    record_usage, get_usage_stats, get_usage_history, get_transactions,
+    create_project, update_project, get_project, get_user_projects, delete_project,
+    cleanup_rate_limits,
+    create_otp, verify_otp, get_recent_otp_count, cleanup_expired_otps,
+)
+from agents import OrchestratorAgent, PlannerAgent, CoderAgent, TesterAgent, ExecutorAgent
+from services.deepseek_client import DeepSeekClient
+from services.email import send_otp_email
+
+# ============================================================================
+# SETUP
+# ============================================================================
+
+logger = logging.getLogger("anzar")
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup/shutdown lifecycle."""
+    validate_config()
+    await init_db()
+    logger.info(f"ANZAR Backend v{settings.app_version} started on port {settings.effective_port}")
+    yield
+    logger.info("ANZAR Backend stopped")
+
+
+app = FastAPI(
+    title="ANZAR Backend",
+    description="Secure AI proxy + multi-agent vibecoding pipeline",
+    version=settings.app_version,
+    docs_url="/docs" if settings.debug else None,
+    redoc_url=None,
+    lifespan=lifespan,
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins.split(","),
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
+
+
+# ============================================================================
+# PROVIDER CONFIG
+# ============================================================================
+
+PROVIDERS = {
+    "deepseek": {
+        "base_url": settings.deepseek_base_url,
+        "api_key": settings.deepseek_api_key,
+    },
+    "kimi": {
+        "base_url": settings.kimi_base_url,
+        "api_key": settings.kimi_api_key,
+    },
+}
+
+
+def get_provider_config(provider: str) -> dict:
+    """Get provider config or raise 400."""
+    if provider not in PROVIDERS:
+        raise HTTPException(400, f"Provider inconnu: {provider}. Disponibles: {list(PROVIDERS.keys())}")
+    config = PROVIDERS[provider]
+    if not config["api_key"]:
+        raise HTTPException(503, f"Provider {provider} non configuré sur le serveur")
+    return config
+
+
+# ============================================================================
+# MIDDLEWARE
+# ============================================================================
+
+@app.middleware("http")
+async def security_middleware(request: Request, call_next):
+    """Rate limiting + request logging + security headers."""
+    client_ip = get_client_ip(request)
+
+    # Rate limit on API routes
+    if request.url.path.startswith("/api/"):
+        rate_limiter.check(client_ip)
+
+    start = time.time()
+    response = await call_next(request)
+    elapsed = time.time() - start
+
+    # Log (skip health checks to reduce noise)
+    if request.url.path != "/health":
+        logger.info(f"{request.method} {request.url.path} → {response.status_code} ({elapsed:.2f}s) [{client_ip}]")
+
+    # Security headers
+    response.headers["X-Process-Time"] = f"{elapsed:.3f}"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+
+    return response
+
+
+# ============================================================================
+# HEALTH
+# ============================================================================
+
+@app.get("/")
+async def root():
+    return {
+        "service": "ANZAR Backend",
+        "version": settings.app_version,
+        "status": "ok",
+    }
+
+
+@app.get("/health")
+async def health():
+    """Health check — verifies DB connectivity and provider status."""
+    checks = {"database": "ok", "deepseek": "configured", "kimi": "configured"}
+
+    # DB check
+    try:
+        from database import get_db
+        db = await get_db()
+        await db.execute("SELECT 1")
+        await db.close()
+    except Exception as e:
+        checks["database"] = f"error: {str(e)[:100]}"
+
+    # Provider availability
+    if not settings.deepseek_api_key:
+        checks["deepseek"] = "not_configured"
+    if not settings.kimi_api_key:
+        checks["kimi"] = "not_configured"
+
+    all_ok = checks["database"] == "ok"
+    return {
+        "status": "healthy" if all_ok else "degraded",
+        "timestamp": time.time(),
+        "version": settings.app_version,
+        "checks": checks,
+    }
+
+
+# ============================================================================
+# AUTH MODELS
+# ============================================================================
+
+class AuthRequest(BaseModel):
+    email: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+# ============================================================================
+# AUTH ROUTES
+# ============================================================================
+
+@app.post("/api/auth/register")
+async def register(body: AuthRequest):
+    """Register a new user account. Initializes credits at 0 FCFA."""
+    email = body.email.strip().lower()
+    password = body.password
+
+    if len(password) < 8:
+        raise HTTPException(400, "Le mot de passe doit contenir au moins 8 caractères")
+
+    existing = await get_user_by_email(email)
+    if existing:
+        raise HTTPException(409, "Un compte avec cet email existe déjà")
+
+    try:
+        user = await create_user(email, password)
+    except Exception as e:
+        logger.error(f"Failed to create user: {e}")
+        raise HTTPException(500, "Erreur lors de la création du compte")
+
+    token = create_token(user_id=email)
+
+    # Get initial credit balance
+    creds = await get_credits(email)
+
+    return {
+        "token": token,
+        "user": {
+            "email": email,
+            "name": email.split("@")[0],
+        },
+        "credits": {
+            "balance_fcfa": creds.get("balance_fcfa", 0),
+            "total_recharged": creds.get("total_recharged", 0),
+            "total_used": creds.get("total_used", 0),
+        },
+    }
+
+
+@app.post("/api/auth/login")
+async def login(body: AuthRequest):
+    """Login with email + password. Returns JWT + credit balance."""
+    email = body.email.strip().lower()
+    password = body.password
+
+    user = await get_user_by_email(email)
+    if not user:
+        raise HTTPException(401, "Email ou mot de passe incorrect")
+
+    if not verify_password(password, user["password_hash"], user["salt"]):
+        raise HTTPException(401, "Email ou mot de passe incorrect")
+
+    await update_last_login(email)
+
+    token = create_token(user_id=email)
+    creds = await get_credits(email)
+
+    return {
+        "token": token,
+        "user": {
+            "email": email,
+            "name": user.get("name", email.split("@")[0]),
+        },
+        "credits": {
+            "balance_fcfa": creds.get("balance_fcfa", 0),
+            "total_recharged": creds.get("total_recharged", 0),
+            "total_used": creds.get("total_used", 0),
+        },
+    }
+
+
+@app.get("/api/auth/verify")
+async def verify_auth(request: Request):
+    """Verify that the auth token is valid."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "Missing authorization token")
+
+    payload = verify_token(auth[7:])
+    if not payload:
+        raise HTTPException(401, "Invalid or expired token")
+
+    return {"valid": True, "user_id": payload.get("sub")}
+
+
+# ============================================================================
+# AUTH OTP (passwordless login via email code)
+# ============================================================================
+
+class SendCodeRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+
+
+class VerifyCodeRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+@app.post("/api/auth/send-code")
+async def send_code(body: SendCodeRequest, request: Request):
+    """
+    Envoie un code de vérification 6 chiffres par email via Brevo.
+    Crée le compte automatiquement si l'email est nouveau.
+    Rate limited: max 3 codes par 5 minutes par email.
+    """
+    email = body.email.strip().lower()
+
+    # Validate email format
+    if "@" not in email or "." not in email.split("@")[-1]:
+        raise HTTPException(400, "Format d'email invalide")
+
+    # Anti-spam: max 3 codes per 5 minutes
+    recent_count = await get_recent_otp_count(email, window_seconds=300)
+    if recent_count >= 3:
+        raise HTTPException(
+            429,
+            "Trop de codes envoyés. Attends quelques minutes avant de réessayer."
+        )
+
+    # Generate 6-digit code
+    code = f"{secrets.randbelow(1000000):06d}"
+
+    # Store OTP in database
+    await create_otp(email, code, expiry_minutes=settings.otp_expiry_minutes)
+
+    # Get user name if exists
+    user = await get_user_by_email(email)
+    user_name = user.get("name", "") if user else ""
+
+    # Send email via Brevo
+    sent = await send_otp_email(email, code, user_name=user_name)
+
+    if not sent:
+        raise HTTPException(503, "Impossible d'envoyer l'email. Réessaie plus tard.")
+
+    return {
+        "status": "ok",
+        "message": "Code envoyé par email",
+        "email": email,
+        "expires_in_minutes": settings.otp_expiry_minutes,
+        "is_new_user": user is None,
+    }
+
+
+@app.post("/api/auth/verify-code")
+async def verify_code(body: VerifyCodeRequest):
+    """
+    Vérifie le code OTP et connecte l'utilisateur.
+    Si c'est un nouvel email, crée le compte automatiquement.
+    Retourne un JWT + solde crédits.
+    """
+    email = body.email.strip().lower()
+    code = body.code.strip()
+
+    # Verify the OTP code
+    is_valid = await verify_otp(email, code, max_attempts=settings.otp_max_attempts)
+
+    if not is_valid:
+        raise HTTPException(401, "Code invalide ou expiré. Demande un nouveau code.")
+
+    # Check if user exists
+    user = await get_user_by_email(email)
+
+    if not user:
+        # Auto-create account (passwordless)
+        user = await create_user(email)
+        logger.info(f"New user auto-created via OTP: {email}")
+
+    # Update last login
+    await update_last_login(email)
+
+    # Generate JWT
+    token = create_token(user_id=email)
+
+    # Get credit balance
+    creds = await get_credits(email)
+
+    return {
+        "token": token,
+        "user": {
+            "email": email,
+            "name": user.get("name", email.split("@")[0]),
+        },
+        "credits": {
+            "balance_fcfa": creds.get("balance_fcfa", 0),
+            "total_recharged": creds.get("total_recharged", 0),
+            "total_used": creds.get("total_used", 0),
+        },
+        "is_new_user": user.get("last_login") is None,
+    }
+
+
+# ============================================================================
+# USER PROFILE
+# ============================================================================
+
+@app.get("/api/user/profile")
+async def get_profile(user: dict = Depends(get_current_user)):
+    """Get current user's profile with credit balance."""
+    email = user["sub"]
+    db_user = await get_user_by_email(email)
+    if not db_user:
+        raise HTTPException(404, "Utilisateur non trouvé")
+
+    creds = await get_credits(email)
+
+    return {
+        "email": email,
+        "name": db_user.get("name", email.split("@")[0]),
+        "created_at": db_user.get("created_at"),
+        "credits": {
+            "balance_fcfa": creds.get("balance_fcfa", 0),
+            "total_recharged": creds.get("total_recharged", 0),
+            "total_used": creds.get("total_used", 0),
+        },
+    }
+
+
+@app.patch("/api/user/profile")
+async def patch_profile(request: Request, user: dict = Depends(get_current_user)):
+    """Update user profile (name)."""
+    email = user["sub"]
+    body = await request.json()
+    name = body.get("name", "").strip()
+    if not name or len(name) > 100:
+        raise HTTPException(400, "Nom invalide (1-100 caractères)")
+
+    await update_user_profile(email, name)
+    return {"status": "ok", "name": name}
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+@app.post("/api/user/change-password")
+async def change_password(body: ChangePasswordRequest, user: dict = Depends(get_current_user)):
+    """Change user password. Requires current password."""
+    email = user["sub"]
+    db_user = await get_user_by_email(email)
+    if not db_user:
+        raise HTTPException(404, "Utilisateur non trouvé")
+
+    if not verify_password(body.current_password, db_user["password_hash"], db_user["salt"]):
+        raise HTTPException(401, "Mot de passe actuel incorrect")
+
+    await change_user_password(email, body.new_password)
+    return {"status": "ok", "message": "Mot de passe modifié"}
+
+
+@app.delete("/api/user/account")
+async def delete_account(user: dict = Depends(get_current_user)):
+    """Soft-delete user account."""
+    email = user["sub"]
+    await deactivate_user(email)
+    return {"status": "ok", "message": "Compte désactivé"}
+
+
+# ============================================================================
+# CREDITS (prepaid balance)
+# ============================================================================
+
+@app.get("/api/credits")
+async def get_user_credits(user: dict = Depends(get_current_user)):
+    """Get current credit balance."""
+    creds = await get_credits(user["sub"])
+    return {
+        "balance_fcfa": creds.get("balance_fcfa", 0),
+        "total_recharged": creds.get("total_recharged", 0),
+        "total_used": creds.get("total_used", 0),
+    }
+
+
+class RechargeRequest(BaseModel):
+    amount_fcfa: float = Field(..., gt=0, le=1_000_000)
+    payment_ref: str = Field(default="", max_length=255)
+    payment_method: str = Field(default="manual", max_length=50)
+
+
+@app.post("/api/credits/recharge")
+async def recharge_credits(body: RechargeRequest, user: dict = Depends(get_current_user)):
+    """
+    Add credits to user balance.
+    In production, this should be called AFTER payment verification
+    (Wave, Orange Money, etc.) — either from a webhook or admin action.
+    """
+    email = user["sub"]
+    description = f"Recharge {body.payment_method}"
+    if body.payment_ref:
+        description += f" (ref: {body.payment_ref})"
+
+    creds = await add_credits(email, body.amount_fcfa, description)
+
+    return {
+        "status": "ok",
+        "balance_fcfa": creds.get("balance_fcfa", 0),
+        "total_recharged": creds.get("total_recharged", 0),
+        "amount_added": body.amount_fcfa,
+    }
+
+
+@app.get("/api/credits/transactions")
+async def get_credit_transactions(
+    user: dict = Depends(get_current_user),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Get transaction history (recharges + usages)."""
+    txs = await get_transactions(user["sub"], limit=min(limit, 200), offset=offset)
+    return {"transactions": txs, "count": len(txs)}
+
+
+# ============================================================================
+# USAGE TRACKING
+# ============================================================================
+
+@app.get("/api/usage")
+async def get_user_usage(
+    user: dict = Depends(get_current_user),
+    limit: int = 50,
+    offset: int = 0,
+):
+    """Get detailed usage history."""
+    records = await get_usage_history(user["sub"], limit=min(limit, 200), offset=offset)
+    return {"records": records, "count": len(records)}
+
+
+@app.get("/api/usage/stats")
+async def get_user_usage_stats(
+    user: dict = Depends(get_current_user),
+    days: int = 30,
+):
+    """Get aggregated usage statistics."""
+    stats = await get_usage_stats(user["sub"], days=min(days, 365))
+    return stats
+
+
+# ============================================================================
+# AI PROXY — OpenAI-compatible /chat/completions
+# ============================================================================
+
+@app.post("/api/{provider}/chat/completions")
+async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_current_user)):
+    """
+    Proxy AI chat requests to DeepSeek or Kimi.
+    Checks credit balance before proxying.
+    Deducts credits after successful response.
+    """
+    email = user["sub"]
+    config = get_provider_config(provider)
+
+    # ── Credit check ──
+    if not await has_credits(email):
+        raise HTTPException(
+            status_code=402,
+            detail="Solde épuisé. Rechargez pour continuer à utiliser ANZAR."
+        )
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    if "messages" in body:
+        body["messages"] = validate_messages(body["messages"])
+
+    # Force model limits
+    max_tokens = body.get("max_completion_tokens", body.get("max_tokens", 4096))
+    if max_tokens > 16384:
+        body["max_completion_tokens"] = 16384
+
+    is_stream = body.get("stream", False)
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {config['api_key']}",
+    }
+
+    target_url = f"{config['base_url']}/chat/completions"
+    start_time = time.time()
+
+    if is_stream:
+        return await _proxy_stream_with_billing(
+            target_url, headers, body, email, provider, start_time
+        )
+    else:
+        return await _proxy_request_with_billing(
+            target_url, headers, body, email, provider, start_time
+        )
+
+
+@app.post("/api/{provider}/beta/completions")
+async def proxy_fim(provider: str, request: Request, user: dict = Depends(get_current_user)):
+    """Proxy FIM (Fill-In-Middle) completions — DeepSeek beta."""
+    email = user["sub"]
+    config = get_provider_config(provider)
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    if body.get("max_tokens", 0) > 2048:
+        body["max_tokens"] = 2048
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {config['api_key']}",
+    }
+
+    target_url = f"{config['base_url']}/beta/completions"
+    return await _proxy_request(target_url, headers, body)
+
+
+# ============================================================================
+# PROXY HELPERS (with billing)
+# ============================================================================
+
+async def _proxy_request(url: str, headers: dict, body: dict) -> JSONResponse:
+    """Forward a non-streaming request and return the response."""
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            resp = await client.post(url, headers=headers, json=body)
+        except httpx.TimeoutException:
+            raise HTTPException(504, "AI provider timeout")
+        except httpx.ConnectError:
+            raise HTTPException(502, "Cannot reach AI provider")
+
+    if resp.status_code != 200:
+        try:
+            error_data = resp.json()
+        except Exception:
+            error_data = {"error": {"message": f"Provider error: {resp.status_code}"}}
+        return JSONResponse(status_code=resp.status_code, content=error_data)
+
+    return JSONResponse(content=resp.json())
+
+
+async def _proxy_request_with_billing(
+    url: str, headers: dict, body: dict,
+    email: str, provider: str, start_time: float,
+) -> JSONResponse:
+    """Forward request, then bill the user based on token usage."""
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        try:
+            resp = await client.post(url, headers=headers, json=body)
+        except httpx.TimeoutException:
+            raise HTTPException(504, "AI provider timeout")
+        except httpx.ConnectError:
+            raise HTTPException(502, "Cannot reach AI provider")
+
+    if resp.status_code != 200:
+        try:
+            error_data = resp.json()
+        except Exception:
+            error_data = {"error": {"message": f"Provider error: {resp.status_code}"}}
+        return JSONResponse(status_code=resp.status_code, content=error_data)
+
+    data = resp.json()
+    duration_ms = int((time.time() - start_time) * 1000)
+
+    # Extract token usage from response
+    usage = data.get("usage", {})
+    input_tokens = usage.get("prompt_tokens", 0)
+    output_tokens = usage.get("completion_tokens", 0)
+
+    if input_tokens > 0 or output_tokens > 0:
+        cost_usd, cost_fcfa = calculate_cost_fcfa(provider, input_tokens, output_tokens)
+
+        # Record usage and deduct credits
+        try:
+            await record_usage(
+                email, provider,
+                body.get("model", "unknown"),
+                input_tokens, output_tokens,
+                cost_usd, cost_fcfa, duration_ms,
+            )
+            if cost_fcfa > 0:
+                await deduct_credits(
+                    email, cost_fcfa,
+                    f"Chat {provider}/{body.get('model', '?')}",
+                    provider, body.get("model", ""),
+                    input_tokens, output_tokens,
+                )
+        except ValueError:
+            # Insufficient credits — don't block, response already generated
+            logger.warning(f"Insufficient credits for {email} during billing")
+        except Exception as e:
+            logger.error(f"Billing error: {e}")
+
+    return JSONResponse(content=data)
+
+
+async def _proxy_stream_with_billing(
+    url: str, headers: dict, body: dict,
+    email: str, provider: str, start_time: float,
+) -> StreamingResponse:
+    """Forward streaming SSE request, then bill at the end."""
+    client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
+
+    async def stream_generator():
+        input_tokens = 0
+        output_tokens = 0
+        model_name = body.get("model", "unknown")
+
+        try:
+            async with client.stream("POST", url, headers=headers, json=body) as resp:
+                if resp.status_code != 200:
+                    error_msg = await resp.aread()
+                    yield f"data: {json.dumps({'error': {'message': f'Provider error: {resp.status_code}'}})}\n\n"
+                    return
+
+                async for line in resp.aiter_lines():
+                    if line.strip():
+                        yield f"{line}\n\n"
+
+                        # Try to extract usage from final chunk
+                        if line.startswith("data: ") and line != "data: [DONE]":
+                            try:
+                                chunk = json.loads(line[6:])
+                                if "usage" in chunk:
+                                    input_tokens = chunk["usage"].get("prompt_tokens", 0)
+                                    output_tokens = chunk["usage"].get("completion_tokens", 0)
+                                if chunk.get("model"):
+                                    model_name = chunk["model"]
+                            except (json.JSONDecodeError, KeyError):
+                                pass
+
+        except httpx.TimeoutException:
+            yield f"data: {json.dumps({'error': {'message': 'Provider timeout'}})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': {'message': sanitize_error(e)}})}\n\n"
+        finally:
+            await client.aclose()
+
+            # Bill after stream completes
+            duration_ms = int((time.time() - start_time) * 1000)
+
+            # If provider didn't return usage stats, estimate from message content
+            if input_tokens == 0 and output_tokens == 0:
+                # Rough estimation: ~4 chars per token
+                input_chars = sum(
+                    len(m.get("content", "")) for m in body.get("messages", []) if isinstance(m.get("content"), str)
+                )
+                input_tokens = max(input_chars // 4, 1)
+                output_tokens = max(duration_ms // 50, 10)  # Very rough: ~20 tok/sec
+
+            if input_tokens > 0 or output_tokens > 0:
+                cost_usd, cost_fcfa = calculate_cost_fcfa(provider, input_tokens, output_tokens)
+                try:
+                    await record_usage(
+                        email, provider, model_name,
+                        input_tokens, output_tokens,
+                        cost_usd, cost_fcfa, duration_ms,
+                        task_type="chat_stream",
+                    )
+                    if cost_fcfa > 0:
+                        await deduct_credits(
+                            email, cost_fcfa,
+                            f"Stream {provider}/{model_name}",
+                            provider, model_name,
+                            input_tokens, output_tokens,
+                        )
+                except Exception as e:
+                    logger.error(f"Stream billing error: {e}")
+
+    return StreamingResponse(
+        stream_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ============================================================================
+# PROJECT AGENTS — Multi-agent pipeline for vibecoding
+# ============================================================================
+
+# In-memory project execution state (per-process; OK for single-instance Railway)
+_project_states: Dict[str, Dict[str, Any]] = {}
+
+# Shared DeepSeek client
+_deepseek_client = DeepSeekClient()
+
+
+class PlanRequest(BaseModel):
+    description: str = Field(..., min_length=1, max_length=10000)
+    project_name: str = Field(default="my_project", max_length=128)
+    tech_stack: list[str] = Field(default_factory=list)
+    requirements: list[str] = Field(default_factory=list)
+
+
+class ExecuteRequest(BaseModel):
+    plan: Dict[str, Any] = Field(...)
+    base_dir: Optional[str] = None
+
+
+@app.post("/api/projects/plan")
+async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)):
+    """Plan a project using Orchestrator + Planner agents."""
+    email = user["sub"]
+
+    # Credit check
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+
+    try:
+        # Step 1: Orchestrator
+        orchestrator = OrchestratorAgent(deepseek_client=_deepseek_client)
+        orch_result = await orchestrator.execute({
+            "description": body.description,
+            "project_name": body.project_name,
+            "tech_stack": body.tech_stack,
+            "requirements": body.requirements,
+        })
+
+        if orch_result.get("status") == "error":
+            raise HTTPException(500, f"Orchestration failed: {orch_result.get('error', 'Unknown')}")
+
+        plan = orch_result.get("plan", {})
+
+        # Step 2: Planner
+        planner = PlannerAgent(deepseek_client=_deepseek_client)
+        plan_result = await planner.execute({
+            "plan": plan,
+            "project_name": body.project_name,
+        })
+
+        if plan_result.get("status") == "error":
+            raise HTTPException(500, f"Planning failed: {plan_result.get('error', 'Unknown')}")
+
+        architecture = plan_result.get("architecture", {})
+
+        # Build response matching frontend ProjectPlan type
+        result = {
+            "title": plan.get("project_name", body.project_name),
+            "overview": plan.get("description", body.description),
+            "files": [
+                {"path": f.get("path", ""), "description": f.get("description", ""), "type": f.get("type", "")}
+                for f in architecture.get("structure", {}).get("files", [])
+            ],
+            "phases": [
+                {"name": t.get("task", ""), "description": t.get("task", ""), "duration": "", "tasks": [t.get("task", "")]}
+                for t in plan.get("tasks", [])
+            ],
+            "complexity": "medium",
+            "notes": "",
+            "architecture": architecture,
+            "tokens_used": orch_result.get("tokens_used", 0) + plan_result.get("tokens_used", 0),
+        }
+
+        # Save project to DB
+        project_id = f"proj_{uuid.uuid4().hex[:12]}"
+        await create_project(project_id, email, body.project_name, body.description)
+        await update_project(project_id, status="planning", plan_json=json.dumps(result))
+        result["project_id"] = project_id
+
+        # Bill for planning tokens
+        total_tokens = result["tokens_used"]
+        if total_tokens > 0:
+            cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", total_tokens // 2, total_tokens // 2)
+            try:
+                await record_usage(email, "deepseek", settings.deepseek_model, total_tokens // 2, total_tokens // 2, cost_usd, cost_fcfa, task_type="plan")
+                if cost_fcfa > 0:
+                    await deduct_credits(email, cost_fcfa, f"Plan: {body.project_name}", "deepseek", settings.deepseek_model)
+            except Exception as e:
+                logger.error(f"Plan billing error: {e}")
+
+        return JSONResponse(content=result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Plan project error: {e}", exc_info=True)
+        raise HTTPException(500, f"Erreur planification: {sanitize_error(e)}")
+
+
+@app.post("/api/projects/{project_id}/execute")
+async def execute_project(project_id: str, body: ExecuteRequest, user: dict = Depends(get_current_user)):
+    """Execute a project plan. Returns SSE stream with agent status updates."""
+    email = user["sub"]
+    plan = body.plan
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+
+    # Update DB status
+    await update_project(project_id, status="generating")
+
+    # Initialize in-memory state
+    _project_states[project_id] = {
+        "status": "running",
+        "agents": [
+            {"name": "orchestrator", "status": "done", "progress": 100, "message": "Plan prêt"},
+            {"name": "planner", "status": "done", "progress": 100, "message": "Architecture prête"},
+            {"name": "coder", "status": "pending", "progress": 0},
+            {"name": "tester", "status": "pending", "progress": 0},
+            {"name": "executor", "status": "pending", "progress": 0},
+        ],
+    }
+
+    async def execution_stream():
+        state = _project_states[project_id]
+        total_tokens = 0
+
+        def update_agent(name: str, s: str, progress: int, message: str = ""):
+            for a in state["agents"]:
+                if a["name"] == name:
+                    a["status"] = s
+                    a["progress"] = progress
+                    if message:
+                        a["message"] = message
+
+        def emit():
+            return json.dumps({"agents": state["agents"]}) + "\n"
+
+        try:
+            # ── Coder ──
+            update_agent("coder", "running", 10, "Génération du code...")
+            yield emit()
+
+            coder = CoderAgent(deepseek_client=_deepseek_client)
+            architecture = plan.get("architecture", plan)
+            coder_result = await coder.execute({
+                "architecture": architecture,
+                "plan": plan,
+                "project_name": plan.get("title", project_id),
+            })
+
+            if coder_result.get("status") == "error":
+                update_agent("coder", "error", 0, coder_result.get("error", "Erreur"))
+                yield emit()
+                await update_project(project_id, status="error")
+                return
+
+            files = coder_result.get("files", {})
+            total_tokens += coder_result.get("tokens_used", 0)
+            update_agent("coder", "done", 100, f"{len(files)} fichiers générés")
+            yield emit()
+
+            # ── Tester ──
+            update_agent("tester", "running", 10, "Analyse qualité...")
+            yield emit()
+
+            tester = TesterAgent(deepseek_client=_deepseek_client)
+            test_result = await tester.execute({"files": files, "plan": plan})
+            total_tokens += test_result.get("tokens_used", 0)
+
+            if test_result.get("status") == "error":
+                update_agent("tester", "done", 100, "Test échoué (non bloquant)")
+            else:
+                report = test_result.get("report", {})
+                quality = report.get("code_quality", "?")
+                issues = len(report.get("issues", []))
+                update_agent("tester", "done", 100, f"Qualité: {quality}/10 — {issues} issues")
+            yield emit()
+
+            # ── Executor ──
+            update_agent("executor", "running", 10, "Écriture des fichiers...")
+            yield emit()
+
+            executor = ExecutorAgent(deepseek_client=_deepseek_client)
+            exec_result = await executor.execute({
+                "files": files,
+                "architecture": architecture,
+                "project_name": plan.get("title", project_id),
+                "base_dir": body.base_dir or f"./projects/{project_id}",
+            })
+
+            if exec_result.get("status") == "error":
+                update_agent("executor", "error", 0, exec_result.get("error", "Erreur"))
+                await update_project(project_id, status="error")
+            else:
+                count = exec_result.get("file_count", 0)
+                update_agent("executor", "done", 100, f"{count} fichiers écrits")
+                await update_project(
+                    project_id,
+                    status="complete",
+                    result_json=json.dumps({"files_created": exec_result.get("files_created", [])}),
+                    tokens_used=total_tokens,
+                )
+
+            state["status"] = "completed"
+            yield emit()
+
+            # Bill for execution
+            if total_tokens > 0:
+                cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", total_tokens // 2, total_tokens // 2)
+                try:
+                    await record_usage(email, "deepseek", settings.deepseek_model, total_tokens // 2, total_tokens // 2, cost_usd, cost_fcfa, task_type="project_exec")
+                    if cost_fcfa > 0:
+                        await deduct_credits(email, cost_fcfa, f"Exec: {project_id}", "deepseek", settings.deepseek_model)
+                        await update_project(project_id, cost_fcfa=cost_fcfa)
+                except Exception as e:
+                    logger.error(f"Exec billing error: {e}")
+
+        except Exception as e:
+            logger.error(f"Execute project error: {e}", exc_info=True)
+            update_agent("executor", "error", 0, sanitize_error(e))
+            state["status"] = "error"
+            await update_project(project_id, status="error")
+            yield emit()
+
+    return StreamingResponse(
+        execution_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@app.get("/api/projects/{project_id}/status")
+async def get_project_status(project_id: str, user: dict = Depends(get_current_user)):
+    """Get agent status for a project (in-memory state or DB fallback)."""
+    state = _project_states.get(project_id)
+
+    if state:
+        return JSONResponse(content={"status": state.get("status"), "agents": state.get("agents", [])})
+
+    # Fallback: check DB
+    project = await get_project(project_id)
+    if project:
+        return JSONResponse(content={
+            "status": project.get("status", "unknown"),
+            "agents": [
+                {"name": "orchestrator", "status": "idle", "progress": 0},
+                {"name": "planner", "status": "idle", "progress": 0},
+                {"name": "coder", "status": "idle", "progress": 0},
+                {"name": "tester", "status": "idle", "progress": 0},
+                {"name": "executor", "status": "idle", "progress": 0},
+            ],
+        })
+
+    return JSONResponse(content={"status": "unknown", "agents": []})
+
+
+@app.post("/api/projects/{project_id}/cancel")
+async def cancel_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Cancel a running project execution."""
+    state = _project_states.get(project_id)
+    if state:
+        state["status"] = "cancelled"
+        for agent in state.get("agents", []):
+            if agent["status"] == "running":
+                agent["status"] = "cancelled"
+                agent["message"] = "Annulé par l'utilisateur"
+    await update_project(project_id, status="cancelled")
+    return JSONResponse(content={"status": "cancelled"})
+
+
+# ============================================================================
+# PROJECT CRUD
+# ============================================================================
+
+@app.get("/api/projects")
+async def list_projects(user: dict = Depends(get_current_user), limit: int = 50):
+    """List all projects for the current user."""
+    projects = await get_user_projects(user["sub"], limit=min(limit, 200))
+    return {"projects": projects, "count": len(projects)}
+
+
+@app.get("/api/projects/{project_id}")
+async def get_single_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Get a single project by ID."""
+    project = await get_project(project_id)
+    if not project:
+        raise HTTPException(404, "Projet non trouvé")
+    if project.get("user_email") != user["sub"]:
+        raise HTTPException(403, "Accès non autorisé")
+    return project
+
+
+@app.delete("/api/projects/{project_id}")
+async def remove_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Delete a project."""
+    deleted = await delete_project(project_id, user["sub"])
+    if not deleted:
+        raise HTTPException(404, "Projet non trouvé ou accès non autorisé")
+    # Clean in-memory state
+    _project_states.pop(project_id, None)
+    return {"status": "deleted"}
+
+
+# ============================================================================
+# ERROR HANDLERS
+# ============================================================================
+
+@app.exception_handler(HTTPException)
+async def http_error(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": {"message": exc.detail}},
+    )
+
+
+@app.exception_handler(Exception)
+async def general_error(request: Request, exc: Exception):
+    logger.error(f"Unhandled: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"error": {"message": "Internal server error"}},
+    )
+
+
+# ============================================================================
+# RUN
+# ============================================================================
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "main:app",
+        host=settings.server_host,
+        port=settings.effective_port,
+        reload=settings.debug,
+        log_level=settings.log_level,
+    )

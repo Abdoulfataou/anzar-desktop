@@ -1,0 +1,147 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/schema.json",
+  "build": {
+    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run dev",
+    "devPath": "http://localhost:1420",
+    "distDir": "../dist"
+  },
+  "package": {
+    "productName": "ANZAR",
+    "version": "0.1.0"
+  },
+  "tauri": {
+    "allowlist": {
+      "all": false,
+      "fs": {
+        "readFile": true,
+        "writeFile": true,
+        "readDir": true,
+        "copyFile": true,
+        "createDir": true,
+        "removeDir": true,
+        "removeFile": true,
+        "renameFile": true,
+        "exists": true,
+        "scope": ["$DOCUMENTS/ANZAR/**", "$DESKTOP/**", "$DOWNLOAD/**"]
+      },
+      "dialog": {
+        "all": true,
+        "ask": true,
+        "confirm": true,
+        "message": true,
+        "open": true,
+        "save": true
+      },
+      "shell": {
+        "all": false,
+        "execute": true,
+        "sidecar": false,
+        "open": true,
+        "scope": [
+          {
+            "name": "sh",
+            "cmd": "sh",
+            "args": ["-c", { "validator": "^(cd|ls|cat|echo|mkdir|rm|cp|mv|find|grep|pwd|which|kill|lsof|env|node|npm|npx|python3|pip3|git|cargo|pnpm|yarn|tsc|eslint|prettier|vite|webpack|jest|vitest|mocha)[ \\t].*$|^(cd|ls|cat|echo|mkdir|rm|cp|mv|find|grep|pwd|which|kill|lsof|env|node|npm|npx|python3|pip3|git|cargo|pnpm|yarn|tsc|eslint|prettier|vite|webpack|jest|vitest|mocha)$" }]
+          },
+          {
+            "name": "cmd",
+            "cmd": "cmd",
+            "args": ["/C", { "validator": "^(cd|dir|type|echo|mkdir|del|copy|move|findstr|where|node|npm|npx|python|pip|git|cargo|pnpm|yarn|tsc|eslint|prettier|vite|webpack|jest|vitest)[ \\t].*$|^(cd|dir|type|echo|mkdir|del|copy|move|findstr|where|node|npm|npx|python|pip|git|cargo|pnpm|yarn|tsc|eslint|prettier|vite|webpack|jest|vitest)$" }]
+          },
+          {
+            "name": "powershell",
+            "cmd": "powershell",
+            "args": ["-Command", { "validator": "^(cd|ls|cat|echo|mkdir|rm|cp|mv|dir|type|node|npm|npx|python|pip|git|cargo|pnpm|yarn|tsc|eslint|prettier|vite|webpack|jest|vitest|Get-|Set-)[ \\t].*$|^(cd|ls|cat|echo|mkdir|rm|cp|mv|dir|type|node|npm|npx|python|pip|git|cargo|pnpm|yarn|tsc|eslint|prettier|vite|webpack|jest|vitest)$" }]
+          },
+          {
+            "name": "node",
+            "cmd": "node",
+            "args": [{ "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$" }]
+          },
+          {
+            "name": "npm",
+            "cmd": "npm",
+            "args": [{ "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|publish|version|--version|-v)$|^[\\w@./\\-]+$" }]
+          },
+          {
+            "name": "npx",
+            "cmd": "npx",
+            "args": [{ "validator": "^[\\w@./\\-]+$" }]
+          },
+          {
+            "name": "python3",
+            "cmd": "python3",
+            "args": [{ "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$" }]
+          },
+          {
+            "name": "pip",
+            "cmd": "pip3",
+            "args": [{ "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$" }]
+          },
+          {
+            "name": "git",
+            "cmd": "git",
+            "args": [{ "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\-\"' :@{}]+$" }]
+          },
+          {
+            "name": "cargo",
+            "cmd": "cargo",
+            "args": [{ "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|publish|install|--version|-V)$|^[\\w./\\-]+$" }]
+          }
+        ]
+      }
+    },
+    "bundle": {
+      "active": true,
+      "category": "DeveloperTool",
+      "copyright": "© 2024 ANZAR",
+      "deb": {
+        "depends": []
+      },
+      "externalBin": [],
+      "icon": [
+        "icons/32x32.png",
+        "icons/128x128.png",
+        "icons/128x128@2x.png",
+        "icons/icon.icns",
+        "icons/icon.ico"
+      ],
+      "identifier": "com.anzar.desktop",
+      "longDescription": "ANZAR - Assistant IA de Vibecoding pour l'Afrique",
+      "macOS": {
+        "entitlements": null,
+        "exceptionDomain": "",
+        "frameworks": [],
+        "providerShortName": null,
+        "signingIdentity": null
+      },
+      "resources": [],
+      "shortDescription": "Assistant IA de Vibecoding",
+      "targets": "all",
+      "windows": {
+        "certificateThumbprint": null,
+        "digestAlgorithm": "sha256",
+        "timestampUrl": ""
+      }
+    },
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:*;"
+    },
+    "updater": {
+      "active": false
+    },
+    "windows": [
+      {
+        "fullscreen": false,
+        "height": 900,
+        "resizable": true,
+        "title": "ANZAR",
+        "width": 1400,
+        "minWidth": 800,
+        "minHeight": 600,
+        "decorations": false
+      }
+    ]
+  }
+}

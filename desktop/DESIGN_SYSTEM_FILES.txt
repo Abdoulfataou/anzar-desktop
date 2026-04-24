@@ -1,0 +1,354 @@
+================================================================================
+ANZAR DESIGN SYSTEM - Complete File List
+================================================================================
+
+CREATED FILES:
+================================================================================
+
+1. Core CSS & Configuration
+   ✓ /src/index.css
+     - Global CSS with dark/light theme variables
+     - Font imports (Inter + JetBrains Mono)
+     - Tailwind directives
+     - Base styles, scrollbar, glass effects
+     - Animations and utility classes
+     - Smooth theme transitions
+
+2. Utility Functions
+   ✓ /src/lib/utils.ts (UPDATED)
+     - cn() - Class merging
+     - formatBytes() - File size formatting
+     - formatRelativeTime() - Time ago formatting
+     - formatCurrency() - Currency formatting
+     - truncate() - Text truncation
+     - debounce() - Function debouncing
+     - estimateTokens() - Token estimation for DeepSeek
+     - generateId() - UUID generation
+     - clamp() - Number clamping
+     - isInViewport() - Viewport detection
+     - isEmpty() - Value validation
+     - sleep() - Promise-based delay
+
+3. Theme Management Store
+   ✓ /stores/themeStore.ts (NEW)
+     - Zustand store for theme state
+     - Automatic DOM class application
+     - LocalStorage persistence
+     - System theme detection (prefers-color-scheme)
+     - Theme toggle and setter methods
+     - Cleanup and listeners
+
+4. UI Components
+   ✓ /components/ui/Button.tsx (UPDATED)
+     - 8 variants (primary, secondary, ghost, danger, success, warning, outline, error)
+     - 5 sizes (xs, sm, md, lg, xl)
+     - CVA pattern for maintainability
+     - Icon support (left/right)
+     - Loading state with spinner
+     - Full width, rounded, and glass effects
+
+   ✓ /components/ui/IconButton.tsx (NEW)
+     - 5 variants (ghost, primary, secondary, danger, minimal)
+     - 5 sizes (xs, sm, md, lg, xl)
+     - Lucide icon integration
+     - Tooltip support
+     - Loading state
+     - Minimal, toolbar-friendly design
+
+   ✓ /components/ui/Input.tsx (ALREADY EXISTS - COMPATIBLE)
+     - Input with label, error, icons
+     - Textarea with resize options
+     - Select with custom options
+     - Floating label support
+     - Full theme support
+
+   ✓ /components/ui/Badge.tsx (ALREADY EXISTS - COMPATIBLE)
+     - 7 variants (default, primary, secondary, success, warning, error, ghost)
+     - 3 sizes (sm, md, lg)
+     - Icon support
+     - Interactive and dismissible modes
+     - Glass effect and pulse animation
+
+   ✓ /components/ui/Tooltip.tsx (NEW)
+     - CSS-based tooltips
+     - 4 positions (top, bottom, left, right)
+     - Customizable delay
+     - Lightweight and performant
+
+   ✓ /components/ui/ThemeToggle.tsx (NEW)
+     - Beautiful theme toggle button
+     - Sun/Moon icons (lucide-react)
+     - Smooth rotation animation
+     - 3 sizes (sm, md, lg)
+     - Tooltip support
+     - Hydration-safe
+
+5. Configuration
+   ✓ /tailwind.config.ts (UPDATED)
+     - CSS variable-based color system
+     - Support for light and dark themes
+     - Custom animations
+     - Extended typography
+     - Glass morphism shadows
+     - Transition utilities
+
+6. Documentation
+   ✓ /components/ui/README.md (NEW)
+     - Complete component documentation
+     - Usage examples for all components
+     - Props reference
+     - CSS utilities guide
+     - Theming explanation
+     - Best practices
+     - Browser support info
+
+   ✓ /DESIGN_SYSTEM.md (NEW)
+     - Complete design system reference
+     - File descriptions
+     - Color system documentation
+     - Theme management guide
+     - All components with examples
+     - Responsive design info
+     - Development guidelines
+     - Troubleshooting
+     - File structure
+
+   ✓ /INTEGRATION_GUIDE.md (NEW)
+     - Setup instructions
+     - Step-by-step integration
+     - Usage examples
+     - Common patterns
+     - Migration checklist
+     - Troubleshooting
+     - Files reference
+
+================================================================================
+
+THEME STRUCTURE:
+================================================================================
+
+Dark Theme (Default - html.dark):
+  Backgrounds:  #0A0A0F, #14141B, #1E1E2E, #2A2A3C
+  Text:         #F8FAFC, #94A3B8, #64748B, #475569
+  Accents:      #3B82F6 (Blue), #8B5CF6 (Violet), #10B981 (Green)
+  Borders:      rgba(255, 255, 255, 0.08/0.12/0.16)
+
+Light Theme (html.light):
+  Backgrounds:  #FFFFFF, #F7F7FC, #EEF0F7, #E5E8F0
+  Text:         #0F172A, #475569, #64748B, #94A3B8
+  Accents:      #3B82F6 (Blue), #7C3AED (Violet), #059669 (Green)
+  Borders:      rgba(0, 0, 0, 0.06/0.10/0.15)
+
+================================================================================
+
+COMPONENT MATRIX:
+================================================================================
+
+Button
+  Variants:     primary, secondary, ghost, danger, success, warning, outline, error
+  Sizes:        xs, sm, md, lg, xl
+  Features:     Icons, Loading, FullWidth, Rounded, Glass
+  Icons:        Lucide
+
+IconButton
+  Variants:     ghost, primary, secondary, danger, minimal
+  Sizes:        xs, sm, md, lg, xl
+  Features:     Tooltip, Loading, Custom Icon Size
+  Icons:        Lucide
+
+Input / Textarea / Select
+  Features:     Label, Error, Icons, FloatingLabel, FullWidth
+  Variants:     Multiple input types and select options
+  Validation:   Error state with message
+
+Badge
+  Variants:     default, primary, secondary, success, warning, error, ghost
+  Sizes:        sm, md, lg
+  Features:     Icon, Interactive, Dismissible, Glass, Pulse
+
+Tooltip
+  Positions:    top, bottom, left, right
+  Features:     Delay, CSS-based, Lightweight
+
+ThemeToggle
+  Sizes:        sm, md, lg
+  Features:     Tooltip, Smooth Animation, Icon Transition
+
+================================================================================
+
+UTILITY FUNCTIONS:
+================================================================================
+
+Class Merging:      cn()
+Text Formatting:    formatBytes(), formatRelativeTime(), formatCurrency(), truncate()
+Timing:             debounce(), sleep()
+ID Generation:      generateId()
+Math:               clamp()
+Validation:         isEmpty(), isInViewport()
+AI Integration:     estimateTokens()
+
+================================================================================
+
+FEATURES:
+================================================================================
+
+Theme Management:
+  ✓ Dark mode (default)
+  ✓ Light mode
+  ✓ System preference detection
+  ✓ Automatic DOM application
+  ✓ CSS variable-based (no JS overhead)
+  ✓ LocalStorage persistence
+  ✓ Smooth transitions
+  ✓ Multiple color palettes per theme
+
+Accessibility:
+  ✓ ARIA labels and roles
+  ✓ Keyboard navigation
+  ✓ Focus management
+  ✓ Color contrast compliance
+  ✓ Screen reader support
+  ✓ Semantic HTML
+
+Performance:
+  ✓ Minimal CSS
+  ✓ CSS variables (cached by browser)
+  ✓ Lightweight components
+  ✓ Forward refs for DOM access
+  ✓ Tree-shakeable icons
+  ✓ Hardware-accelerated animations
+
+Developer Experience:
+  ✓ TypeScript throughout
+  ✓ CVA pattern for variants
+  ✓ Comprehensive documentation
+  ✓ JSDoc comments
+  ✓ Example code
+  ✓ Type-safe props
+  ✓ Flexible customization
+
+================================================================================
+
+INTEGRATION CHECKLIST:
+================================================================================
+
+Setup:
+  [ ] Ensure zustand, clsx, tailwind-merge, class-variance-authority installed
+  [ ] Call useThemeStore.getState().initializeTheme() on app mount
+  [ ] Add ThemeToggle to header
+
+Component Updates:
+  [ ] Replace Button imports with new component
+  [ ] Replace Input imports with new component
+  [ ] Update Badge usage (already compatible)
+  [ ] Add IconButton usage in toolbars
+  [ ] Add Tooltip to relevant elements
+  [ ] Use ThemeToggle in settings/header
+
+Testing:
+  [ ] Test dark theme (default)
+  [ ] Test light theme
+  [ ] Test system theme preference
+  [ ] Test theme persistence
+  [ ] Test responsive design
+  [ ] Test keyboard navigation
+  [ ] Test with screen reader
+  [ ] Test on mobile
+
+================================================================================
+
+QUICK START EXAMPLE:
+================================================================================
+
+import { useEffect } from 'react';
+import { Button } from '@/components/ui/Button';
+import { ThemeToggle } from '@/components/ui/ThemeToggle';
+import { useThemeStore } from '@/stores/themeStore';
+import { Save } from 'lucide-react';
+
+function App() {
+  useEffect(() => {
+    useThemeStore.getState().initializeTheme();
+  }, []);
+
+  return (
+    <div>
+      <header className="flex items-center justify-between p-4">
+        <h1 className="text-xl font-bold">ANZAR</h1>
+        <ThemeToggle size="md" />
+      </header>
+      <main className="p-8">
+        <Button
+          variant="primary"
+          size="lg"
+          leftIcon={Save}
+        >
+          Save Changes
+        </Button>
+      </main>
+    </div>
+  );
+}
+
+export default App;
+
+================================================================================
+
+DOCUMENTATION:
+================================================================================
+
+Complete Reference:     /DESIGN_SYSTEM.md
+Integration Guide:      /INTEGRATION_GUIDE.md
+Component Guide:        /components/ui/README.md
+Type Definitions:       See individual .tsx files
+
+================================================================================
+
+COMPATIBILITY:
+================================================================================
+
+Browser Support:
+  ✓ Chrome/Chromium 88+
+  ✓ Firefox 85+
+  ✓ Safari 14.1+
+  ✓ Edge 88+
+  ✓ iOS Safari 14.5+
+
+Framework Compatibility:
+  ✓ React 16.8+ (Hooks)
+  ✓ TypeScript 4.5+
+  ✓ Tailwind CSS 3.0+
+  ✓ Vite, Webpack, etc.
+
+CSS Support:
+  ✓ CSS Custom Properties (Variables)
+  ✓ CSS Grid and Flexbox
+  ✓ CSS Transitions
+  ✓ @media queries
+  ✓ :hover, :focus, :active states
+
+================================================================================
+
+FILE SIZES (APPROXIMATE):
+================================================================================
+
+/src/index.css                 ~8KB
+/src/lib/utils.ts            ~3.5KB
+/stores/themeStore.ts         ~2.5KB
+/components/ui/Button.tsx     ~2.5KB
+/components/ui/IconButton.tsx ~1.5KB
+/components/ui/Input.tsx      ~7KB (already exists)
+/components/ui/Badge.tsx      ~4KB (already exists)
+/components/ui/Tooltip.tsx    ~1.5KB
+/components/ui/ThemeToggle.tsx ~1.5KB
+/tailwind.config.ts           ~5KB (updated)
+/DESIGN_SYSTEM.md             ~15KB
+/INTEGRATION_GUIDE.md         ~10KB
+/components/ui/README.md      ~12KB
+
+Total New Code:               ~73KB (Minified: ~15KB)
+
+================================================================================
+
+END OF FILE LIST
+================================================================================

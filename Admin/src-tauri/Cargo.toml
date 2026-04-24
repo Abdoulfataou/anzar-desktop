@@ -1,0 +1,33 @@
+[package]
+name = "issalan-admin"
+version = "1.0.0"
+description = "Interface d'administration pour ISSALAN, l'agent IA multi-agent pour l'Afrique"
+authors = ["ISSALAN Team"]
+license = "MIT"
+repository = "https://github.com/issalan/issalan-admin"
+edition = "2021"
+rust-version = "1.70"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[build-dependencies]
+tauri-build = { version = "2.0.0", features = [] }
+
+[dependencies]
+tauri = { version = "2.0.0", features = ["shell-open", "dialog", "fs", "http", "notification", "process", "window"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+sqlx = { version = "0.7", features = ["runtime-tokio-native-tls", "sqlite"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[features]
+# this feature is used for production builds or when `devPath` points to the filesystem
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
