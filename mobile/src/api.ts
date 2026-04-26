@@ -1,6 +1,9 @@
 import axios from 'axios';
+import { useAuthStore } from './stores/authStore'
+import { useSettingsStore } from './stores/settingsStore'
 
-let apiBaseUrl = (process.env as any)?.API_URL || 'http://localhost:8000';
+// NOTE: sur mobile, "localhost" = téléphone. En dev, mets l'IP de ton PC (ex: http://192.168.x.x:8000)
+let apiBaseUrl = 'http://localhost:8000';
 
 export type ModelInfo = {
   name: string;
@@ -33,9 +36,19 @@ export type ProjectStatusResponse = {
 };
 
 const api = axios.create({
-  baseURL: apiBaseUrl,
   timeout: 60_000,
 });
+
+api.interceptors.request.use((config) => {
+  const baseURL = useSettingsStore.getState().backendUrl || apiBaseUrl
+  config.baseURL = baseURL
+  const token = useAuthStore.getState().token
+  if (token) {
+    config.headers = config.headers || {}
+    ;(config.headers as any).Authorization = `Bearer ${token}`
+  }
+  return config
+})
 
 export const setApiBaseUrl = (url: string) => {
   apiBaseUrl = url;
@@ -44,10 +57,44 @@ export const setApiBaseUrl = (url: string) => {
 
 export const getApiBaseUrl = () => apiBaseUrl;
 
-export const getModels = async (): Promise<ModelInfo[]> => {
-  const { data } = await api.get<ModelInfo[]>('/api/models');
-  return data;
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH (OTP)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const sendOtpCode = async (email: string) => {
+  const { data } = await api.post('/api/auth/send-code', { email })
+  return data as { status: string; message: string; email: string; expires_in_minutes: number; is_new_user: boolean }
+}
+
+export const verifyOtpCode = async (email: string, code: string) => {
+  const { data } = await api.post('/api/auth/verify-code', { email, code })
+  return data as {
+    token: string
+    user: { email: string; name: string }
+    credits: { balance_fcfa: number; total_recharged: number; total_used: number }
+    is_new_user: boolean
+  }
+}
+
+export const getProfile = async () => {
+  const { data } = await api.get('/api/user/profile')
+  return data as { email: string; name: string; credits: { balance_fcfa: number } }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHAT
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
+
+export const chat = async (messages: ChatMessage[], provider: 'deepseek' | 'kimi' = 'deepseek') => {
+  const { data } = await api.post(`/api/${provider}/chat/completions`, {
+    model: provider === 'kimi' ? 'kimi' : 'deepseek-chat',
+    messages,
+    stream: false,
+  })
+  return data as any
+}
 
 export const planProject = async (payload: {
   description: string;
@@ -75,4 +122,3 @@ export const getProjectStatus = async (projectId: string): Promise<ProjectStatus
   const { data } = await api.get<ProjectStatusResponse>(`/api/projects/${projectId}/status`);
   return data;
 };
-

@@ -10,6 +10,12 @@ import {
   Globe, FileText, BookOpen, PenTool,
   ListChecks, Layout, BookMarked, Presentation,
   X, Wand2,
+  // Data analysis icons
+  Table2, TrendingUp, PieChart, Filter,
+  // Search icons
+  Search, Newspaper, HelpCircle, Scale,
+  // Document icons
+  Mail, FileCheck, Megaphone, ScrollText, Briefcase, Pen,
 } from 'lucide-react';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -207,6 +213,244 @@ Aide-le avec : plan de l'exposé, contenu de chaque partie, notes pour l'oral, c
   },
 ];
 
+/* ===== Analyser des données — Menu interactif ===== */
+const DATA_OPTIONS = [
+  {
+    id: 'csv_excel',
+    title: 'Analyser un fichier CSV/Excel',
+    description: 'Importe ton fichier de données et obtiens statistiques, tendances et insights.',
+    icon: Table2,
+    color: 'from-emerald-500 to-green-500',
+    prompt: `Tu es un expert en analyse de données. L'utilisateur veut analyser un fichier de données. Dis-lui :
+"Bienvenue dans l'assistant d'analyse ! Tu peux :
+📎 **Joindre ton fichier** (CSV, Excel, texte) avec le bouton 📎 en bas
+✍️ **Coller tes données** directement ici
+
+Je vais analyser tes données et te fournir :"
+
+Puis propose :
+1. **Résumé statistique** — moyennes, médianes, min/max, écart-type, distribution
+2. **Tendances et patterns** — évolutions dans le temps, corrélations, anomalies
+3. **Nettoyage des données** — valeurs manquantes, doublons, incohérences
+4. **Tableaux croisés** — regroupements, comparaisons entre catégories
+5. **Recommandations** — insights actionables basés sur les données
+
+Quand l'utilisateur envoie ses données, commence TOUJOURS par un résumé rapide : nombre de lignes/colonnes, types de données détectés, aperçu des premières valeurs. Puis propose les analyses pertinentes.`,
+  },
+  {
+    id: 'visualize',
+    title: 'Créer des graphiques',
+    description: 'Génère des visualisations claires à partir de tes données.',
+    icon: TrendingUp,
+    color: 'from-blue-500 to-indigo-500',
+    prompt: `Tu es un expert en visualisation de données. L'utilisateur veut créer des graphiques. Demande-lui :
+1. Quelles données veux-tu visualiser ? (colle-les ou joins un fichier avec 📎)
+2. Quel type de graphique ? (courbe d'évolution, barres comparatives, camembert, scatter plot, histogramme)
+3. Que veux-tu mettre en évidence ?
+
+Génère du code Python (matplotlib/seaborn) ou des descriptions précises de graphiques. Explique ce que chaque visualisation révèle sur les données.`,
+  },
+  {
+    id: 'survey',
+    title: 'Analyser un sondage/enquête',
+    description: 'Traite les résultats d\'un sondage, questionnaire ou formulaire.',
+    icon: PieChart,
+    color: 'from-violet-500 to-purple-500',
+    prompt: `Tu es un expert en analyse de sondages et enquêtes. L'utilisateur a des résultats de sondage à analyser. Demande-lui :
+1. Colle les résultats ou joins le fichier avec 📎
+2. Combien de répondants ?
+3. Quel était l'objectif du sondage ?
+4. Y a-t-il des questions spécifiques à analyser en priorité ?
+
+Fournis : distribution des réponses par question, pourcentages, tendances principales, segments intéressants, et une conclusion synthétique avec recommandations.`,
+  },
+  {
+    id: 'compare',
+    title: 'Comparer des données',
+    description: 'Compare des périodes, des groupes ou des produits entre eux.',
+    icon: Filter,
+    color: 'from-amber-500 to-orange-500',
+    prompt: `Tu es un expert en analyse comparative. L'utilisateur veut comparer des données. Demande-lui :
+1. Quelles données veux-tu comparer ? (colle-les ou joins un fichier)
+2. Quels groupes/périodes/catégories comparer ?
+3. Quels critères sont importants pour la comparaison ?
+
+Produis une analyse structurée : tableau comparatif, écarts significatifs, avantages/inconvénients de chaque option, et recommandation finale.`,
+  },
+];
+
+/* ===== Recherche intelligente — Menu interactif ===== */
+const SEARCH_OPTIONS = [
+  {
+    id: 'research',
+    title: 'Recherche approfondie',
+    description: 'Recherche complète sur un sujet avec sources, synthèse et analyse.',
+    icon: Search,
+    color: 'from-blue-500 to-cyan-500',
+    prompt: `Tu es un assistant de recherche expert. L'utilisateur veut une recherche approfondie. Demande-lui :
+1. Quel est le sujet de recherche ?
+2. Quel niveau de profondeur ? (survol rapide, analyse détaillée, recherche exhaustive)
+3. Y a-t-il un angle spécifique ou une question précise ?
+4. C'est pour quel contexte ? (travail, études, curiosité personnelle, projet professionnel)
+
+Effectue une recherche web complète, puis fournis :
+- Une synthèse structurée avec les points clés
+- Les sources et réf��rences
+- Les différents points de vue s'il y en a
+- Une conclusion avec recommandations
+
+Utilise la recherche web pour trouver des informations actualisées.`,
+  },
+  {
+    id: 'news',
+    title: 'Actualités et tendances',
+    description: 'Les dernières nouvelles et tendances sur un sujet précis.',
+    icon: Newspaper,
+    color: 'from-red-500 to-pink-500',
+    prompt: `Tu es un journaliste de recherche expert. L'utilisateur veut les dernières actualités. Demande-lui :
+1. Sur quel sujet veux-tu les actualités ?
+2. Quelle période ? (aujourd'hui, cette semaine, ce mois)
+3. Quel domaine ? (tech, business, politique, sport, science, santé, Afrique)
+
+Recherche les actualités les plus récentes sur le web, puis fournis :
+- Un résumé des 5-10 actualités les plus importantes
+- Les sources pour chaque information
+- Les tendances qui se dégagent
+- Ce qu'il faut retenir
+
+Utilise la recherche web pour avoir les informations les plus récentes.`,
+  },
+  {
+    id: 'factcheck',
+    title: 'Vérifier une information',
+    description: 'Vérifie si une affirmation, une rumeur ou un chiffre est vrai.',
+    icon: HelpCircle,
+    color: 'from-amber-500 to-yellow-500',
+    prompt: `Tu es un fact-checker rigoureux. L'utilisateur veut vérifier une information. Demande-lui :
+1. Quelle information veux-tu vérifier ?
+2. Où as-tu vu/entendu cette information ?
+
+Recherche sur le web pour vérifier, puis donne :
+- Verdict : VRAI / FAUX / PARTIELLEMENT VRAI / NON VÉRIFIABLE
+- Les preuves pour et contre
+- Les sources fiables qui confirment ou infirment
+- Le contexte complet de l'information
+- Conclusion claire
+
+Sois objectif et cite toujours tes sources.`,
+  },
+  {
+    id: 'compare_options',
+    title: 'Comparer des options',
+    description: 'Compare des produits, services, technologies ou solutions.',
+    icon: Scale,
+    color: 'from-green-500 to-emerald-500',
+    prompt: `Tu es un expert en analyse comparative. L'utilisateur veut comparer des options. Demande-lui :
+1. Quelles options veux-tu comparer ? (produits, services, technologies, villes, formations...)
+2. Quels critères sont importants pour toi ? (prix, qualité, facilité, performance...)
+3. Quel est le contexte de ta décision ?
+
+Recherche sur le web les informations à jour, puis fournis :
+- Un tableau comparatif clair
+- Avantages et inconvénients de chaque option
+- Le meilleur choix selon différents profils/besoins
+- Sources consultées
+
+Sois objectif et factuel.`,
+  },
+];
+
+/* ===== Rédiger un document — Menu interactif ===== */
+const DOCUMENT_OPTIONS = [
+  {
+    id: 'email_pro',
+    title: 'Email professionnel',
+    description: 'Rédige un email clair, professionnel et adapté au contexte.',
+    icon: Mail,
+    color: 'from-blue-500 to-indigo-500',
+    prompt: `Tu es un expert en communication professionnelle. L'utilisateur veut rédiger un email. Demande-lui :
+1. À qui est destiné l'email ? (patron, client, collègue, fournisseur, recruteur)
+2. Quel est l'objet/le but ? (demande, relance, remerciement, réclamation, candidature, information)
+3. Quel ton ? (formel, semi-formel, amical mais professionnel)
+4. Y a-t-il des points spécifiques à inclure ?
+
+Rédige un email complet avec : objet, formule d'appel, corps structuré, formule de politesse. Propose 2 versions si le ton n'est pas clair (une formelle, une plus décontractée).`,
+  },
+  {
+    id: 'rapport_pro',
+    title: 'Rapport professionnel',
+    description: 'Rapport d\'activité, de mission, d\'analyse ou de projet.',
+    icon: FileCheck,
+    color: 'from-emerald-500 to-green-500',
+    prompt: `Tu es un expert en rédaction de rapports professionnels. L'utilisateur veut rédiger un rapport. Demande-lui :
+1. Quel type de rapport ? (activité, mission, analyse, audit, projet, bilan)
+2. Pour qui ? (direction, client, équipe, partenaire)
+3. Quelle période couvre-t-il ?
+4. Quels sont les points clés à inclure ?
+5. Quelle longueur attendue ?
+
+Structure le rapport avec : page de titre, sommaire, résumé exécutif, introduction, développement, conclusion, recommandations, annexes si nécessaire. Utilise un ton professionnel et factuel.`,
+  },
+  {
+    id: 'lettre',
+    title: 'Lettre officielle',
+    description: 'Lettre de motivation, de réclamation, administrative ou de demande.',
+    icon: ScrollText,
+    color: 'from-violet-500 to-purple-500',
+    prompt: `Tu es un expert en rédaction de lettres officielles et administratives. L'utilisateur veut rédiger une lettre. Demande-lui :
+1. Quel type de lettre ? (motivation, réclamation, démission, demande administrative, recommandation, mise en demeure)
+2. À qui est-elle adressée ? (entreprise, administration, personne)
+3. Quel est le contexte précis ?
+4. Y a-t-il des informations obligatoires à inclure ?
+
+Rédige une lettre complète aux normes : lieu/date, coordonnées expéditeur/destinataire, objet, corps structuré avec formules appropriées, signature. Respecte les conventions françaises/africaines selon le contexte.`,
+  },
+  {
+    id: 'article',
+    title: 'Article / Post',
+    description: 'Article de blog, post LinkedIn, contenu marketing ou éditorial.',
+    icon: Megaphone,
+    color: 'from-pink-500 to-rose-500',
+    prompt: `Tu es un expert en rédaction de contenu et copywriting. L'utilisateur veut rédiger un article ou post. Demande-lui :
+1. Quel type ? (article de blog, post LinkedIn, post Instagram, communiqué de presse, newsletter)
+2. Quel sujet ?
+3. Quel public cible ?
+4. Quel ton ? (informatif, engageant, persuasif, inspirant, technique)
+5. Quelle longueur ? (court 200 mots, moyen 500 mots, long 1000+ mots)
+
+Rédige le contenu avec : titre accrocheur, introduction captivante, corps structuré, conclusion avec appel à l'action. Optimise pour le format choisi (hashtags pour LinkedIn, sous-titres pour blog, etc.).`,
+  },
+  {
+    id: 'cv',
+    title: 'CV et lettre de motivation',
+    description: 'Crée ou améliore ton CV et ta lettre de motivation.',
+    icon: Briefcase,
+    color: 'from-amber-500 to-orange-500',
+    prompt: `Tu es un expert en recrutement et rédaction de CV. L'utilisateur veut créer ou améliorer son CV et/ou sa lettre de motivation. Demande-lui :
+1. Créer un nouveau CV ou améliorer un existant ? (s'il a un existant, demande-lui de le coller ou joindre avec 📎)
+2. Quel poste vise-t-il ?
+3. Quel est son niveau d'expérience ? (étudiant, junior, confirmé, senior)
+4. Quels sont ses points forts, formations et expériences clés ?
+
+Pour le CV : structure claire, mots-clés adaptés au poste, formulation percutante des expériences (verbes d'action + résultats chiffrés).
+Pour la lettre : personnalisée pour l'entreprise/poste, valorise les compétences pertinentes, montre la motivation.`,
+  },
+  {
+    id: 'contrat',
+    title: 'Document contractuel',
+    description: 'Devis, contrat simple, CGV, facture ou accord de confidentialité.',
+    icon: Pen,
+    color: 'from-slate-500 to-gray-600',
+    prompt: `Tu es un assistant juridique. L'utilisateur veut rédiger un document contractuel. Demande-lui :
+1. Quel type de document ? (devis, contrat de prestation, CGV, facture, NDA, accord de partenariat)
+2. Entre quelles parties ?
+3. Quel est l'objet du contrat/document ?
+4. Y a-t-il des clauses spécifiques à inclure ?
+
+Rédige un document professionnel avec les clauses standards. ATTENTION : précise toujours que ce document est un modèle et qu'il est recommandé de le faire valider par un professionnel du droit avant signature.`,
+  },
+];
+
 // ============================================================================
 // INTENT DETECTION — Détecte si le message demande une génération de projet
 // ============================================================================
@@ -280,6 +524,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showStudentMenu, setShowStudentMenu] = useState(false);
+  const [showDataMenu, setShowDataMenu] = useState(false);
+  const [showSearchMenu, setShowSearchMenu] = useState(false);
+  const [showDocumentMenu, setShowDocumentMenu] = useState(false);
   const streamingRef = useRef<string>('');
   const projects = useProjectStore((s) => s.projects);
   const selectedProjectPath = projects.find((p) => p.id === selectedProjectId)?.metadata?.localPath as string | undefined;
@@ -750,12 +997,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     handleSendMessage(prompt);
   }, [handleSendMessage]);
 
-  /** Handle student assistant option selection */
-  const handleStudentOption = useCallback((option: typeof STUDENT_OPTIONS[number]) => {
-    setShowStudentMenu(false);
-    // Send the specialized system prompt as context
-    handleSendMessage(option.prompt);
-  }, [handleSendMessage]);
+
 
 
   return (
@@ -795,6 +1037,12 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                     onClick={() => {
                       if (feature.title === 'Assistant Étudiant') {
                         setShowStudentMenu(true);
+                      } else if (feature.title === 'Analyser des données') {
+                        setShowDataMenu(true);
+                      } else if (feature.title === 'Recherche intelligente') {
+                        setShowSearchMenu(true);
+                      } else if (feature.title === 'Rédiger un document') {
+                        setShowDocumentMenu(true);
                       } else {
                         handleQuickStart(feature.prompt || feature.title);
                       }
@@ -872,70 +1120,137 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       {/* ===== STUDENT ASSISTANT MENU (modal overlay) ===== */}
       {showStudentMenu && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-          onClick={() => setShowStudentMenu(false)}
-        >
-          <div
-            className="bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 animate-in fade-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center shadow-md">
-                  <GraduationCap size={20} className="text-white" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-bold text-text-primary">Assistant Étudiant</h2>
-                  <p className="text-xs text-text-muted">Choisis ce dont tu as besoin</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowStudentMenu(false)}
-                className="p-2 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
+        <FeatureMenuModal
+          title="Assistant Étudiant"
+          subtitle="Choisis ce dont tu as besoin"
+          icon={GraduationCap}
+          iconColor="from-pink-500 to-rose-500"
+          options={STUDENT_OPTIONS}
+          onSelect={(opt) => { setShowStudentMenu(false); handleSendMessage(opt.prompt); }}
+          onClose={() => setShowStudentMenu(false)}
+        />
+      )}
 
-            {/* Options grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {STUDENT_OPTIONS.map((option) => {
-                const Icon = option.icon;
-                return (
-                  <button
-                    key={option.id}
-                    onClick={() => handleStudentOption(option)}
-                    className={cn(
-                      'group flex items-start gap-3 p-4 rounded-xl border border-border-subtle',
-                      'bg-surface-default hover:bg-surface-hover',
-                      'transition-all duration-200 text-left',
-                      'hover:border-accent-primary/30 hover:shadow-md',
-                    )}
-                  >
-                    <div className={cn(
-                      'w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0',
-                      'group-hover:scale-110 transition-transform duration-200 shadow-sm',
-                      option.color,
-                    )}>
-                      <Icon size={16} className="text-white" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-text-primary mb-0.5">
-                        {option.title}
-                      </p>
-                      <p className="text-[11px] text-text-muted leading-relaxed">
-                        {option.description}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
+      {/* ===== DATA ANALYSIS MENU (modal overlay) ===== */}
+      {showDataMenu && (
+        <FeatureMenuModal
+          title="Analyser des données"
+          subtitle="Choisis ton type d'analyse"
+          icon={BarChart3}
+          iconColor="from-emerald-500 to-teal-500"
+          options={DATA_OPTIONS}
+          onSelect={(opt) => { setShowDataMenu(false); handleSendMessage(opt.prompt); }}
+          onClose={() => setShowDataMenu(false)}
+        />
+      )}
+
+      {/* ===== SEARCH MENU (modal overlay) ===== */}
+      {showSearchMenu && (
+        <FeatureMenuModal
+          title="Recherche intelligente"
+          subtitle="Quel type de recherche ?"
+          icon={Globe}
+          iconColor="from-blue-500 to-cyan-500"
+          options={SEARCH_OPTIONS}
+          onSelect={(opt) => { setShowSearchMenu(false); handleSendMessage(opt.prompt); }}
+          onClose={() => setShowSearchMenu(false)}
+        />
+      )}
+
+      {/* ===== DOCUMENT MENU (modal overlay) ===== */}
+      {showDocumentMenu && (
+        <FeatureMenuModal
+          title="Rédiger un document"
+          subtitle="Quel document veux-tu créer ?"
+          icon={FileText}
+          iconColor="from-orange-500 to-amber-500"
+          options={DOCUMENT_OPTIONS}
+          onSelect={(opt) => { setShowDocumentMenu(false); handleSendMessage(opt.prompt); }}
+          onClose={() => setShowDocumentMenu(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+/* ===== Reusable Feature Menu Modal ===== */
+function FeatureMenuModal({
+  title, subtitle, icon: TitleIcon, iconColor, options, onSelect, onClose,
+}: {
+  title: string;
+  subtitle: string;
+  icon: React.ElementType;
+  iconColor: string;
+  options: { id: string; title: string; description: string; icon: React.ElementType; color: string; prompt: string }[];
+  onSelect: (option: typeof options[number]) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className="bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-3">
+            <div className={cn('w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-md', iconColor)}>
+              <TitleIcon size={20} className="text-white" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-text-primary">{title}</h2>
+              <p className="text-xs text-text-muted">{subtitle}</p>
             </div>
           </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
+          >
+            <X size={18} />
+          </button>
         </div>
-      )}
+
+        {/* Options grid */}
+        <div className={cn(
+          'grid gap-3',
+          options.length <= 4 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+        )}>
+          {options.map((option) => {
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.id}
+                onClick={() => onSelect(option)}
+                className={cn(
+                  'group flex items-start gap-3 p-4 rounded-xl border border-border-subtle',
+                  'bg-surface-default hover:bg-surface-hover',
+                  'transition-all duration-200 text-left',
+                  'hover:border-accent-primary/30 hover:shadow-md',
+                )}
+              >
+                <div className={cn(
+                  'w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0',
+                  'group-hover:scale-110 transition-transform duration-200 shadow-sm',
+                  option.color,
+                )}>
+                  <Icon size={16} className="text-white" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-text-primary mb-0.5">
+                    {option.title}
+                  </p>
+                  <p className="text-[11px] text-text-muted leading-relaxed">
+                    {option.description}
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
