@@ -10,6 +10,7 @@ import time
 import json
 import uuid
 import secrets
+import asyncio
 from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
@@ -66,8 +67,31 @@ async def lifespan(app: FastAPI):
     validate_config()
     await init_db()
     await create_default_admin()
+    stop_event = asyncio.Event()
+
+    async def _housekeeping_loop():
+        # Runs forever until shutdown; lightweight periodic cleanup
+        while not stop_event.is_set():
+            try:
+                await cleanup_expired_otps()
+                await cleanup_rate_limits(max_age_seconds=86400)
+            except Exception as e:
+                logger.warning(f"Housekeeping error: {e}")
+            # every 15 minutes
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=15 * 60)
+            except asyncio.TimeoutError:
+                pass
+
+    housekeeping_task = asyncio.create_task(_housekeeping_loop())
     logger.info(f"ANZAR Backend v{settings.app_version} started on port {settings.effective_port}")
     yield
+    stop_event.set()
+    housekeeping_task.cancel()
+    try:
+        await housekeeping_task
+    except Exception:
+        pass
     logger.info("ANZAR Backend stopped")
 
 

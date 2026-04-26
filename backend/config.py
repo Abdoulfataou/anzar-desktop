@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     sender_name: str = "ANZAR"
     otp_expiry_minutes: int = 10
     otp_max_attempts: int = 5  # Max wrong codes before lockout
+    # Secret used to hash OTPs at rest (recommended to set in production).
+    # If empty, we fallback to jwt_secret.
+    otp_secret: str = ""
 
     # ─── Security ───
     jwt_secret: str = "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
@@ -75,6 +78,11 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         """True if JWT secret has been changed from the default."""
         return self.jwt_secret != "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
+
+    @property
+    def effective_otp_secret(self) -> str:
+        """OTP secret used for hashing OTP codes at rest."""
+        return self.otp_secret or self.jwt_secret
 
     # ─── Admin Panel ───
     admin_default_email: str = "admin@anzar.app"

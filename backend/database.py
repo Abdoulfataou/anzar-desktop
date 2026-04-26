@@ -7,6 +7,7 @@ import hashlib
 import secrets
 import logging
 import time
+import hmac
 from typing import Optional, Dict, Any, List
 
 import aiosqlite
@@ -608,11 +609,22 @@ async def cleanup_rate_limits(max_age_seconds: int = 86400):
 # OTP CODES (email verification)
 # ============================================================================
 
+def _hash_otp(email: str, code: str) -> str:
+    """
+    Hash an OTP code for storage-at-rest (HMAC-SHA256).
+    We never store the OTP in plaintext in DB.
+    """
+    msg = f"{email.lower().strip()}:{code.strip()}".encode("utf-8")
+    key = settings.effective_otp_secret.encode("utf-8")
+    return hmac.new(key, msg, hashlib.sha256).hexdigest()
+
+
 async def create_otp(email: str, code: str, expiry_minutes: int = 10) -> int:
     """Store an OTP code for an email. Returns record ID."""
     now = time.time()
     expires_at = now + (expiry_minutes * 60)
     email = email.lower().strip()
+    code_hash = _hash_otp(email, code)
 
     async with aiosqlite.connect(settings.database_path) as db:
         # Invalidate any previous unused codes for this email
@@ -623,7 +635,7 @@ async def create_otp(email: str, code: str, expiry_minutes: int = 10) -> int:
         # Insert new code
         cursor = await db.execute(
             "INSERT INTO otp_codes (email, code, created_at, expires_at) VALUES (?, ?, ?, ?)",
-            (email, code, now, expires_at)
+            (email, code_hash, now, expires_at)
         )
         await db.commit()
         return cursor.lastrowid
@@ -679,7 +691,13 @@ async def verify_otp(email: str, code: str, max_attempts: int = 5) -> bool:
 
         # Check code (constant-time comparison)
         import secrets as _secrets
-        if _secrets.compare_digest(code.strip(), stored_code):
+        candidate = code.strip()
+        candidate_hash = _hash_otp(email, candidate)
+
+        # Backward compatibility: accept legacy plaintext codes once.
+        is_plain_legacy = isinstance(stored_code, str) and stored_code.isdigit() and len(stored_code) == 6
+        ok = _secrets.compare_digest(candidate, stored_code) if is_plain_legacy else _secrets.compare_digest(candidate_hash, stored_code)
+        if ok:
             # Mark as used
             await db.execute("UPDATE otp_codes SET used = 1 WHERE id = ?", (otp_id,))
             await db.commit()
@@ -704,9 +722,10 @@ async def get_recent_otp_count(email: str, window_seconds: int = 300) -> int:
 
 async def cleanup_expired_otps():
     """Delete expired OTP codes (housekeeping)."""
-    cutoff = time.time() - 3600  # Remove codes older than 1 hour
+    # Remove OTPs that expired more than 1 hour ago
+    cutoff = time.time() - 3600
     async with aiosqlite.connect(settings.database_path) as db:
-        await db.execute("DELETE FROM otp_codes WHERE created_at < ?", (cutoff,))
+        await db.execute("DELETE FROM otp_codes WHERE expires_at < ?", (cutoff,))
         await db.commit()
 
 
