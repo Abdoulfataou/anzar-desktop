@@ -24,7 +24,7 @@ export default function LoginPage() {
 
     try {
       const result = await anzarApi.login(email.trim(), password)
-      setSession({ token: result.token, user: result.user, credits: result.credits })
+      setSession({ token: result.token, user: result.user as any })
       navigate('/dashboard')
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Échec de la connexion'
@@ -197,7 +197,7 @@ export default function LoginPage() {
                   </Button>
 
                   <p className="text-center text-xs text-foreground-muted">
-                    Besoin d’un compte admin ? Crée-le côté backend (ou via /api/auth/register).
+                    Identifiants par défaut : admin@anzar.app / Anzar2024!
                   </p>
                 </form>
               </CardContent>

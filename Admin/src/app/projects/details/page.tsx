@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { anzarApi, type ProjectRow } from '@/api/backend'
-import { ArrowLeft, FileJson2, FolderKanban, RefreshCw } from 'lucide-react'
+import { ArrowLeft, FileJson2, FolderKanban, RefreshCw, Trash2 } from 'lucide-react'
 
 function tryParseJson(text?: string) {
   if (!text) return null
@@ -22,6 +22,7 @@ export default function ProjectDetailsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [project, setProject] = useState<ProjectRow | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const planJson = useMemo(() => tryParseJson(project?.plan_json), [project?.plan_json])
   const resultJson = useMemo(() => tryParseJson(project?.result_json), [project?.result_json])
@@ -37,6 +38,21 @@ export default function ProjectDetailsPage() {
       setError(err instanceof Error ? err.message : 'Erreur chargement projet')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!projectId) return
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce projet ? Cette action est irréversible.')) {
+      return
+    }
+    setDeleting(true)
+    try {
+      await anzarApi.deleteProject(projectId)
+      navigate('/projects')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur suppression projet')
+      setDeleting(false)
     }
   }
 
@@ -66,6 +82,9 @@ export default function ProjectDetailsPage() {
         <div className="flex gap-2">
           <Button variant="secondary" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={() => void refresh()}>
             Rafraîchir
+          </Button>
+          <Button variant="destructive" leftIcon={<Trash2 className="h-4 w-4" />} onClick={() => void handleDelete()} disabled={deleting}>
+            {deleting ? 'Suppression…' : 'Supprimer'}
           </Button>
         </div>
       </div>
@@ -101,13 +120,27 @@ export default function ProjectDetailsPage() {
                   <Badge variant="outline">{project?.status || 'unknown'}</Badge>
                 </div>
                 <div>
+                  <p className="text-foreground-secondary">Utilisateur</p>
+                  <p className="text-foreground-primary">{project?.user_name || project?.user_email || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-foreground-secondary">Email</p>
+                  <p className="text-foreground-primary text-xs break-all">{project?.user_email || '—'}</p>
+                </div>
+                <div>
                   <p className="text-foreground-secondary">Créé</p>
                   <p className="text-foreground-primary">
                     {project?.created_at ? new Date(project.created_at).toLocaleString('fr-FR') : '—'}
                   </p>
                 </div>
                 <div>
-                  <p className="text-foreground-secondary">Tokens</p>
+                  <p className="text-foreground-secondary">Mis à jour</p>
+                  <p className="text-foreground-primary">
+                    {project?.updated_at ? new Date(project.updated_at).toLocaleString('fr-FR') : '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-foreground-secondary">Tokens utilisés</p>
                   <p className="text-foreground-primary">{project?.tokens_used ?? '—'}</p>
                 </div>
                 <div>

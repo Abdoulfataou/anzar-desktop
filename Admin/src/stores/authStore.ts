@@ -1,65 +1,54 @@
-import { create } from 'zustand'
-import { persist } from 'zustand/middleware'
+/**
+ * Admin Auth Store — Login admin séparé des users normaux.
+ * JWT contient is_admin=true, admin_id, role.
+ */
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
-export type AuthUser = {
-  email: string
-  name: string
+export type AdminRole = 'owner' | 'admin' | 'support' | 'readonly';
+
+export interface AdminUser {
+  email: string;
+  name: string;
+  role: AdminRole;
+  admin_id: number;
 }
 
-type Credits = {
-  balance_fcfa: number
-  total_recharged?: number
-  total_used?: number
+interface AuthStore {
+  token: string | null;
+  user: AdminUser | null;
+  isLoggedIn: boolean;
+
+  setSession: (data: { token: string; user: AdminUser }) => void;
+  clearSession: () => void;
+  updateUser: (patch: Partial<AdminUser>) => void;
 }
 
-type AuthState = {
-  token: string | null
-  user: AuthUser | null
-  credits: Credits | null
-
-  isLoggedIn: boolean
-
-  setSession: (payload: { token: string; user: AuthUser; credits?: Credits }) => void
-  clearSession: () => void
-  setCredits: (credits: Credits) => void
-}
-
-export const useAuthStore = create<AuthState>()(
+export const useAuthStore = create<AuthStore>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       token: null,
       user: null,
-      credits: null,
       isLoggedIn: false,
 
-      setSession: ({ token, user, credits }) =>
-        set({
-          token,
-          user,
-          credits: credits ?? get().credits,
-          isLoggedIn: true,
-        }),
+      setSession: ({ token, user }) =>
+        set({ token, user, isLoggedIn: true }),
 
       clearSession: () =>
-        set({
-          token: null,
-          user: null,
-          credits: null,
-          isLoggedIn: false,
-        }),
+        set({ token: null, user: null, isLoggedIn: false }),
 
-      setCredits: (credits) => set({ credits }),
+      updateUser: (patch) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...patch } : null,
+        })),
     }),
     {
       name: 'anzar-admin-auth',
-      version: 1,
-      partialize: (s) => ({
-        token: s.token,
-        user: s.user,
-        credits: s.credits,
-        isLoggedIn: s.isLoggedIn,
+      partialize: (state) => ({
+        token: state.token,
+        user: state.user,
+        isLoggedIn: state.isLoggedIn,
       }),
     }
   )
-)
-
+);

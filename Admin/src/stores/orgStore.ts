@@ -224,7 +224,9 @@ export const useOrgStore = create<OrgState>()(
         set((s) => ({
           invitesByOrg: {
             ...s.invitesByOrg,
-            [orgId]: (s.invitesByOrg[orgId] || []).map((i) => (i.id === inviteId ? { ...i, status: 'revoked' } : i)),
+            [orgId]: (s.invitesByOrg[orgId] || []).map((i): OrgInvite =>
+              i.id === inviteId ? { ...i, status: 'revoked' as const } : i
+            ),
           },
         }))
       },
@@ -235,7 +237,9 @@ export const useOrgStore = create<OrgState>()(
           const inv = invites.find((i) => i.id === inviteId)
           if (!inv) return s
 
-          const nextInvites = invites.map((i) => (i.id === inviteId ? { ...i, status: 'accepted' } : i))
+          const nextInvites: OrgInvite[] = invites.map((i): OrgInvite =>
+            i.id === inviteId ? { ...i, status: 'accepted' as const } : i
+          )
           const members = s.membersByOrg[orgId] || []
           const exists = members.some((m) => m.userId === user.id || m.email === user.email)
           const nextMembers = exists
@@ -281,4 +285,3 @@ export const useOrgStore = create<OrgState>()(
     }
   )
 )
-

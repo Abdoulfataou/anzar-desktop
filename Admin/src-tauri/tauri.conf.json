@@ -7,7 +7,7 @@
     "withGlobalTauri": false
   },
   "package": {
-    "productName": "ISSALAN Admin",
+    "productName": "ANZAR Admin",
     "version": "1.0.0"
   },
   "tauri": {
@@ -59,7 +59,7 @@
     "bundle": {
       "active": true,
       "category": "DeveloperTool",
-      "copyright": "© 2026 ISSALAN",
+      "copyright": "© 2026 ANZAR",
       "deb": {
         "depends": []
       },
@@ -71,8 +71,8 @@
         "icons/icon.icns",
         "icons/icon.ico"
       ],
-      "identifier": "africa.issalan.admin",
-      "longDescription": "Interface d'administration pour ISSALAN, l'agent IA multi-agent pour l'Afrique",
+      "identifier": "com.anzar.admin",
+      "longDescription": "Interface d'administration pour ANZAR, l'agent IA multi-agent pour l'Afrique",
       "macOS": {
         "entitlements": null,
         "exceptionDomain": "",
@@ -81,7 +81,7 @@
         "signingIdentity": null
       },
       "resources": [],
-      "shortDescription": "Admin ISSALAN",
+      "shortDescription": "Admin ANZAR",
       "targets": "all",
       "windows": {
         "certificateThumbprint": null,
@@ -99,7 +99,7 @@
       {
         "fullscreen": false,
         "resizable": true,
-        "title": "ISSALAN Admin",
+        "title": "ANZAR Admin",
         "width": 1200,
         "height": 800,
         "minWidth": 800,

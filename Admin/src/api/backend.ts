@@ -1,385 +1,308 @@
-import { useAuthStore } from '@/stores/authStore'
+/**
+ * ANZAR Admin — API Client
+ * Connecté au vrai backend. Zéro mock.
+ */
+import { useAuthStore } from '@/stores/authStore';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Types (alignés sur le backend ANZAR)
+// Types
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type Credits = {
-  balance_fcfa: number
-  total_recharged?: number
-  total_used?: number
-}
+  balance_fcfa: number;
+  total_recharged?: number;
+  total_used?: number;
+};
 
-export type LoginResponse = {
-  token: string
+export type AdminLoginResponse = {
+  token: string;
   user: {
-    email: string
-    name: string
-  }
-  credits?: Credits
-}
+    email: string;
+    name: string;
+    role: string;
+    admin_id: number;
+  };
+};
 
 export type HealthResponse = {
-  status: string
-  timestamp?: number
-  version?: string
-  checks?: Record<string, string>
-}
+  status: string;
+  timestamp?: number;
+  version?: string;
+  checks?: Record<string, string>;
+};
 
 export type ProjectRow = {
-  id: string
-  user_email?: string
-  name?: string
-  description?: string
-  status?: string
-  created_at?: string
-  updated_at?: string
-  cost_fcfa?: number
-  tokens_used?: number
-  plan_json?: string
-  result_json?: string
-}
-
-export type ProjectsListResponse = {
-  projects: ProjectRow[]
-  count: number
-}
+  id: string;
+  user_email?: string;
+  user_name?: string;
+  name?: string;
+  description?: string;
+  status?: string;
+  created_at?: string;
+  updated_at?: string;
+  cost_fcfa?: number;
+  tokens_used?: number;
+  plan_json?: string;
+  result_json?: string;
+};
 
 export type UsageRecord = {
-  id?: string
-  provider?: string
-  model?: string
-  input_tokens?: number
-  output_tokens?: number
-  cost_usd?: number
-  cost_fcfa?: number
-  duration_ms?: number
-  created_at?: string
-  task_type?: string
-}
-
-export type UsageListResponse = {
-  records: UsageRecord[]
-  count: number
-}
-
-export type UsageStats = Record<string, unknown>
-
-export type PlanRequest = {
-  description: string
-  project_name?: string
-  tech_stack?: string[]
-  requirements?: string[]
-}
-
-export type PlanResponse = {
-  project_id: string
-  title: string
-  overview: string
-  files: Array<{ path: string; description?: string; type?: string }>
-  phases: Array<{ name: string; description?: string; duration?: string; tasks?: string[] }>
-  architecture?: Record<string, unknown>
-  tokens_used?: number
-}
-
-export type ExecuteRequest = {
-  plan: Record<string, unknown>
-  base_dir?: string
-}
-
-export type AgentStatus = {
-  name: string
-  status: 'pending' | 'running' | 'done' | 'error' | 'idle' | 'cancelled'
-  progress: number
-  message?: string
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Admin (Users/Orgs) - contrat UI (le backend peut ne pas encore exposer ces routes)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export type AdminUserStatus = 'active' | 'suspended' | 'disabled'
-export type AdminRole = 'owner' | 'admin' | 'support' | 'readonly'
+  id?: number;
+  user_email?: string;
+  provider?: string;
+  model?: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  cost_usd?: number;
+  cost_fcfa?: number;
+  duration_ms?: number;
+  created_at?: string;
+  task_type?: string;
+};
 
 export type AdminUser = {
-  id: string
-  email: string
-  name?: string
-  country?: string
-  status: AdminUserStatus
-  role: AdminRole
-  created_at?: string
-  last_seen_at?: string
-  projects_count?: number
-  credits_balance_fcfa?: number
-}
+  id: number;
+  email: string;
+  name?: string;
+  is_active: boolean;
+  created_at?: string;
+  last_login?: string;
+  balance_fcfa?: number;
+  total_recharged?: number;
+  total_used?: number;
+  project_count?: number;
+  // Detail fields
+  credits?: Credits;
+  recent_transactions?: Array<Record<string, unknown>>;
+};
 
-export type AdminUsersListResponse = {
-  users: AdminUser[]
-  count: number
-}
+export type GlobalStats = {
+  users: { active: number; total: number; new_7d: number };
+  projects: { total: number; by_status: Record<string, number> };
+  credits: { total_balance: number; platform_recharged: number; platform_used: number };
+  usage_30d: { total_requests: number; total_tokens: number; total_cost_fcfa: number };
+  usage_today: { requests: number; cost_fcfa: number };
+};
 
-export type AdminUserPatch = Partial<Pick<AdminUser, 'name' | 'country' | 'status' | 'role'>>
+export type AdminProfile = {
+  id: number;
+  email: string;
+  name: string;
+  role: string;
+  created_at?: string;
+  last_login?: string;
+};
+
+export type AgentStatus = {
+  name: string;
+  status: 'pending' | 'running' | 'done' | 'error' | 'idle' | 'cancelled';
+  progress: number;
+  message?: string;
+};
+
+export type PlanRequest = {
+  description: string;
+  project_name?: string;
+  tech_stack?: string[];
+  requirements?: string[];
+};
+
+export type PlanResponse = {
+  project_id: string;
+  title: string;
+  overview: string;
+  files: Array<{ path: string; description?: string; type?: string }>;
+  phases: Array<{ name: string; description?: string; duration?: string; tasks?: string[] }>;
+  architecture?: Record<string, unknown>;
+  tokens_used?: number;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Client HTTP
+// HTTP Client
 // ─────────────────────────────────────────────────────────────────────────────
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
 
 function getToken(): string | null {
-  return useAuthStore.getState().token
+  return useAuthStore.getState().token;
 }
 
 async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers || {})
-  headers.set('Content-Type', headers.get('Content-Type') || 'application/json')
+  const headers = new Headers(init.headers || {});
+  headers.set('Content-Type', headers.get('Content-Type') || 'application/json');
 
-  const token = getToken()
-  if (token) headers.set('Authorization', `Bearer ${token}`)
+  const token = getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const res = await fetch(`${BACKEND_URL}${path}`, { ...init, headers })
-  const isJson = (res.headers.get('content-type') || '').includes('application/json')
+  const res = await fetch(`${BACKEND_URL}${path}`, { ...init, headers });
+  const isJson = (res.headers.get('content-type') || '').includes('application/json');
 
   if (!res.ok) {
-    // Backend renvoie souvent { error: { message } }
-    const body = isJson ? await res.json().catch(() => null) : await res.text().catch(() => '')
+    const body = isJson ? await res.json().catch(() => null) : await res.text().catch(() => '');
     const message =
       typeof body === 'string'
         ? body
-        : body?.error?.message || body?.detail || `Erreur API (${res.status})`
-    throw new Error(message)
+        : body?.error?.message || body?.detail || `Erreur API (${res.status})`;
+    throw new Error(message);
   }
 
-  return (isJson ? res.json() : (res.text() as unknown)) as T
+  return (isJson ? res.json() : (res.text() as unknown)) as T;
 }
-
-function isLikelyMissingEndpoint(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return (
-    msg.includes('404') ||
-    msg.toLowerCase().includes('not found') ||
-    msg.toLowerCase().includes('cannot get') ||
-    msg.toLowerCase().includes('no route')
-  )
-}
-
-const mockUsers: AdminUser[] = [
-  {
-    id: 'u_01',
-    email: 'owner@anzar.dev',
-    name: 'Owner',
-    country: 'SN',
-    status: 'active',
-    role: 'owner',
-    created_at: new Date(Date.now() - 40 * 86400000).toISOString(),
-    last_seen_at: new Date(Date.now() - 10 * 60000).toISOString(),
-    projects_count: 12,
-    credits_balance_fcfa: 24500,
-  },
-  {
-    id: 'u_02',
-    email: 'support@anzar.dev',
-    name: 'Support',
-    country: 'CI',
-    status: 'active',
-    role: 'support',
-    created_at: new Date(Date.now() - 18 * 86400000).toISOString(),
-    last_seen_at: new Date(Date.now() - 5 * 3600000).toISOString(),
-    projects_count: 3,
-    credits_balance_fcfa: 1200,
-  },
-  {
-    id: 'u_03',
-    email: 'user1@example.com',
-    name: 'User One',
-    country: 'TG',
-    status: 'active',
-    role: 'readonly',
-    created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-    last_seen_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    projects_count: 1,
-    credits_balance_fcfa: 0,
-  },
-  {
-    id: 'u_04',
-    email: 'user2@example.com',
-    name: 'User Two',
-    country: 'ML',
-    status: 'suspended',
-    role: 'readonly',
-    created_at: new Date(Date.now() - 90 * 86400000).toISOString(),
-    last_seen_at: new Date(Date.now() - 12 * 86400000).toISOString(),
-    projects_count: 5,
-    credits_balance_fcfa: 500,
-  },
-]
 
 // ─────────────────────────────────────────────────────────────────────────────
-// API ANZAR (Admin UI)
+// API
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const anzarApi = {
   backendUrl: BACKEND_URL,
 
+  // ── Health ──
   async health(): Promise<HealthResponse> {
-    return apiFetch<HealthResponse>('/health', { method: 'GET' })
+    return apiFetch<HealthResponse>('/health');
   },
 
-  async login(email: string, password: string): Promise<LoginResponse> {
-    return apiFetch<LoginResponse>('/api/auth/login', {
+  // ── Admin Auth ──
+  async login(email: string, password: string): Promise<AdminLoginResponse> {
+    return apiFetch<AdminLoginResponse>('/api/admin/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
-    })
+    });
   },
 
-  async credits(): Promise<Credits> {
-    return apiFetch<Credits>('/api/credits', { method: 'GET' })
+  // ── Admin Profile ──
+  async getProfile(): Promise<AdminProfile> {
+    return apiFetch<AdminProfile>('/api/admin/me');
   },
 
-  async rechargeCredits(payload: { amount_fcfa: number; payment_ref?: string; payment_method?: string }) {
-    return apiFetch<{ status: string; balance_fcfa: number }>(`/api/credits/recharge`, {
+  async updateProfile(data: { name?: string; email?: string }): Promise<AdminProfile> {
+    return apiFetch<AdminProfile>('/api/admin/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<{ status: string }> {
+    return apiFetch('/api/admin/change-password', {
       method: 'POST',
-      body: JSON.stringify(payload),
-    })
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+    });
   },
 
-  async usageStats(days = 30): Promise<UsageStats> {
-    return apiFetch<UsageStats>(`/api/usage/stats?days=${encodeURIComponent(String(days))}`, { method: 'GET' })
+  // ── Dashboard Stats ──
+  async stats(): Promise<GlobalStats> {
+    return apiFetch<GlobalStats>('/api/admin/stats');
   },
 
-  async usage(limit = 50, offset = 0): Promise<UsageListResponse> {
-    return apiFetch<UsageListResponse>(`/api/usage?limit=${limit}&offset=${offset}`, { method: 'GET' })
+  // ── Users Management ──
+  async listUsers(params?: { search?: string; status?: string; limit?: number; offset?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set('search', params.search);
+    if (params?.status && params.status !== 'all') qs.set('status', params.status);
+    qs.set('limit', String(params?.limit ?? 50));
+    qs.set('offset', String(params?.offset ?? 0));
+    return apiFetch<{ users: AdminUser[]; total: number }>(`/api/admin/users?${qs}`);
   },
 
-  async creditTransactions(limit = 50, offset = 0): Promise<{ transactions: unknown[]; count: number }> {
-    return apiFetch<{ transactions: unknown[]; count: number }>(
-      `/api/credits/transactions?limit=${limit}&offset=${offset}`,
-      { method: 'GET' }
-    )
+  async getUser(email: string): Promise<AdminUser> {
+    return apiFetch<AdminUser>(`/api/admin/users/${encodeURIComponent(email)}`);
   },
 
-  async listProjects(limit = 50): Promise<ProjectsListResponse> {
-    return apiFetch<ProjectsListResponse>(`/api/projects?limit=${encodeURIComponent(String(limit))}`, { method: 'GET' })
+  async updateUser(email: string, patch: { name?: string; is_active?: boolean }): Promise<{ status: string }> {
+    return apiFetch(`/api/admin/users/${encodeURIComponent(email)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+  },
+
+  async grantCredits(email: string, amount: number, description = 'Bonus admin'): Promise<{ status: string; credits: Credits }> {
+    return apiFetch(`/api/admin/users/${encodeURIComponent(email)}/credits`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, description }),
+    });
+  },
+
+  // ── Projects Management ──
+  async listProjects(params?: { search?: string; status?: string; limit?: number; offset?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.search) qs.set('search', params.search);
+    if (params?.status && params.status !== 'all') qs.set('status', params.status);
+    qs.set('limit', String(params?.limit ?? 50));
+    qs.set('offset', String(params?.offset ?? 0));
+    return apiFetch<{ projects: ProjectRow[]; total: number }>(`/api/admin/projects?${qs}`);
   },
 
   async getProject(projectId: string): Promise<ProjectRow> {
-    return apiFetch<ProjectRow>(`/api/projects/${encodeURIComponent(projectId)}`, { method: 'GET' })
+    return apiFetch<ProjectRow>(`/api/admin/projects/${encodeURIComponent(projectId)}`);
   },
 
+  async deleteProject(projectId: string): Promise<{ status: string }> {
+    return apiFetch(`/api/admin/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' });
+  },
+
+  // ── Transactions & Usage ──
+  async transactions(limit = 100, offset = 0) {
+    return apiFetch<{ transactions: Array<Record<string, unknown>> }>(`/api/admin/transactions?limit=${limit}&offset=${offset}`);
+  },
+
+  async usage(limit = 100, offset = 0) {
+    return apiFetch<{ usage: UsageRecord[] }>(`/api/admin/usage?limit=${limit}&offset=${offset}`);
+  },
+
+  // ── Admin Accounts ──
+  async listAdmins() {
+    return apiFetch<{ admins: AdminProfile[] }>('/api/admin/admins');
+  },
+
+  // ── Studio (project planning/execution via user endpoints) ──
   async planProject(body: PlanRequest): Promise<PlanResponse> {
     return apiFetch<PlanResponse>('/api/projects/plan', {
       method: 'POST',
       body: JSON.stringify(body),
-    })
+    });
   },
 
-  /**
-   * Lance l'exécution et stream les updates agents.
-   * Le backend renvoie une suite de JSON séparés par des retours à la ligne.
-   */
   async executeProjectStream(params: {
-    projectId: string
-    plan: Record<string, unknown>
-    baseDir?: string
-    onAgentsUpdate: (agents: AgentStatus[]) => void
+    projectId: string;
+    plan: Record<string, unknown>;
+    baseDir?: string;
+    onAgentsUpdate: (agents: AgentStatus[]) => void;
   }): Promise<void> {
-    const headers = new Headers()
-    headers.set('Content-Type', 'application/json')
-
-    const token = getToken()
-    if (token) headers.set('Authorization', `Bearer ${token}`)
+    const headers = new Headers();
+    headers.set('Content-Type', 'application/json');
+    const token = getToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
 
     const res = await fetch(`${BACKEND_URL}/api/projects/${encodeURIComponent(params.projectId)}/execute`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        plan: params.plan,
-        base_dir: params.baseDir,
-      } satisfies ExecuteRequest),
-    })
+      body: JSON.stringify({ plan: params.plan, base_dir: params.baseDir }),
+    });
 
     if (!res.ok || !res.body) {
-      const text = await res.text().catch(() => '')
-      throw new Error(text || `Erreur exécution (${res.status})`)
+      const text = await res.text().catch(() => '');
+      throw new Error(text || `Erreur exécution (${res.status})`);
     }
 
-    const reader = res.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
 
     while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buffer += decoder.decode(value, { stream: true })
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
 
-      // Traiter ligne par ligne
-      let idx = buffer.indexOf('\n')
+      let idx = buffer.indexOf('\n');
       while (idx !== -1) {
-        const line = buffer.slice(0, idx).trim()
-        buffer = buffer.slice(idx + 1)
-        idx = buffer.indexOf('\n')
-
-        if (!line) continue
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        idx = buffer.indexOf('\n');
+        if (!line) continue;
         try {
-          const parsed = JSON.parse(line) as { agents?: AgentStatus[] }
-          if (parsed.agents) params.onAgentsUpdate(parsed.agents)
-        } catch {
-          // ignorer les lignes non JSON
-        }
+          const parsed = JSON.parse(line) as { agents?: AgentStatus[] };
+          if (parsed.agents) params.onAgentsUpdate(parsed.agents);
+        } catch { /* skip */ }
       }
     }
   },
-
-  // ───────────────────────────────────────────────────────────────────────────
-  // Admin users (UI-first). Si le backend ne supporte pas encore /api/admin/*,
-  // on renvoie des mocks pour permettre l'intégration UI sans casser l'app.
-  // ───────────────────────────────────────────────────────────────────────────
-
-  async adminListUsers(params?: { q?: string; limit?: number; offset?: number }): Promise<AdminUsersListResponse> {
-    const q = params?.q?.trim()
-    const limit = params?.limit ?? 50
-    const offset = params?.offset ?? 0
-    try {
-      const url =
-        `/api/admin/users?limit=${encodeURIComponent(String(limit))}` +
-        `&offset=${encodeURIComponent(String(offset))}` +
-        (q ? `&q=${encodeURIComponent(q)}` : '')
-      return await apiFetch<AdminUsersListResponse>(url, { method: 'GET' })
-    } catch (err) {
-      if (!isLikelyMissingEndpoint(err)) throw err
-      const filtered = q
-        ? mockUsers.filter((u) => (u.email + ' ' + (u.name || '')).toLowerCase().includes(q.toLowerCase()))
-        : mockUsers
-      return { users: filtered.slice(offset, offset + limit), count: filtered.length }
-    }
-  },
-
-  async adminGetUser(userIdOrEmail: string): Promise<AdminUser> {
-    try {
-      return await apiFetch<AdminUser>(`/api/admin/users/${encodeURIComponent(userIdOrEmail)}`, { method: 'GET' })
-    } catch (err) {
-      if (!isLikelyMissingEndpoint(err)) throw err
-      const found =
-        mockUsers.find((u) => u.id === userIdOrEmail) || mockUsers.find((u) => u.email === userIdOrEmail)
-      if (!found) throw new Error('Utilisateur introuvable (mock)')
-      return found
-    }
-  },
-
-  async adminPatchUser(userIdOrEmail: string, patch: AdminUserPatch): Promise<AdminUser> {
-    try {
-      return await apiFetch<AdminUser>(`/api/admin/users/${encodeURIComponent(userIdOrEmail)}`, {
-        method: 'PATCH',
-        body: JSON.stringify(patch),
-      })
-    } catch (err) {
-      if (!isLikelyMissingEndpoint(err)) throw err
-      // mock update (en mémoire uniquement)
-      const idx = mockUsers.findIndex((u) => u.id === userIdOrEmail || u.email === userIdOrEmail)
-      if (idx === -1) throw new Error('Utilisateur introuvable (mock)')
-      mockUsers[idx] = { ...mockUsers[idx], ...patch }
-      return mockUsers[idx]
-    }
-  },
-}
+};

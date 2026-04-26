@@ -13,8 +13,7 @@ export function Header() {
   const [healthLabel, setHealthLabel] = useState('Backend: inconnu')
   const location = useLocation()
   const navigate = useNavigate()
-  const credits = useAuthStore((s) => s.credits)
-  const setCredits = useAuthStore((s) => s.setCredits)
+  const user = useAuthStore((s) => s.user)
 
   const pageTitle = useMemo(() => {
     const path = location.pathname
@@ -42,21 +41,10 @@ export function Header() {
       }
     })()
 
-    // Credits (best effort)
-    ;(async () => {
-      try {
-        const c = await anzarApi.credits()
-        if (!alive) return
-        setCredits(c)
-      } catch {
-        // ignore
-      }
-    })()
-
     return () => {
       alive = false
     }
-  }, [setCredits])
+  }, [])
 
   return (
     <header className="sticky top-0 z-50 border-b border-border bg-background-secondary/80 backdrop-blur-lg">
@@ -109,9 +97,9 @@ export function Header() {
             <span className="text-xs font-medium text-foreground-primary">{healthLabel}</span>
           </div>
 
-          {typeof credits?.balance_fcfa === 'number' && (
+          {user?.role && (
             <Badge variant="primary" className="hidden lg:inline-flex">
-              {credits.balance_fcfa.toLocaleString('fr-FR')} FCFA
+              {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
             </Badge>
           )}
         </div>

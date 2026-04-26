@@ -1,6 +1,6 @@
 import { NavLink } from 'react-router-dom'
 import { cn } from '../../lib/utils'
-import { 
+import {
   LayoutDashboard,
   FolderKanban,
   Settings,
@@ -8,7 +8,6 @@ import {
   ChevronLeft,
   ChevronRight,
   Sparkles,
-  Wallet,
   Activity,
   Users,
   Building2
@@ -22,7 +21,6 @@ const navigation = [
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Users', href: '/users', icon: Users },
   { name: 'Orgs', href: '/orgs', icon: Building2 },
-  { name: 'Credits', href: '/credits', icon: Wallet },
   { name: 'Observability', href: '/observability', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
@@ -99,7 +97,7 @@ export function Sidebar() {
               {user?.name || 'Admin'}
             </p>
             <p className="text-xs text-foreground-secondary truncate">
-              {user?.email || '—'}
+              {user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : 'Admin'}
             </p>
           </div>
         )}

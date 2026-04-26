@@ -1,26 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
-import { anzarApi, type AdminRole, type AdminUser, type AdminUserStatus } from '@/api/backend'
-import { cn } from '@/lib/utils'
-import { Building2, ChevronRight, Filter, RefreshCw, Shield, UserMinus, UserPlus, Users } from 'lucide-react'
-import { useOrgStore } from '@/stores/orgStore'
+import { anzarApi, AdminUser } from '@/api/backend'
+import { Search, UserCheck, UserX, Gift, RefreshCw } from 'lucide-react'
 
-function statusVariant(status: AdminUserStatus) {
-  if (status === 'active') return 'success' as const
-  if (status === 'suspended') return 'warning' as const
-  return 'outline' as const
-}
-
-function roleVariant(role: AdminRole) {
-  if (role === 'owner') return 'primary' as const
-  if (role === 'admin') return 'secondary' as const
-  if (role === 'support') return 'outline' as const
-  return 'outline' as const
-}
+const LIMIT = 50
 
 function formatDate(value?: string) {
   if (!value) return '—'
@@ -29,53 +15,133 @@ function formatDate(value?: string) {
   return d.toLocaleString('fr-FR')
 }
 
-export default function UsersPage() {
-  const navigate = useNavigate()
-  const getUserOrgs = useOrgStore((s) => s.getUserOrgs)
+function formatCredits(value?: number) {
+  if (typeof value !== 'number') return '—'
+  return `${value.toLocaleString('fr-FR')} FCFA`
+}
 
+function statusBadge(is_active: boolean) {
+  if (is_active) return 'success' as const
+  return 'destructive' as const
+}
+
+export default function UsersPage() {
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [users, setUsers] = useState<AdminUser[]>([])
+  const [total, setTotal] = useState(0)
 
-  const [q, setQ] = useState('')
-  const [statusFilter, setStatusFilter] = useState<AdminUserStatus | 'all'>('all')
-  const [roleFilter, setRoleFilter] = useState<AdminRole | 'all'>('all')
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState<'all' | 'active' | 'disabled'>('all')
+  const [offset, setOffset] = useState(0)
 
-  const load = async () => {
-    setLoading(true)
+  const loadUsers = useCallback(
+    async (newSearch?: string, newStatus?: 'all' | 'active' | 'disabled') => {
+      const s = newSearch !== undefined ? newSearch : search
+      const st = newStatus !== undefined ? newStatus : status
+
+      setLoading(true)
+      setError(null)
+      setUsers([])
+      setOffset(0)
+
+      try {
+        const res = await anzarApi.listUsers({
+          search: s.trim() || undefined,
+          status: st === 'all' ? undefined : st,
+          limit: LIMIT,
+          offset: 0,
+        })
+        setUsers(res.users || [])
+        setTotal(res.total || 0)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Erreur chargement utilisateurs')
+      } finally {
+        setLoading(false)
+      }
+    },
+    [search, status]
+  )
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true)
     setError(null)
+
     try {
-      const res = await anzarApi.adminListUsers({ q: q.trim() || undefined, limit: 100, offset: 0 })
-      setUsers(res.users || [])
+      const newOffset = offset + LIMIT
+      const res = await anzarApi.listUsers({
+        search: search.trim() || undefined,
+        status: status === 'all' ? undefined : status,
+        limit: LIMIT,
+        offset: newOffset,
+      })
+      setUsers((prev) => [...prev, ...(res.users || [])])
+      setOffset(newOffset)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur chargement users')
+      setError(err instanceof Error ? err.message : 'Erreur chargement supplémentaire')
     } finally {
-      setLoading(false)
+      setLoadingMore(false)
     }
-  }
+  }, [search, status, offset])
 
   useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void loadUsers()
   }, [])
 
-  const filtered = useMemo(() => {
-    return users.filter((u) => {
-      if (statusFilter !== 'all' && u.status !== statusFilter) return false
-      if (roleFilter !== 'all' && u.role !== roleFilter) return false
-      return true
-    })
-  }, [users, roleFilter, statusFilter])
+  const handleSearch = (value: string) => {
+    setSearch(value)
+    void loadUsers(value, status)
+  }
 
-  const updateUser = async (id: string, patch: Partial<Pick<AdminUser, 'status' | 'role'>>) => {
+  const handleStatusChange = (newStatus: 'all' | 'active' | 'disabled') => {
+    setStatus(newStatus)
+    void loadUsers(search, newStatus)
+  }
+
+  const toggleUserStatus = async (user: AdminUser) => {
     setError(null)
     try {
-      const updated = await anzarApi.adminPatchUser(id, patch)
-      setUsers((prev) => prev.map((u) => (u.id === updated.id ? updated : u)))
+      await anzarApi.updateUser(user.email, { is_active: !user.is_active })
+      setUsers((prev) =>
+        prev.map((u) => (u.email === user.email ? { ...u, is_active: !u.is_active } : u))
+      )
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur mise à jour user')
+      setError(err instanceof Error ? err.message : 'Erreur mise à jour utilisateur')
     }
   }
+
+  const [grantingEmail, setGrantingEmail] = useState<string | null>(null)
+  const [grantAmount, setGrantAmount] = useState('')
+
+  const handleGrantCredits = async (userEmail: string) => {
+    if (!grantAmount.trim()) {
+      setError('Veuillez entrer un montant')
+      return
+    }
+
+    const amount = parseFloat(grantAmount)
+    if (isNaN(amount) || amount <= 0) {
+      setError('Montant invalide')
+      return
+    }
+
+    setError(null)
+    try {
+      await anzarApi.grantCredits(userEmail, amount, 'Admin grant')
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.email === userEmail ? { ...u, balance_fcfa: (u.balance_fcfa || 0) + amount } : u
+        )
+      )
+      setGrantingEmail(null)
+      setGrantAmount('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur allocation crédits')
+    }
+  }
+
+  const hasMore = offset + LIMIT < total
 
   return (
     <div className="space-y-6">
@@ -83,33 +149,28 @@ export default function UsersPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground-primary flex items-center gap-3">
             <span className="h-10 w-10 rounded-xl bg-gradient-to-br from-accent-primary/20 to-accent-secondary/10 border border-border flex items-center justify-center">
-              <Users className="h-5 w-5 text-accent-primary" />
+              <UserCheck className="h-5 w-5 text-accent-primary" />
             </span>
-            Users
+            Utilisateurs
           </h1>
           <p className="text-foreground-secondary mt-2">
-            Comptes, rôles et statut (suspend/disable) — prêt pour brancher un backend admin.
+            Gestion des comptes, crédits et statut actif/désactivé
           </p>
         </div>
 
-        <div className="flex gap-2">
-          <Button
-            variant="secondary"
-            leftIcon={<RefreshCw className="h-4 w-4" />}
-            onClick={() => void load()}
-            disabled={loading}
-          >
-            Rafraîchir
-          </Button>
-          <Button variant="outline" leftIcon={<Building2 className="h-4 w-4" />} onClick={() => navigate('/orgs')}>
-            Orgs
-          </Button>
-        </div>
+        <Button
+          variant="secondary"
+          leftIcon={<RefreshCw className="h-4 w-4" />}
+          onClick={() => void loadUsers()}
+          disabled={loading}
+        >
+          Rafraîchir
+        </Button>
       </div>
 
       {error && (
-        <Card className="border-accent-error/30">
-          <CardContent className="p-4 text-sm text-foreground-secondary">{error}</CardContent>
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="p-4 text-sm text-red-600">{error}</CardContent>
         </Card>
       )}
 
@@ -117,49 +178,36 @@ export default function UsersPage() {
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-3">
             <span className="flex items-center gap-2">
-              <Filter className="h-5 w-5 text-accent-secondary" />
+              <Search className="h-5 w-5" />
               Filtrer
             </span>
-            <Badge variant="outline">{filtered.length} users</Badge>
+            <Badge variant="outline">
+              {users.length} / {total}
+            </Badge>
           </CardTitle>
-          <CardDescription>Recherche + filtres rapides pour une vue dense.</CardDescription>
+          <CardDescription>Recherche par email ou nom</CardDescription>
         </CardHeader>
-        <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-          <Input
-            placeholder="Rechercher (email, nom)…"
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') void load()
-            }}
-          />
-
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-foreground-secondary w-16">Statut</span>
-            <select
-              className="flex-1 px-3 py-2 rounded-md border border-border bg-background-secondary text-foreground-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as AdminUserStatus | 'all')}
-            >
-              <option value="all">Tous</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="disabled">Disabled</option>
-            </select>
+        <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Recherche</label>
+            <Input
+              placeholder="Email ou nom…"
+              value={search}
+              onChange={(e) => handleSearch(e.target.value)}
+              leftIcon={<Search className="h-4 w-4" />}
+            />
           </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-foreground-secondary w-16">Rôle</span>
+          <div>
+            <label className="block text-sm font-medium mb-2">Statut</label>
             <select
-              className="flex-1 px-3 py-2 rounded-md border border-border bg-background-secondary text-foreground-primary text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary"
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value as AdminRole | 'all')}
+              className="w-full px-3 py-2 rounded-md border border-border bg-background text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-accent-primary"
+              value={status}
+              onChange={(e) => handleStatusChange(e.target.value as any)}
             >
               <option value="all">Tous</option>
-              <option value="owner">Owner</option>
-              <option value="admin">Admin</option>
-              <option value="support">Support</option>
-              <option value="readonly">Readonly</option>
+              <option value="active">Actifs</option>
+              <option value="disabled">Désactivés</option>
             </select>
           </div>
         </CardContent>
@@ -167,138 +215,146 @@ export default function UsersPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Liste</CardTitle>
-          <CardDescription>
-            Actions rapides: suspend/activate + modification rôle.
-          </CardDescription>
+          <CardTitle>Liste des utilisateurs</CardTitle>
+          <CardDescription>Email, nom, statut, crédits et actions rapides</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-foreground-secondary">Chargement…</p>
-          ) : filtered.length === 0 ? (
-            <p className="text-sm text-foreground-secondary">Aucun utilisateur.</p>
-          ) : (
-            <div className="overflow-auto rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead className="bg-background-tertiary/40">
-                  <tr className="text-left">
-                    <th className="p-3 font-medium text-foreground-secondary">User</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Orgs</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Statut</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Rôle</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Pays</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Last seen</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Projets</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Crédits</th>
-                    <th className="p-3 font-medium text-foreground-secondary"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((u) => (
-                    <tr key={u.id} className="border-t border-border hover:bg-background-tertiary/30">
-                      <td className="p-3">
-                        <div className="min-w-[220px]">
-                          <p className="font-medium text-foreground-primary truncate">{u.name || u.email}</p>
-                          <p className="text-xs text-foreground-secondary truncate">{u.email}</p>
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <div className="min-w-[160px] flex flex-wrap gap-1">
-                          {getUserOrgs(u.id).length === 0 ? (
-                            <span className="text-xs text-foreground-muted">—</span>
-                          ) : (
-                            getUserOrgs(u.id)
-                              .slice(0, 2)
-                              .map((o) => (
-                                <Badge key={o.id} variant="outline" className="text-xs">
-                                  {o.name}
-                                </Badge>
-                              ))
-                          )}
-                          {getUserOrgs(u.id).length > 2 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{getUserOrgs(u.id).length - 2}
-                            </Badge>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-3">
-                        <Badge variant={statusVariant(u.status)} className="capitalize">
-                          {u.status}
-                        </Badge>
-                      </td>
-                      <td className="p-3">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={roleVariant(u.role)} className="capitalize">
-                            {u.role}
-                          </Badge>
-                          <select
-                            className={cn(
-                              'px-2 py-1 rounded-md border border-border bg-background-secondary text-foreground-primary text-xs',
-                              'focus:outline-none focus:ring-2 focus:ring-accent-primary'
-                            )}
-                            value={u.role}
-                            onChange={(e) => void updateUser(u.id, { role: e.target.value as AdminRole })}
-                          >
-                            <option value="owner">Owner</option>
-                            <option value="admin">Admin</option>
-                            <option value="support">Support</option>
-                            <option value="readonly">Readonly</option>
-                          </select>
-                        </div>
-                      </td>
-                      <td className="p-3 text-foreground-primary">{u.country || '—'}</td>
-                      <td className="p-3 text-foreground-secondary">{formatDate(u.last_seen_at)}</td>
-                      <td className="p-3 text-foreground-primary">{u.projects_count ?? '—'}</td>
-                      <td className="p-3 text-foreground-primary">
-                        {typeof u.credits_balance_fcfa === 'number'
-                          ? `${u.credits_balance_fcfa.toLocaleString('fr-FR')} FCFA`
-                          : '—'}
-                      </td>
-                      <td className="p-3">
-                        <div className="flex items-center justify-end gap-2">
-                          {u.status === 'active' ? (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              leftIcon={<UserMinus className="h-4 w-4" />}
-                              onClick={() => void updateUser(u.id, { status: 'suspended' })}
-                            >
-                              Suspend
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              leftIcon={<UserPlus className="h-4 w-4" />}
-                              onClick={() => void updateUser(u.id, { status: 'active' })}
-                            >
-                              Activate
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            leftIcon={<Shield className="h-4 w-4" />}
-                            onClick={() => void updateUser(u.id, { status: 'disabled' })}
-                          >
-                            Disable
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            rightIcon={<ChevronRight className="h-4 w-4" />}
-                            onClick={() => navigate(`/users/${encodeURIComponent(u.id)}`)}
-                          >
-                            Détails
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="text-center py-8 text-sm text-foreground-secondary">
+              Chargement…
             </div>
+          ) : users.length === 0 ? (
+            <div className="text-center py-8 text-sm text-foreground-secondary">
+              Aucun utilisateur trouvé
+            </div>
+          ) : (
+            <>
+              <div className="overflow-x-auto rounded-lg border border-border">
+                <table className="w-full text-sm">
+                  <thead className="bg-background-tertiary">
+                    <tr>
+                      <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
+                        Email
+                      </th>
+                      <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
+                        Nom
+                      </th>
+                      <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
+                        Statut
+                      </th>
+                      <th className="px-4 py-3 text-right font-medium text-foreground-secondary">
+                        Crédits FCFA
+                      </th>
+                      <th className="px-4 py-3 text-center font-medium text-foreground-secondary">
+                        Projets
+                      </th>
+                      <th className="px-4 py-3 text-left font-medium text-foreground-secondary">
+                        Dernière connexion
+                      </th>
+                      <th className="px-4 py-3 text-center font-medium text-foreground-secondary">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {users.map((u) => (
+                      <tr key={u.id} className="hover:bg-background-tertiary/30 transition">
+                        <td className="px-4 py-3">
+                          <p className="font-mono text-xs text-foreground-secondary truncate">
+                            {u.email}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-foreground-primary">
+                          {u.name || '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge variant={statusBadge(u.is_active)}>
+                            {u.is_active ? 'Actif' : 'Désactivé'}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-right text-foreground-primary font-medium">
+                          {formatCredits(u.balance_fcfa)}
+                        </td>
+                        <td className="px-4 py-3 text-center text-foreground-primary">
+                          {u.project_count ?? 0}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-foreground-secondary">
+                          {formatDate(u.last_login)}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-center gap-2">
+                            <Button
+                              size="sm"
+                              variant={u.is_active ? 'secondary' : 'outline'}
+                              leftIcon={
+                                u.is_active ? (
+                                  <UserX className="h-4 w-4" />
+                                ) : (
+                                  <UserCheck className="h-4 w-4" />
+                                )
+                              }
+                              onClick={() => void toggleUserStatus(u)}
+                            >
+                              {u.is_active ? 'Désactiver' : 'Activer'}
+                            </Button>
+
+                            {grantingEmail === u.email ? (
+                              <div className="flex gap-1 items-center">
+                                <Input
+                                  type="number"
+                                  placeholder="Montant"
+                                  value={grantAmount}
+                                  onChange={(e) => setGrantAmount(e.target.value)}
+                                  className="w-24"
+                                />
+                                <Button
+                                  size="sm"
+                                  onClick={() => void handleGrantCredits(u.email)}
+                                  disabled={!grantAmount.trim()}
+                                >
+                                  OK
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    setGrantingEmail(null)
+                                    setGrantAmount('')
+                                  }}
+                                >
+                                  ✕
+                                </Button>
+                              </div>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                leftIcon={<Gift className="h-4 w-4" />}
+                                onClick={() => setGrantingEmail(u.email)}
+                              >
+                                Crédits
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {hasMore && (
+                <div className="mt-4 text-center">
+                  <Button
+                    variant="secondary"
+                    onClick={() => void loadMore()}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore ? 'Chargement…' : 'Charger plus'}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
