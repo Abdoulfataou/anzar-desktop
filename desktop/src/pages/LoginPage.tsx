@@ -172,7 +172,7 @@ export default function LoginPage() {
             </a>
           </div>
           <p className="text-[10px] text-text-muted/60">
-            &copy; {new Date().getFullYear()} IssalanHub &middot; USA &middot; Niger &middot; Tous droits réservés
+            {"© "}{new Date().getFullYear()} IssalanHub · USA · Niger · Tous droits reserves
           </p>
         </div>
       </div>

@@ -321,7 +321,7 @@ export default function Sidebar({
         {expanded && (
           <div className="px-4 py-2 text-center">
             <p className="text-[9px] text-text-muted/50 leading-relaxed">
-              &copy; {new Date().getFullYear()} IssalanHub &middot; Tous droits réservés
+              {"© "}{new Date().getFullYear()} IssalanHub · Tous droits reserves
             </p>
           </div>
         )}

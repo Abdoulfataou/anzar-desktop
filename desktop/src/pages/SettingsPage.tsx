@@ -886,7 +886,7 @@ export default function SettingsPage() {
                               setUpdateState((s) => ({
                                 ...s,
                                 installing: false,
-                                error: "Impossible d’installer la mise �� jour.",
+                                error: "Impossible d’installer la mise a jour.",
                               }));
                             }
                           }}
@@ -1001,7 +1001,7 @@ export default function SettingsPage() {
                 <div className="flex items-start gap-2.5">
                   <MapPin size={13} className="text-text-muted flex-shrink-0 mt-0.5" />
                   <div className="text-xs text-text-muted leading-relaxed">
-                    <p>USA &middot; Niger</p>
+                    <p>USA · Niger</p>
                   </div>
                 </div>
               </div>
@@ -1009,7 +1009,7 @@ export default function SettingsPage() {
               {/* Copyright */}
               <div className="pt-3 border-t border-border-subtle">
                 <p className="text-[11px] text-text-muted/70 text-center leading-relaxed">
-                  &copy; {new Date().getFullYear()} IssalanHub. Tous droits réservés.
+                  {"© "}{new Date().getFullYear()} IssalanHub. Tous droits reserves.
                   <br />
                   ANZAR est un produit de IssalanHub.
                 </p>
