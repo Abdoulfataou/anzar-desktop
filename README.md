@@ -1,6 +1,6 @@
-# ISSALAN - Multi-Agent Application Generator
+# ANZAR - Assistant IA de Vibecoding
 
-🚀 **ISSALAN** est un système multi-agent puissant qui génère des applications complètes à partir de descriptions textuelles. Il utilise 5 agents IA spécialisés qui collaborent pour planifier, coder, tester et exécuter des projets complets.
+🚀 **ANZAR** est un système multi-agent qui génère des applications complètes à partir de descriptions textuelles. Il utilise plusieurs agents IA spécialisés qui collaborent pour planifier, coder, tester et exécuter des projets complets.
 
 ## 🌟 Fonctionnalités
 
@@ -13,7 +13,7 @@
 
 ### "Vibecoding" Mode
 - L'utilisateur donne une idée vague : "Crée un jeu Snake en Python avec Pygame"
-- ISSALAN fait tout le reste : analyse, planification, codage, test, exécution
+- ANZAR fait tout le reste : analyse, planification, codage, test, exécution
 - Validation humaine uniquement pour le plan avant exécution
 
 ### Technologies
@@ -42,20 +42,20 @@ mon-agent-app/
 
 ### Prérequis
 - Docker & Docker Compose
-- Clé API DeepSeek (gratuite sur [deepseek.com](https://platform.deepseek.com/))
+- Un backend ANZAR opérationnel (les clés IA sont côté serveur, pas côté client)
 
 ### Installation
 
 1. **Cloner le projet**
 ```bash
-git clone https://github.com/votre-username/issalan.git
-cd issalan
+git clone https://github.com/Abdoulfataou/anzar-desktop.git
+cd anzar-desktop
 ```
 
 2. **Configurer l'environnement**
 ```bash
 cp .env.example .env
-# Éditer .env et ajouter votre clé API DeepSeek
+# Éditer .env et configurer VITE_BACKEND_URL (backend ANZAR)
 ```
 
 3. **Démarrer avec Docker**
@@ -98,7 +98,7 @@ npx expo start
 
 ### Créer votre première application
 
-1. **Ouvrez l'interface ISSALAN** (desktop ou mobile)
+1. **Ouvrez l'interface ANZAR** (desktop ou mobile)
 2. **Décrivez votre application** :
    ```
    "Crée une application de gestion de tâches avec React, Node.js, et MongoDB"
@@ -220,7 +220,7 @@ docker-compose -f docker-compose.test.yml up --build
 ## 🆘 Support & Contribution
 
 ### Signaler un bug
-Utilisez les [Issues GitHub](https://github.com/votre-username/issalan/issues)
+Utilisez les [Issues GitHub](https://github.com/Abdoulfataou/anzar-desktop/issues)
 
 ### Contribuer
 1. Fork le projet
@@ -236,17 +236,19 @@ Utilisez les [Issues GitHub](https://github.com/votre-username/issalan/issues)
 
 ## 📄 Licence
 
-Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
+Ce projet est sous licence **propriétaire (ISSALANHUB)** — **Tous droits réservés**.
+
+Si tu veux publier une licence open-source plus tard, on pourra ajouter un fichier `LICENSE` adapté.
 
 ## 🙏 Remerciements
 
-- **DeepSeek** pour leur API IA puissante et gratuite
+- **DeepSeek** pour leur API IA puissante et à faible coût (payante)
 - **AG2 (AutoGen)** pour le framework multi-agent
 - **Tauri** pour l'excellent framework desktop
 - **Expo** pour la simplicité du développement mobile
 
 ---
 
-**ISSALAN** - Transformez vos idées en applications, une ligne à la fois. 🚀
+**ANZAR** - Transformez vos idées en applications, une ligne à la fois.
 
 **Note** : Ce projet est un prototype. Testez-le et adaptez-le à vos besoins avant une utilisation en production.

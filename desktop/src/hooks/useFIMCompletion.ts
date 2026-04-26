@@ -9,7 +9,7 @@
  * Acceptation: Tab pour insérer la suggestion
  *
  * Coût: même tarif que DeepSeek V3 chat (~0.14$/M tokens)
- * → Quasiment gratuit pour des compléments de 50-200 tokens
+ * → Coût très faible pour des compléments de 50-200 tokens
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
