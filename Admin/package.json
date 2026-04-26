@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:web": "vite build",
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
@@ -27,7 +28,8 @@
     "recharts": "^2.15.4",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
-    "zustand": "^5.0.3"
+    "zustand": "^5.0.3",
+    "serve": "^14.2.4"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.11",
