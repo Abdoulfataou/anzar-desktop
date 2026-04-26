@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from './CodeBlock';
 import { cn } from '@/lib/utils';
@@ -11,6 +11,7 @@ import CommandCard from '@/components/chat/CommandCard';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
+import { exportToDocx, exportToPdf } from '@/services/documentExport';
 
 interface Message {
   id: string;
@@ -36,6 +37,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const [copied, setCopied] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  const [exporting, setExporting] = useState<'docx' | 'pdf' | null>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const ensureCard = useCommandStore((s) => s.ensureCard);
   const commandOrder = useCommandStore((s) => s.order);
@@ -56,6 +58,33 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     onCopy?.(message.content);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const handleExportDocx = async () => {
+    if (exporting) return;
+    setExporting('docx');
+    try {
+      await exportToDocx(message.content);
+    } catch (err) {
+      console.error('Export DOCX failed:', err);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const handleExportPdf = async () => {
+    if (exporting) return;
+    setExporting('pdf');
+    try {
+      await exportToPdf(message.content);
+    } catch (err) {
+      console.error('Export PDF failed:', err);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  /** Show export buttons only for substantial AI responses (>200 chars) */
+  const showExportButtons = message.content.length > 200 && !message.isStreaming && !message.isError;
 
   const formatTime = (date: Date) =>
     date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -256,6 +285,39 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             <RefreshCw size={13} />
             <span>Régénérer</span>
           </button>
+
+          {/* Export buttons — only for substantial responses */}
+          {showExportButtons && (
+            <>
+              <div className="w-px h-3 bg-border-subtle mx-1" />
+              <button
+                onClick={handleExportDocx}
+                disabled={exporting !== null}
+                className={cn(
+                  'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
+                  exporting === 'docx'
+                    ? 'text-accent-primary bg-accent-primary/10'
+                    : 'text-text-muted hover:text-accent-primary hover:bg-accent-primary/10'
+                )}
+              >
+                <FileText size={13} />
+                <span>{exporting === 'docx' ? 'Export...' : 'Word'}</span>
+              </button>
+              <button
+                onClick={handleExportPdf}
+                disabled={exporting !== null}
+                className={cn(
+                  'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
+                  exporting === 'pdf'
+                    ? 'text-accent-error bg-accent-error/10'
+                    : 'text-text-muted hover:text-accent-error hover:bg-accent-error/10'
+                )}
+              >
+                <FileDown size={13} />
+                <span>{exporting === 'pdf' ? 'Export...' : 'PDF'}</span>
+              </button>
+            </>
+          )}
 
           {/* Separator */}
           <div className="w-px h-3 bg-border-subtle mx-1" />
