@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '../../../components/ui/Button'
 import { Input } from '../../../components/ui/Input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/Card'
-import { Lock, Mail, Eye, EyeOff, Cpu } from 'lucide-react'
+import { Lock, Mail, Eye, EyeOff } from 'lucide-react'
+import AnzarLogo from '@/components/ui/AnzarLogo'
 import { motion } from 'framer-motion'
 import { anzarApi } from '@/api/backend'
 import { useAuthStore } from '@/stores/authStore'
@@ -73,9 +74,7 @@ export default function LoginPage() {
         <div className="relative z-10 flex flex-col justify-center p-12">
           <div className="max-w-md">
             <div className="flex items-center gap-3 mb-8">
-              <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center">
-                <Cpu className="h-6 w-6 text-background-primary" />
-              </div>
+              <AnzarLogo size={48} />
               <div>
                 <h1 className="text-3xl font-bold text-foreground-primary">ANZAR</h1>
                 <p className="text-foreground-secondary">Admin • Vibecoding Console</p>
@@ -116,9 +115,7 @@ export default function LoginPage() {
             <Card className="border-border bg-background-glass backdrop-blur-lg">
               <CardHeader className="text-center">
                 <div className="flex justify-center mb-4">
-                  <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center">
-                    <Cpu className="h-6 w-6 text-background-primary" />
-                  </div>
+                  <AnzarLogo size={48} />
                 </div>
                 <CardTitle className="text-2xl">Connexion</CardTitle>
                 <CardDescription>
@@ -180,7 +177,7 @@ export default function LoginPage() {
                     </motion.div>
                   )}
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center">
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
@@ -188,7 +185,6 @@ export default function LoginPage() {
                       />
                       <span className="text-sm text-foreground-secondary">Rester connecté</span>
                     </label>
-                    <span className="text-xs text-foreground-muted">URL: {anzarApi.backendUrl}</span>
                   </div>
 
                   <Button

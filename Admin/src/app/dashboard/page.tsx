@@ -69,12 +69,12 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-accent-error/20 bg-accent-error/5">
           <CardContent className="p-6 flex items-center gap-4">
-            <AlertCircle className="h-6 w-6 text-red-600" />
+            <AlertCircle className="h-6 w-6 text-accent-error" />
             <div>
-              <p className="font-medium text-red-900">Erreur de chargement</p>
-              <p className="text-sm text-red-700">{error}</p>
+              <p className="font-medium text-foreground-primary">Erreur de chargement</p>
+              <p className="text-sm text-accent-error">{error}</p>
             </div>
           </CardContent>
         </Card>

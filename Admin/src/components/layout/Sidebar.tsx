@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
+import AnzarLogo from '@/components/ui/AnzarLogo'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -42,9 +43,7 @@ export function Sidebar() {
           'flex items-center gap-3',
           collapsed ? 'justify-center' : 'justify-start'
         )}>
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-accent-primary to-accent-secondary flex items-center justify-center">
-            <span className="text-sm font-bold text-background-primary">AZ</span>
-          </div>
+          <AnzarLogo size={32} />
           {!collapsed && (
             <div>
               <h1 className="text-lg font-bold text-foreground-primary">ANZAR Admin</h1>

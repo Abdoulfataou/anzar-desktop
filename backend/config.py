@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     # ─── Security ───
     jwt_secret: str = "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
     jwt_expiry_hours: int = 72  # Token valid for 3 days
-    cors_origins: str = "http://localhost:1420,http://localhost:5173,tauri://localhost"
+    cors_origins: str = "http://localhost:1420,http://localhost:5173,tauri://localhost,https://endearing-exploration-production.up.railway.app"
     rate_limit_per_minute: int = 30
     rate_limit_per_day: int = 500
 
