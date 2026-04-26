@@ -61,6 +61,19 @@ export type UsageRecord = {
   task_type?: string;
 };
 
+export type PaymentIntent = {
+  id: string;
+  user_email: string;
+  amount_fcfa: number;
+  currency: string;
+  method: string;
+  status: 'pending' | 'paid' | 'cancelled' | 'failed';
+  provider_ref?: string;
+  payment_url?: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
 export type AdminUser = {
   id: number;
   email: string;
@@ -265,6 +278,25 @@ export const anzarApi = {
 
   async usage(limit = 100, offset = 0) {
     return apiFetch<{ usage: UsageRecord[] }>(`/api/admin/usage?limit=${limit}&offset=${offset}`);
+  },
+
+  // ── Payments (prep) ──
+  async listPaymentIntents(params?: { status?: string; limit?: number; offset?: number }) {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set('status', params.status);
+    qs.set('limit', String(params?.limit ?? 50));
+    qs.set('offset', String(params?.offset ?? 0));
+    return apiFetch<{ payment_intents: PaymentIntent[]; total: number }>(`/api/admin/payments?${qs}`);
+  },
+
+  async markPaymentPaid(intentId: string, body: { provider_ref?: string; description: string }) {
+    return apiFetch<{ status: string; payment_intent: PaymentIntent }>(`/api/admin/payments/${encodeURIComponent(intentId)}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify({
+        provider_ref: body.provider_ref || '',
+        description: body.description,
+      }),
+    });
   },
 
   // ── Admin Accounts ──

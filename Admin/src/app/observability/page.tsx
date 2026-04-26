@@ -22,13 +22,17 @@ export default function ObservabilityPage() {
   const [usage, setUsage] = useState<ApiUsageRecord[]>([])
   const [stats, setStats] = useState<GlobalStats | null>(null)
 
+  const batchUsage = usage.filter((r) => r.task_type === 'batch')
+  const batchRequests = batchUsage.length
+  const batchCost = batchUsage.reduce((acc, r) => acc + (r.cost_fcfa ?? 0), 0)
+
   const refresh = async () => {
     setLoading(true)
     setError(null)
     try {
       const [h, u, s] = await Promise.all([
         anzarApi.health(),
-        anzarApi.usage(50, 0),
+        anzarApi.usage(200, 0),
         anzarApi.stats(),
       ])
       setHealth(h as HealthStatus)
@@ -137,7 +141,7 @@ export default function ObservabilityPage() {
               <Activity className="h-5 w-5 text-accent-secondary" />
               Statistiques d'usage
             </CardTitle>
-            <CardDescription>Résumé des 30 derniers jours</CardDescription>
+            <CardDescription>Résumé global + focus Batch</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -155,6 +159,19 @@ export default function ObservabilityPage() {
                   <p className="text-2xl font-bold text-foreground-primary">
                     {stats.usage_today.requests.toLocaleString('fr-FR')}
                   </p>
+                </div>
+                <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">
+                  <p className="text-xs font-medium text-foreground-secondary uppercase">
+                    Batch (sur {usage.length} derniers logs)
+                  </p>
+                  <div className="flex items-end justify-between gap-3">
+                    <p className="text-2xl font-bold text-foreground-primary">
+                      {batchRequests.toLocaleString('fr-FR')}
+                    </p>
+                    <Badge variant={batchRequests > 0 ? 'secondary' : 'outline'}>
+                      ~{batchCost.toFixed(0)} FCFA
+                    </Badge>
+                  </div>
                 </div>
               </div>
             ) : (

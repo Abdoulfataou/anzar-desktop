@@ -522,7 +522,7 @@ export interface Transaction {
   amount: number;
   description: string;
   date: number;
-  paymentMethod?: 'wave' | 'orange_money' | 'mpesa' | 'card';
+  paymentMethod?: 'wave' | 'orange_money' | 'airtel_money' | 'flooz' | 'mpesa' | 'nita_transfert' | 'amana_transfert' | 'card';
   status: 'completed' | 'pending' | 'failed';
 }
 

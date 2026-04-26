@@ -14,13 +14,12 @@ import asyncio
 from typing import Dict, Any, Optional, List
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Depends, status
+from fastapi import FastAPI, HTTPException, Request, Depends, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, PlainTextResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 import httpx
-import aiosqlite
 
 from config import settings
 from security import (
@@ -45,10 +44,14 @@ from database import (
     admin_list_all_users, admin_get_user_detail, admin_update_user,
     admin_add_credits_to_user, admin_list_all_projects,
     admin_get_global_stats, admin_get_all_transactions, admin_get_all_usage,
+    admin_delete_project_any,
+    # Payments (prep)
+    create_payment_intent, admin_list_payment_intents, admin_mark_payment_intent_paid,
 )
 from agents import OrchestratorAgent, PlannerAgent, CoderAgent, TesterAgent, ExecutorAgent
 from services.deepseek_client import DeepSeekClient
 from services.email import send_otp_email
+from services.web_search import search_web, format_search_results, WEB_SEARCH_TOOL
 
 # ============================================================================
 # SETUP
@@ -223,10 +226,8 @@ async def health():
 
     # DB check
     try:
-        from database import get_db
-        db = await get_db()
-        await db.execute("SELECT 1")
-        await db.close()
+        from database import db_ping
+        await db_ping()
     except Exception as e:
         checks["database"] = f"error: {str(e)[:100]}"
 
@@ -549,6 +550,33 @@ class RechargeRequest(BaseModel):
     payment_method: str = Field(default="manual", max_length=50)
 
 
+# ============================================================================
+# PAYMENTS (Wave/Orange Money) — préparation
+# ============================================================================
+
+class PaymentInitiateRequest(BaseModel):
+    amount: float = Field(..., gt=0, le=1_000_000)
+    currency: str = Field(default="XOF", max_length=8)
+    method: str = Field(default="wave", max_length=32)  # wave | orange_money | ...
+
+
+@app.post("/api/payments/initiate")
+async def initiate_payment(body: PaymentInitiateRequest, user: dict = Depends(get_current_user)):
+    """
+    Prépare un paiement (Wave/Orange Money).
+
+    Pour l’instant (avant intégration provider), on crée juste une "demande" en DB (payment_intents)
+    afin que l’admin puisse la voir et créditer manuellement le compte après réception du paiement.
+    """
+    intent = await create_payment_intent(user["sub"], body.amount, currency=body.currency, method=body.method)
+    return {
+        "status": "pending",
+        "intent_id": intent.get("id"),
+        "paymentUrl": None,
+        "message": "Paiement en cours d'intégration. Demande enregistrée; l'admin validera et créditera le compte.",
+    }
+
+
 @app.post("/api/credits/recharge")
 async def recharge_credits(body: RechargeRequest, user: dict = Depends(get_current_user)):
     """
@@ -694,6 +722,122 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
         )
 
 
+@app.post("/api/chat/smart")
+async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
+    """
+    Smart chat endpoint with automatic web search via tool calling.
+
+    The backend handles the full tool-calling loop:
+    1. Send user message + web_search tool definition to DeepSeek.
+    2. If DeepSeek calls web_search, execute it via Serper.
+    3. Feed results back, repeat up to 3 rounds.
+    4. Return the final response with sources.
+
+    This is used when the frontend detects the user might need web info,
+    or can be the default chat endpoint.
+    """
+    email = user["sub"]
+
+    # Credit check
+    has_paid = await has_credits(email)
+    if not has_paid:
+        quota = int(getattr(settings, "free_daily_chat_requests", 0) or 0)
+        if quota <= 0:
+            raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+        free_key = f"free_chat:{email}"
+        used = await get_rate_limit_count(free_key, window_seconds=86400)
+        if used >= quota:
+            raise HTTPException(402, f"Quota gratuit atteint ({quota}/24h). Rechargez.")
+        await record_rate_limit_hit(free_key, "free-chat")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "Invalid JSON body")
+
+    messages = body.get("messages", [])
+    if not messages:
+        raise HTTPException(400, "messages is required")
+    messages = validate_messages(messages)
+
+    model = body.get("model", settings.deepseek_model)
+    temperature = body.get("temperature", 0.7)
+    max_tokens = body.get("max_tokens", 4096)
+
+    # Tool executor — handles web_search calls from DeepSeek
+    async def tool_executor(name: str, args: dict) -> str:
+        if name == "web_search":
+            query = args.get("query", "")
+            num = args.get("num_results", 5)
+            if not query:
+                return json.dumps({"error": "query is required"})
+            data = await search_web(query, num_results=num)
+            return format_search_results(data)
+        return json.dumps({"error": f"Unknown tool: {name}"})
+
+    start_time = time.time()
+
+    try:
+        client = DeepSeekClient()
+        # Only inject web_search tool if Serper is configured
+        tools = [WEB_SEARCH_TOOL] if settings.serper_api_key else []
+
+        if tools:
+            response_text = await client.chat_with_tools(
+                messages=messages,
+                tools=tools,
+                tool_executor=tool_executor,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+        else:
+            # No search configured — fallback to normal chat
+            response_text = await client.chat(
+                messages=messages,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
+        duration_ms = int((time.time() - start_time) * 1000)
+
+        # Approximate token counting for billing
+        input_tokens = sum(len(m.get("content", "")) for m in messages) // 4
+        output_tokens = len(response_text) // 4
+
+        cost_fcfa = calculate_cost_fcfa(
+            "deepseek", input_tokens, output_tokens
+        )
+
+        if has_paid and cost_fcfa > 0:
+            await deduct_credits(email, cost_fcfa, f"smart_chat:{model}")
+            await record_usage(
+                email, "deepseek", model, "smart_chat",
+                input_tokens, output_tokens, cost_fcfa, duration_ms
+            )
+
+        return JSONResponse({
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": response_text,
+                },
+                "finish_reason": "stop",
+            }],
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cost_fcfa": round(cost_fcfa, 2),
+            },
+            "duration_ms": duration_ms,
+        })
+
+    except Exception as e:
+        logger.error(f"Smart chat error: {e}")
+        raise HTTPException(500, sanitize_error(str(e)))
+
+
 @app.post("/api/{provider}/beta/completions")
 async def proxy_fim(provider: str, request: Request, user: dict = Depends(get_current_user)):
     """Proxy FIM (Fill-In-Middle) completions — DeepSeek beta."""
@@ -718,6 +862,180 @@ async def proxy_fim(provider: str, request: Request, user: dict = Depends(get_cu
 
     target_url = f"{config['base_url']}/beta/completions"
     return await _proxy_request(target_url, headers, body)
+
+
+# ============================================================================
+# DEEPSEEK FILES / BATCHES (optimisation -50% coûts)
+# ============================================================================
+
+def _deepseek_v1_base() -> str:
+    base = (settings.deepseek_base_url or "").rstrip("/")
+    if base.endswith("/v1"):
+        return base
+    return f"{base}/v1"
+
+
+@app.post("/api/deepseek/files")
+async def deepseek_upload_file(
+    user: dict = Depends(get_current_user),
+    file: UploadFile = File(...),
+    purpose: str = Form("batch"),
+):
+    """
+    Upload un fichier vers DeepSeek (utilisé pour Batch API).
+    Le fichier est généralement un JSONL généré par l'app (pas un fichier utilisateur).
+    """
+    email = user["sub"]
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+    if not settings.deepseek_api_key:
+        raise HTTPException(503, "Service indisponible pour le moment. Réessaie plus tard.")
+
+    content = await file.read()
+    headers = {"Authorization": f"Bearer {settings.deepseek_api_key}"}
+    data = {"purpose": purpose}
+    files = {"file": (file.filename or "batch_requests.jsonl", content, file.content_type or "application/octet-stream")}
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(f"{_deepseek_v1_base()}/files", headers=headers, data=data, files=files)
+
+    if resp.status_code >= 400:
+        try:
+            return JSONResponse(status_code=resp.status_code, content=resp.json())
+        except Exception:
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": resp.text[:500]}})
+
+    return JSONResponse(content=resp.json())
+
+
+class DeepSeekBatchCreateRequest(BaseModel):
+    input_file_id: str = Field(..., min_length=1, max_length=255)
+    endpoint: str = Field(default="/v1/chat/completions", max_length=255)
+    completion_window: str = Field(default="24h", max_length=20)
+
+
+@app.post("/api/deepseek/batches")
+async def deepseek_create_batch(body: DeepSeekBatchCreateRequest, user: dict = Depends(get_current_user)):
+    """Crée un batch DeepSeek (asynchrone)."""
+    email = user["sub"]
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+    if not settings.deepseek_api_key:
+        raise HTTPException(503, "Service indisponible pour le moment. Réessaie plus tard.")
+
+    headers = {
+        "Authorization": f"Bearer {settings.deepseek_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = body.model_dump()
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(f"{_deepseek_v1_base()}/batches", headers=headers, json=payload)
+
+    if resp.status_code >= 400:
+        try:
+            return JSONResponse(status_code=resp.status_code, content=resp.json())
+        except Exception:
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": resp.text[:500]}})
+    return JSONResponse(content=resp.json())
+
+
+@app.get("/api/deepseek/batches/{batch_id}")
+async def deepseek_get_batch(batch_id: str, user: dict = Depends(get_current_user)):
+    """Récupère le statut d'un batch DeepSeek."""
+    email = user["sub"]
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+    if not settings.deepseek_api_key:
+        raise HTTPException(503, "Service indisponible pour le moment. Réessaie plus tard.")
+
+    headers = {"Authorization": f"Bearer {settings.deepseek_api_key}"}
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.get(f"{_deepseek_v1_base()}/batches/{batch_id}", headers=headers)
+
+    if resp.status_code >= 400:
+        try:
+            return JSONResponse(status_code=resp.status_code, content=resp.json())
+        except Exception:
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": resp.text[:500]}})
+    return JSONResponse(content=resp.json())
+
+
+@app.get("/api/deepseek/files/{file_id}/content")
+async def deepseek_get_file_content(file_id: str, user: dict = Depends(get_current_user)):
+    """
+    Récupère le contenu d'un fichier DeepSeek (souvent output JSONL d'un batch).
+    On facture ici une seule fois via external_ref=batch:{file_id} pour éviter double débit.
+    """
+    email = user["sub"]
+    if not settings.deepseek_api_key:
+        raise HTTPException(503, "Service indisponible pour le moment. Réessaie plus tard.")
+
+    headers = {"Authorization": f"Bearer {settings.deepseek_api_key}"}
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.get(f"{_deepseek_v1_base()}/files/{file_id}/content", headers=headers)
+
+    if resp.status_code >= 400:
+        return PlainTextResponse(resp.text, status_code=resp.status_code)
+
+    text = resp.text or ""
+
+    # Facturation best-effort (ne bloque pas la récupération des résultats)
+    try:
+        total_in = 0
+        total_out = 0
+        model_name = settings.chat_model
+        ok_lines = 0
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            ok_lines += 1
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            body = (((obj.get("response") or {}).get("body")) or {})
+            usage = body.get("usage") or {}
+            total_in += int(usage.get("prompt_tokens") or 0)
+            total_out += int(usage.get("completion_tokens") or 0)
+            if body.get("model"):
+                model_name = body.get("model")
+
+        if total_in > 0 or total_out > 0:
+            cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", total_in, total_out)
+            # Batch discount: -50%
+            cost_usd = round(cost_usd * 0.5, 6)
+            cost_fcfa = round(cost_fcfa * 0.5, 2)
+
+            await record_usage(
+                email,
+                "deepseek",
+                model_name,
+                total_in,
+                total_out,
+                cost_usd,
+                cost_fcfa,
+                duration_ms=0,
+                task_type="batch",
+            )
+            if cost_fcfa > 0:
+                await deduct_credits(
+                    email,
+                    cost_fcfa,
+                    f"Batch DeepSeek (-50%) ({ok_lines} req)",
+                    "deepseek",
+                    model_name,
+                    total_in,
+                    total_out,
+                    external_ref=f"batch:{file_id}",
+                )
+    except ValueError:
+        logger.warning(f"Insufficient credits for {email} during batch billing")
+    except Exception as e:
+        logger.error(f"Batch billing error: {e}")
+
+    return PlainTextResponse(text, media_type="text/plain")
 
 
 # ============================================================================
@@ -1534,10 +1852,9 @@ async def admin_delete_project(
     project = await get_project(project_id)
     if not project:
         raise HTTPException(404, "Projet non trouvé")
-    # Direct delete without owner check
-    async with aiosqlite.connect(settings.database_path) as db:
-        await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
-        await db.commit()
+    deleted = await admin_delete_project_any(project_id)
+    if not deleted:
+        raise HTTPException(500, "Suppression impossible")
     _project_states.pop(project_id, None)
     audit_log(admin["sub"], "delete_project", project_id)
     return {"status": "deleted"}
@@ -1563,6 +1880,44 @@ async def admin_usage(
 ):
     """Get all platform usage records."""
     return {"usage": await admin_get_all_usage(limit=min(limit, 500), offset=offset)}
+
+
+# ── Admin: Payments (préparation) ──
+
+@app.get("/api/admin/payments")
+async def admin_payments_list(
+    status: str = "pending",
+    limit: int = 50,
+    offset: int = 0,
+    admin: dict = Depends(get_current_admin),
+):
+    """Lister les demandes de paiement (payment_intents)."""
+    return await admin_list_payment_intents(status=status, limit=min(limit, 200), offset=offset)
+
+
+class AdminMarkPaymentPaidRequest(BaseModel):
+    provider_ref: str = Field(default="", max_length=255)
+    description: str = Field(..., min_length=3, max_length=500)
+
+
+@app.post("/api/admin/payments/{intent_id}/mark-paid")
+async def admin_payment_mark_paid(
+    intent_id: str,
+    body: AdminMarkPaymentPaidRequest,
+    admin: dict = Depends(require_admin_role("owner", "admin")),
+):
+    """Valider manuellement un paiement + créditer le compte."""
+    try:
+        intent = await admin_mark_payment_intent_paid(
+            intent_id=intent_id,
+            admin_email=admin["sub"],
+            provider_ref=body.provider_ref,
+            description=body.description,
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    audit_log(admin["sub"], "mark_payment_paid", intent_id, f"ref={body.provider_ref} desc={body.description}")
+    return {"status": "ok", "payment_intent": intent}
 
 
 # ── Admin: Manage admin accounts ──

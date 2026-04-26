@@ -12,7 +12,7 @@ import { cn, isTauri } from '@/lib/utils';
 import { AIModel, Project } from '@/types';
 import { useProjectStore } from '@/stores/projectStore';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
-import { readTextFile } from '@tauri-apps/api/fs';
+import { readTextFile, readBinaryFile } from '@tauri-apps/api/fs';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => Promise<void> | void;
@@ -28,6 +28,62 @@ interface ChatInputProps {
 
 const MAX_HEIGHT = 200;
 const MIN_HEIGHT = 48;
+
+/** Extract text from a .docx file (ZIP containing XML) */
+async function extractDocxText(bytes: Uint8Array): Promise<string> {
+  try {
+    // docx is a ZIP — we look for word/document.xml inside it
+    // Minimal ZIP parser: find PK signatures, locate document.xml
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(bytes);
+    const docXml = zip.file('word/document.xml');
+    if (!docXml) return '[Impossible de lire le contenu du fichier Word]';
+    const xml = await docXml.async('string');
+    // Strip XML tags, keep text content
+    const text = xml
+      .replace(/<w:br[^>]*\/>/gi, '\n')
+      .replace(/<w:p[^>]*>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&apos;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+    return text || '[Document Word vide]';
+  } catch {
+    return '[Erreur lors de la lecture du fichier Word]';
+  }
+}
+
+/** Extract text from a PDF (basic extraction via pdf.js or fallback) */
+async function extractPdfText(bytes: Uint8Array): Promise<string> {
+  try {
+    // Use pdfjs-dist for text extraction
+    const pdfjsLib = await import('pdfjs-dist');
+    // Set worker (use CDN for simplicity)
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const pages: string[] = [];
+    const maxPages = Math.min(doc.numPages, 50); // Limit to 50 pages
+    for (let i = 1; i <= maxPages; i++) {
+      const page = await doc.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items
+        .map((item: any) => item.str)
+        .join(' ');
+      if (pageText.trim()) pages.push(pageText);
+    }
+    if (doc.numPages > 50) {
+      pages.push(`\n[... ${doc.numPages - 50} pages supplémentaires non incluses ...]`);
+    }
+    return pages.join('\n\n') || '[PDF sans texte extractible]';
+  } catch {
+    return '[Erreur lors de la lecture du PDF — essayez un fichier Word (.docx) pour de meilleurs résultats]';
+  }
+}
 
 /* ===== Project Selector Dropdown ===== */
 function ProjectSelector({
@@ -305,7 +361,8 @@ export default function ChatInput({
                         multiple: true,
                         title: 'Joindre des fichiers',
                         filters: [
-                          { name: 'Code', extensions: ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'html', 'css', 'json', 'yaml', 'md', 'txt', 'sql'] },
+                          { name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'txt', 'md', 'rtf'] },
+                          { name: 'Code', extensions: ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'html', 'css', 'json', 'yaml', 'sql'] },
                           { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
                           { name: 'Tous', extensions: ['*'] },
                         ],
@@ -313,14 +370,26 @@ export default function ChatInput({
                       if (selected) {
                         const files = Array.isArray(selected) ? selected : [selected];
                         for (const filePath of files) {
+                          const name = (filePath as string).split(/[/\\]/).pop() || 'fichier';
+                          const ext = name.split('.').pop()?.toLowerCase() || '';
                           try {
-                            const content = await readTextFile(filePath);
-                            const name = (filePath as string).split(/[/\\]/).pop() || 'fichier';
-                            // Insérer le contenu du fichier dans le message
-                            setMessage((prev) => `${prev}\n\n--- ${name} ---\n${content.slice(0, 8000)}\n---\n`);
+                            if (ext === 'pdf') {
+                              // Extract text from PDF
+                              const bytes = await readBinaryFile(filePath);
+                              const text = await extractPdfText(bytes);
+                              setMessage((prev) => `${prev}\n\n📄 --- ${name} ---\n${text.slice(0, 15000)}\n---\n`);
+                            } else if (ext === 'docx' || ext === 'doc') {
+                              // Extract text from Word document
+                              const bytes = await readBinaryFile(filePath);
+                              const text = await extractDocxText(bytes);
+                              setMessage((prev) => `${prev}\n\n📄 --- ${name} ---\n${text.slice(0, 15000)}\n---\n`);
+                            } else {
+                              // Try reading as text file
+                              const content = await readTextFile(filePath);
+                              setMessage((prev) => `${prev}\n\n--- ${name} ---\n${content.slice(0, 8000)}\n---\n`);
+                            }
                           } catch {
-                            // Fichier binaire (image) — insérer juste le chemin
-                            const name = (filePath as string).split(/[/\\]/).pop() || 'fichier';
+                            // Binary file (image etc.) — just insert the path
                             setMessage((prev) => `${prev}\n[Fichier joint: ${name}]`);
                           }
                         }
@@ -330,14 +399,27 @@ export default function ChatInput({
                       const input = document.createElement('input');
                       input.type = 'file';
                       input.multiple = true;
-                      input.accept = '.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.html,.css,.json,.md,.txt,.png,.jpg,.jpeg,.svg';
+                      input.accept = '.pdf,.docx,.doc,.txt,.md,.rtf,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.html,.css,.json,.png,.jpg,.jpeg,.svg';
                       input.onchange = async () => {
                         if (input.files) {
                           for (const file of Array.from(input.files)) {
-                            if (file.type.startsWith('text/') || file.name.match(/\.(ts|tsx|js|jsx|py|rs|go|java|html|css|json|yaml|md|txt|sql)$/)) {
-                              const content = await file.text();
-                              setMessage((prev) => `${prev}\n\n--- ${file.name} ---\n${content.slice(0, 8000)}\n---\n`);
-                            } else {
+                            const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                            try {
+                              if (ext === 'pdf') {
+                                const buffer = await file.arrayBuffer();
+                                const text = await extractPdfText(new Uint8Array(buffer));
+                                setMessage((prev) => `${prev}\n\n📄 --- ${file.name} ---\n${text.slice(0, 15000)}\n---\n`);
+                              } else if (ext === 'docx' || ext === 'doc') {
+                                const buffer = await file.arrayBuffer();
+                                const text = await extractDocxText(new Uint8Array(buffer));
+                                setMessage((prev) => `${prev}\n\n📄 --- ${file.name} ---\n${text.slice(0, 15000)}\n---\n`);
+                              } else if (file.type.startsWith('text/') || file.name.match(/\.(ts|tsx|js|jsx|py|rs|go|java|html|css|json|yaml|md|txt|sql)$/)) {
+                                const content = await file.text();
+                                setMessage((prev) => `${prev}\n\n--- ${file.name} ---\n${content.slice(0, 8000)}\n---\n`);
+                              } else {
+                                setMessage((prev) => `${prev}\n[Fichier joint: ${file.name}]`);
+                              }
+                            } catch {
                               setMessage((prev) => `${prev}\n[Fichier joint: ${file.name}]`);
                             }
                           }

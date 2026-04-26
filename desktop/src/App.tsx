@@ -9,6 +9,7 @@ import { Loader2 } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
 import { useAccountStore } from '@/stores/accountStore';
 import { authService } from '@/services/auth';
+import { autoCheckOncePerDay } from '@/services/updateService';
 
 // Lazy-load des pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
@@ -43,6 +44,8 @@ export default function App() {
         if (alive) setBooting(false);
       }
     })();
+    // Non-bloquant: check update (Tauri) max 1/jour
+    void autoCheckOncePerDay();
     return () => {
       alive = false;
     };

@@ -2,7 +2,7 @@
  * Settings Page - Premium ANZAR
  * Mon Compte · IA · Interface · Réseau · À propos
  */
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Save, RotateCcw, Cpu, Palette, Wifi, Info,
@@ -17,6 +17,7 @@ import { authService } from '@/services/auth';
 import { Transaction, AI_PROVIDERS, AIProvider } from '@/types';
 import { cn, isTauri } from '@/lib/utils';
 import { openExternalUrl } from '@/services/externalLinks';
+import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch } from '@/services/updateService';
 
 /* ===== Toggle Switch ===== */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -163,20 +164,44 @@ function TransactionRow({ tx }: { tx: Transaction }) {
 }
 
 /* ===== Recharge Modal ===== */
+
+type PaymentMethod = 'wave' | 'orange_money' | 'airtel_money' | 'flooz' | 'mpesa' | 'nita_transfert' | 'amana_transfert';
+
+/** Packs de recharge avec bonus progressif */
+const RECHARGE_PACKS = [
+  { amount: 500,   bonus: 0,  label: 'Découverte', tag: '' },
+  { amount: 2000,  bonus: 0,  label: 'Starter',    tag: '' },
+  { amount: 5000,  bonus: 15, label: 'Pro',         tag: 'Populaire' },
+  { amount: 15000, bonus: 25, label: 'Business',    tag: '+25%' },
+  { amount: 50000, bonus: 35, label: 'Enterprise',  tag: '+35%' },
+];
+
+function getRechargeBonus(amount: number): number {
+  if (amount >= 50000) return 35;
+  if (amount >= 15000) return 25;
+  if (amount >= 5000) return 15;
+  return 0;
+}
+
 function RechargeModal({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState<number | ''>('');
-  const [method, setMethod] = useState<'wave' | 'orange_money' | 'mpesa'>('wave');
+  const [method, setMethod] = useState<PaymentMethod>('wave');
 
-  const presetAmounts = [1000, 2000, 5000, 10000];
-
-  const methods = [
-    { id: 'wave' as const, label: 'Wave', color: 'from-blue-500 to-cyan-500' },
-    { id: 'orange_money' as const, label: 'Orange Money', color: 'from-orange-500 to-amber-500' },
-    { id: 'mpesa' as const, label: 'M-Pesa', color: 'from-green-600 to-emerald-500' },
+  const methods: { id: PaymentMethod; label: string; color: string }[] = [
+    { id: 'wave',              label: 'Wave',              color: 'from-blue-500 to-cyan-500' },
+    { id: 'orange_money',      label: 'Orange Money',      color: 'from-orange-500 to-amber-500' },
+    { id: 'airtel_money',      label: 'Airtel Money',      color: 'from-red-500 to-rose-500' },
+    { id: 'flooz',             label: 'Flooz (Moov)',      color: 'from-yellow-500 to-lime-500' },
+    { id: 'mpesa',             label: 'M-Pesa',            color: 'from-green-600 to-emerald-500' },
+    { id: 'nita_transfert',    label: 'Dépôt Nita',        color: 'from-purple-500 to-violet-500' },
+    { id: 'amana_transfert',   label: 'Dépôt Amana',       color: 'from-teal-500 to-cyan-600' },
   ];
 
   const numericAmount = typeof amount === 'number' ? amount : 0;
-  const isValid = numericAmount >= 100;
+  const bonusPct = getRechargeBonus(numericAmount);
+  const bonusAmount = bonusPct > 0 ? Math.round(numericAmount * bonusPct / 100) : 0;
+  const totalCredited = numericAmount + bonusAmount;
+  const isValid = numericAmount >= 500;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
@@ -221,23 +246,52 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-text-muted font-medium">FCFA</span>
               </div>
-              {/* Preset buttons */}
-              <div className="grid grid-cols-4 gap-2">
-                {presetAmounts.map((a) => (
+              {/* Preset packs */}
+              <div className="grid grid-cols-3 gap-2">
+                {RECHARGE_PACKS.map((pack) => (
                   <button
-                    key={a}
-                    onClick={() => setAmount(a)}
+                    key={pack.amount}
+                    onClick={() => setAmount(pack.amount)}
                     className={cn(
-                      'py-2 rounded-xl text-sm font-medium transition-all',
-                      amount === a
+                      'relative py-2.5 px-2 rounded-xl text-sm font-medium transition-all text-center',
+                      amount === pack.amount
                         ? 'gradient-bg text-white shadow-md'
                         : 'bg-bg-tertiary text-text-secondary hover:bg-surface-hover'
                     )}
                   >
-                    {a.toLocaleString('fr-FR')}
+                    {pack.tag && (
+                      <span className={cn(
+                        'absolute -top-1.5 right-1 text-[9px] px-1.5 py-0.5 rounded-full font-semibold',
+                        pack.tag === 'Populaire'
+                          ? 'bg-accent-primary/20 text-accent-primary'
+                          : 'bg-green-500/20 text-green-600 dark:text-green-400'
+                      )}>
+                        {pack.tag}
+                      </span>
+                    )}
+                    <span className="block text-xs opacity-70">{pack.label}</span>
+                    <span>{pack.amount.toLocaleString('fr-FR')} F</span>
                   </button>
                 ))}
               </div>
+
+              {/* Bonus indicator */}
+              {bonusPct > 0 && numericAmount > 0 && (
+                <div className="mt-2 p-2.5 rounded-xl bg-green-500/10 border border-green-500/20">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-text-secondary">Bonus +{bonusPct}%</span>
+                    <span className="font-semibold text-green-600 dark:text-green-400">
+                      +{bonusAmount.toLocaleString('fr-FR')} F
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm mt-1">
+                    <span className="text-text-secondary">Total crédité</span>
+                    <span className="font-bold text-text-primary">
+                      {totalCredited.toLocaleString('fr-FR')} F
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Payment method */}
@@ -290,16 +344,26 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                     if (data.paymentUrl) {
                       // Ouvrir le lien de paiement (Wave/Orange Money redirigent)
                       await openExternalUrl(data.paymentUrl);
+                      onClose();
+                      return;
                     }
+                    // Beta: paiement manuel → intent créé, admin valide
+                    window.alert(
+                      data?.message ||
+                        `Demande de recharge de ${numericAmount.toLocaleString('fr-FR')} F enregistrée !\n\nEnvoie le paiement via ${methods.find((m) => m.id === method)?.label || method}, puis ton compte sera crédité${bonusPct > 0 ? ` de ${totalCredited.toLocaleString('fr-FR')} F (bonus +${bonusPct}% inclus)` : ''} après validation.`
+                    );
                     onClose();
-                  } else {
-                    throw new Error('Erreur serveur');
+                    return;
                   }
-                } catch {
-                  // Fallback: enregistrer en local et notifier
-                  const { useAccountStore } = await import('@/stores/accountStore');
-                  useAccountStore.getState().addCredits(numericAmount, method as any);
-                  onClose();
+
+                  // Erreur backend (pas de fallback local)
+                  const text = await res.text().catch(() => '');
+                  throw new Error(text || 'Erreur serveur');
+                } catch (e) {
+                  // Pas de fallback local: les crédits doivent rester source-of-truth côté backend.
+                  const msg =
+                    e instanceof Error ? e.message : "Paiement indisponible pour le moment. Réessaie plus tard.";
+                  window.alert(msg);
                 }
               }}
               disabled={!isValid}
@@ -312,8 +376,8 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
             >
               <CreditCard size={16} />
               {isValid
-                ? `Payer ${numericAmount.toLocaleString('fr-FR')} FCFA`
-                : 'Saisir un montant (min. 100 FCFA)'}
+                ? `Payer ${numericAmount.toLocaleString('fr-FR')} FCFA${bonusPct > 0 ? ` → ${totalCredited.toLocaleString('fr-FR')} F crédités` : ''}`
+                : 'Saisir un montant (min. 500 FCFA)'}
             </button>
           </div>
         </div>
@@ -347,6 +411,41 @@ export default function SettingsPage() {
   const [form, setForm] = useState(settings);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showRecharge, setShowRecharge] = useState(false);
+  const [updateState, setUpdateState] = useState<{
+    checking: boolean;
+    installing: boolean;
+    available: boolean;
+    version?: string;
+    lastCheckedMs?: number;
+    error?: string;
+  }>({ checking: false, installing: false, available: false });
+
+  const appVersion = (typeof __APP_VERSION__ === 'string' && __APP_VERSION__) ? __APP_VERSION__ : '—';
+
+  useEffect(() => {
+    // Prime from cache to avoid "empty" state
+    const cached = getCachedUpdateResult();
+    const lastCheckedMs = getLastUpdateCheckMs();
+    if (cached && cached.supported) {
+      setUpdateState((s) => ({
+        ...s,
+        available: cached.shouldUpdate,
+        version: cached.manifest?.version,
+        lastCheckedMs,
+      }));
+    } else {
+      setUpdateState((s) => ({ ...s, lastCheckedMs }));
+    }
+  }, []);
+
+  const lastCheckLabel = useMemo(() => {
+    if (!updateState.lastCheckedMs) return 'Jamais'
+    try {
+      return new Date(updateState.lastCheckedMs).toLocaleString('fr-FR')
+    } catch {
+      return '—'
+    }
+  }, [updateState.lastCheckedMs]);
   const [showAllTx, setShowAllTx] = useState(false);
   // API key UI state removed — keys are now server-side only
 
@@ -703,7 +802,7 @@ export default function SettingsPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-text-secondary">Version</span>
-                <span className="font-mono text-text-primary">2.0.0</span>
+                <span className="font-mono text-text-primary">{appVersion}</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-text-secondary">Moteur IA</span>
@@ -713,6 +812,98 @@ export default function SettingsPage() {
                 <span className="text-text-secondary">Plateforme</span>
                 <span className="font-mono text-text-primary">Desktop (Windows, Mac, Linux)</span>
               </div>
+
+              {/* Updates (Tauri only) */}
+              <div className="pt-3 border-t border-border-subtle space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">Mises à jour</span>
+                  <span className="text-xs text-text-muted">Dernière vérif : {lastCheckLabel}</span>
+                </div>
+
+                {!isTauri() ? (
+                  <p className="text-xs text-text-muted">
+                    Les mises à jour automatiques sont disponibles uniquement dans l’app desktop installée.
+                  </p>
+                ) : (
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      {updateState.error ? (
+                        <p className="text-xs text-accent-error truncate">{updateState.error}</p>
+                      ) : updateState.available ? (
+                        <p className="text-xs text-accent-warning">
+                          Mise à jour disponible{updateState.version ? ` (v${updateState.version})` : ''}.
+                        </p>
+                      ) : (
+                        <p className="text-xs text-text-muted">Aucune mise à jour détectée.</p>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <button
+                        onClick={async () => {
+                          setUpdateState((s) => ({ ...s, checking: true, error: undefined }));
+                          try {
+                            const res = await checkForUpdates();
+                            const lastCheckedMs = getLastUpdateCheckMs();
+                            if (res.supported) {
+                              setUpdateState((s) => ({
+                                ...s,
+                                checking: false,
+                                available: res.shouldUpdate,
+                                version: res.manifest?.version,
+                                lastCheckedMs,
+                              }));
+                            } else {
+                              setUpdateState((s) => ({ ...s, checking: false, error: 'Non supporté.' }));
+                            }
+                          } catch (e: any) {
+                            setUpdateState((s) => ({
+                              ...s,
+                              checking: false,
+                              error: 'Impossible de vérifier. Réessaie plus tard.',
+                            }));
+                          }
+                        }}
+                        disabled={updateState.checking || updateState.installing}
+                        className={cn(
+                          'px-3 py-2 rounded-xl text-xs font-medium transition-all border',
+                          'border-border-subtle bg-bg-tertiary/40 hover:bg-surface-hover',
+                          (updateState.checking || updateState.installing) && 'opacity-60 cursor-not-allowed'
+                        )}
+                        title="Vérifier les mises à jour"
+                      >
+                        {updateState.checking ? 'Vérification…' : 'Vérifier'}
+                      </button>
+
+                      {updateState.available && (
+                        <button
+                          onClick={async () => {
+                            setUpdateState((s) => ({ ...s, installing: true, error: undefined }));
+                            try {
+                              await installUpdateAndRelaunch();
+                            } catch {
+                              setUpdateState((s) => ({
+                                ...s,
+                                installing: false,
+                                error: "Impossible d'installer la mise à jour.",
+                              }));
+                            }
+                          }}
+                          disabled={updateState.installing || updateState.checking}
+                          className={cn(
+                            'px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all',
+                            'gradient-bg hover:opacity-90',
+                            (updateState.installing || updateState.checking) && 'opacity-60 cursor-not-allowed'
+                          )}
+                        >
+                          {updateState.installing ? 'Installation…' : 'Installer'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="pt-3 border-t border-border-subtle flex items-center gap-4">
                 <button
                   onClick={async () => {

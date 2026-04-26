@@ -12,6 +12,7 @@ const ProjectDetailsPage = lazy(() => import('./app/projects/details/page'))
 const UsersPage = lazy(() => import('./app/users/page'))
 const UserDetailsPage = lazy(() => import('./app/users/details/page'))
 const CreditsPage = lazy(() => import('./app/credits/page'))
+const PaymentsPage = lazy(() => import('./app/payments/page'))
 const ObservabilityPage = lazy(() => import('./app/observability/page'))
 const SettingsPage = lazy(() => import('./app/settings/page'))
 
@@ -54,6 +55,7 @@ export default function App() {
               <Route path="users" element={<UsersPage />} />
               <Route path="users/:userId" element={<UserDetailsPage />} />
               <Route path="credits" element={<CreditsPage />} />
+              <Route path="payments" element={<PaymentsPage />} />
               <Route path="observability" element={<ObservabilityPage />} />
               <Route path="settings" element={<SettingsPage />} />
             </Route>

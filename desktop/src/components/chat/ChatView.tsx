@@ -6,8 +6,10 @@
  */
 import React, { useState, useCallback, useRef } from 'react';
 import {
-  Code2, BarChart3, FolderOpen,
-  Wand2, FileText,
+  Code2, BarChart3, GraduationCap,
+  Globe, FileText, BookOpen, PenTool,
+  ListChecks, Layout, BookMarked, Presentation,
+  X, Wand2,
 } from 'lucide-react';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -59,33 +61,150 @@ const FEATURES = [
     description: 'Une idée suffit. ANZAR structure, code et livre.',
     icon: Code2,
     color: 'from-violet-500 to-indigo-500',
+    prompt: 'Je veux créer un nouveau projet',
+  },
+  {
+    title: 'Assistant Étudiant',
+    description: 'Mémoires, rapports de stage, exposés, révisions — ton allié académique.',
+    icon: GraduationCap,
+    color: 'from-pink-500 to-rose-500',
+    prompt: 'Aide-moi avec mon travail académique',
   },
   {
     title: 'Analyser des données',
     description: 'Importe, explore, visualise. Résultats instantanés.',
     icon: BarChart3,
     color: 'from-emerald-500 to-teal-500',
+    prompt: 'Je veux analyser des données',
   },
   {
-    title: 'Organiser mes fichiers',
-    description: 'Ouvre un dossier, ANZAR comprend et travaille dessus.',
-    icon: FolderOpen,
+    title: 'Recherche intelligente',
+    description: 'Pose ta question, ANZAR cherche sur le web et synthétise.',
+    icon: Globe,
     color: 'from-blue-500 to-cyan-500',
+    prompt: 'Recherche sur internet',
   },
   {
     title: 'Rédiger un document',
     description: 'Rapports, présentations, emails — prêts en secondes.',
     icon: FileText,
     color: 'from-orange-500 to-amber-500',
+    prompt: 'Aide-moi à rédiger un document',
   },
 ];
 
 /* ===== Suggested Prompts (quick start) ===== */
 const QUICK_STARTS = [
   'Crée une application de gestion de stock avec React et SQLite',
-  'Analyse ce code et trouve les bugs potentiels',
-  'Génère un site vitrine moderne responsive',
+  'Corrige et reformule mon mémoire de fin d\'études',
+  'Recherche les dernières tendances en intelligence artificielle',
+  'Génère un plan détaillé pour mon rapport de stage',
   'Écris un script Python pour automatiser mes tâches',
+  'Prépare un exposé sur les énergies renouvelables en Afrique',
+];
+
+/* ===== Assistant Étudiant — Menu interactif ===== */
+const STUDENT_OPTIONS = [
+  {
+    id: 'memoire',
+    title: 'Rédiger un mémoire',
+    description: 'Mémoire de fin d\'études : plan, introduction, développement, conclusion, bibliographie.',
+    icon: BookOpen,
+    color: 'from-pink-500 to-rose-500',
+    prompt: `Tu es un assistant académique expert. L'étudiant veut rédiger un mémoire de fin d'études. Commence par lui demander :
+1. Quel est le sujet/thème du mémoire ?
+2. Quel est son niveau (Licence, Master, Doctorat) ?
+3. A-t-il déjà un plan ou part-il de zéro ?
+4. Quelle est la longueur attendue (nombre de pages) ?
+5. Y a-t-il des consignes spécifiques de son université ?
+Sois professionnel, structuré, et adapte-toi au niveau académique.`,
+  },
+  {
+    id: 'rapport',
+    title: 'Rapport de stage',
+    description: 'Structure, rédaction et mise en forme de ton rapport de stage professionnel.',
+    icon: PenTool,
+    color: 'from-violet-500 to-purple-500',
+    prompt: `Tu es un assistant académique expert en rapports de stage. L'étudiant veut rédiger un rapport de stage. Demande-lui :
+1. Dans quelle entreprise/organisation a-t-il fait son stage ?
+2. Quelle était sa mission principale ?
+3. Quelle est la durée du stage ?
+4. Quel est son niveau (BTS, Licence, Master) ?
+5. A-t-il déjà un brouillon ou part-il de zéro ?
+Aide-le à structurer : page de garde, remerciements, sommaire, introduction, présentation de l'entreprise, missions, bilan, conclusion.`,
+  },
+  {
+    id: 'correction',
+    title: 'Corriger / Reformuler',
+    description: 'Upload ton document (PDF, Word) ou colle ton texte. Correction complète sur mesure.',
+    icon: ListChecks,
+    color: 'from-emerald-500 to-green-500',
+    prompt: `Tu es un expert en révision et correction de documents académiques et professionnels. L'étudiant veut faire corriger ou améliorer un document.
+
+Commence par lui dire :
+"Bienvenue dans l'assistant de correction ! Tu peux :
+📎 **Joindre ton document** (PDF ou Word) avec le bouton 📎 en bas
+✍️ **Coller ton texte** directement ici
+
+Ensuite, dis-moi ce que tu veux que je fasse :"
+
+Puis propose ces options :
+1. **Correction complète** — orthographe, grammaire, syntaxe, ponctuation, conjugaison
+2. **Reformulation** — réécrire pour améliorer la clarté, le style et la fluidité
+3. **Mise en forme académique** — structurer selon les normes universitaires (introduction, développement, conclusion, citations, bibliographie)
+4. **Amélioration du contenu** — enrichir les arguments, ajouter des transitions, renforcer la cohérence
+5. **Adaptation du ton** — passer d'un ton informel à académique, ou l'inverse
+6. **Tout corriger** — correction + reformulation + mise en forme complète
+
+IMPORTANT : Quand l'étudiant envoie son document, tu dois :
+- Identifier le type de document (mémoire, rapport, dissertation, lettre, etc.)
+- Signaler les erreurs par catégorie
+- Proposer le texte corrigé avec les changements visibles
+- Donner un résumé des améliorations faites
+- Si le document est long, traiter section par section
+
+Sois encourageant mais honnête sur la qualité du travail.`,
+    opensFileDialog: true,
+  },
+  {
+    id: 'plan',
+    title: 'Plan détaillé',
+    description: 'Génère un plan structuré pour n\'importe quel travail académique.',
+    icon: Layout,
+    color: 'from-blue-500 to-indigo-500',
+    prompt: `Tu es un assistant académique expert en méthodologie. L'étudiant veut un plan détaillé. Demande-lui :
+1. Quel est le sujet ou la problématique ?
+2. Quel type de travail ? (mémoire, rapport, dissertation, exposé, thèse)
+3. Combien de parties/chapitres sont attendus ?
+4. Y a-t-il des contraintes ou consignes spécifiques ?
+Propose un plan structuré avec titres, sous-titres et brèves descriptions de chaque section.`,
+  },
+  {
+    id: 'resume',
+    title: 'Résumé de cours',
+    description: 'Synthétise un cours, un chapitre ou un document en points clés.',
+    icon: BookMarked,
+    color: 'from-amber-500 to-yellow-500',
+    prompt: `Tu es un assistant académique expert en synthèse. L'étudiant veut résumer un cours. Demande-lui :
+1. Colle le contenu du cours ou décris le sujet
+2. Quel niveau de détail ? (résumé court, fiche de révision détaillée, mind map textuel)
+3. Y a-t-il des points spécifiques à mettre en avant ?
+Produis un résumé clair, structuré, facile à réviser, avec les concepts clés mis en évidence.`,
+  },
+  {
+    id: 'expose',
+    title: 'Préparer un exposé',
+    description: 'Plan, contenu, notes de présentation et support pour ton exposé oral.',
+    icon: Presentation,
+    color: 'from-teal-500 to-cyan-500',
+    prompt: `Tu es un assistant académique expert en présentations orales. L'étudiant veut préparer un exposé. Demande-lui :
+1. Quel est le sujet de l'exposé ?
+2. Quelle est la durée prévue (5 min, 10 min, 20 min) ?
+3. C'est individuel ou en groupe ?
+4. Y a-t-il un support visuel attendu (PowerPoint, poster) ?
+5. Quel est le public (camarades, jury, professeur) ?
+Aide-le avec : plan de l'exposé, contenu de chaque partie, notes pour l'oral, conseils de présentation.`,
+  },
 ];
 
 // ============================================================================
@@ -160,6 +279,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const [isLoading, setIsLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [showStudentMenu, setShowStudentMenu] = useState(false);
   const streamingRef = useRef<string>('');
   const projects = useProjectStore((s) => s.projects);
   const selectedProjectPath = projects.find((p) => p.id === selectedProjectId)?.metadata?.localPath as string | undefined;
@@ -630,6 +750,14 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     handleSendMessage(prompt);
   }, [handleSendMessage]);
 
+  /** Handle student assistant option selection */
+  const handleStudentOption = useCallback((option: typeof STUDENT_OPTIONS[number]) => {
+    setShowStudentMenu(false);
+    // Send the specialized system prompt as context
+    handleSendMessage(option.prompt);
+  }, [handleSendMessage]);
+
+
   return (
     <div className="h-full flex flex-col bg-bg-primary">
       {/* Chat area */}
@@ -658,13 +786,19 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             </div>
 
             {/* Feature cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 w-full max-w-4xl mb-10">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 w-full max-w-5xl mb-10">
               {FEATURES.map((feature, idx) => {
                 const Icon = feature.icon;
                 return (
                   <button
                     key={idx}
-                    onClick={() => handleQuickStart(QUICK_STARTS[idx] || feature.title)}
+                    onClick={() => {
+                      if (feature.title === 'Assistant Étudiant') {
+                        setShowStudentMenu(true);
+                      } else {
+                        handleQuickStart(feature.prompt || feature.title);
+                      }
+                    }}
                     className={cn(
                       'group p-4 rounded-xl border border-border-subtle',
                       'bg-surface-default hover:bg-surface-hover',
@@ -689,6 +823,25 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   </button>
                 );
               })}
+            </div>
+
+            {/* Quick start suggestions */}
+            <div className="flex flex-wrap justify-center gap-2 w-full max-w-4xl">
+              {QUICK_STARTS.map((prompt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleQuickStart(prompt)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-full text-xs',
+                    'bg-surface-default border border-border-subtle',
+                    'text-text-secondary hover:text-text-primary',
+                    'hover:bg-surface-hover hover:border-accent-primary/30',
+                    'transition-all duration-200',
+                  )}
+                >
+                  {prompt}
+                </button>
+              ))}
             </div>
           </div>
         ) : (
@@ -716,6 +869,73 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       />
 
       <BackgroundTasksDock />
+
+      {/* ===== STUDENT ASSISTANT MENU (modal overlay) ===== */}
+      {showStudentMenu && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowStudentMenu(false)}
+        >
+          <div
+            className="bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 animate-in fade-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-500 to-rose-500 flex items-center justify-center shadow-md">
+                  <GraduationCap size={20} className="text-white" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-text-primary">Assistant Étudiant</h2>
+                  <p className="text-xs text-text-muted">Choisis ce dont tu as besoin</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowStudentMenu(false)}
+                className="p-2 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Options grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {STUDENT_OPTIONS.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => handleStudentOption(option)}
+                    className={cn(
+                      'group flex items-start gap-3 p-4 rounded-xl border border-border-subtle',
+                      'bg-surface-default hover:bg-surface-hover',
+                      'transition-all duration-200 text-left',
+                      'hover:border-accent-primary/30 hover:shadow-md',
+                    )}
+                  >
+                    <div className={cn(
+                      'w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0',
+                      'group-hover:scale-110 transition-transform duration-200 shadow-sm',
+                      option.color,
+                    )}>
+                      <Icon size={16} className="text-white" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-text-primary mb-0.5">
+                        {option.title}
+                      </p>
+                      <p className="text-[11px] text-text-muted leading-relaxed">
+                        {option.description}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

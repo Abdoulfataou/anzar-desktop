@@ -1,9 +1,12 @@
-"""Async DeepSeek API client with streaming support."""
+"""Async DeepSeek API client with streaming support and tool calling."""
 import json
-from typing import AsyncGenerator, Optional
+import logging
+from typing import AsyncGenerator, Callable, Optional
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential
 from config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class DeepSeekClient:
@@ -11,7 +14,9 @@ class DeepSeekClient:
     
     def __init__(self):
         self.api_key = settings.deepseek_api_key
-        self.base_url = settings.deepseek_base_url
+        base = (settings.deepseek_base_url or "").rstrip("/")
+        # DeepSeek est compatible OpenAI: /v1/chat/completions
+        self.base_url = base if base.endswith("/v1") else f"{base}/v1"
         self.timeout = httpx.Timeout(60.0, connect=10.0)
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
@@ -150,6 +155,107 @@ class DeepSeekClient:
                     content = message.get("content", "")
             
             return reasoning, content
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict],
+        tool_executor: Callable,
+        model: str = None,
+        temperature: float = 0.7,
+        max_tokens: int = 4096,
+        max_tool_rounds: int = 3,
+    ) -> str:
+        """
+        Chat with automatic tool calling loop.
+
+        DeepSeek may request tool calls (e.g. web_search). This method:
+        1. Sends the request with tools defined.
+        2. If DeepSeek returns tool_calls, executes them via tool_executor.
+        3. Feeds tool results back and repeats (up to max_tool_rounds).
+        4. Returns the final text response.
+
+        Args:
+            messages: Conversation messages.
+            tools: List of tool definitions (OpenAI format).
+            tool_executor: async fn(name, args) -> str that runs the tool.
+            model: Model to use.
+            temperature: Generation temperature.
+            max_tokens: Max output tokens.
+            max_tool_rounds: Max number of tool call rounds.
+
+        Returns:
+            Final text response from DeepSeek.
+        """
+        model = model or settings.chat_model
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        conversation = list(messages)
+
+        for round_idx in range(max_tool_rounds + 1):
+            payload = {
+                "model": model,
+                "messages": conversation,
+                "temperature": min(max(temperature, 0), 2),
+                "max_tokens": min(max_tokens, 16384),
+                "tools": tools,
+                "tool_choice": "auto",
+            }
+
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.base_url}/chat/completions",
+                    json=payload,
+                    headers=headers,
+                )
+
+            if response.status_code != 200:
+                raise Exception(f"API error {response.status_code}: {response.text[:500]}")
+
+            data = response.json()
+            choice = data.get("choices", [{}])[0]
+            message = choice.get("message", {})
+            finish_reason = choice.get("finish_reason", "")
+
+            # If model wants to call tools
+            tool_calls = message.get("tool_calls")
+            if tool_calls and finish_reason == "tool_calls":
+                # Append the assistant message with tool_calls
+                conversation.append(message)
+
+                # Execute each tool call
+                for tc in tool_calls:
+                    fn_name = tc["function"]["name"]
+                    try:
+                        fn_args = json.loads(tc["function"]["arguments"])
+                    except json.JSONDecodeError:
+                        fn_args = {}
+
+                    logger.info(f"Tool call [{round_idx+1}]: {fn_name}({fn_args})")
+
+                    try:
+                        result = await tool_executor(fn_name, fn_args)
+                    except Exception as e:
+                        result = json.dumps({"error": str(e)})
+
+                    # Append tool result
+                    conversation.append({
+                        "role": "tool",
+                        "tool_call_id": tc["id"],
+                        "content": result if isinstance(result, str) else json.dumps(result),
+                    })
+
+                # Continue loop — DeepSeek will process tool results
+                continue
+
+            # No tool calls — return the final text
+            return message.get("content", "")
+
+        # Exhausted rounds — return whatever we have
+        logger.warning(f"Tool calling exhausted {max_tool_rounds} rounds")
+        return message.get("content", "")
 
 
 # Global client instance

@@ -33,24 +33,20 @@ Freemium (par défaut OK) :
 - `WELCOME_BONUS_FCFA=1000`
 - `FREE_DAILY_CHAT_REQUESTS=10`
 
-## 3) Persistance / Backups (SQLite)
+## 3) Recommandé (prod) : Postgres Railway (reset)
 
-Par défaut, ANZAR utilise SQLite :
-- `DATABASE_PATH=./data/anzar.db` (défaut)
+Comme ton app n’a pas encore d’utilisateurs, le plus simple est de **repartir à zéro** sur Postgres.
 
-En production Railway, **il faut un volume persistant**, sinon :
-- users / crédits / admins seront perdus à chaque redeploy.
+1. Railway → **Add Plugin → PostgreSQL**
+2. Railway fournit `DATABASE_URL` automatiquement (souvent `postgres://...`)
+3. Ajoute la variable **DATABASE_URL** à ton service backend (Railway le fait parfois tout seul)
 
-**Solution** :
-1. Ajoute un **Volume** Railway
-2. Monte-le sur `backend/data` (ou `/app/data` selon ton image)
+ANZAR détecte `DATABASE_URL` et utilise Postgres via SQLAlchemy async (`postgresql+asyncpg`).
 
-## 4) Option long-terme : Postgres
+## 4) Option court-terme : SQLite + Volume
 
-Quand tu auras du volume (beaucoup d’utilisateurs), passe à Postgres :
-- meilleures perfs
-- backups gérés
-- concurrence plus robuste
+Si tu préfères SQLite en prod :
+- `DATABASE_PATH=./data/anzar.db`
+- Ajoute un **Volume** Railway monté sur `backend/data`
 
-On pourra faire une migration (SQLite → Postgres) quand tu seras prêt.
-
+Sinon tu perds users / crédits / admins à chaque redeploy.
