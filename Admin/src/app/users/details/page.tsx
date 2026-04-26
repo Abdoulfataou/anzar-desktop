@@ -230,17 +230,17 @@ export default function UserDetailsPage() {
                 <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">
                   <p className="text-xs font-medium text-foreground-secondary uppercase">Solde actuel</p>
                   <p className="text-2xl font-bold text-foreground-primary">
-                    {user.credits.balance_fcfa.toLocaleString('fr-FR')} FCFA
+                    {(user.credits?.balance_fcfa ?? 0).toLocaleString('fr-FR')} FCFA
                   </p>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-foreground-secondary">Total recharges</span>
-                    <span className="text-foreground-primary">{user.credits.total_recharged.toLocaleString('fr-FR')} FCFA</span>
+                    <span className="text-foreground-primary">{(user.credits?.total_recharged ?? 0).toLocaleString('fr-FR')} FCFA</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-foreground-secondary">Total utilisé</span>
-                    <span className="text-foreground-primary">{user.credits.total_used.toLocaleString('fr-FR')} FCFA</span>
+                    <span className="text-foreground-primary">{(user.credits?.total_used ?? 0).toLocaleString('fr-FR')} FCFA</span>
                   </div>
                 </div>
               </CardContent>
@@ -313,7 +313,7 @@ export default function UserDetailsPage() {
             </CardContent>
           </Card>
 
-          {user.recent_transactions && user.recent_transactions.length > 0 && (
+          {Array.isArray(user.recent_transactions) && user.recent_transactions.length > 0 && (
             <Card>
               <CardHeader>
                 <CardTitle>Transactions récentes</CardTitle>
@@ -331,7 +331,7 @@ export default function UserDetailsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {(user.recent_transactions as any as Transaction[]).map((transaction) => (
+                      {(user.recent_transactions as Transaction[]).map((transaction) => (
                         <tr key={transaction.id} className="border-t border-border hover:bg-background-tertiary/30">
                           <td className="p-3">
                             <Badge variant={transaction.type === 'usage' ? 'secondary' : 'success'} className="capitalize">

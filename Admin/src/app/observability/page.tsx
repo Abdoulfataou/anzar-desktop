@@ -105,29 +105,21 @@ export default function ObservabilityPage() {
                   {health.version && <Badge variant="outline">v{health.version}</Badge>}
                 </div>
 
+                {health.checks && (
                 <div className="space-y-2 bg-background-secondary/50 rounded-lg p-4">
                   <h4 className="font-medium text-sm text-foreground-primary">Vérifications</h4>
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-foreground-secondary">Base de données</span>
-                      <Badge variant={getCheckVariant(health.checks.database)} className="capitalize">
-                        {health.checks.database}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-foreground-secondary">Deepseek</span>
-                      <Badge variant={getCheckVariant(health.checks.deepseek)} className="capitalize">
-                        {health.checks.deepseek}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-foreground-secondary">Kimi</span>
-                      <Badge variant={getCheckVariant(health.checks.kimi)} className="capitalize">
-                        {health.checks.kimi}
-                      </Badge>
-                    </div>
+                    {Object.entries(health.checks).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between">
+                        <span className="text-sm text-foreground-secondary capitalize">{key}</span>
+                        <Badge variant={getCheckVariant(String(value))} className="capitalize">
+                          {String(value)}
+                        </Badge>
+                      </div>
+                    ))}
                   </div>
                 </div>
+                )}
               </div>
             ) : (
               <p className="text-sm text-foreground-secondary">Impossible de charger l'état du backend.</p>
@@ -151,13 +143,13 @@ export default function ObservabilityPage() {
                 <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">
                   <p className="text-xs font-medium text-foreground-secondary uppercase">Usage (30 jours)</p>
                   <p className="text-2xl font-bold text-foreground-primary">
-                    {stats.usage_30d.total_requests.toLocaleString('fr-FR')}
+                    {(stats.usage_30d?.total_requests ?? 0).toLocaleString('fr-FR')}
                   </p>
                 </div>
                 <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">
                   <p className="text-xs font-medium text-foreground-secondary uppercase">Usage (aujourd'hui)</p>
                   <p className="text-2xl font-bold text-foreground-primary">
-                    {stats.usage_today.requests.toLocaleString('fr-FR')}
+                    {(stats.usage_today?.requests ?? 0).toLocaleString('fr-FR')}
                   </p>
                 </div>
                 <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Activity, Search, Settings, Sparkles } from 'lucide-react'
+import { Search, Settings, Sparkles } from 'lucide-react'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
 import { Badge } from '../ui/Badge'
@@ -18,10 +18,12 @@ export function Header() {
   const pageTitle = useMemo(() => {
     const path = location.pathname
     if (path.startsWith('/studio')) return 'Studio'
-    if (path.startsWith('/projects')) return 'Projects'
-    if (path.startsWith('/credits')) return 'Credits'
-    if (path.startsWith('/observability')) return 'Observability'
-    if (path.startsWith('/settings')) return 'Settings'
+    if (path.startsWith('/projects')) return 'Projets'
+    if (path.startsWith('/users')) return 'Utilisateurs'
+    if (path.startsWith('/credits')) return 'Crédits'
+    if (path.startsWith('/payments')) return 'Paiements'
+    if (path.startsWith('/observability')) return 'Observabilité'
+    if (path.startsWith('/settings')) return 'Paramètres'
     return 'Dashboard'
   }, [location.pathname])
 
@@ -105,16 +107,9 @@ export function Header() {
         </div>
       </div>
 
-      {/* Quick Stats Bar */}
-      <div className="h-8 px-6 border-t border-border-subtle bg-background-tertiary/50 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-3 text-foreground-secondary">
-          <Activity className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Astuce:</span>
-          <span className="truncate">
-            Utilise le Studio pour planifier → générer → exécuter (et suivre les agents en streaming).
-          </span>
-        </div>
-        <Badge variant="outline" className="text-xs hidden sm:inline-flex">
+      {/* Backend URL Bar */}
+      <div className="h-7 px-6 border-t border-border-subtle bg-background-tertiary/30 flex items-center justify-end text-xs">
+        <Badge variant="outline" className="text-[10px] hidden sm:inline-flex">
           {anzarApi.backendUrl}
         </Badge>
       </div>

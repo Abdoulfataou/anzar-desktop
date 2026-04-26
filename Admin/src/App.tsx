@@ -18,10 +18,10 @@ const SettingsPage = lazy(() => import('./app/settings/page'))
 
 function LoadingFallback() {
   return (
-    <div className="flex items-center justify-center h-screen bg-bg-primary">
+    <div className="flex items-center justify-center h-screen bg-background-primary">
       <div className="text-center">
         <div className="h-12 w-12 rounded-lg bg-gradient-to-br from-accent-primary to-accent-secondary animate-pulse mx-auto mb-4" />
-        <p className="text-text-secondary">Chargement…</p>
+        <p className="text-foreground-secondary">Chargement…</p>
       </div>
     </div>
   )

@@ -129,8 +129,8 @@ export default function ProjectsPage() {
 
       {/* Error Message */}
       {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4 text-sm text-red-600">
+        <Card className="border-accent-error/20 bg-accent-error/5">
+          <CardContent className="p-4 text-sm text-accent-error">
             {error}
           </CardContent>
         </Card>
@@ -227,7 +227,7 @@ export default function ProjectsPage() {
                           size="sm"
                           onClick={() => handleDelete(project.id)}
                           disabled={deleting === project.id}
-                          className="text-red-600 hover:text-red-700"
+                          className="text-accent-error hover:text-accent-error/80"
                         >
                           <Trash2 className="h-4 w-4" />
                           {deleting === project.id ? 'Suppression…' : 'Supprimer'}

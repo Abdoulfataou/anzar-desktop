@@ -59,22 +59,22 @@ export default function CreditsPage() {
   }, [])
 
   const balanceText = useMemo(() => {
-    const b = stats?.credits.total_balance
+    const b = stats?.credits?.total_balance
     if (typeof b !== 'number') return '—'
     return `${b.toLocaleString('fr-FR')} FCFA`
-  }, [stats?.credits.total_balance])
+  }, [stats?.credits?.total_balance])
 
   const rechargedText = useMemo(() => {
-    const r = stats?.credits.platform_recharged
+    const r = stats?.credits?.platform_recharged
     if (typeof r !== 'number') return '—'
     return `${r.toLocaleString('fr-FR')} FCFA`
-  }, [stats?.credits.platform_recharged])
+  }, [stats?.credits?.platform_recharged])
 
   const usedText = useMemo(() => {
-    const u = stats?.credits.platform_used
+    const u = stats?.credits?.platform_used
     if (typeof u !== 'number') return '—'
     return `${u.toLocaleString('fr-FR')} FCFA`
-  }, [stats?.credits.platform_used])
+  }, [stats?.credits?.platform_used])
 
   const formatDate = (dateString: string) => {
     try {

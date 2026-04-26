@@ -169,8 +169,8 @@ export default function UsersPage() {
       </div>
 
       {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="p-4 text-sm text-red-600">{error}</CardContent>
+        <Card className="border-accent-error/20 bg-accent-error/5">
+          <CardContent className="p-4 text-sm text-accent-error">{error}</CardContent>
         </Card>
       )}
 
