@@ -165,13 +165,13 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground-secondary">Utilisateurs Actifs</p>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-3xl font-bold text-foreground-primary">
-                    {loading ? '…' : stats?.users.active ?? '—'}
+                    {loading ? '…' : stats?.users?.active ?? '—'}
                   </span>
                   <span className="text-xs text-foreground-secondary">
-                    sur {loading ? '…' : stats?.users.total ?? '—'}
+                    sur {loading ? '…' : stats?.users?.total ?? '—'}
                   </span>
                 </div>
-                {stats?.users.new_7d !== undefined && (
+                {stats?.users?.new_7d !== undefined && (
                   <p className="text-xs text-foreground-secondary mt-2">
                     +{stats.users.new_7d} cette semaine
                   </p>
@@ -192,10 +192,10 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground-secondary">Projets Totaux</p>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-3xl font-bold text-foreground-primary">
-                    {loading ? '…' : stats?.projects.total ?? '—'}
+                    {loading ? '…' : stats?.projects?.total ?? '—'}
                   </span>
                 </div>
-                {stats?.projects.by_status && Object.keys(stats.projects.by_status).length > 0 && (
+                {stats?.projects?.by_status && Object.keys(stats.projects.by_status).length > 0 && (
                   <div className="text-xs text-foreground-secondary mt-2 space-y-1">
                     {Object.entries(stats.projects.by_status).slice(0, 2).map(([status, count]) => (
                       <div key={status}>{status}: {count}</div>
@@ -221,14 +221,14 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground-secondary">Solde Crédits</p>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-2xl font-bold text-foreground-primary">
-                    {loading ? '…' : stats?.credits.total_balance ? `${(stats.credits.total_balance).toLocaleString('fr-FR')}` : '—'}
+                    {loading ? '…' : stats?.credits?.total_balance ? `${(stats.credits.total_balance).toLocaleString('fr-FR')}` : '—'}
                   </span>
                   <span className="text-xs text-foreground-secondary">FCFA</span>
                 </div>
                 {stats?.credits && (
                   <div className="text-xs text-foreground-secondary mt-2 space-y-1">
-                    <div>Rechargé: {(stats.credits.platform_recharged).toLocaleString('fr-FR')}</div>
-                    <div>Utilisé: {(stats.credits.platform_used).toLocaleString('fr-FR')}</div>
+                    <div>Rechargé: {(stats.credits?.platform_recharged ?? 0).toLocaleString('fr-FR')}</div>
+                    <div>Utilisé: {(stats.credits?.platform_used ?? 0).toLocaleString('fr-FR')}</div>
                   </div>
                 )}
               </div>
@@ -250,13 +250,13 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground-secondary">Usage Aujourd’hui</p>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-2xl font-bold text-foreground-primary">
-                    {loading ? '…' : stats?.usage_today.requests ?? '—'}
+                    {loading ? '…' : stats?.usage_today?.requests ?? '—'}
                   </span>
                   <span className="text-xs text-foreground-secondary">requêtes</span>
                 </div>
                 {stats?.usage_today && (
                   <p className="text-xs text-foreground-secondary mt-2">
-                    Coût: {(stats.usage_today.cost_fcfa).toLocaleString('fr-FR')} FCFA
+                    Coût: {(stats.usage_today?.cost_fcfa ?? 0).toLocaleString('fr-FR')} FCFA
                   </p>
                 )}
               </div>
@@ -310,19 +310,19 @@ export default function DashboardPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-foreground-secondary">Requêtes:</span>
                   <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d.total_requests).toLocaleString('fr-FR')}
+                    {(stats.usage_30d?.total_requests ?? 0).toLocaleString('fr-FR')}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-foreground-secondary">Tokens:</span>
                   <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d.total_tokens).toLocaleString('fr-FR')}
+                    {(stats.usage_30d?.total_tokens ?? 0).toLocaleString('fr-FR')}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-foreground-secondary">Coût:</span>
                   <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d.total_cost_fcfa).toLocaleString('fr-FR')} FCFA
+                    {(stats.usage_30d?.total_cost_fcfa ?? 0).toLocaleString('fr-FR')} FCFA
                   </span>
                 </div>
               </div>
