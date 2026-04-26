@@ -94,7 +94,7 @@
     "bundle": {
       "active": true,
       "category": "DeveloperTool",
-      "copyright": "© 2024 ANZAR",
+      "copyright": "© 2024-2026 IssalanHub. Tous droits réservés.",
       "deb": {
         "depends": []
       },

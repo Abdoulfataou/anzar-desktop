@@ -10,6 +10,7 @@ import {
   User, CreditCard, ArrowUpRight, History,
   Sparkles, Smartphone,
   Plus, Gift, X, Shield, LogOut,
+  Mail, Phone, MessageCircle, Send, MapPin, Globe,
 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
@@ -831,7 +832,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-accent-error truncate">{updateState.error}</p>
                       ) : updateState.available ? (
                         <p className="text-xs text-accent-warning">
-                          Mise à jour disponible{updateState.version ? ` (v${updateState.version})` : ''}.
+                          Mise à jour disponible{updateState.version ? ` (v${updateState.version})` : ‘’}.
                         </p>
                       ) : (
                         <p className="text-xs text-text-muted">Aucune mise à jour détectée.</p>
@@ -854,25 +855,25 @@ export default function SettingsPage() {
                                 lastCheckedMs,
                               }));
                             } else {
-                              setUpdateState((s) => ({ ...s, checking: false, error: 'Non supporté.' }));
+                              setUpdateState((s) => ({ ...s, checking: false, error: ‘Non supporté.’ }));
                             }
                           } catch (e: any) {
                             setUpdateState((s) => ({
                               ...s,
                               checking: false,
-                              error: 'Impossible de vérifier. Réessaie plus tard.',
+                              error: ‘Impossible de vérifier. Réessaie plus tard.’,
                             }));
                           }
                         }}
                         disabled={updateState.checking || updateState.installing}
                         className={cn(
-                          'px-3 py-2 rounded-xl text-xs font-medium transition-all border',
-                          'border-border-subtle bg-bg-tertiary/40 hover:bg-surface-hover',
-                          (updateState.checking || updateState.installing) && 'opacity-60 cursor-not-allowed'
+                          ‘px-3 py-2 rounded-xl text-xs font-medium transition-all border’,
+                          ‘border-border-subtle bg-bg-tertiary/40 hover:bg-surface-hover’,
+                          (updateState.checking || updateState.installing) && ‘opacity-60 cursor-not-allowed’
                         )}
                         title="Vérifier les mises à jour"
                       >
-                        {updateState.checking ? 'Vérification…' : 'Vérifier'}
+                        {updateState.checking ? ‘Vérification…’ : ‘Vérifier’}
                       </button>
 
                       {updateState.available && (
@@ -885,18 +886,18 @@ export default function SettingsPage() {
                               setUpdateState((s) => ({
                                 ...s,
                                 installing: false,
-                                error: "Impossible d'installer la mise à jour.",
+                                error: "Impossible d’installer la mise �� jour.",
                               }));
                             }
                           }}
                           disabled={updateState.installing || updateState.checking}
                           className={cn(
-                            'px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all',
-                            'gradient-bg hover:opacity-90',
-                            (updateState.installing || updateState.checking) && 'opacity-60 cursor-not-allowed'
+                            ‘px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all’,
+                            ‘gradient-bg hover:opacity-90’,
+                            (updateState.installing || updateState.checking) && ‘opacity-60 cursor-not-allowed’
                           )}
                         >
-                          {updateState.installing ? 'Installation…' : 'Installer'}
+                          {updateState.installing ? ‘Installation…’ : ‘Installer’}
                         </button>
                       )}
                     </div>
@@ -907,7 +908,7 @@ export default function SettingsPage() {
               <div className="pt-3 border-t border-border-subtle flex items-center gap-4">
                 <button
                   onClick={async () => {
-                    const url = 'https://anzar.dev/docs';
+                    const url = ‘https://anzar.dev/docs’;
                     await openExternalUrl(url);
                   }}
                   className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
@@ -917,7 +918,7 @@ export default function SettingsPage() {
                 </button>
                 <button
                   onClick={async () => {
-                    const url = 'https://anzar.dev/support';
+                    const url = ‘https://anzar.dev/support’;
                     await openExternalUrl(url);
                   }}
                   className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
@@ -925,6 +926,93 @@ export default function SettingsPage() {
                   <ExternalLink size={13} />
                   Support
                 </button>
+              </div>
+            </div>
+          </Section>
+
+          <div className="h-px bg-border-subtle" />
+
+          {/* ===== CONTACT & SUPPORT ===== */}
+          <Section icon={Mail} title="Contact & Support" description="IssalanHub — Nous sommes là pour vous">
+            <div className="space-y-3">
+              {/* Contact cards */}
+              <div className="grid grid-cols-1 gap-2.5">
+                <button
+                  onClick={() => openExternalUrl(‘mailto:abdul@issalanhub.com’)}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all text-left group"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-accent-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-accent-primary/20 transition-colors">
+                    <Mail size={15} className="text-accent-primary" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-text-primary">Email</p>
+                    <p className="text-[11px] text-text-muted truncate">abdul@issalanhub.com</p>
+                  </div>
+                  <ExternalLink size={12} className="text-text-muted/40 group-hover:text-accent-primary transition-colors flex-shrink-0" />
+                </button>
+
+                <button
+                  onClick={() => openExternalUrl(‘tel:+17172161490’)}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all text-left group"
+                >
+                  <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-green-500/20 transition-colors">
+                    <Phone size={15} className="text-green-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-text-primary">Téléphone</p>
+                    <p className="text-[11px] text-text-muted">+1 (717) 216-1490</p>
+                  </div>
+                  <ExternalLink size={12} className="text-text-muted/40 group-hover:text-green-500 transition-colors flex-shrink-0" />
+                </button>
+
+                <div className="flex gap-2.5">
+                  <button
+                    onClick={() => openExternalUrl(‘https://wa.me/17172161490’)}
+                    className="flex-1 flex items-center gap-2.5 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-green-500/20 transition-colors">
+                      <MessageCircle size={14} className="text-green-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-text-primary">WhatsApp</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => openExternalUrl(‘https://t.me/+17172161490’)}
+                    className="flex-1 flex items-center gap-2.5 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all group"
+                  >
+                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                      <Send size={14} className="text-blue-500" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-text-primary">Telegram</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+
+              {/* Company info */}
+              <div className="pt-3 border-t border-border-subtle space-y-2.5">
+                <div className="flex items-center gap-2.5">
+                  <Globe size={13} className="text-text-muted flex-shrink-0" />
+                  <span className="text-sm font-semibold text-text-primary">IssalanHub</span>
+                </div>
+                <div className="flex items-start gap-2.5">
+                  <MapPin size={13} className="text-text-muted flex-shrink-0 mt-0.5" />
+                  <div className="text-xs text-text-muted leading-relaxed">
+                    <p>USA &middot; Niger</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Copyright */}
+              <div className="pt-3 border-t border-border-subtle">
+                <p className="text-[11px] text-text-muted/70 text-center leading-relaxed">
+                  &copy; {new Date().getFullYear()} IssalanHub. Tous droits réservés.
+                  <br />
+                  ANZAR est un produit de IssalanHub.
+                </p>
               </div>
             </div>
           </Section>

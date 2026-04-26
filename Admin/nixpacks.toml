@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_22", "npm-10_x"]
+nixPkgs = ["nodejs_latest", "npm-10_x"]
 
 [phases.install]
-cmds = ["npm install --include=dev"]
+cmds = ["rm -f package-lock.json && npm install --include=dev"]
 
 [phases.build]
 cmds = ["npm run build:web"]

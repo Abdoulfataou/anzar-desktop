@@ -155,6 +155,26 @@ export default function LoginPage() {
               : 'Déjà un compte ? Se connecter'}
           </button>
         </div>
+
+        {/* Footer — Contact & Copyright */}
+        <div className="mt-10 pt-6 border-t border-border-subtle/30 text-center space-y-3">
+          <div className="flex items-center justify-center gap-4 text-xs text-text-muted">
+            <a href="mailto:abdul@issalanhub.com" className="hover:text-accent-primary transition-colors">
+              abdul@issalanhub.com
+            </a>
+            <span className="text-border-subtle">|</span>
+            <a href="https://wa.me/17172161490" target="_blank" rel="noopener noreferrer" className="hover:text-green-500 transition-colors">
+              WhatsApp
+            </a>
+            <span className="text-border-subtle">|</span>
+            <a href="https://t.me/+17172161490" target="_blank" rel="noopener noreferrer" className="hover:text-blue-500 transition-colors">
+              Telegram
+            </a>
+          </div>
+          <p className="text-[10px] text-text-muted/60">
+            &copy; {new Date().getFullYear()} IssalanHub &middot; USA &middot; Niger &middot; Tous droits réservés
+          </p>
+        </div>
       </div>
     </div>
   );
