@@ -8,3 +8,4 @@ tenacity==9.0.0
 aiosqlite==0.20.0
 sqlalchemy[asyncio]==2.0.41
 asyncpg==0.29.0
+python-multipart==0.0.20
