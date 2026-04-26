@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { LogIn, UserPlus, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { authService } from '@/services/auth';
+import TitleBar from '@/components/layout/TitleBar';
 
 type AuthMode = 'login' | 'register';
 
@@ -48,7 +49,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-bg-primary">
+    <div className="flex flex-col min-h-screen bg-bg-primary">
+      <TitleBar />
+      <div className="flex-1 flex items-center justify-center">
       <div className="w-full max-w-md px-8 py-10">
         {/* Logo */}
         <div className="text-center mb-8">
@@ -175,6 +178,7 @@ export default function LoginPage() {
             {"© "}{new Date().getFullYear()} IssalanHub · USA · Niger · Tous droits reserves
           </p>
         </div>
+      </div>
       </div>
     </div>
   );
