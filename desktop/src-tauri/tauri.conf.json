@@ -13,6 +13,22 @@
   "tauri": {
     "allowlist": {
       "all": false,
+      "path": {
+        "all": true
+      },
+      "window": {
+        "all": false,
+        "close": true,
+        "minimize": true,
+        "maximize": true,
+        "unmaximize": true,
+        "startDragging": true,
+        "setSize": true,
+        "setMinSize": true,
+        "setPosition": true,
+        "setFullscreen": true,
+        "setFocus": true
+      },
       "fs": {
         "readFile": true,
         "writeFile": true,
