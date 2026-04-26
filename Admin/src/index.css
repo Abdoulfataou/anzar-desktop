@@ -1,9 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&display=swap');
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+@config "../tailwind.config.ts";
 
 @layer base {
   :root {
@@ -11,7 +10,7 @@
     --bg-secondary: #14141B;
     --bg-tertiary: #1E1E2E;
     --bg-glass: rgba(20, 20, 30, 0.7);
-    
+
     --accent-primary: #00D9FF;
     --accent-primary-hover: #00B8D9;
     --accent-secondary: #B829DD;
@@ -19,11 +18,11 @@
     --accent-success: #00C853;
     --accent-warning: #FFAB00;
     --accent-error: #FF3D71;
-    
+
     --foreground-primary: #FFFFFF;
     --foreground-secondary: #94A3B8;
     --foreground-muted: #64748B;
-    
+
     --border-subtle: rgba(255, 255, 255, 0.08);
     --border: rgba(255, 255, 255, 0.12);
     --border-strong: rgba(255, 255, 255, 0.16);
