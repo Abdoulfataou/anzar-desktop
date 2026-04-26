@@ -57,6 +57,64 @@ async function extractDocxText(bytes: Uint8Array): Promise<string> {
   }
 }
 
+/** Extract data from an Excel file (.xlsx) as CSV-like text */
+async function extractExcelText(bytes: Uint8Array): Promise<string> {
+  try {
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(bytes);
+
+    // xlsx stores sheets in xl/worksheets/sheet1.xml, etc.
+    const sheetFile = zip.file('xl/worksheets/sheet1.xml');
+    const stringsFile = zip.file('xl/sharedStrings.xml');
+
+    if (!sheetFile) return '[Impossible de lire le fichier Excel]';
+
+    // Parse shared strings (Excel stores text in a shared strings table)
+    let sharedStrings: string[] = [];
+    if (stringsFile) {
+      const ssXml = await stringsFile.async('string');
+      const matches = ssXml.match(/<t[^>]*>([^<]*)<\/t>/g) || [];
+      sharedStrings = matches.map((m) => m.replace(/<[^>]+>/g, ''));
+    }
+
+    // Parse sheet data
+    const sheetXml = await sheetFile.async('string');
+    const rows: string[][] = [];
+    const rowMatches = sheetXml.match(/<row[^>]*>[\s\S]*?<\/row>/g) || [];
+
+    for (const rowXml of rowMatches) {
+      const cells: string[] = [];
+      const cellMatches = rowXml.match(/<c[^>]*>[\s\S]*?<\/c>|<c[^/]*\/>/g) || [];
+
+      for (const cellXml of cellMatches) {
+        const isSharedString = /t="s"/.test(cellXml);
+        const valueMatch = cellXml.match(/<v>([^<]*)<\/v>/);
+        if (valueMatch) {
+          const val = valueMatch[1];
+          if (isSharedString && sharedStrings[parseInt(val)]) {
+            cells.push(sharedStrings[parseInt(val)]);
+          } else {
+            cells.push(val);
+          }
+        } else {
+          cells.push('');
+        }
+      }
+      if (cells.some((c) => c.trim())) rows.push(cells);
+    }
+
+    if (rows.length === 0) return '[Fichier Excel vide]';
+
+    // Format as CSV-like text
+    const maxRows = Math.min(rows.length, 200);
+    const text = rows.slice(0, maxRows).map((row) => row.join('\t')).join('\n');
+    const suffix = rows.length > 200 ? `\n[... ${rows.length - 200} lignes supplémentaires ...]` : '';
+    return `${rows.length} lignes × ${rows[0]?.length || 0} colonnes\n\n${text}${suffix}`;
+  } catch {
+    return '[Erreur lors de la lecture du fichier Excel — essayez de l\'exporter en CSV]';
+  }
+}
+
 /** Extract text from a PDF (basic extraction via pdf.js or fallback) */
 async function extractPdfText(bytes: Uint8Array): Promise<string> {
   try {
@@ -362,7 +420,8 @@ export default function ChatInput({
                         title: 'Joindre des fichiers',
                         filters: [
                           { name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'txt', 'md', 'rtf'] },
-                          { name: 'Code', extensions: ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'html', 'css', 'json', 'yaml', 'sql'] },
+                          { name: 'Données', extensions: ['csv', 'tsv', 'xlsx', 'xls', 'json', 'xml'] },
+                          { name: 'Code', extensions: ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'html', 'css', 'yaml', 'sql'] },
                           { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
                           { name: 'Tous', extensions: ['*'] },
                         ],
@@ -374,15 +433,20 @@ export default function ChatInput({
                           const ext = name.split('.').pop()?.toLowerCase() || '';
                           try {
                             if (ext === 'pdf') {
-                              // Extract text from PDF
                               const bytes = await readBinaryFile(filePath);
                               const text = await extractPdfText(bytes);
                               setMessage((prev) => `${prev}\n\n📄 --- ${name} ---\n${text.slice(0, 15000)}\n---\n`);
                             } else if (ext === 'docx' || ext === 'doc') {
-                              // Extract text from Word document
                               const bytes = await readBinaryFile(filePath);
                               const text = await extractDocxText(bytes);
                               setMessage((prev) => `${prev}\n\n📄 --- ${name} ---\n${text.slice(0, 15000)}\n---\n`);
+                            } else if (ext === 'xlsx' || ext === 'xls') {
+                              const bytes = await readBinaryFile(filePath);
+                              const text = await extractExcelText(bytes);
+                              setMessage((prev) => `${prev}\n\n📊 --- ${name} ---\n${text.slice(0, 15000)}\n---\n`);
+                            } else if (ext === 'csv' || ext === 'tsv') {
+                              const content = await readTextFile(filePath);
+                              setMessage((prev) => `${prev}\n\n📊 --- ${name} ---\n${content.slice(0, 15000)}\n---\n`);
                             } else {
                               // Try reading as text file
                               const content = await readTextFile(filePath);
@@ -399,7 +463,7 @@ export default function ChatInput({
                       const input = document.createElement('input');
                       input.type = 'file';
                       input.multiple = true;
-                      input.accept = '.pdf,.docx,.doc,.txt,.md,.rtf,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.html,.css,.json,.png,.jpg,.jpeg,.svg';
+                      input.accept = '.pdf,.docx,.doc,.txt,.md,.rtf,.csv,.tsv,.xlsx,.xls,.json,.xml,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.html,.css,.png,.jpg,.jpeg,.svg';
                       input.onchange = async () => {
                         if (input.files) {
                           for (const file of Array.from(input.files)) {
@@ -413,7 +477,14 @@ export default function ChatInput({
                                 const buffer = await file.arrayBuffer();
                                 const text = await extractDocxText(new Uint8Array(buffer));
                                 setMessage((prev) => `${prev}\n\n📄 --- ${file.name} ---\n${text.slice(0, 15000)}\n---\n`);
-                              } else if (file.type.startsWith('text/') || file.name.match(/\.(ts|tsx|js|jsx|py|rs|go|java|html|css|json|yaml|md|txt|sql)$/)) {
+                              } else if (ext === 'xlsx' || ext === 'xls') {
+                                const buffer = await file.arrayBuffer();
+                                const text = await extractExcelText(new Uint8Array(buffer));
+                                setMessage((prev) => `${prev}\n\n📊 --- ${file.name} ---\n${text.slice(0, 15000)}\n---\n`);
+                              } else if (ext === 'csv' || ext === 'tsv') {
+                                const content = await file.text();
+                                setMessage((prev) => `${prev}\n\n📊 --- ${file.name} ---\n${content.slice(0, 15000)}\n---\n`);
+                              } else if (file.type.startsWith('text/') || file.name.match(/\.(ts|tsx|js|jsx|py|rs|go|java|html|css|json|yaml|md|txt|sql|xml)$/)) {
                                 const content = await file.text();
                                 setMessage((prev) => `${prev}\n\n--- ${file.name} ---\n${content.slice(0, 8000)}\n---\n`);
                               } else {
