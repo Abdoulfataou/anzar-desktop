@@ -375,26 +375,30 @@ class AIRouter {
           ...options,
           provider: 'kimi',
         };
+        try {
+          const response = await aiService.chat(messages, fallbackOptions);
+          this.trackUsage('kimi', fallbackOptions.model || 'fast', response.usage);
+          this.sessionStats.totalRequests++;
 
-        const response = await aiService.chat(messages, fallbackOptions);
-        this.trackUsage('kimi', fallbackOptions.model || 'fast', response.usage);
-        this.sessionStats.totalRequests++;
-
-        return {
-          response,
-          routing: {
-            provider: 'kimi',
-            model: fallbackOptions.model || 'fast',
-            taskType: classification.type,
-            wasFallback: true,
-            cost: this.estimateCost(
-              'kimi',
-              fallbackOptions.model || 'fast',
-              response.usage.prompt_tokens,
-              response.usage.completion_tokens
-            ),
-          } as RoutedResult,
-        };
+          return {
+            response,
+            routing: {
+              provider: 'kimi',
+              model: fallbackOptions.model || 'fast',
+              taskType: classification.type,
+              wasFallback: true,
+              cost: this.estimateCost(
+                'kimi',
+                fallbackOptions.model || 'fast',
+                response.usage.prompt_tokens,
+                response.usage.completion_tokens
+              ),
+            } as RoutedResult,
+          };
+        } catch (fallbackError: any) {
+          // If fallback also fails, keep the original error (avoid confusing messages).
+          throw error;
+        }
       }
 
       throw error;
@@ -462,12 +466,16 @@ class AIRouter {
           provider: 'kimi',
         };
 
-        for await (const delta of aiService.chatStream(messages, fallbackOptions)) {
-          yield delta;
+        try {
+          for await (const delta of aiService.chatStream(messages, fallbackOptions)) {
+            yield delta;
+          }
+          this.sessionStats.totalRequests++;
+          return;
+        } catch {
+          // If fallback also fails, keep the original error.
+          throw error;
         }
-
-        this.sessionStats.totalRequests++;
-        return;
       }
 
       throw error;

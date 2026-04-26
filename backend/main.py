@@ -130,13 +130,43 @@ PROVIDERS = {
 }
 
 
+_provider_disabled_until: Dict[str, float] = {}
+
+
+def _now() -> float:
+    return time.time()
+
+
+def _disable_provider(provider: str, seconds: int, reason: str = ""):
+    until = _now() + max(0, int(seconds))
+    _provider_disabled_until[provider] = max(_provider_disabled_until.get(provider, 0), until)
+    if reason:
+        logger.warning(f"Provider disabled: {provider} for {seconds}s — {reason}")
+    else:
+        logger.warning(f"Provider disabled: {provider} for {seconds}s")
+
+
+def _is_provider_disabled(provider: str) -> bool:
+    until = _provider_disabled_until.get(provider, 0)
+    return until > _now()
+
+
+def _provider_unavailable_message(provider: str) -> str:
+    # Do not mention providers in user-facing messages.
+    if provider == "kimi":
+        return "Vision indisponible pour le moment. Réessaie sans image."
+    return "Service IA indisponible pour le moment. Réessaie plus tard."
+
+
 def get_provider_config(provider: str) -> dict:
     """Get provider config or raise 400."""
     if provider not in PROVIDERS:
         raise HTTPException(400, f"Provider inconnu: {provider}. Disponibles: {list(PROVIDERS.keys())}")
+    if _is_provider_disabled(provider):
+        raise HTTPException(503, _provider_unavailable_message(provider))
     config = PROVIDERS[provider]
     if not config["api_key"]:
-        raise HTTPException(503, f"Provider {provider} non configuré sur le serveur")
+        raise HTTPException(503, _provider_unavailable_message(provider))
     return config
 
 
@@ -717,11 +747,21 @@ async def _proxy_request_with_billing(
         try:
             resp = await client.post(url, headers=headers, json=body)
         except httpx.TimeoutException:
+            if provider == "kimi":
+                _disable_provider("kimi", 300, "timeout")
+                raise HTTPException(503, _provider_unavailable_message("kimi"))
             raise HTTPException(504, "AI provider timeout")
         except httpx.ConnectError:
+            if provider == "kimi":
+                _disable_provider("kimi", 300, "connect_error")
+                raise HTTPException(503, _provider_unavailable_message("kimi"))
             raise HTTPException(502, "Cannot reach AI provider")
 
     if resp.status_code != 200:
+        # If vision provider is out of credits / invalid key / rate limited, disable it temporarily.
+        if provider == "kimi" and resp.status_code in (401, 402, 403, 429):
+            _disable_provider("kimi", 3600, f"provider_status={resp.status_code}")
+            raise HTTPException(503, _provider_unavailable_message("kimi"))
         try:
             error_data = resp.json()
         except Exception:
@@ -789,7 +829,11 @@ async def _proxy_stream_with_billing(
         try:
             async with client.stream("POST", url, headers=headers, json=body) as resp:
                 if resp.status_code != 200:
-                    error_msg = await resp.aread()
+                    # If vision provider is out of credits / invalid key / rate limited, disable it temporarily.
+                    if provider == "kimi" and resp.status_code in (401, 402, 403, 429):
+                        _disable_provider("kimi", 3600, f"provider_status={resp.status_code}")
+                        yield f"data: {json.dumps({'error': {'message': _provider_unavailable_message('kimi')}})}\n\n"
+                        return
                     yield f"data: {json.dumps({'error': {'message': f'Provider error: {resp.status_code}'}})}\n\n"
                     return
 
@@ -810,7 +854,11 @@ async def _proxy_stream_with_billing(
                                 pass
 
         except httpx.TimeoutException:
-            yield f"data: {json.dumps({'error': {'message': 'Provider timeout'}})}\n\n"
+            if provider == "kimi":
+                _disable_provider("kimi", 300, "timeout_stream")
+                yield f"data: {json.dumps({'error': {'message': _provider_unavailable_message('kimi')}})}\n\n"
+            else:
+                yield f"data: {json.dumps({'error': {'message': 'Provider timeout'}})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'error': {'message': sanitize_error(e)}})}\n\n"
         finally:
