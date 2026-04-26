@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
-import { anzarApi } from '@/api/backend'
+import { anzarApi, type UsageRecord as ApiUsageRecord, type GlobalStats } from '@/api/backend'
 import { Activity, AlertCircle, CheckCircle, RefreshCw, Server, Timer } from 'lucide-react'
 
 interface HealthStatus {
@@ -15,35 +15,12 @@ interface HealthStatus {
   }
 }
 
-interface UsageRecord {
-  id: string
-  user_email: string
-  provider: string
-  model: string
-  input_tokens: number
-  output_tokens: number
-  cost_usd: number
-  cost_fcfa: number
-  duration_ms: number
-  created_at: string
-  task_type: string
-}
-
-interface UsageResponse {
-  usage: UsageRecord[]
-}
-
-interface StatsResponse {
-  usage_30d: number
-  usage_today: number
-}
-
 export default function ObservabilityPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [health, setHealth] = useState<HealthStatus | null>(null)
-  const [usage, setUsage] = useState<UsageRecord[]>([])
-  const [stats, setStats] = useState<StatsResponse | null>(null)
+  const [usage, setUsage] = useState<ApiUsageRecord[]>([])
+  const [stats, setStats] = useState<GlobalStats | null>(null)
 
   const refresh = async () => {
     setLoading(true)
@@ -55,8 +32,8 @@ export default function ObservabilityPage() {
         anzarApi.stats(),
       ])
       setHealth(h as HealthStatus)
-      setUsage((u as UsageResponse).usage || [])
-      setStats(s as StatsResponse)
+      setUsage(((u as any)?.usage || []) as ApiUsageRecord[])
+      setStats(s as GlobalStats)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur observabilité')
     } finally {
@@ -75,7 +52,7 @@ export default function ObservabilityPage() {
   const getCheckVariant = (status: string) => {
     if (status === 'healthy') return 'success'
     if (status === 'degraded') return 'warning'
-    return 'destructive'
+    return 'error'
   }
 
   return (
@@ -170,13 +147,13 @@ export default function ObservabilityPage() {
                 <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">
                   <p className="text-xs font-medium text-foreground-secondary uppercase">Usage (30 jours)</p>
                   <p className="text-2xl font-bold text-foreground-primary">
-                    {stats.usage_30d.toLocaleString('fr-FR')}
+                    {stats.usage_30d.total_requests.toLocaleString('fr-FR')}
                   </p>
                 </div>
                 <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">
                   <p className="text-xs font-medium text-foreground-secondary uppercase">Usage (aujourd'hui)</p>
                   <p className="text-2xl font-bold text-foreground-primary">
-                    {stats.usage_today.toLocaleString('fr-FR')}
+                    {stats.usage_today.requests.toLocaleString('fr-FR')}
                   </p>
                 </div>
               </div>
@@ -224,13 +201,13 @@ export default function ObservabilityPage() {
                       </td>
                       <td className="p-3 text-foreground-secondary text-xs">{record.model}</td>
                       <td className="p-3 text-foreground-secondary text-xs">
-                        {(record.input_tokens + record.output_tokens).toLocaleString('fr-FR')}
+                        {((record.input_tokens ?? 0) + (record.output_tokens ?? 0)).toLocaleString('fr-FR')}
                       </td>
                       <td className="p-3 text-foreground-primary font-medium">
-                        {record.cost_fcfa.toFixed(0)} FCFA
+                        {(record.cost_fcfa ?? 0).toFixed(0)} FCFA
                       </td>
                       <td className="p-3 text-foreground-secondary text-xs">
-                        {record.duration_ms.toLocaleString('fr-FR')}
+                        {(record.duration_ms ?? 0).toLocaleString('fr-FR')}
                       </td>
                       <td className="p-3">
                         <Badge variant="secondary" className="text-xs capitalize">
@@ -238,7 +215,7 @@ export default function ObservabilityPage() {
                         </Badge>
                       </td>
                       <td className="p-3 text-foreground-secondary text-xs">
-                        {new Date(record.created_at).toLocaleString('fr-FR')}
+                        {record.created_at ? new Date(record.created_at).toLocaleString('fr-FR') : '—'}
                       </td>
                     </tr>
                   ))}
@@ -253,4 +230,3 @@ export default function ObservabilityPage() {
     </div>
   )
 }
-

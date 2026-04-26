@@ -13,7 +13,7 @@ interface PlatformStats {
 }
 
 interface Transaction {
-  id: string
+  id: number
   user_email: string
   type: string
   amount_fcfa: number
@@ -23,10 +23,6 @@ interface Transaction {
   input_tokens?: number
   output_tokens?: number
   created_at: string
-}
-
-interface TransactionsResponse {
-  transactions: Transaction[]
 }
 
 export default function CreditsPage() {
@@ -47,7 +43,8 @@ export default function CreditsPage() {
         ])
         if (!alive) return
         setStats(statsData)
-        setTransactions(Array.isArray((txData as TransactionsResponse).transactions) ? (txData as TransactionsResponse).transactions : [])
+        const txs = (txData as any)?.transactions
+        setTransactions(Array.isArray(txs) ? (txs as Transaction[]) : [])
       } catch (err) {
         if (!alive) return
         setError(err instanceof Error ? err.message : 'Erreur chargement crédits')
@@ -201,7 +198,7 @@ export default function CreditsPage() {
                             {tx.user_email}
                           </td>
                           <td className="py-3 px-4">
-                            <Badge variant={tx.type === 'recharge' ? 'primary' : 'secondary'}>
+                            <Badge variant={tx.type === 'usage' ? 'secondary' : 'primary'}>
                               {tx.type}
                             </Badge>
                           </td>
@@ -209,8 +206,8 @@ export default function CreditsPage() {
                             {tx.description}
                           </td>
                           <td className="py-3 px-4 text-right font-mono font-semibold">
-                            <span className={tx.type === 'recharge' ? 'text-accent-primary' : 'text-accent-error'}>
-                              {tx.type === 'recharge' ? '+' : '-'}
+                            <span className={tx.type === 'usage' ? 'text-accent-error' : 'text-accent-primary'}>
+                              {tx.type === 'usage' ? '-' : '+'}
                               {Math.abs(tx.amount_fcfa).toLocaleString('fr-FR')} FCFA
                             </span>
                           </td>
@@ -250,4 +247,3 @@ export default function CreditsPage() {
     </div>
   )
 }
-

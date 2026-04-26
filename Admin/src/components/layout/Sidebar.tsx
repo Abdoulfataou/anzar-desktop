@@ -9,8 +9,7 @@ import {
   ChevronRight,
   Sparkles,
   Activity,
-  Users,
-  Building2
+  Users
 } from 'lucide-react'
 import { useState } from 'react'
 import { useAuthStore } from '@/stores/authStore'
@@ -20,7 +19,6 @@ const navigation = [
   { name: 'Studio', href: '/studio', icon: Sparkles },
   { name: 'Projects', href: '/projects', icon: FolderKanban },
   { name: 'Users', href: '/users', icon: Users },
-  { name: 'Orgs', href: '/orgs', icon: Building2 },
   { name: 'Observability', href: '/observability', icon: Activity },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]

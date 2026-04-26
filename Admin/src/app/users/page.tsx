@@ -22,7 +22,7 @@ function formatCredits(value?: number) {
 
 function statusBadge(is_active: boolean) {
   if (is_active) return 'success' as const
-  return 'destructive' as const
+  return 'error' as const
 }
 
 export default function UsersPage() {

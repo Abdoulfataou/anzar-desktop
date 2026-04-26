@@ -166,6 +166,7 @@ async def init_db():
                 salt TEXT NOT NULL,
                 name TEXT DEFAULT '',
                 role TEXT DEFAULT 'admin' CHECK(role IN ('owner', 'admin', 'support', 'readonly')),
+                must_change_password BOOLEAN DEFAULT 0,
                 is_active BOOLEAN DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 last_login TIMESTAMP
@@ -191,6 +192,25 @@ async def init_db():
         await db.execute("CREATE INDEX IF NOT EXISTS idx_projects_user ON projects(user_email)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_rate_limits_key ON rate_limits(client_key, timestamp)")
         await db.execute("CREATE INDEX IF NOT EXISTS idx_otp_email ON otp_codes(email, created_at)")
+
+        # ── Lightweight migrations (SQLite) ──
+        # transactions.external_ref (idempotency key for payment ref / admin operations)
+        cursor = await db.execute("PRAGMA table_info(transactions)")
+        cols = await cursor.fetchall()
+        col_names = {c[1] for c in cols}  # (cid, name, type, notnull, dflt_value, pk)
+        if "external_ref" not in col_names:
+            await db.execute("ALTER TABLE transactions ADD COLUMN external_ref TEXT")
+        await db.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_external_ref ON transactions(external_ref) "
+            "WHERE external_ref IS NOT NULL AND external_ref <> ''"
+        )
+
+        # admins.must_change_password (force reset after default admin creation)
+        cursor = await db.execute("PRAGMA table_info(admins)")
+        cols = await cursor.fetchall()
+        col_names = {c[1] for c in cols}
+        if "must_change_password" not in col_names:
+            await db.execute("ALTER TABLE admins ADD COLUMN must_change_password BOOLEAN DEFAULT 0")
 
         await db.commit()
 
@@ -320,14 +340,29 @@ async def add_credits(
     amount_fcfa: float,
     description: str = "Recharge",
     tx_type: str = "recharge",
+    external_ref: str = "",
 ) -> Dict[str, Any]:
     """Add credits (recharge/bonus/refund). Returns new balance."""
     email = email.lower().strip()
     tx_type = (tx_type or "recharge").strip().lower()
     if tx_type not in ("recharge", "bonus", "refund"):
         tx_type = "recharge"
+    external_ref = (external_ref or "").strip()
 
     async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Idempotency / anti double-recharge (Wave/OM refs etc.)
+        if external_ref:
+            cursor = await db.execute(
+                "SELECT id FROM transactions WHERE external_ref = ? LIMIT 1",
+                (external_ref,),
+            )
+            if await cursor.fetchone():
+                cursor = await db.execute("SELECT * FROM credits WHERE user_email = ?", (email,))
+                row = await cursor.fetchone()
+                return dict(row) if row else {}
+
         # Update balance
         await db.execute("""
             UPDATE credits
@@ -339,14 +374,13 @@ async def add_credits(
 
         # Record transaction
         await db.execute("""
-            INSERT INTO transactions (user_email, type, amount_fcfa, description)
-            VALUES (?, ?, ?, ?)
-        """, (email, tx_type, amount_fcfa, description))
+            INSERT INTO transactions (user_email, type, amount_fcfa, description, external_ref)
+            VALUES (?, ?, ?, ?, ?)
+        """, (email, tx_type, amount_fcfa, description, external_ref))
 
         await db.commit()
 
         # Return updated balance
-        db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM credits WHERE user_email = ?", (email,))
         row = await cursor.fetchone()
 
@@ -757,8 +791,15 @@ async def create_default_admin():
         if row["cnt"] == 0:
             pw_hash, salt = hash_password(settings.admin_default_password)
             await db.execute(
-                "INSERT INTO admins (email, password_hash, salt, name, role) VALUES (?, ?, ?, ?, ?)",
-                (settings.admin_default_email, pw_hash, salt, "Admin ANZAR", "owner")
+                "INSERT INTO admins (email, password_hash, salt, name, role, must_change_password) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    settings.admin_default_email,
+                    pw_hash,
+                    salt,
+                    "Admin ANZAR",
+                    "owner",
+                    1,  # force reset on first login
+                )
             )
             await db.commit()
             logger.info(f"Default admin created: {settings.admin_default_email}")
@@ -807,7 +848,7 @@ async def change_admin_password(admin_id: int, new_password: str) -> bool:
     pw_hash, salt = hash_password(new_password)
     async with aiosqlite.connect(settings.database_path) as db:
         await db.execute(
-            "UPDATE admins SET password_hash = ?, salt = ? WHERE id = ?",
+            "UPDATE admins SET password_hash = ?, salt = ?, must_change_password = 0 WHERE id = ?",
             (pw_hash, salt, admin_id)
         )
         await db.commit()
@@ -926,9 +967,15 @@ async def admin_update_user(user_email: str, **fields) -> bool:
     return True
 
 
-async def admin_add_credits_to_user(user_email: str, amount: float, description: str = "Bonus admin") -> Dict[str, Any]:
-    """Admin grants credits to a user."""
-    return await add_credits(user_email, amount, description)
+async def admin_add_credits_to_user(
+    user_email: str,
+    amount: float,
+    description: str,
+    tx_type: str = "bonus",
+    external_ref: str = "",
+) -> Dict[str, Any]:
+    """Admin grants credits to a user (bonus/refund/recharge)."""
+    return await add_credits(user_email, amount, description, tx_type=tx_type, external_ref=external_ref)
 
 
 async def admin_list_all_projects(search: str = "", status: str = "all",

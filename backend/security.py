@@ -46,9 +46,9 @@ def validate_config():
     # ── Admin default password ──
     if settings.admin_default_password == "Anzar2024!":
         if is_prod_env:
-            logger.critical(
-                "⚠️  ADMIN_DEFAULT_PASSWORD is still the default 'Anzar2024!'. "
-                "Change it immediately after first login or set ADMIN_DEFAULT_PASSWORD env var."
+            raise RuntimeError(
+                "FATAL: ADMIN_DEFAULT_PASSWORD is still the default 'Anzar2024!'. "
+                "Set ADMIN_DEFAULT_PASSWORD to a secure value before deploying (min 12 chars)."
             )
         else:
             logger.warning("⚠️  Admin password is default — change after first login")

@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { Layout } from './components/layout/Layout'
 import { useAuthStore } from './stores/authStore'
 
@@ -11,8 +11,6 @@ const ProjectsPage = lazy(() => import('./app/projects/page'))
 const ProjectDetailsPage = lazy(() => import('./app/projects/details/page'))
 const UsersPage = lazy(() => import('./app/users/page'))
 const UserDetailsPage = lazy(() => import('./app/users/details/page'))
-const OrgsPage = lazy(() => import('./app/orgs/page'))
-const OrgDetailsPage = lazy(() => import('./app/orgs/details/page'))
 const CreditsPage = lazy(() => import('./app/credits/page'))
 const ObservabilityPage = lazy(() => import('./app/observability/page'))
 const SettingsPage = lazy(() => import('./app/settings/page'))
@@ -30,7 +28,10 @@ function LoadingFallback() {
 
 function RequireAuth() {
   const isLoggedIn = useAuthStore((s) => s.isLoggedIn)
+  const mustChangePassword = useAuthStore((s) => !!s.user?.must_change_password)
+  const location = useLocation()
   if (!isLoggedIn) return <Navigate to="/login" replace />
+  if (mustChangePassword && location.pathname !== '/settings') return <Navigate to="/settings" replace />
   return <Outlet />
 }
 
@@ -52,8 +53,6 @@ export default function App() {
               <Route path="projects/:projectId" element={<ProjectDetailsPage />} />
               <Route path="users" element={<UsersPage />} />
               <Route path="users/:userId" element={<UserDetailsPage />} />
-              <Route path="orgs" element={<OrgsPage />} />
-              <Route path="orgs/:orgId" element={<OrgDetailsPage />} />
               <Route path="credits" element={<CreditsPage />} />
               <Route path="observability" element={<ObservabilityPage />} />
               <Route path="settings" element={<SettingsPage />} />

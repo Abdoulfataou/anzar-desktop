@@ -12,6 +12,7 @@ export interface AdminUser {
   name: string;
   role: AdminRole;
   admin_id: number;
+  must_change_password?: boolean;
 }
 
 interface AuthStore {

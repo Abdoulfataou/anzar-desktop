@@ -83,7 +83,7 @@ export default function ProjectDetailsPage() {
           <Button variant="secondary" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={() => void refresh()}>
             Rafraîchir
           </Button>
-          <Button variant="destructive" leftIcon={<Trash2 className="h-4 w-4" />} onClick={() => void handleDelete()} disabled={deleting}>
+          <Button variant="danger" leftIcon={<Trash2 className="h-4 w-4" />} onClick={() => void handleDelete()} disabled={deleting}>
             {deleting ? 'Suppression…' : 'Supprimer'}
           </Button>
         </div>
@@ -198,4 +198,3 @@ export default function ProjectDetailsPage() {
     </div>
   )
 }
-

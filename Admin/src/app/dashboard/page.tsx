@@ -61,10 +61,10 @@ export default function DashboardPage() {
             <p className="text-foreground-secondary mt-1">Vue d’ensemble de la plateforme</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" leftIcon={<Activity className="h-4 w-4" />} onClick={() => navigate(‘/observability’)}>
+            <Button variant="secondary" leftIcon={<Activity className="h-4 w-4" />} onClick={() => navigate('/observability')}>
               Observability
             </Button>
-            <Button leftIcon={<Sparkles className="h-4 w-4" />} onClick={() => navigate(‘/studio’)}>
+            <Button leftIcon={<Sparkles className="h-4 w-4" />} onClick={() => navigate('/studio')}>
               Studio
             </Button>
           </div>
@@ -89,14 +89,14 @@ export default function DashboardPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground-primary">Dashboard</h1>
           <p className="text-foreground-secondary mt-1">
-            Bienvenue {user?.name} {user?.role ? `(${user.role})` : ‘’}
+            Bienvenue {user?.name} {user?.role ? `(${user.role})` : ''}
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" leftIcon={<Activity className="h-4 w-4" />} onClick={() => navigate(‘/observability’)}>
+          <Button variant="secondary" leftIcon={<Activity className="h-4 w-4" />} onClick={() => navigate('/observability')}>
             Observability
           </Button>
-          <Button leftIcon={<Sparkles className="h-4 w-4" />} onClick={() => navigate(‘/studio’)}>
+          <Button leftIcon={<Sparkles className="h-4 w-4" />} onClick={() => navigate('/studio')}>
             Studio
           </Button>
         </div>
@@ -110,7 +110,7 @@ export default function DashboardPage() {
               <p className="text-sm text-foreground-secondary">Bonjour</p>
               <div className="flex items-baseline gap-2 mt-2">
                 <span className="text-2xl font-bold text-foreground-primary">
-                  {loading ? ‘…’ : user?.name || ‘Administrateur’}
+                  {loading ? '…' : user?.name || 'Administrateur'}
                 </span>
                 <span className="text-sm text-foreground-secondary">
                   {user?.role && `Rôle: ${user.role}`}
@@ -132,17 +132,17 @@ export default function DashboardPage() {
               <p className="text-sm text-foreground-secondary">État du Backend</p>
               <div className="flex items-baseline gap-2 mt-2">
                 <span className="text-2xl font-bold text-foreground-primary">
-                  {loading ? ‘…’ : health?.status || ‘unknown’}
+                  {loading ? '…' : health?.status || 'unknown'}
                 </span>
                 <Badge variant={healthVariant} className="text-xs">
-                  v{health?.version || ‘—‘}
+                  v{health?.version || '—'}
                 </Badge>
               </div>
               {health?.checks && (
                 <div className="mt-3 text-xs text-foreground-secondary space-y-1">
                   {Object.entries(health.checks).map(([key, value]) => (
                     <div key={key}>
-                      {key}: {typeof value === ‘boolean’ ? (value ? ‘✓’ : ‘✗’) : String(value)}
+                      {key}: {typeof value === 'boolean' ? (value ? '✓' : '✗') : String(value)}
                     </div>
                   ))}
                 </div>
@@ -165,10 +165,10 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground-secondary">Utilisateurs Actifs</p>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-3xl font-bold text-foreground-primary">
-                    {loading ? ‘…’ : stats?.users.active ?? ‘—‘}
+                    {loading ? '…' : stats?.users.active ?? '—'}
                   </span>
                   <span className="text-xs text-foreground-secondary">
-                    sur {loading ? ‘…’ : stats?.users.total ?? ‘—‘}
+                    sur {loading ? '…' : stats?.users.total ?? '—'}
                   </span>
                 </div>
                 {stats?.users.new_7d !== undefined && (
@@ -192,7 +192,7 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground-secondary">Projets Totaux</p>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-3xl font-bold text-foreground-primary">
-                    {loading ? ‘…’ : stats?.projects.total ?? ‘—‘}
+                    {loading ? '…' : stats?.projects.total ?? '—'}
                   </span>
                 </div>
                 {stats?.projects.by_status && Object.keys(stats.projects.by_status).length > 0 && (
@@ -207,7 +207,7 @@ export default function DashboardPage() {
                 <FolderKanban className="h-6 w-6 text-accent-success" />
               </div>
             </div>
-            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate(‘/projects’)}>
+            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate('/projects')}>
               Voir Projets <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </CardContent>
@@ -221,14 +221,14 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground-secondary">Solde Crédits</p>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-2xl font-bold text-foreground-primary">
-                    {loading ? ‘…’ : stats?.credits.total_balance ? `${(stats.credits.total_balance).toLocaleString(‘fr-FR’)}` : ‘—‘}
+                    {loading ? '…' : stats?.credits.total_balance ? `${(stats.credits.total_balance).toLocaleString('fr-FR')}` : '—'}
                   </span>
                   <span className="text-xs text-foreground-secondary">FCFA</span>
                 </div>
                 {stats?.credits && (
                   <div className="text-xs text-foreground-secondary mt-2 space-y-1">
-                    <div>Rechargé: {(stats.credits.platform_recharged).toLocaleString(‘fr-FR’)}</div>
-                    <div>Utilisé: {(stats.credits.platform_used).toLocaleString(‘fr-FR’)}</div>
+                    <div>Rechargé: {(stats.credits.platform_recharged).toLocaleString('fr-FR')}</div>
+                    <div>Utilisé: {(stats.credits.platform_used).toLocaleString('fr-FR')}</div>
                   </div>
                 )}
               </div>
@@ -236,7 +236,7 @@ export default function DashboardPage() {
                 <Wallet className="h-6 w-6 text-accent-secondary" />
               </div>
             </div>
-            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate(‘/credits’)}>
+            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate('/credits')}>
               Gérer Crédits <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </CardContent>
@@ -250,13 +250,13 @@ export default function DashboardPage() {
                 <p className="text-sm text-foreground-secondary">Usage Aujourd’hui</p>
                 <div className="flex items-baseline gap-2 mt-2">
                   <span className="text-2xl font-bold text-foreground-primary">
-                    {loading ? ‘…’ : stats?.usage_today.requests ?? ‘—‘}
+                    {loading ? '…' : stats?.usage_today.requests ?? '—'}
                   </span>
                   <span className="text-xs text-foreground-secondary">requêtes</span>
                 </div>
                 {stats?.usage_today && (
                   <p className="text-xs text-foreground-secondary mt-2">
-                    Coût: {(stats.usage_today.cost_fcfa).toLocaleString(‘fr-FR’)} FCFA
+                    Coût: {(stats.usage_today.cost_fcfa).toLocaleString('fr-FR')} FCFA
                   </p>
                 )}
               </div>
@@ -264,7 +264,7 @@ export default function DashboardPage() {
                 <Activity className="h-6 w-6 text-accent-warning" />
               </div>
             </div>
-            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate(‘/observability’)}>
+            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate('/observability')}>
               Détails <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           </CardContent>
@@ -290,7 +290,7 @@ export default function DashboardPage() {
               3) Inspecte le résultat dans <span className="text-foreground-primary font-medium">Projects</span> (plan/result JSON).
             </p>
             <div className="pt-2">
-              <Button onClick={() => navigate(‘/studio’)}>Ouvrir Studio</Button>
+              <Button onClick={() => navigate('/studio')}>Ouvrir Studio</Button>
             </div>
           </CardContent>
         </Card>
@@ -310,19 +310,19 @@ export default function DashboardPage() {
                 <div className="flex justify-between items-center">
                   <span className="text-foreground-secondary">Requêtes:</span>
                   <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d.total_requests).toLocaleString(‘fr-FR’)}
+                    {(stats.usage_30d.total_requests).toLocaleString('fr-FR')}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-foreground-secondary">Tokens:</span>
                   <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d.total_tokens).toLocaleString(‘fr-FR’)}
+                    {(stats.usage_30d.total_tokens).toLocaleString('fr-FR')}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-foreground-secondary">Coût:</span>
                   <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d.total_cost_fcfa).toLocaleString(‘fr-FR’)} FCFA
+                    {(stats.usage_30d.total_cost_fcfa).toLocaleString('fr-FR')} FCFA
                   </span>
                 </div>
               </div>

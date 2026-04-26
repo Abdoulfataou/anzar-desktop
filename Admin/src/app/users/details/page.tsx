@@ -1,14 +1,14 @@
-import { useEffect, useState } from ‘react’
-import { useNavigate, useParams } from ‘react-router-dom’
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from ‘@/components/ui/Card’
-import { Button } from ‘@/components/ui/Button’
-import { Badge } from ‘@/components/ui/Badge’
-import { Input } from ‘@/components/ui/Input’
-import { anzarApi } from ‘@/api/backend’
-import { ArrowLeft, CreditCard, RefreshCw, Toggle2, Wallet } from ‘lucide-react’
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { Input } from '@/components/ui/Input'
+import { anzarApi } from '@/api/backend'
+import { ArrowLeft, CreditCard, RefreshCw, ToggleLeft, Wallet } from 'lucide-react'
 
 interface AdminUser {
-  id: string
+  id: number
   email: string
   name?: string
   is_active: boolean
@@ -24,18 +24,19 @@ interface AdminUser {
 }
 
 interface Transaction {
-  id: string
-  amount: number
-  type: string
+  id: number
+  amount_fcfa: number
+  type: 'recharge' | 'usage' | 'bonus' | 'refund'
   description: string
   created_at: string
+  external_ref?: string
 }
 
 function formatDate(value?: string) {
-  if (!value) return ‘—‘
+  if (!value) return '—'
   const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return ‘—‘
-  return d.toLocaleString(‘fr-FR’)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString('fr-FR')
 }
 
 export default function UserDetailsPage() {
@@ -46,8 +47,10 @@ export default function UserDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [user, setUser] = useState<AdminUser | null>(null)
   const [saving, setSaving] = useState(false)
-  const [grantAmount, setGrantAmount] = useState(‘’)
-  const [grantDescription, setGrantDescription] = useState(‘’)
+  const [grantAmount, setGrantAmount] = useState('')
+  const [grantType, setGrantType] = useState<'bonus' | 'refund' | 'recharge'>('bonus')
+  const [grantReference, setGrantReference] = useState('')
+  const [grantDescription, setGrantDescription] = useState('')
   const [granting, setGranting] = useState(false)
 
   const load = async () => {
@@ -56,9 +59,9 @@ export default function UserDetailsPage() {
     setError(null)
     try {
       const u = await anzarApi.getUser(decodeURIComponent(userId))
-      setUser(u as AdminUser)
+      setUser(u as unknown as AdminUser)
     } catch (err) {
-      setError(err instanceof Error ? err.message : ‘Erreur chargement utilisateur’)
+      setError(err instanceof Error ? err.message : 'Erreur chargement utilisateur')
     } finally {
       setLoading(false)
     }
@@ -77,7 +80,7 @@ export default function UserDetailsPage() {
       await anzarApi.updateUser(user.email, { is_active: !user.is_active })
       setUser({ ...user, is_active: !user.is_active })
     } catch (err) {
-      setError(err instanceof Error ? err.message : ‘Erreur mise à jour statut’)
+      setError(err instanceof Error ? err.message : 'Erreur mise à jour statut')
     } finally {
       setSaving(false)
     }
@@ -90,16 +93,38 @@ export default function UserDetailsPage() {
     try {
       const amount = parseFloat(grantAmount)
       if (isNaN(amount) || amount <= 0) {
-        setError(‘Montant invalide’)
+        setError('Montant invalide')
         setGranting(false)
         return
       }
-      await anzarApi.grantCredits(user.email, amount, grantDescription)
-      setGrantAmount(‘’)
-      setGrantDescription(‘’)
+      const desc = grantDescription.trim()
+      if (desc.length < 3) {
+        setError("Raison obligatoire (min 3 caractères)")
+        setGranting(false)
+        return
+      }
+      const ref = grantReference.trim()
+      if (grantType === 'recharge' && !ref) {
+        setError("Référence obligatoire pour une recharge (anti double recharge)")
+        setGranting(false)
+        return
+      }
+
+      await anzarApi.adjustCredits({
+        email: user.email,
+        amount,
+        tx_type: grantType,
+        description: desc,
+        external_ref: ref,
+      })
+
+      setGrantAmount('')
+      setGrantType('bonus')
+      setGrantReference('')
+      setGrantDescription('')
       await load()
     } catch (err) {
-      setError(err instanceof Error ? err.message : ‘Erreur lors de l\’attribution de crédits’)
+      setError(err instanceof Error ? err.message : "Erreur lors de l'attribution de crédits")
     } finally {
       setGranting(false)
     }
@@ -110,12 +135,12 @@ export default function UserDetailsPage() {
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate(‘/users’)} aria-label="Retour">
+            <Button variant="ghost" size="icon" onClick={() => navigate('/users')} aria-label="Retour">
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="min-w-0">
               <h1 className="text-2xl font-bold text-foreground-primary truncate">{user?.email || userId}</h1>
-              <p className="text-sm text-foreground-secondary truncate">{user?.name || ‘—‘}</p>
+              <p className="text-sm text-foreground-secondary truncate">{user?.name || '—'}</p>
             </div>
           </div>
         </div>
@@ -125,12 +150,12 @@ export default function UserDetailsPage() {
             Rafraîchir
           </Button>
           <Button
-            variant={user?.is_active ? ‘secondary’ : ‘outline’}
-            leftIcon={<Toggle2 className="h-4 w-4" />}
+            variant={user?.is_active ? 'secondary' : 'outline'}
+            leftIcon={<ToggleLeft className="h-4 w-4" />}
             onClick={() => void toggleActiveStatus()}
             isLoading={saving}
           >
-            {user?.is_active ? ‘Désactiver’ : ‘Activer’}
+            {user?.is_active ? 'Désactiver' : 'Activer'}
           </Button>
         </div>
       </div>
@@ -165,13 +190,13 @@ export default function UserDetailsPage() {
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground-primary">Nom</label>
-                    <p className="text-sm text-foreground-primary">{user.name || ‘—‘}</p>
+                    <p className="text-sm text-foreground-primary">{user.name || '—'}</p>
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium text-foreground-primary">Statut</label>
                     <div className="flex items-center gap-2">
-                      <Badge variant={user.is_active ? ‘success’ : ‘outline’}>
-                        {user.is_active ? ‘Actif’ : ‘Inactif’}
+                      <Badge variant={user.is_active ? 'success' : 'outline'}>
+                        {user.is_active ? 'Actif' : 'Inactif'}
                       </Badge>
                     </div>
                   </div>
@@ -205,17 +230,17 @@ export default function UserDetailsPage() {
                 <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">
                   <p className="text-xs font-medium text-foreground-secondary uppercase">Solde actuel</p>
                   <p className="text-2xl font-bold text-foreground-primary">
-                    {user.credits.balance_fcfa.toLocaleString(‘fr-FR’)} FCFA
+                    {user.credits.balance_fcfa.toLocaleString('fr-FR')} FCFA
                   </p>
                 </div>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-foreground-secondary">Total recharges</span>
-                    <span className="text-foreground-primary">{user.credits.total_recharged.toLocaleString(‘fr-FR’)} FCFA</span>
+                    <span className="text-foreground-primary">{user.credits.total_recharged.toLocaleString('fr-FR')} FCFA</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-foreground-secondary">Total utilisé</span>
-                    <span className="text-foreground-primary">{user.credits.total_used.toLocaleString(‘fr-FR’)} FCFA</span>
+                    <span className="text-foreground-primary">{user.credits.total_used.toLocaleString('fr-FR')} FCFA</span>
                   </div>
                 </div>
               </CardContent>
@@ -231,7 +256,7 @@ export default function UserDetailsPage() {
               <CardDescription>Ajouter des crédits au compte utilisateur</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground-primary">Montant (FCFA)</label>
                   <Input
@@ -244,14 +269,37 @@ export default function UserDetailsPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground-primary">Description</label>
+                  <label className="text-sm font-medium text-foreground-primary">Type</label>
+                  <select
+                    className="w-full h-10 rounded-lg border border-border bg-background-secondary px-3 text-sm text-foreground-primary"
+                    value={grantType}
+                    onChange={(e) => setGrantType(e.target.value as any)}
+                    disabled={granting}
+                  >
+                    <option value="bonus">Bonus</option>
+                    <option value="refund">Remboursement</option>
+                    <option value="recharge">Recharge</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground-primary">Référence (optionnel)</label>
                   <Input
-                    placeholder="Bonus, recharge manuelle, etc."
-                    value={grantDescription}
-                    onChange={(e) => setGrantDescription(e.target.value)}
+                    placeholder="ex: wave_2026_000123"
+                    value={grantReference}
+                    onChange={(e) => setGrantReference(e.target.value)}
+                    disabled={granting}
                   />
                 </div>
-                <div className="flex items-end">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground-primary">Raison (obligatoire)</label>
+                  <Input
+                    placeholder="Ex: Bonus de bienvenue, compensation, recharge validée…"
+                    value={grantDescription}
+                    onChange={(e) => setGrantDescription(e.target.value)}
+                    disabled={granting}
+                  />
+                </div>
+                <div className="flex items-end md:col-span-4">
                   <Button
                     onClick={() => void grantCredits()}
                     disabled={!grantAmount || !grantDescription}
@@ -283,17 +331,19 @@ export default function UserDetailsPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {user.recent_transactions.map((transaction) => (
+                      {(user.recent_transactions as any as Transaction[]).map((transaction) => (
                         <tr key={transaction.id} className="border-t border-border hover:bg-background-tertiary/30">
                           <td className="p-3">
-                            <Badge variant={transaction.type === ‘credit’ ? ‘success’ : ‘secondary’} className="capitalize">
+                            <Badge variant={transaction.type === 'usage' ? 'secondary' : 'success'} className="capitalize">
                               {transaction.type}
                             </Badge>
                           </td>
                           <td className="p-3 text-foreground-secondary">{transaction.description}</td>
                           <td className="p-3 text-foreground-primary font-medium">
-                            {(transaction.type === ‘credit’ ? ‘+’ : ‘-’)}
-                            {Math.abs(transaction.amount).toLocaleString(‘fr-FR’)} FCFA
+                            <span className={transaction.type === 'usage' ? 'text-accent-error' : 'text-accent-success'}>
+                              {transaction.amount_fcfa >= 0 ? '+' : '-'}
+                              {Math.abs(transaction.amount_fcfa).toLocaleString('fr-FR')} FCFA
+                            </span>
                           </td>
                           <td className="p-3 text-foreground-secondary text-xs">
                             {formatDate(transaction.created_at)}

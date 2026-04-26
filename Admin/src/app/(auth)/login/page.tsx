@@ -25,7 +25,11 @@ export default function LoginPage() {
     try {
       const result = await anzarApi.login(email.trim(), password)
       setSession({ token: result.token, user: result.user as any })
-      navigate('/dashboard')
+      if ((result.user as any)?.must_change_password) {
+        navigate('/settings')
+      } else {
+        navigate('/dashboard')
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Échec de la connexion'
       setError(msg)
@@ -197,7 +201,7 @@ export default function LoginPage() {
                   </Button>
 
                   <p className="text-center text-xs text-foreground-muted">
-                    Identifiants par défaut : admin@anzar.app / Anzar2024!
+                    Astuce : en production, utilise un mot de passe admin fort et unique.
                   </p>
                 </form>
               </CardContent>

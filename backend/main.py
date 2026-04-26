@@ -561,7 +561,13 @@ async def recharge_credits(body: RechargeRequest, user: dict = Depends(get_curre
     if body.payment_ref:
         description += f" (ref: {body.payment_ref})"
 
-    creds = await add_credits(email, body.amount_fcfa, description)
+    creds = await add_credits(
+        email,
+        body.amount_fcfa,
+        description,
+        tx_type="recharge",
+        external_ref=body.payment_ref,
+    )
 
     return {
         "status": "ok",
@@ -1269,10 +1275,13 @@ class AdminUserPatchRequest(BaseModel):
 
 class AdminAddCreditsRequest(BaseModel):
     amount: float = Field(..., gt=0, le=10_000_000)
-    description: str = Field(default="Bonus admin", max_length=500)
+    tx_type: str = Field(default="bonus", max_length=20)  # bonus | refund | recharge
+    description: str = Field(..., min_length=3, max_length=500)
+    external_ref: str = Field(default="", max_length=255)  # for idempotency / payment ref
 
 
 async def get_current_admin(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(
         HTTPBearer(auto_error=False)
     ),
@@ -1285,6 +1294,20 @@ async def get_current_admin(
         raise HTTPException(401, "Token admin invalide ou expiré")
     if not payload.get("is_admin"):
         raise HTTPException(403, "Accès admin requis")
+    # Verify admin still exists/active + load flags
+    admin_data = await get_admin_by_id(payload.get("admin_id"))
+    if not admin_data:
+        raise HTTPException(401, "Compte admin introuvable ou désactivé")
+
+    must_change = bool(admin_data.get("must_change_password"))
+    payload["must_change_password"] = must_change
+
+    # Force password reset: allow only /me and /change-password while flag is on
+    if must_change:
+        allowed = {"/api/admin/me", "/api/admin/change-password"}
+        if request.url.path not in allowed:
+            raise HTTPException(403, "Mot de passe admin à modifier avant de continuer.")
+
     return payload
 
 
@@ -1333,6 +1356,7 @@ async def admin_login(body: AdminLoginRequest, request: Request):
             "is_admin": True,
             "admin_id": admin["id"],
             "role": admin["role"],
+            "must_change_password": bool(admin.get("must_change_password")),
         },
     )
 
@@ -1343,6 +1367,7 @@ async def admin_login(body: AdminLoginRequest, request: Request):
             "name": admin.get("name", "Admin"),
             "role": admin["role"],
             "admin_id": admin["id"],
+            "must_change_password": bool(admin.get("must_change_password")),
         },
     }
 
@@ -1360,6 +1385,7 @@ async def admin_me(admin: dict = Depends(get_current_admin)):
         "role": admin_data["role"],
         "created_at": admin_data["created_at"],
         "last_login": admin_data["last_login"],
+        "must_change_password": bool(admin_data.get("must_change_password")),
     }
 
 
@@ -1456,8 +1482,23 @@ async def admin_grant_credits(
     admin: dict = Depends(require_admin_role("owner", "admin")),
 ):
     """Grant credits to a user. Owner/admin only."""
-    result = await admin_add_credits_to_user(user_email, body.amount, body.description)
-    audit_log(admin["sub"], "grant_credits", user_email, f"amount={body.amount} desc={body.description}")
+    tx_type = (body.tx_type or "bonus").strip().lower()
+    if tx_type not in ("bonus", "refund", "recharge"):
+        raise HTTPException(400, "tx_type invalide (bonus|refund|recharge)")
+
+    result = await admin_add_credits_to_user(
+        user_email,
+        body.amount,
+        body.description.strip(),
+        tx_type=tx_type,
+        external_ref=body.external_ref.strip(),
+    )
+    audit_log(
+        admin["sub"],
+        "grant_credits",
+        user_email,
+        f"amount={body.amount} type={tx_type} ref={body.external_ref} desc={body.description}",
+    )
     return {"status": "ok", "credits": result}
 
 

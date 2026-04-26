@@ -1,18 +1,18 @@
-import { useState, useEffect, useCallback } from ‘react’
-import { useNavigate } from ‘react-router-dom’
-import { anzarApi, type ProjectRow } from ‘@/api/backend’
-import { Button } from ‘@/components/ui/Button’
-import { Input } from ‘@/components/ui/Input’
-import { Card, CardContent, CardHeader, CardTitle } from ‘@/components/ui/Card’
-import { Badge } from ‘@/components/ui/Badge’
-import { Search, Trash2, Eye, RefreshCw, FolderOpen } from ‘lucide-react’
+import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { anzarApi, type ProjectRow } from '@/api/backend'
+import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Card, CardContent } from '@/components/ui/Card'
+import { Badge } from '@/components/ui/Badge'
+import { Search, Trash2, Eye, RefreshCw, FolderOpen } from 'lucide-react'
 
-type StatusFilter = ‘all’ | ‘pending’ | ‘planning’ | ‘generating’ | ‘testing’ | ‘complete’ | ‘error’ | ‘cancelled’
+type StatusFilter = 'all' | 'pending' | 'planning' | 'generating' | 'testing' | 'complete' | 'error' | 'cancelled'
 
 export default function ProjectsPage() {
   const navigate = useNavigate()
-  const [searchQuery, setSearchQuery] = useState(‘’)
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>(‘all’)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -25,31 +25,25 @@ export default function ProjectsPage() {
     try {
       const res = await anzarApi.listProjects({
         search: searchQuery.trim() || undefined,
-        status: statusFilter !== ‘all’ ? statusFilter : undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
         limit: 100,
         offset: 0,
       })
       setProjects(res.projects || [])
       setTotal(res.total || 0)
     } catch (err) {
-      setError(err instanceof Error ? err.message : ‘Erreur lors du chargement des projets’)
+      setError(err instanceof Error ? err.message : 'Erreur lors du chargement des projets')
     } finally {
       setLoading(false)
     }
   }, [searchQuery, statusFilter])
 
   useEffect(() => {
-    let alive = true
-    ;(async () => {
-      await fetchProjects()
-    })()
-    return () => {
-      alive = false
-    }
+    void fetchProjects()
   }, [fetchProjects])
 
   const handleDelete = async (projectId: string) => {
-    if (!confirm(‘Êtes-vous sûr de vouloir supprimer ce projet ?’)) return
+    if (!confirm('Êtes-vous sûr de vouloir supprimer ce projet ?')) return
 
     setDeleting(projectId)
     try {
@@ -57,29 +51,29 @@ export default function ProjectsPage() {
       setProjects(projects.filter(p => p.id !== projectId))
       setTotal(Math.max(0, total - 1))
     } catch (err) {
-      setError(err instanceof Error ? err.message : ‘Erreur lors de la suppression’)
+      setError(err instanceof Error ? err.message : 'Erreur lors de la suppression')
     } finally {
       setDeleting(null)
     }
   }
 
-  const statusVariant = (status?: string): ‘default’ | ‘secondary’ | ‘destructive’ | ‘outline’ => {
-    if (!status) return ‘outline’
-    if (status === ‘complete’ || status === ‘completed’) return ‘default’
-    if (status === ‘error’ || status === ‘failed’) return ‘destructive’
-    if (status === ‘generating’ || status === ‘testing’) return ‘secondary’
-    return ‘outline’
+  const statusVariant = (status?: string): 'default' | 'secondary' | 'error' | 'outline' => {
+    if (!status) return 'outline'
+    if (status === 'complete' || status === 'completed') return 'default'
+    if (status === 'error' || status === 'failed') return 'error'
+    if (status === 'generating' || status === 'testing') return 'secondary'
+    return 'outline'
   }
 
   const statusLabels: Record<StatusFilter, string> = {
-    all: ‘Tous’,
-    pending: ‘En attente’,
-    planning: ‘Planification’,
-    generating: ‘Génération’,
-    testing: ‘Test’,
-    complete: ‘Complété’,
-    error: ‘Erreur’,
-    cancelled: ‘Annulé’,
+    all: 'Tous',
+    pending: 'En attente',
+    planning: 'Planification',
+    generating: 'Génération',
+    testing: 'Test',
+    complete: 'Complété',
+    error: 'Erreur',
+    cancelled: 'Annulé',
   }
 
   return (
@@ -102,7 +96,7 @@ export default function ProjectsPage() {
             <RefreshCw className="h-4 w-4" />
             Actualiser
           </Button>
-          <Button onClick={() => navigate(‘/studio’)}>Nouveau projet</Button>
+          <Button onClick={() => navigate('/studio')}>Nouveau projet</Button>
         </div>
       </div>
 
@@ -157,7 +151,7 @@ export default function ProjectsPage() {
             <p className="text-foreground-secondary mb-6">
               Lance un premier projet depuis le Studio pour voir apparaître l’historique ici.
             </p>
-            <Button onClick={() => navigate(‘/studio’)}>
+            <Button onClick={() => navigate('/studio')}>
               Ouvrir le Studio
             </Button>
           </CardContent>
@@ -194,29 +188,29 @@ export default function ProjectsPage() {
                     </td>
                     <td className="p-4 text-sm text-foreground-primary">
                       <div>
-                        <div>{project.user_name || ‘—‘}</div>
-                        <div className="text-xs text-foreground-secondary">{project.user_email || ‘—‘}</div>
+                        <div>{project.user_name || '—'}</div>
+                        <div className="text-xs text-foreground-secondary">{project.user_email || '—'}</div>
                       </div>
                     </td>
                     <td className="p-4">
                       <Badge variant={statusVariant(project.status)}>
-                        {project.status || ‘unknown’}
+                        {project.status || 'unknown'}
                       </Badge>
                     </td>
                     <td className="p-4 text-sm text-foreground-primary">
-                      {typeof project.cost_fcfa === ‘number’
-                        ? `${project.cost_fcfa.toLocaleString(‘fr-FR’)} FCFA`
-                        : ‘—‘}
+                      {typeof project.cost_fcfa === 'number'
+                        ? `${project.cost_fcfa.toLocaleString('fr-FR')} FCFA`
+                        : '—'}
                     </td>
                     <td className="p-4 text-sm text-foreground-primary">
-                      {typeof project.tokens_used === ‘number’
-                        ? project.tokens_used.toLocaleString(‘fr-FR’)
-                        : ‘—‘}
+                      {typeof project.tokens_used === 'number'
+                        ? project.tokens_used.toLocaleString('fr-FR')
+                        : '—'}
                     </td>
                     <td className="p-4 text-sm text-foreground-secondary">
                       {project.created_at
-                        ? new Date(project.created_at).toLocaleString(‘fr-FR’)
-                        : ‘—‘}
+                        ? new Date(project.created_at).toLocaleString('fr-FR')
+                        : '—'}
                     </td>
                     <td className="p-4">
                       <div className="flex items-center gap-2">
@@ -236,7 +230,7 @@ export default function ProjectsPage() {
                           className="text-red-600 hover:text-red-700"
                         >
                           <Trash2 className="h-4 w-4" />
-                          {deleting === project.id ? ‘Suppression…’ : ‘Supprimer’}
+                          {deleting === project.id ? 'Suppression…' : 'Supprimer'}
                         </Button>
                       </div>
                     </td>
@@ -251,7 +245,7 @@ export default function ProjectsPage() {
       {/* Total Count */}
       {!loading && projects.length > 0 && (
         <div className="flex items-center justify-between px-4 py-2 text-sm text-foreground-secondary">
-          <span>Affichage de {projects.length} sur {total} projet{total !== 1 ? ‘s’ : ‘’}</span>
+          <span>Affichage de {projects.length} sur {total} projet{total !== 1 ? 's' : ''}</span>
         </div>
       )}
     </div>

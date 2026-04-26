@@ -1,26 +1,28 @@
-import { useEffect, useState } from ‘react’
-import { useNavigate } from ‘react-router-dom’
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from ‘@/components/ui/Card’
-import { Button } from ‘@/components/ui/Button’
-import { Badge } from ‘@/components/ui/Badge’
-import { Input } from ‘@/components/ui/Input’
-import { anzarApi } from ‘@/api/backend’
-import { useAuthStore } from ‘@/stores/authStore’
-import { LogOut, RefreshCw, Server, User, Shield, AlertCircle } from ‘lucide-react’
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { Input } from '@/components/ui/Input'
+import { anzarApi } from '@/api/backend'
+import { useAuthStore } from '@/stores/authStore'
+import { LogOut, RefreshCw, Server, User, Shield, AlertCircle } from 'lucide-react'
 
 interface AdminProfile {
-  id: string
+  id: number
   email: string
   name: string
   role: string
-  created_at: string
-  last_login: string | null
+  created_at?: string
+  last_login?: string | null
+  must_change_password?: boolean
 }
 
 export default function SettingsPage() {
   const navigate = useNavigate()
   const user = useAuthStore((s) => s.user)
   const clearSession = useAuthStore((s) => s.clearSession)
+  const updateUser = useAuthStore((s) => s.updateUser)
 
   const [backendUrl] = useState(anzarApi.backendUrl)
   const [loading, setLoading] = useState(true)
@@ -29,18 +31,18 @@ export default function SettingsPage() {
 
   // Profile editing state
   const [editingName, setEditingName] = useState(false)
-  const [newName, setNewName] = useState(‘’)
+  const [newName, setNewName] = useState('')
   const [savingName, setSavingName] = useState(false)
 
   // Password change state
   const [changingPassword, setChangingPassword] = useState(false)
-  const [currentPassword, setCurrentPassword] = useState(‘’)
-  const [newPassword, setNewPassword] = useState(‘’)
-  const [confirmPassword, setConfirmPassword] = useState(‘’)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [changingPasswordLoading, setChangingPasswordLoading] = useState(false)
 
   // Backend health state
-  const [healthStatus, setHealthStatus] = useState<’idle’ | ‘loading’ | ‘ok’ | ‘error’>(‘idle’)
+  const [healthStatus, setHealthStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
 
   useEffect(() => {
     let alive = true
@@ -54,7 +56,7 @@ export default function SettingsPage() {
         setNewName(profileData.name)
       } catch (err) {
         if (!alive) return
-        setError(err instanceof Error ? err.message : ‘Erreur chargement profil’)
+        setError(err instanceof Error ? err.message : 'Erreur chargement profil')
       } finally {
         if (!alive) return
         setLoading(false)
@@ -65,9 +67,15 @@ export default function SettingsPage() {
     }
   }, [])
 
+  useEffect(() => {
+    if (user?.must_change_password) {
+      setChangingPassword(true)
+    }
+  }, [user?.must_change_password])
+
   const handleSaveName = async () => {
     if (!newName.trim()) {
-      setError(‘Le nom ne peut pas être vide’)
+      setError('Le nom ne peut pas être vide')
       return
     }
     setSavingName(true)
@@ -79,7 +87,7 @@ export default function SettingsPage() {
       }
       setEditingName(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : ‘Erreur mise à jour nom’)
+      setError(err instanceof Error ? err.message : 'Erreur mise à jour nom')
     } finally {
       setSavingName(false)
     }
@@ -87,27 +95,28 @@ export default function SettingsPage() {
 
   const handleChangePassword = async () => {
     if (!currentPassword || !newPassword) {
-      setError(‘Veuillez remplir tous les champs’)
+      setError('Veuillez remplir tous les champs')
       return
     }
     if (newPassword !== confirmPassword) {
-      setError(‘Les mots de passe ne correspondent pas’)
+      setError('Les mots de passe ne correspondent pas')
       return
     }
     if (newPassword.length < 8) {
-      setError(‘Le mot de passe doit faire au moins 8 caractères’)
+      setError('Le mot de passe doit faire au moins 8 caractères')
       return
     }
     setChangingPasswordLoading(true)
     setError(null)
     try {
       await anzarApi.changePassword(currentPassword, newPassword)
-      setCurrentPassword(‘’)
-      setNewPassword(‘’)
-      setConfirmPassword(‘’)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
       setChangingPassword(false)
+      updateUser({ must_change_password: false })
     } catch (err) {
-      setError(err instanceof Error ? err.message : ‘Erreur changement mot de passe’)
+      setError(err instanceof Error ? err.message : 'Erreur changement mot de passe')
     } finally {
       setChangingPasswordLoading(false)
     }
@@ -115,16 +124,16 @@ export default function SettingsPage() {
 
   const handleLogout = async () => {
     clearSession()
-    navigate(‘/login’)
+    navigate('/login')
   }
 
   const handleHealthCheck = async () => {
-    setHealthStatus(‘loading’)
+    setHealthStatus('loading')
     try {
       await anzarApi.health()
-      setHealthStatus(‘ok’)
+      setHealthStatus('ok')
     } catch (err) {
-      setHealthStatus(‘error’)
+      setHealthStatus('error')
     }
   }
 
@@ -149,6 +158,20 @@ export default function SettingsPage() {
         </Card>
       )}
 
+      {user?.must_change_password && (
+        <Card className="border-accent-warning/30">
+          <CardContent className="p-4 flex items-start gap-3">
+            <AlertCircle className="h-5 w-5 text-accent-warning flex-shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-accent-warning">Action requise</p>
+              <p className="text-sm text-foreground-secondary">
+                Pour des raisons de sécurité, tu dois changer le mot de passe admin avant de continuer.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {loading ? (
         <Card>
           <CardContent className="p-6 text-center text-foreground-secondary">
@@ -169,7 +192,7 @@ export default function SettingsPage() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground-primary">Adresse e-mail</label>
-                <Input value={profile?.email || ‘—‘} readOnly />
+                <Input value={profile?.email || '—'} readOnly />
                 <p className="text-xs text-foreground-secondary">Non modifiable</p>
               </div>
 
@@ -196,7 +219,7 @@ export default function SettingsPage() {
                       variant="outline"
                       onClick={() => {
                         setEditingName(false)
-                        setNewName(profile?.name || ‘’)
+                        setNewName(profile?.name || '')
                       }}
                       disabled={savingName}
                     >
@@ -205,7 +228,7 @@ export default function SettingsPage() {
                   </div>
                 ) : (
                   <div className="flex items-center justify-between gap-2">
-                    <Input value={profile?.name || ‘—‘} readOnly />
+                    <Input value={profile?.name || '—'} readOnly />
                     <Button
                       size="sm"
                       variant="outline"
@@ -222,7 +245,7 @@ export default function SettingsPage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="primary" className="flex items-center gap-1">
                     <Shield className="h-4 w-4" />
-                    {profile?.role || ‘—‘}
+                    {profile?.role || '—'}
                   </Badge>
                 </div>
               </div>
@@ -231,13 +254,13 @@ export default function SettingsPage() {
                 <div>
                   <p className="text-foreground-secondary">Créé le</p>
                   <p className="font-mono text-foreground-primary">
-                    {profile?.created_at ? new Date(profile.created_at).toLocaleDateString(‘fr-FR’) : ‘—‘}
+                    {profile?.created_at ? new Date(profile.created_at).toLocaleDateString('fr-FR') : '—'}
                   </p>
                 </div>
                 <div>
                   <p className="text-foreground-secondary">Dernière connexion</p>
                   <p className="font-mono text-foreground-primary">
-                    {profile?.last_login ? new Date(profile.last_login).toLocaleDateString(‘fr-FR’) : ‘—‘}
+                    {profile?.last_login ? new Date(profile.last_login).toLocaleDateString('fr-FR') : '—'}
                   </p>
                 </div>
               </div>
@@ -265,16 +288,16 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <label className="text-sm font-medium text-foreground-primary">Santé du serveur</label>
                 <div className="flex items-center gap-2">
-                  {healthStatus === ‘ok’ && (
+                  {healthStatus === 'ok' && (
                     <Badge variant="primary">Connecté</Badge>
                   )}
-                  {healthStatus === ‘error’ && (
+                  {healthStatus === 'error' && (
                     <Badge variant="secondary">Erreur de connexion</Badge>
                   )}
-                  {healthStatus === ‘idle’ && (
+                  {healthStatus === 'idle' && (
                     <Badge variant="outline">Non testé</Badge>
                   )}
-                  {healthStatus === ‘loading’ && (
+                  {healthStatus === 'loading' && (
                     <Badge variant="outline">Test en cours…</Badge>
                   )}
                 </div>
@@ -286,8 +309,8 @@ export default function SettingsPage() {
                   variant="secondary"
                   leftIcon={<RefreshCw className="h-4 w-4" />}
                   onClick={handleHealthCheck}
-                  disabled={healthStatus === ‘loading’}
-                  isLoading={healthStatus === ‘loading’}
+                  disabled={healthStatus === 'loading'}
+                  isLoading={healthStatus === 'loading'}
                 >
                   Tester connexion
                 </Button>
@@ -362,9 +385,9 @@ export default function SettingsPage() {
                     variant="outline"
                     onClick={() => {
                       setChangingPassword(false)
-                      setCurrentPassword(‘’)
-                      setNewPassword(‘’)
-                      setConfirmPassword(‘’)
+                      setCurrentPassword('')
+                      setNewPassword('')
+                      setConfirmPassword('')
                     }}
                     disabled={changingPasswordLoading}
                   >

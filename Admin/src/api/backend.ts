@@ -21,6 +21,7 @@ export type AdminLoginResponse = {
     name: string;
     role: string;
     admin_id: number;
+    must_change_password?: boolean;
   };
 };
 
@@ -217,7 +218,25 @@ export const anzarApi = {
   async grantCredits(email: string, amount: number, description = 'Bonus admin'): Promise<{ status: string; credits: Credits }> {
     return apiFetch(`/api/admin/users/${encodeURIComponent(email)}/credits`, {
       method: 'POST',
-      body: JSON.stringify({ amount, description }),
+      body: JSON.stringify({ amount, tx_type: 'bonus', description, external_ref: '' }),
+    });
+  },
+
+  async adjustCredits(params: {
+    email: string;
+    amount: number;
+    tx_type: 'bonus' | 'refund' | 'recharge';
+    description: string;
+    external_ref?: string;
+  }): Promise<{ status: string; credits: Credits }> {
+    return apiFetch(`/api/admin/users/${encodeURIComponent(params.email)}/credits`, {
+      method: 'POST',
+      body: JSON.stringify({
+        amount: params.amount,
+        tx_type: params.tx_type,
+        description: params.description,
+        external_ref: params.external_ref || '',
+      }),
     });
   },
 
