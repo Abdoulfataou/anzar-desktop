@@ -228,14 +228,21 @@ async def create_user(email: str, password: str = "") -> Dict[str, Any]:
             (email, pw_hash, salt, email.split("@")[0])
         )
         # Initialize credit record
+        welcome_bonus = float(getattr(settings, "welcome_bonus_fcfa", 0) or 0)
+        welcome_bonus = max(0.0, welcome_bonus)
         await db.execute(
-            "INSERT INTO credits (user_email, balance_fcfa) VALUES (?, 0)",
-            (email,)
+            "INSERT INTO credits (user_email, balance_fcfa) VALUES (?, ?)",
+            (email, welcome_bonus)
         )
+        if welcome_bonus > 0:
+            await db.execute(
+                "INSERT INTO transactions (user_email, type, amount_fcfa, description) VALUES (?, 'bonus', ?, ?)",
+                (email, welcome_bonus, "Bonus de bienvenue"),
+            )
         await db.commit()
         user_id = cursor.lastrowid
 
-    logger.info(f"User created: {email}")
+    logger.info(f"User created: {email} (welcome_bonus={welcome_bonus} FCFA)")
     return {"id": user_id, "email": email}
 
 
@@ -308,9 +315,17 @@ async def get_credits(email: str) -> Dict[str, Any]:
         return {"user_email": email, "balance_fcfa": 0, "total_recharged": 0, "total_used": 0}
 
 
-async def add_credits(email: str, amount_fcfa: float, description: str = "Recharge") -> Dict[str, Any]:
-    """Add credits (recharge). Returns new balance."""
+async def add_credits(
+    email: str,
+    amount_fcfa: float,
+    description: str = "Recharge",
+    tx_type: str = "recharge",
+) -> Dict[str, Any]:
+    """Add credits (recharge/bonus/refund). Returns new balance."""
     email = email.lower().strip()
+    tx_type = (tx_type or "recharge").strip().lower()
+    if tx_type not in ("recharge", "bonus", "refund"):
+        tx_type = "recharge"
 
     async with aiosqlite.connect(settings.database_path) as db:
         # Update balance
@@ -325,8 +340,8 @@ async def add_credits(email: str, amount_fcfa: float, description: str = "Rechar
         # Record transaction
         await db.execute("""
             INSERT INTO transactions (user_email, type, amount_fcfa, description)
-            VALUES (?, 'recharge', ?, ?)
-        """, (email, amount_fcfa, description))
+            VALUES (?, ?, ?, ?)
+        """, (email, tx_type, amount_fcfa, description))
 
         await db.commit()
 

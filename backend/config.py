@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     # USD to FCFA exchange rate
     usd_to_fcfa: float = 615.0
 
+    # ─── Growth / Freemium ───
+    # Bonus de bienvenue crédité à la création de compte (en FCFA)
+    welcome_bonus_fcfa: float = 1000.0
+    # Quota gratuit quotidien (quand solde = 0) — nombre de requêtes chat (fenêtre 24h)
+    free_daily_chat_requests: int = 10
+
     # Aliases used by deepseek_client.py
     @property
     def chat_model(self) -> str:

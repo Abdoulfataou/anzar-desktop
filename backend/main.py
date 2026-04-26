@@ -591,12 +591,24 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
     email = user["sub"]
     config = get_provider_config(provider)
 
-    # ── Credit check ──
-    if not await has_credits(email):
-        raise HTTPException(
-            status_code=402,
-            detail="Solde épuisé. Rechargez pour continuer à utiliser ANZAR."
-        )
+    # ── Credit / Freemium check ──
+    has_paid_credits = await has_credits(email)
+    is_free_chat = False
+    if not has_paid_credits:
+        # Free daily quota (chat only)
+        quota = int(getattr(settings, "free_daily_chat_requests", 0) or 0)
+        if quota <= 0:
+            raise HTTPException(status_code=402, detail="Solde épuisé. Rechargez pour continuer à utiliser ANZAR.")
+
+        free_key = f"free_chat:{email}"
+        used = await get_rate_limit_count(free_key, window_seconds=86400)
+        if used >= quota:
+            raise HTTPException(
+                status_code=402,
+                detail=f"Quota gratuit atteint ({quota} chats/24h). Rechargez pour continuer."
+            )
+        await record_rate_limit_hit(free_key, "free-chat")
+        is_free_chat = True
 
     try:
         body = await request.json()
@@ -606,12 +618,27 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
     if "messages" in body:
         body["messages"] = validate_messages(body["messages"])
 
+    # Free tier guardrails: force default (cheapest) model
+    if is_free_chat:
+        if provider == "deepseek":
+            body["model"] = settings.deepseek_model
+        elif provider == "kimi":
+            body["model"] = settings.kimi_model
+
     # Force model limits
     max_tokens = body.get("max_completion_tokens", body.get("max_tokens", 4096))
-    if max_tokens > 16384:
-        body["max_completion_tokens"] = 16384
+    if is_free_chat:
+        # Keep free tier cheap
+        if max_tokens > 512:
+            body["max_completion_tokens"] = 512
+    else:
+        if max_tokens > 16384:
+            body["max_completion_tokens"] = 16384
 
     is_stream = body.get("stream", False)
+    if is_free_chat and is_stream:
+        # To reduce abuse/cost, streaming is disabled in the free quota
+        raise HTTPException(400, "Streaming indisponible en quota gratuit. Désactive stream ou recharge.")
 
     headers = {
         "Content-Type": "application/json",
@@ -714,18 +741,29 @@ async def _proxy_request_with_billing(
 
         # Record usage and deduct credits
         try:
+            # If user has no paid credits, we still allow the request only if it passed the free quota check
+            # (done earlier in the route). In that case we record usage but do NOT deduct credits.
+            is_paid = await has_credits(email)
             await record_usage(
-                email, provider,
+                email,
+                provider,
                 body.get("model", "unknown"),
-                input_tokens, output_tokens,
-                cost_usd, cost_fcfa, duration_ms,
+                input_tokens,
+                output_tokens,
+                cost_usd,
+                cost_fcfa,
+                duration_ms,
+                task_type="free_chat" if not is_paid else "chat",
             )
-            if cost_fcfa > 0:
+            if is_paid and cost_fcfa > 0:
                 await deduct_credits(
-                    email, cost_fcfa,
+                    email,
+                    cost_fcfa,
                     f"Chat {provider}/{body.get('model', '?')}",
-                    provider, body.get("model", ""),
-                    input_tokens, output_tokens,
+                    provider,
+                    body.get("model", ""),
+                    input_tokens,
+                    output_tokens,
                 )
         except ValueError:
             # Insufficient credits — don't block, response already generated
@@ -793,18 +831,27 @@ async def _proxy_stream_with_billing(
             if input_tokens > 0 or output_tokens > 0:
                 cost_usd, cost_fcfa = calculate_cost_fcfa(provider, input_tokens, output_tokens)
                 try:
+                    is_paid = await has_credits(email)
                     await record_usage(
-                        email, provider, model_name,
-                        input_tokens, output_tokens,
-                        cost_usd, cost_fcfa, duration_ms,
-                        task_type="chat_stream",
+                        email,
+                        provider,
+                        model_name,
+                        input_tokens,
+                        output_tokens,
+                        cost_usd,
+                        cost_fcfa,
+                        duration_ms,
+                        task_type="free_chat_stream" if not is_paid else "chat_stream",
                     )
-                    if cost_fcfa > 0:
+                    if is_paid and cost_fcfa > 0:
                         await deduct_credits(
-                            email, cost_fcfa,
+                            email,
+                            cost_fcfa,
                             f"Stream {provider}/{model_name}",
-                            provider, model_name,
-                            input_tokens, output_tokens,
+                            provider,
+                            model_name,
+                            input_tokens,
+                            output_tokens,
                         )
                 except Exception as e:
                     logger.error(f"Stream billing error: {e}")
