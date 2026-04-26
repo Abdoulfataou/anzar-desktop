@@ -49,9 +49,9 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="flex flex-col min-h-screen bg-bg-primary">
+    <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
       <TitleBar />
-      <div className="flex-1 flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center overflow-y-auto">
       <div className="w-full max-w-md px-8 py-10">
         {/* Logo */}
         <div className="text-center mb-8">
