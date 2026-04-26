@@ -26,12 +26,34 @@ logger = logging.getLogger("anzar.security")
 # ============================================================================
 
 def validate_config():
-    """Called at startup to ensure critical config is set."""
+    """Called at startup to ensure critical config is set. Fails fast if insecure in production."""
+    # ── JWT Secret ──
+    is_railway = bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("RAILWAY_PROJECT_ID"))
+    is_prod_env = os.environ.get("ENV", "").lower() in ("production", "prod") or is_railway
+
     if not settings.is_production:
+        if is_prod_env:
+            raise RuntimeError(
+                "FATAL: JWT_SECRET is still the default value. "
+                "Set JWT_SECRET env var to a secure random string (openssl rand -hex 32)."
+            )
         logger.warning("⚠️  JWT_SECRET is default — OK for dev, DANGEROUS in production")
     else:
+        if len(settings.jwt_secret) < 32:
+            raise RuntimeError("FATAL: JWT_SECRET must be at least 32 characters long.")
         logger.info("✓ JWT_SECRET is set to a custom value")
 
+    # ── Admin default password ──
+    if settings.admin_default_password == "Anzar2024!":
+        if is_prod_env:
+            logger.critical(
+                "⚠️  ADMIN_DEFAULT_PASSWORD is still the default 'Anzar2024!'. "
+                "Change it immediately after first login or set ADMIN_DEFAULT_PASSWORD env var."
+            )
+        else:
+            logger.warning("⚠️  Admin password is default — change after first login")
+
+    # ── API Keys ──
     if not settings.deepseek_api_key:
         logger.warning("⚠️  DEEPSEEK_API_KEY not set — DeepSeek provider unavailable")
 
@@ -49,11 +71,14 @@ class RateLimiter:
     def __init__(self):
         self._requests: dict[str, list[float]] = defaultdict(list)
 
-    def check(self, key: str) -> bool:
+    def check(self, key: str, max_per_minute: Optional[int] = None, max_per_day: Optional[int] = None) -> bool:
         """Check rate limit. Raises HTTPException if exceeded."""
         now = time.time()
         window_minute = now - 60
         window_day = now - 86400
+
+        per_min = max_per_minute or settings.rate_limit_per_minute
+        per_day = max_per_day or settings.rate_limit_per_day
 
         # Clean old entries
         timestamps = [t for t in self._requests[key] if t > window_day]
@@ -61,14 +86,14 @@ class RateLimiter:
 
         # Per-minute check
         recent = [t for t in timestamps if t > window_minute]
-        if len(recent) >= settings.rate_limit_per_minute:
+        if len(recent) >= per_min:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Trop de requêtes. Réessaie dans quelques secondes."
             )
 
         # Per-day check
-        if len(timestamps) >= settings.rate_limit_per_day:
+        if len(timestamps) >= per_day:
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Limite quotidienne atteinte."
@@ -76,13 +101,18 @@ class RateLimiter:
 
         self._requests[key].append(now)
 
-        # Periodic cleanup (every ~1000 entries)
-        if sum(len(v) for v in self._requests.values()) > 5000:
+        # Periodic cleanup (every ~5000 entries total)
+        total_entries = sum(len(v) for v in self._requests.values())
+        if total_entries > 5000:
             stale = [k for k, v in self._requests.items() if not v or v[-1] < window_day]
             for k in stale:
                 del self._requests[k]
 
         return True
+
+    def check_auth(self, key: str) -> bool:
+        """Tighter rate limit for auth endpoints: 5/min, 30/day per IP."""
+        return self.check(f"auth:{key}", max_per_minute=5, max_per_day=30)
 
 
 rate_limiter = RateLimiter()
@@ -92,8 +122,8 @@ rate_limiter = RateLimiter()
 # JWT TOKEN (HMAC-SHA256, constant-time comparison)
 # ============================================================================
 
-def create_token(user_id: str, expires_in: Optional[int] = None) -> str:
-    """Create HMAC-SHA256 signed token."""
+def create_token(user_id: str, expires_in: Optional[int] = None, extra_claims: Optional[dict] = None) -> str:
+    """Create HMAC-SHA256 signed token with optional extra claims."""
     if expires_in is None:
         expires_in = settings.jwt_expiry_hours * 3600
 
@@ -103,6 +133,9 @@ def create_token(user_id: str, expires_in: Optional[int] = None) -> str:
         "exp": int(time.time()) + expires_in,
         "jti": secrets.token_hex(8),
     }
+    if extra_claims:
+        payload.update(extra_claims)
+
     payload_b64 = _b64encode(json.dumps(payload, separators=(",", ":")))
     signature = hmac.new(
         settings.jwt_secret.encode("utf-8"),

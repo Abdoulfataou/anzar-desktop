@@ -156,6 +156,21 @@ async def init_db():
             )
         """)
 
+        # ── Admins (separate from users — admin panel access) ──
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS admins (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                salt TEXT NOT NULL,
+                name TEXT DEFAULT '',
+                role TEXT DEFAULT 'admin' CHECK(role IN ('owner', 'admin', 'support', 'readonly')),
+                is_active BOOLEAN DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_login TIMESTAMP
+            )
+        """)
+
         # ── Rate limits (persistent across restarts) ──
         await db.execute("""
             CREATE TABLE IF NOT EXISTS rate_limits (
@@ -693,3 +708,308 @@ async def cleanup_expired_otps():
     async with aiosqlite.connect(settings.database_path) as db:
         await db.execute("DELETE FROM otp_codes WHERE created_at < ?", (cutoff,))
         await db.commit()
+
+
+# ============================================================================
+# ADMIN MANAGEMENT
+# ============================================================================
+
+async def create_default_admin():
+    """Create a default admin account if none exists. Called at startup."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT COUNT(*) as cnt FROM admins")
+        row = await cursor.fetchone()
+        if row["cnt"] == 0:
+            pw_hash, salt = hash_password(settings.admin_default_password)
+            await db.execute(
+                "INSERT INTO admins (email, password_hash, salt, name, role) VALUES (?, ?, ?, ?, ?)",
+                (settings.admin_default_email, pw_hash, salt, "Admin ANZAR", "owner")
+            )
+            await db.commit()
+            logger.info(f"Default admin created: {settings.admin_default_email}")
+
+
+async def get_admin_by_email(email: str) -> Optional[Dict[str, Any]]:
+    """Get admin by email."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM admins WHERE email = ? AND is_active = 1",
+            (email.lower().strip(),)
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def get_admin_by_id(admin_id: int) -> Optional[Dict[str, Any]]:
+    """Get admin by ID."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT * FROM admins WHERE id = ? AND is_active = 1",
+            (admin_id,)
+        )
+        row = await cursor.fetchone()
+    return dict(row) if row else None
+
+
+async def update_admin_profile(admin_id: int, **fields) -> bool:
+    """Update admin profile fields (name, email, role)."""
+    allowed = {"name", "email", "role"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [admin_id]
+    async with aiosqlite.connect(settings.database_path) as db:
+        await db.execute(f"UPDATE admins SET {set_clause} WHERE id = ?", values)
+        await db.commit()
+    return True
+
+
+async def change_admin_password(admin_id: int, new_password: str) -> bool:
+    """Change admin password."""
+    pw_hash, salt = hash_password(new_password)
+    async with aiosqlite.connect(settings.database_path) as db:
+        await db.execute(
+            "UPDATE admins SET password_hash = ?, salt = ? WHERE id = ?",
+            (pw_hash, salt, admin_id)
+        )
+        await db.commit()
+    return True
+
+
+async def update_admin_last_login(email: str):
+    """Update admin last login timestamp."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        await db.execute(
+            "UPDATE admins SET last_login = CURRENT_TIMESTAMP WHERE email = ?",
+            (email.lower().strip(),)
+        )
+        await db.commit()
+
+
+async def list_admins() -> List[Dict[str, Any]]:
+    """List all admin accounts."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            "SELECT id, email, name, role, is_active, created_at, last_login FROM admins ORDER BY created_at"
+        )
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+# ============================================================================
+# ADMIN — GLOBAL QUERIES (cross-user data for admin panel)
+# ============================================================================
+
+async def admin_list_all_users(search: str = "", status: str = "all",
+                                limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+    """List all users with credits info. For admin panel."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        where_clauses = []
+        params: list = []
+
+        if search:
+            where_clauses.append("(u.email LIKE ? OR u.name LIKE ?)")
+            params.extend([f"%{search}%", f"%{search}%"])
+
+        if status == "active":
+            where_clauses.append("u.is_active = 1")
+        elif status == "disabled":
+            where_clauses.append("u.is_active = 0")
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        # Count total
+        cursor = await db.execute(
+            f"SELECT COUNT(*) as cnt FROM users u {where_sql}", params
+        )
+        total = (await cursor.fetchone())["cnt"]
+
+        # Fetch users with credits
+        cursor = await db.execute(f"""
+            SELECT u.id, u.email, u.name, u.is_active, u.created_at, u.last_login,
+                   COALESCE(c.balance_fcfa, 0) as balance_fcfa,
+                   COALESCE(c.total_recharged, 0) as total_recharged,
+                   COALESCE(c.total_used, 0) as total_used,
+                   (SELECT COUNT(*) FROM projects p WHERE p.user_email = u.email) as project_count
+            FROM users u
+            LEFT JOIN credits c ON c.user_email = u.email
+            {where_sql}
+            ORDER BY u.created_at DESC
+            LIMIT ? OFFSET ?
+        """, params + [limit, offset])
+        users = [dict(r) for r in await cursor.fetchall()]
+
+    return {"users": users, "total": total}
+
+
+async def admin_get_user_detail(user_email: str) -> Optional[Dict[str, Any]]:
+    """Get full user detail for admin panel."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        cursor = await db.execute("SELECT * FROM users WHERE email = ?", (user_email,))
+        user = await cursor.fetchone()
+        if not user:
+            return None
+        user = dict(user)
+
+        # Credits
+        cursor = await db.execute("SELECT * FROM credits WHERE user_email = ?", (user_email,))
+        creds = await cursor.fetchone()
+        user["credits"] = dict(creds) if creds else {"balance_fcfa": 0, "total_recharged": 0, "total_used": 0}
+
+        # Projects count
+        cursor = await db.execute("SELECT COUNT(*) as cnt FROM projects WHERE user_email = ?", (user_email,))
+        user["project_count"] = (await cursor.fetchone())["cnt"]
+
+        # Recent transactions
+        cursor = await db.execute("""
+            SELECT * FROM transactions WHERE user_email = ? ORDER BY created_at DESC LIMIT 20
+        """, (user_email,))
+        user["recent_transactions"] = [dict(r) for r in await cursor.fetchall()]
+
+    return user
+
+
+async def admin_update_user(user_email: str, **fields) -> bool:
+    """Admin update user fields (name, is_active)."""
+    allowed = {"name", "is_active"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = ?" for k in updates)
+    values = list(updates.values()) + [user_email]
+    async with aiosqlite.connect(settings.database_path) as db:
+        await db.execute(f"UPDATE users SET {set_clause} WHERE email = ?", values)
+        await db.commit()
+    return True
+
+
+async def admin_add_credits_to_user(user_email: str, amount: float, description: str = "Bonus admin") -> Dict[str, Any]:
+    """Admin grants credits to a user."""
+    return await add_credits(user_email, amount, description)
+
+
+async def admin_list_all_projects(search: str = "", status: str = "all",
+                                   limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+    """List all projects from all users. For admin panel."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        where_clauses = []
+        params: list = []
+
+        if search:
+            where_clauses.append("(p.name LIKE ? OR p.user_email LIKE ?)")
+            params.extend([f"%{search}%", f"%{search}%"])
+
+        if status != "all":
+            where_clauses.append("p.status = ?")
+            params.append(status)
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        cursor = await db.execute(f"SELECT COUNT(*) as cnt FROM projects p {where_sql}", params)
+        total = (await cursor.fetchone())["cnt"]
+
+        cursor = await db.execute(f"""
+            SELECT p.*, u.name as user_name
+            FROM projects p
+            LEFT JOIN users u ON u.email = p.user_email
+            {where_sql}
+            ORDER BY p.updated_at DESC
+            LIMIT ? OFFSET ?
+        """, params + [limit, offset])
+        projects = [dict(r) for r in await cursor.fetchall()]
+
+    return {"projects": projects, "total": total}
+
+
+async def admin_get_global_stats() -> Dict[str, Any]:
+    """Get platform-wide statistics for admin dashboard."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+
+        # Users
+        cursor = await db.execute("SELECT COUNT(*) as cnt FROM users WHERE is_active = 1")
+        active_users = (await cursor.fetchone())["cnt"]
+        cursor = await db.execute("SELECT COUNT(*) as cnt FROM users")
+        total_users = (await cursor.fetchone())["cnt"]
+
+        # Projects
+        cursor = await db.execute("SELECT COUNT(*) as cnt FROM projects")
+        total_projects = (await cursor.fetchone())["cnt"]
+        cursor = await db.execute("SELECT status, COUNT(*) as cnt FROM projects GROUP BY status")
+        project_status = {r["status"]: r["cnt"] for r in await cursor.fetchall()}
+
+        # Credits platform-wide
+        cursor = await db.execute("""
+            SELECT COALESCE(SUM(balance_fcfa), 0) as total_balance,
+                   COALESCE(SUM(total_recharged), 0) as platform_recharged,
+                   COALESCE(SUM(total_used), 0) as platform_used
+            FROM credits
+        """)
+        credits_global = dict(await cursor.fetchone())
+
+        # Usage last 30 days
+        cursor = await db.execute("""
+            SELECT COUNT(*) as total_requests,
+                   COALESCE(SUM(input_tokens + output_tokens), 0) as total_tokens,
+                   COALESCE(SUM(cost_fcfa), 0) as total_cost_fcfa
+            FROM usage_records
+            WHERE created_at >= datetime('now', '-30 days')
+        """)
+        usage_30d = dict(await cursor.fetchone())
+
+        # Usage today
+        cursor = await db.execute("""
+            SELECT COUNT(*) as requests,
+                   COALESCE(SUM(cost_fcfa), 0) as cost_fcfa
+            FROM usage_records
+            WHERE date(created_at) = date('now')
+        """)
+        usage_today = dict(await cursor.fetchone())
+
+        # Recent signups (last 7 days)
+        cursor = await db.execute("""
+            SELECT COUNT(*) as cnt FROM users
+            WHERE created_at >= datetime('now', '-7 days')
+        """)
+        new_users_7d = (await cursor.fetchone())["cnt"]
+
+    return {
+        "users": {"active": active_users, "total": total_users, "new_7d": new_users_7d},
+        "projects": {"total": total_projects, "by_status": project_status},
+        "credits": credits_global,
+        "usage_30d": usage_30d,
+        "usage_today": usage_today,
+    }
+
+
+async def admin_get_all_transactions(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    """Get all transactions platform-wide for admin."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT * FROM transactions ORDER BY created_at DESC LIMIT ? OFFSET ?
+        """, (limit, offset))
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]
+
+
+async def admin_get_all_usage(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    """Get all usage records platform-wide for admin."""
+    async with aiosqlite.connect(settings.database_path) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("""
+            SELECT * FROM usage_records ORDER BY created_at DESC LIMIT ? OFFSET ?
+        """, (limit, offset))
+        rows = await cursor.fetchall()
+    return [dict(r) for r in rows]

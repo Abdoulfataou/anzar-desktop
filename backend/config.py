@@ -76,8 +76,13 @@ class Settings(BaseSettings):
         """True if JWT secret has been changed from the default."""
         return self.jwt_secret != "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
 
+    # ─── Admin Panel ───
+    admin_default_email: str = "admin@anzar.app"
+    admin_default_password: str = "Anzar2024!"
+    admin_jwt_expiry_hours: int = 24
+
     # ─── App ───
-    app_version: str = "1.2.0"
+    app_version: str = "1.3.0"
     log_level: str = "info"
     debug: bool = False
 

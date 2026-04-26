@@ -16,8 +16,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 import httpx
+import aiosqlite
 
 from config import settings
 from security import (
@@ -34,6 +36,14 @@ from database import (
     create_project, update_project, get_project, get_user_projects, delete_project,
     cleanup_rate_limits,
     create_otp, verify_otp, get_recent_otp_count, cleanup_expired_otps,
+    get_rate_limit_count, record_rate_limit_hit,
+    # Admin
+    create_default_admin, get_admin_by_email, get_admin_by_id,
+    update_admin_profile, change_admin_password, update_admin_last_login,
+    list_admins,
+    admin_list_all_users, admin_get_user_detail, admin_update_user,
+    admin_add_credits_to_user, admin_list_all_projects,
+    admin_get_global_stats, admin_get_all_transactions, admin_get_all_usage,
 )
 from agents import OrchestratorAgent, PlannerAgent, CoderAgent, TesterAgent, ExecutorAgent
 from services.deepseek_client import DeepSeekClient
@@ -55,6 +65,7 @@ async def lifespan(app: FastAPI):
     """Startup/shutdown lifecycle."""
     validate_config()
     await init_db()
+    await create_default_admin()
     logger.info(f"ANZAR Backend v{settings.app_version} started on port {settings.effective_port}")
     yield
     logger.info("ANZAR Backend stopped")
@@ -132,6 +143,8 @@ async def security_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
 
     return response
 
@@ -192,8 +205,9 @@ class AuthRequest(BaseModel):
 # ============================================================================
 
 @app.post("/api/auth/register")
-async def register(body: AuthRequest):
+async def register(body: AuthRequest, request: Request):
     """Register a new user account. Initializes credits at 0 FCFA."""
+    rate_limiter.check_auth(get_client_ip(request))
     email = body.email.strip().lower()
     password = body.password
 
@@ -230,16 +244,19 @@ async def register(body: AuthRequest):
 
 
 @app.post("/api/auth/login")
-async def login(body: AuthRequest):
+async def login(body: AuthRequest, request: Request):
     """Login with email + password. Returns JWT + credit balance."""
+    rate_limiter.check_auth(get_client_ip(request))
     email = body.email.strip().lower()
     password = body.password
 
     user = await get_user_by_email(email)
     if not user:
+        logger.warning(f"Login failed: unknown email {email}")
         raise HTTPException(401, "Email ou mot de passe incorrect")
 
     if not verify_password(password, user["password_hash"], user["salt"]):
+        logger.warning(f"Login failed: wrong password for {email}")
         raise HTTPException(401, "Email ou mot de passe incorrect")
 
     await update_last_login(email)
@@ -335,7 +352,7 @@ async def send_code(body: SendCodeRequest, request: Request):
 
 
 @app.post("/api/auth/verify-code")
-async def verify_code(body: VerifyCodeRequest):
+async def verify_code(body: VerifyCodeRequest, request: Request):
     """
     Vérifie le code OTP et connecte l'utilisateur.
     Si c'est un nouvel email, crée le compte automatiquement.
@@ -343,6 +360,14 @@ async def verify_code(body: VerifyCodeRequest):
     """
     email = body.email.strip().lower()
     code = body.code.strip()
+
+    # Anti-brute-force: max 10 verify attempts per email per 5 minutes
+    verify_key = f"otp_verify:{email}"
+    recent_attempts = await get_rate_limit_count(verify_key, window_seconds=300)
+    if recent_attempts >= 10:
+        logger.warning(f"OTP brute-force blocked for {email} from {get_client_ip(request)}")
+        raise HTTPException(429, "Trop de tentatives. Attends quelques minutes.")
+    await record_rate_limit_hit(verify_key, "verify-code")
 
     # Verify the OTP code
     is_valid = await verify_otp(email, code, max_attempts=settings.otp_max_attempts)
@@ -773,6 +798,27 @@ async def _proxy_stream_with_billing(
 
 # In-memory project execution state (per-process; OK for single-instance Railway)
 _project_states: Dict[str, Dict[str, Any]] = {}
+_MAX_PROJECT_STATES = 200  # Prevent unbounded memory growth
+
+
+def _cleanup_project_states():
+    """Remove completed/errored project states when dict grows too large."""
+    if len(_project_states) <= _MAX_PROJECT_STATES:
+        return
+    # Remove completed/errored entries first (oldest first)
+    removable = [
+        pid for pid, state in _project_states.items()
+        if state.get("status") in ("completed", "error", "cancelled")
+    ]
+    for pid in removable:
+        del _project_states[pid]
+        if len(_project_states) <= _MAX_PROJECT_STATES // 2:
+            break
+    # If still too large, remove oldest entries regardless of status
+    if len(_project_states) > _MAX_PROJECT_STATES:
+        to_remove = list(_project_states.keys())[:len(_project_states) - _MAX_PROJECT_STATES // 2]
+        for pid in to_remove:
+            del _project_states[pid]
 
 # Shared DeepSeek client
 _deepseek_client = DeepSeekClient()
@@ -881,6 +927,9 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
 
     # Update DB status
     await update_project(project_id, status="generating")
+
+    # Clean up old entries before adding new one
+    _cleanup_project_states()
 
     # Initialize in-memory state
     _project_states[project_id] = {
@@ -1073,6 +1122,295 @@ async def remove_project(project_id: str, user: dict = Depends(get_current_user)
     # Clean in-memory state
     _project_states.pop(project_id, None)
     return {"status": "deleted"}
+
+
+# ============================================================================
+# ADMIN API — Separate auth, full platform management
+# ============================================================================
+
+class AdminLoginRequest(BaseModel):
+    email: str = Field(..., min_length=1, max_length=255)
+    password: str = Field(..., min_length=1, max_length=128)
+
+
+class AdminUpdateProfileRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    email: Optional[str] = Field(None, min_length=5, max_length=255)
+
+
+class AdminChangePasswordRequest(BaseModel):
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=8, max_length=128)
+
+
+class AdminUserPatchRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    is_active: Optional[bool] = None
+
+
+class AdminAddCreditsRequest(BaseModel):
+    amount: float = Field(..., gt=0, le=10_000_000)
+    description: str = Field(default="Bonus admin", max_length=500)
+
+
+async def get_current_admin(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(
+        HTTPBearer(auto_error=False)
+    ),
+) -> dict:
+    """FastAPI dependency: verify admin JWT. Returns admin payload with 'admin_id'."""
+    if not credentials:
+        raise HTTPException(401, "Token admin requis")
+    payload = verify_token(credentials.credentials)
+    if not payload:
+        raise HTTPException(401, "Token admin invalide ou expiré")
+    if not payload.get("is_admin"):
+        raise HTTPException(403, "Accès admin requis")
+    return payload
+
+
+def require_admin_role(*allowed_roles: str):
+    """Factory for role-based admin guards."""
+    async def checker(admin: dict = Depends(get_current_admin)):
+        if admin.get("role") not in allowed_roles:
+            raise HTTPException(403, f"Rôle requis: {', '.join(allowed_roles)}")
+        return admin
+    return checker
+
+
+# ── Admin Audit Logger ──
+_audit_logger = logging.getLogger("anzar.audit")
+
+
+def audit_log(admin_email: str, action: str, target: str = "", details: str = ""):
+    """Log an admin action for audit trail."""
+    _audit_logger.info(
+        f"ADMIN_AUDIT | admin={admin_email} | action={action} | target={target} | {details}"
+    )
+
+
+# ── Admin Auth ──
+
+@app.post("/api/admin/login")
+async def admin_login(body: AdminLoginRequest, request: Request):
+    """Login as admin. Returns JWT with is_admin=True."""
+    rate_limiter.check_auth(get_client_ip(request))
+    email = body.email.strip().lower()
+    admin = await get_admin_by_email(email)
+    if not admin:
+        raise HTTPException(401, "Identifiants admin incorrects")
+
+    if not verify_password(body.password, admin["password_hash"], admin["salt"]):
+        audit_log(email, "login_failed", email, "wrong password")
+        raise HTTPException(401, "Identifiants admin incorrects")
+
+    await update_admin_last_login(email)
+    audit_log(email, "login_success", email)
+
+    admin_token = create_token(
+        user_id=email,
+        expires_in=settings.admin_jwt_expiry_hours * 3600,
+        extra_claims={
+            "is_admin": True,
+            "admin_id": admin["id"],
+            "role": admin["role"],
+        },
+    )
+
+    return {
+        "token": admin_token,
+        "user": {
+            "email": email,
+            "name": admin.get("name", "Admin"),
+            "role": admin["role"],
+            "admin_id": admin["id"],
+        },
+    }
+
+
+@app.get("/api/admin/me")
+async def admin_me(admin: dict = Depends(get_current_admin)):
+    """Get current admin profile."""
+    admin_data = await get_admin_by_id(admin["admin_id"])
+    if not admin_data:
+        raise HTTPException(404, "Admin introuvable")
+    return {
+        "id": admin_data["id"],
+        "email": admin_data["email"],
+        "name": admin_data["name"],
+        "role": admin_data["role"],
+        "created_at": admin_data["created_at"],
+        "last_login": admin_data["last_login"],
+    }
+
+
+@app.patch("/api/admin/me")
+async def admin_update_me(body: AdminUpdateProfileRequest, admin: dict = Depends(get_current_admin)):
+    """Update current admin profile (name, email)."""
+    updates = {}
+    if body.name is not None:
+        updates["name"] = body.name.strip()
+    if body.email is not None:
+        updates["email"] = body.email.strip().lower()
+    if updates:
+        await update_admin_profile(admin["admin_id"], **updates)
+        audit_log(admin["sub"], "update_profile", str(admin["admin_id"]), str(updates))
+    admin_data = await get_admin_by_id(admin["admin_id"])
+    return {
+        "id": admin_data["id"],
+        "email": admin_data["email"],
+        "name": admin_data["name"],
+        "role": admin_data["role"],
+    }
+
+
+@app.post("/api/admin/change-password")
+async def admin_change_pwd(body: AdminChangePasswordRequest, admin: dict = Depends(get_current_admin)):
+    """Change admin password."""
+    admin_data = await get_admin_by_id(admin["admin_id"])
+    if not admin_data:
+        raise HTTPException(404, "Admin introuvable")
+    if not verify_password(body.current_password, admin_data["password_hash"], admin_data["salt"]):
+        raise HTTPException(401, "Mot de passe actuel incorrect")
+    await change_admin_password(admin["admin_id"], body.new_password)
+    audit_log(admin["sub"], "change_password", str(admin["admin_id"]))
+    return {"status": "ok", "message": "Mot de passe modifié"}
+
+
+# ── Admin: Dashboard stats ──
+
+@app.get("/api/admin/stats")
+async def admin_stats(admin: dict = Depends(get_current_admin)):
+    """Get global platform statistics for admin dashboard."""
+    return await admin_get_global_stats()
+
+
+# ── Admin: Users management ──
+
+@app.get("/api/admin/users")
+async def admin_users_list(
+    search: str = "",
+    status: str = "all",
+    limit: int = 50,
+    offset: int = 0,
+    admin: dict = Depends(get_current_admin),
+):
+    """List all users with credits and project count."""
+    return await admin_list_all_users(search=search, status=status, limit=min(limit, 200), offset=offset)
+
+
+@app.get("/api/admin/users/{user_email}")
+async def admin_user_detail(user_email: str, admin: dict = Depends(get_current_admin)):
+    """Get full user detail."""
+    user = await admin_get_user_detail(user_email)
+    if not user:
+        raise HTTPException(404, "Utilisateur non trouvé")
+    # Remove sensitive fields
+    user.pop("password_hash", None)
+    user.pop("salt", None)
+    return user
+
+
+@app.patch("/api/admin/users/{user_email}")
+async def admin_user_update(
+    user_email: str,
+    body: AdminUserPatchRequest,
+    admin: dict = Depends(require_admin_role("owner", "admin")),
+):
+    """Update user (name, active status). Owner/admin only."""
+    updates = {}
+    if body.name is not None:
+        updates["name"] = body.name.strip()
+    if body.is_active is not None:
+        updates["is_active"] = body.is_active
+    if not updates:
+        raise HTTPException(400, "Rien à modifier")
+    await admin_update_user(user_email, **updates)
+    audit_log(admin["sub"], "update_user", user_email, str(updates))
+    return {"status": "ok"}
+
+
+@app.post("/api/admin/users/{user_email}/credits")
+async def admin_grant_credits(
+    user_email: str,
+    body: AdminAddCreditsRequest,
+    admin: dict = Depends(require_admin_role("owner", "admin")),
+):
+    """Grant credits to a user. Owner/admin only."""
+    result = await admin_add_credits_to_user(user_email, body.amount, body.description)
+    audit_log(admin["sub"], "grant_credits", user_email, f"amount={body.amount} desc={body.description}")
+    return {"status": "ok", "credits": result}
+
+
+# ── Admin: Projects management ──
+
+@app.get("/api/admin/projects")
+async def admin_projects_list(
+    search: str = "",
+    status: str = "all",
+    limit: int = 50,
+    offset: int = 0,
+    admin: dict = Depends(get_current_admin),
+):
+    """List all projects from all users."""
+    return await admin_list_all_projects(search=search, status=status, limit=min(limit, 200), offset=offset)
+
+
+@app.get("/api/admin/projects/{project_id}")
+async def admin_project_detail(project_id: str, admin: dict = Depends(get_current_admin)):
+    """Get project detail (any user)."""
+    project = await get_project(project_id)
+    if not project:
+        raise HTTPException(404, "Projet non trouvé")
+    return project
+
+
+@app.delete("/api/admin/projects/{project_id}")
+async def admin_delete_project(
+    project_id: str,
+    admin: dict = Depends(require_admin_role("owner", "admin")),
+):
+    """Delete any project. Owner/admin only."""
+    project = await get_project(project_id)
+    if not project:
+        raise HTTPException(404, "Projet non trouvé")
+    # Direct delete without owner check
+    async with aiosqlite.connect(settings.database_path) as db:
+        await db.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+        await db.commit()
+    _project_states.pop(project_id, None)
+    audit_log(admin["sub"], "delete_project", project_id)
+    return {"status": "deleted"}
+
+
+# ── Admin: Transactions & Usage ──
+
+@app.get("/api/admin/transactions")
+async def admin_transactions(
+    limit: int = 100,
+    offset: int = 0,
+    admin: dict = Depends(get_current_admin),
+):
+    """Get all platform transactions."""
+    return {"transactions": await admin_get_all_transactions(limit=min(limit, 500), offset=offset)}
+
+
+@app.get("/api/admin/usage")
+async def admin_usage(
+    limit: int = 100,
+    offset: int = 0,
+    admin: dict = Depends(get_current_admin),
+):
+    """Get all platform usage records."""
+    return {"usage": await admin_get_all_usage(limit=min(limit, 500), offset=offset)}
+
+
+# ── Admin: Manage admin accounts ──
+
+@app.get("/api/admin/admins")
+async def admin_list_all(admin: dict = Depends(require_admin_role("owner"))):
+    """List all admin accounts. Owner only."""
+    return {"admins": await list_admins()}
 
 
 # ============================================================================
