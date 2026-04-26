@@ -1,142 +1,120 @@
 /**
- * Custom Tauri window title bar component
- * Draggable area with window controls (macOS-style traffic lights)
- * Falls back gracefully to browser mode when Tauri is not available
+ * Custom Tauri window title bar — macOS traffic-light style
  */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Minus, Square, X, Copy } from 'lucide-react';
 import { cn, isTauri } from '@/lib/utils';
+import { appWindow } from '@tauri-apps/api/window';
 
 interface TitleBarProps {
   className?: string;
 }
 
 export default function TitleBar({ className }: TitleBarProps) {
-  const [isTauriAvailable, setIsTauriAvailable] = useState(false);
+  const [tauriReady, setTauriReady] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
 
   useEffect(() => {
-    setIsTauriAvailable(isTauri());
+    if (!isTauri()) return;
+    appWindow.isMaximized()
+      .then((m) => {
+        setIsMaximized(m);
+        setTauriReady(true);
+      })
+      .catch(() => {
+        setTauriReady(true);
+      });
   }, []);
 
-  // Listen for maximize state changes
-  useEffect(() => {
-    if (!isTauriAvailable) return;
-    let unlisten: (() => void) | undefined;
+  const handleMinimize = useCallback(() => {
+    appWindow.minimize().catch(console.error);
+  }, []);
 
-    (async () => {
-      try {
-        const { appWindow } = await import('@tauri-apps/api/window');
-        const maximized = await appWindow.isMaximized();
-        setIsMaximized(maximized);
-      } catch {}
-    })();
+  const handleMaximize = useCallback(() => {
+    appWindow.toggleMaximize()
+      .then(() => appWindow.isMaximized())
+      .then(setIsMaximized)
+      .catch(console.error);
+  }, []);
 
-    return () => {
-      unlisten?.();
-    };
-  }, [isTauriAvailable]);
+  const handleClose = useCallback(() => {
+    appWindow.close().catch(console.error);
+  }, []);
 
-  const handleMinimize = async () => {
-    if (!isTauriAvailable) return;
-    try {
-      const { appWindow } = await import('@tauri-apps/api/window');
-      await appWindow.minimize();
-    } catch (error) {
-      console.error('Failed to minimize window:', error);
-    }
-  };
-
-  const handleMaximize = async () => {
-    if (!isTauriAvailable) return;
-    try {
-      const { appWindow } = await import('@tauri-apps/api/window');
-      await appWindow.toggleMaximize();
-      setIsMaximized(!isMaximized);
-    } catch (error) {
-      console.error('Failed to toggle maximize window:', error);
-    }
-  };
-
-  const handleClose = async () => {
-    if (!isTauriAvailable) return;
-    try {
-      const { appWindow } = await import('@tauri-apps/api/window');
-      await appWindow.close();
-    } catch (error) {
-      console.error('Failed to close window:', error);
-    }
-  };
+  const TrafficButton = ({ color, hoverIcon, onClick, label }: {
+    color: string;
+    hoverIcon: React.ReactNode;
+    onClick: () => void;
+    label: string;
+  }) => (
+    <div
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      title={label}
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
+      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: color }}
+      className="flex items-center justify-center cursor-pointer group transition-all duration-150 hover:brightness-110 active:brightness-90"
+    >
+      <span className="opacity-0 group-hover:opacity-100 transition-opacity">
+        {hoverIcon}
+      </span>
+    </div>
+  );
 
   return (
     <div
-      data-tauri-drag-region
       className={cn(
         'h-11 bg-bg-primary/80 backdrop-blur-md border-b border-border-subtle/50',
-        'flex items-center justify-between px-4 gap-4',
+        'flex items-center px-4 gap-4',
         'select-none flex-shrink-0',
         className
       )}
     >
-      {/* Left side: Window controls (macOS style) */}
-      {isTauriAvailable && (
-        <div className="flex items-center gap-2">
-          {/* Close */}
-          <button
+      {/* Window controls */}
+      {tauriReady && (
+        <div className="flex items-center gap-2 relative z-50">
+          <TrafficButton
+            color="#FF5F57"
+            label="Fermer"
             onClick={handleClose}
-            className={cn(
-              'w-3 h-3 rounded-full transition-all duration-150',
-              'bg-[#FF5F57] hover:bg-[#FF5F57]/80',
-              'flex items-center justify-center group',
-              'hover:shadow-[0_0_6px_rgba(255,95,87,0.4)]'
-            )}
-            aria-label="Fermer"
-            title="Fermer"
-          >
-            <X size={8} className="text-[#4D0000] opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-          {/* Minimize */}
-          <button
+            hoverIcon={<X size={9} strokeWidth={2.5} color="#4D0000" />}
+          />
+          <TrafficButton
+            color="#FEBC2E"
+            label="Reduire"
             onClick={handleMinimize}
-            className={cn(
-              'w-3 h-3 rounded-full transition-all duration-150',
-              'bg-[#FEBC2E] hover:bg-[#FEBC2E]/80',
-              'flex items-center justify-center group',
-              'hover:shadow-[0_0_6px_rgba(254,188,46,0.4)]'
-            )}
-            aria-label="Reduire"
-            title="Reduire"
-          >
-            <Minus size={8} className="text-[#995700] opacity-0 group-hover:opacity-100 transition-opacity" />
-          </button>
-          {/* Maximize */}
-          <button
+            hoverIcon={<Minus size={9} strokeWidth={2.5} color="#995700" />}
+          />
+          <TrafficButton
+            color="#28C840"
+            label={isMaximized ? 'Restaurer' : 'Agrandir'}
             onClick={handleMaximize}
-            className={cn(
-              'w-3 h-3 rounded-full transition-all duration-150',
-              'bg-[#28C840] hover:bg-[#28C840]/80',
-              'flex items-center justify-center group',
-              'hover:shadow-[0_0_6px_rgba(40,200,64,0.4)]'
-            )}
-            aria-label={isMaximized ? 'Restaurer' : 'Agrandir'}
-            title={isMaximized ? 'Restaurer' : 'Agrandir'}
-          >
-            {isMaximized ? (
-              <Copy size={7} className="text-[#006500] opacity-0 group-hover:opacity-100 transition-opacity" />
-            ) : (
-              <Square size={7} className="text-[#006500] opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </button>
+            hoverIcon={
+              isMaximized
+                ? <Copy size={8} strokeWidth={2.5} color="#006500" />
+                : <Square size={8} strokeWidth={2.5} color="#006500" />
+            }
+          />
         </div>
       )}
 
-      {/* Center: App name */}
-      <div className="flex-1 flex items-center justify-center">
-        <span className="text-[11px] font-medium text-text-muted tracking-wider">ANZAR</span>
+      {/* Center: draggable area */}
+      <div
+        data-tauri-drag-region
+        className="flex-1 flex items-center justify-center h-full"
+      >
+        <span className="text-[11px] font-medium text-text-muted tracking-wider pointer-events-none">
+          ANZAR
+        </span>
       </div>
 
-      {/* Right side: spacer to balance layout */}
-      {isTauriAvailable && <div className="w-[56px]" />}
+      {/* Right spacer */}
+      {tauriReady && (
+        <div data-tauri-drag-region className="w-[60px] h-full" />
+      )}
     </div>
   );
 }

@@ -764,7 +764,7 @@ export default function SettingsPage() {
 
             <SettingRow
               label="Exécution des commandes"
-              description="Contrôle comment les commandes proposées par l’IA sont exécutées."
+              description="Contrôle comment les commandes proposées par l'IA sont exécutées."
             >
               <select
                 value={form.commandExecutionMode}
@@ -783,14 +783,14 @@ export default function SettingsPage() {
 
             <SettingRow
               label="Vérifier après application"
-              description="Après Preview → Appliquer, lance automatiquement “Vérifier le projet”."
+              description="Apres Preview, lance automatiquement 'Verifier le projet'."
             >
               <Toggle checked={form.autoVerifyAfterApply} onChange={(v) => update('autoVerifyAfterApply', v)} />
             </SettingRow>
 
             <SettingRow
               label="Nettoyage auto des commandes"
-              description="Supprime automatiquement les Command Cards terminées au bout d’un moment."
+              description="Supprime automatiquement les Command Cards terminées au bout d'un moment."
             >
               <Toggle checked={form.autoCleanFinishedCommands} onChange={(v) => update('autoCleanFinishedCommands', v)} />
             </SettingRow>
@@ -823,7 +823,7 @@ export default function SettingsPage() {
 
                 {!isTauri() ? (
                   <p className="text-xs text-text-muted">
-                    Les mises à jour automatiques sont disponibles uniquement dans l’app desktop installée.
+                    Les mises à jour automatiques sont disponibles uniquement dans l'app desktop installée.
                   </p>
                 ) : (
                   <div className="flex items-center justify-between gap-3">
@@ -832,7 +832,7 @@ export default function SettingsPage() {
                         <p className="text-xs text-accent-error truncate">{updateState.error}</p>
                       ) : updateState.available ? (
                         <p className="text-xs text-accent-warning">
-                          Mise à jour disponible{updateState.version ? ` (v${updateState.version})` : ‘’}.
+                          Mise à jour disponible{updateState.version ? ` (v${updateState.version})` : ''}.
                         </p>
                       ) : (
                         <p className="text-xs text-text-muted">Aucune mise à jour détectée.</p>
@@ -855,25 +855,25 @@ export default function SettingsPage() {
                                 lastCheckedMs,
                               }));
                             } else {
-                              setUpdateState((s) => ({ ...s, checking: false, error: ‘Non supporté.’ }));
+                              setUpdateState((s) => ({ ...s, checking: false, error: 'Non supporté.' }));
                             }
                           } catch (e: any) {
                             setUpdateState((s) => ({
                               ...s,
                               checking: false,
-                              error: ‘Impossible de vérifier. Réessaie plus tard.’,
+                              error: 'Impossible de vérifier. Réessaie plus tard.',
                             }));
                           }
                         }}
                         disabled={updateState.checking || updateState.installing}
                         className={cn(
-                          ‘px-3 py-2 rounded-xl text-xs font-medium transition-all border’,
-                          ‘border-border-subtle bg-bg-tertiary/40 hover:bg-surface-hover’,
-                          (updateState.checking || updateState.installing) && ‘opacity-60 cursor-not-allowed’
+                          'px-3 py-2 rounded-xl text-xs font-medium transition-all border',
+                          'border-border-subtle bg-bg-tertiary/40 hover:bg-surface-hover',
+                          (updateState.checking || updateState.installing) && 'opacity-60 cursor-not-allowed'
                         )}
                         title="Vérifier les mises à jour"
                       >
-                        {updateState.checking ? ‘Vérification…’ : ‘Vérifier’}
+                        {updateState.checking ? 'Vérification...' : 'Vérifier'}
                       </button>
 
                       {updateState.available && (
@@ -886,18 +886,18 @@ export default function SettingsPage() {
                               setUpdateState((s) => ({
                                 ...s,
                                 installing: false,
-                                error: "Impossible d’installer la mise a jour.",
+                                error: "Impossible d'installer la mise a jour.",
                               }));
                             }
                           }}
                           disabled={updateState.installing || updateState.checking}
                           className={cn(
-                            ‘px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all’,
-                            ‘gradient-bg hover:opacity-90’,
-                            (updateState.installing || updateState.checking) && ‘opacity-60 cursor-not-allowed’
+                            'px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all',
+                            'gradient-bg hover:opacity-90',
+                            (updateState.installing || updateState.checking) && 'opacity-60 cursor-not-allowed'
                           )}
                         >
-                          {updateState.installing ? ‘Installation…’ : ‘Installer’}
+                          {updateState.installing ? 'Installation...' : 'Installer'}
                         </button>
                       )}
                     </div>
@@ -908,7 +908,7 @@ export default function SettingsPage() {
               <div className="pt-3 border-t border-border-subtle flex items-center gap-4">
                 <button
                   onClick={async () => {
-                    const url = ‘https://anzar.dev/docs’;
+                    const url = 'https://anzar.dev/docs';
                     await openExternalUrl(url);
                   }}
                   className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
@@ -918,7 +918,7 @@ export default function SettingsPage() {
                 </button>
                 <button
                   onClick={async () => {
-                    const url = ‘https://anzar.dev/support’;
+                    const url = 'https://anzar.dev/support';
                     await openExternalUrl(url);
                   }}
                   className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
@@ -938,7 +938,7 @@ export default function SettingsPage() {
               {/* Contact cards */}
               <div className="grid grid-cols-1 gap-2.5">
                 <button
-                  onClick={() => openExternalUrl(‘mailto:abdul@issalanhub.com’)}
+                  onClick={() => openExternalUrl('mailto:abdul@issalanhub.com')}
                   className="flex items-center gap-3 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all text-left group"
                 >
                   <div className="w-9 h-9 rounded-lg bg-accent-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-accent-primary/20 transition-colors">
@@ -952,7 +952,7 @@ export default function SettingsPage() {
                 </button>
 
                 <button
-                  onClick={() => openExternalUrl(‘tel:+17172161490’)}
+                  onClick={() => openExternalUrl('tel:+17172161490')}
                   className="flex items-center gap-3 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all text-left group"
                 >
                   <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-green-500/20 transition-colors">
@@ -967,7 +967,7 @@ export default function SettingsPage() {
 
                 <div className="flex gap-2.5">
                   <button
-                    onClick={() => openExternalUrl(‘https://wa.me/17172161490’)}
+                    onClick={() => openExternalUrl('https://wa.me/17172161490')}
                     className="flex-1 flex items-center gap-2.5 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all group"
                   >
                     <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-green-500/20 transition-colors">
@@ -979,7 +979,7 @@ export default function SettingsPage() {
                   </button>
 
                   <button
-                    onClick={() => openExternalUrl(‘https://t.me/+17172161490’)}
+                    onClick={() => openExternalUrl('https://t.me/+17172161490')}
                     className="flex-1 flex items-center gap-2.5 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all group"
                   >
                     <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-500/20 transition-colors">
