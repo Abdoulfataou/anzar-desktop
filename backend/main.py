@@ -276,8 +276,10 @@ async def register(body: AuthRequest, request: Request):
     try:
         user = await create_user(email, password)
     except Exception as e:
-        logger.error(f"Failed to create user: {e}")
-        raise HTTPException(500, "Erreur lors de la création du compte")
+        logger.error(f"Failed to create user: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(500, f"Erreur creation: {type(e).__name__}: {e}")
 
     token = create_token(user_id=email)
 
