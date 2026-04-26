@@ -1,254 +1,79 @@
-# ANZAR - Assistant IA de Vibecoding
+# ANZAR
 
-🚀 **ANZAR** est un système multi-agent qui génère des applications complètes à partir de descriptions textuelles. Il utilise plusieurs agents IA spécialisés qui collaborent pour planifier, coder, tester et exécuter des projets complets.
+Assistant IA de *vibecoding* : tu décris un projet, ANZAR planifie, génère le code, propose des changements **avec preview**, puis boucle **Verify → Fix → Verify** pour stabiliser le projet (style “Cowork”).
 
-## 🌟 Fonctionnalités
+> Important : ANZAR utilise des modèles via **API payantes** (ex. DeepSeek). Les clés API restent **côté backend** — jamais dans le client.
 
-### Agents Spécialisés
-1. **Orchestrateur** - Analyse la demande utilisateur et crée un plan détaillé
-2. **Planificateur** - Génère la structure complète du projet (dossiers, fichiers, dépendances)
-3. **Codeur** - Écrit le code source propre, documenté et sécurisé
-4. **Testeur** - Vérifie le code, trouve les bugs et propose des corrections
-5. **Exécuteur** - Crée physiquement les fichiers et exécute les commandes
+## Fonctionnalités (Desktop)
 
-### "Vibecoding" Mode
-- L'utilisateur donne une idée vague : "Crée un jeu Snake en Python avec Pygame"
-- ANZAR fait tout le reste : analyse, planification, codage, test, exécution
-- Validation humaine uniquement pour le plan avant exécution
+- **Chat cowork-style** : actions sous forme de *Command Cards* (Run/Stop/Retry + logs) + dock.
+- **Builder multi-agents** : `/plan → /execute` (SSE) + annulation.
+- **Changements contrôlés** : *ChangeSets* “Preview → Apply” avant écriture sur disque.
+- **Auto-verify** configurable + suggestions de correctifs (commandes allowlistées + patches de code en ChangeSet).
+- **Sécurité** : allowlist shell + confirmations sur commandes risquées + scopes FS.
+- **Observabilité** : Sentry (optionnel) + export des logs de run.
+- **Auto-update** : Tauri updater via GitHub Releases.
 
-### Technologies
-- **Backend** : Python 3.11+, AG2 (AutoGen), FastAPI, PostgreSQL, Redis
-- **Desktop** : Tauri (Rust + React + TypeScript + Tailwind)
-- **Mobile** : Expo (React Native + TypeScript)
-- **IA** : DeepSeek Chat & Reasoner (via API)
+## Monorepo (aperçu)
 
-## 🏗️ Architecture
+Ce repo contient plusieurs modules (desktop, backend, admin, etc.). Pour la prod desktop :
 
-```
-mon-agent-app/
-├── packages/
-│   ├── shared-ui/          # Composants React partagés
-│   ├── shared-bl/          # Logique métier partagée
-│   │   ├── agents/         # 5 agents spécialisés
-│   │   ├── tools/          # Tool calling
-│   │   └── api/            # Appels DeepSeek + FastAPI
-│   ├── desktop/            # Application Tauri
-│   └── mobile/             # Application Expo
-├── docker-compose.yml      # Configuration Docker complète
-└── generated_projects/     # Projets générés automatiquement
-```
+- `desktop/` : app Tauri (React + TypeScript)
+- `desktop/src-tauri/` : runtime Tauri (Rust)
 
-## 🚀 Démarrage Rapide
+## Prérequis
 
-### Prérequis
-- Docker & Docker Compose
-- Un backend ANZAR opérationnel (les clés IA sont côté serveur, pas côté client)
+- Node.js 20+
+- Rust toolchain (stable) + dépendances Tauri
+- Un **backend ANZAR** accessible (voir `desktop/.env.example`)
 
-### Installation
+## Démarrage (Desktop)
 
-1. **Cloner le projet**
-```bash
-git clone https://github.com/Abdoulfataou/anzar-desktop.git
-cd anzar-desktop
-```
-
-2. **Configurer l'environnement**
-```bash
-cp .env.example .env
-# Éditer .env et configurer VITE_BACKEND_URL (backend ANZAR)
-```
-
-3. **Démarrer avec Docker**
-```bash
-docker-compose up --build
-```
-
-4. **Accéder aux services**
-- API Backend : http://localhost:8000/docs
-- Application Desktop : http://localhost:3000
-- Application Mobile : Expo Go sur http://localhost:19002
-- Monitoring : http://localhost:3001 (admin/admin)
-
-### Développement Local
-
-#### Backend
-```bash
-cd packages/shared-bl
-python -m venv venv
-source venv/bin/activate  # ou `venv\Scripts\activate` sur Windows
-pip install -r ../../requirements.txt
-python -m api.main
-```
-
-#### Desktop
 ```bash
 cd desktop
 npm install
+cp .env.example .env
+# Editer .env et configurer VITE_BACKEND_URL (backend ANZAR)
 npm run tauri:dev
 ```
 
-#### Mobile
-```bash
-cd mobile
-npm install
-npx expo start
-```
+## Configuration (Desktop)
 
-## 📖 Utilisation
+Fichier : `desktop/.env` (voir `desktop/.env.example`)
 
-### Créer votre première application
+- `VITE_BACKEND_URL` : URL du backend ANZAR (obligatoire)
+- `VITE_SENTRY_DSN` : DSN public Sentry (optionnel)
+- `VITE_SENTRY_TRACES_SAMPLE_RATE` : (optionnel) défaut `0.1`
 
-1. **Ouvrez l'interface ANZAR** (desktop ou mobile)
-2. **Décrivez votre application** :
-   ```
-   "Crée une application de gestion de tâches avec React, Node.js, et MongoDB"
-   ```
-3. **Validez le plan** généré automatiquement
-4. **Observez les agents travailler** en temps réel
-5. **Accédez à votre application** générée dans `./generated_projects/`
+## Sécurité (résumé)
 
-### Exemples de demandes
+- **Aucune clé IA** dans le client.
+- **FS scope** limité à : `Documents/ANZAR/**`, `Desktop/ANZAR/**`, `Downloads/ANZAR/**`
+- **Shell** : allowlist stricte + détection de commandes dangereuses + confirmations.
 
-- "Crée un jeu Snake en Python avec Pygame"
-- "Développe une app de gestion de tâches avec React, Node.js, et MongoDB"
-- "Fais un site e-commerce complet avec panier et paiement Stripe"
-- "Crée une API REST pour un réseau social avec authentification JWT"
+## Production & Releases
 
-## 🔧 Configuration
+Voir : `desktop/PRODUCTION.md`
 
-### Variables d'environnement
+### GitHub Actions
+- CI : `.github/workflows/ci.yml` (lint + build)
+- Release : `.github/workflows/release.yml` (Windows + macOS + release draft)
 
-Créez un fichier `.env` basé sur `.env.example` :
+### Auto-update (Tauri)
 
-```env
-# DeepSeek API
-DEEPSEEK_API_KEY=votre_clé_api_ici
-DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+Secrets GitHub requis :
+- `TAURI_PRIVATE_KEY`
+- `TAURI_KEY_PASSWORD`
 
-# Base de données
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/multiagent_db
+Secrets optionnels (upload sourcemaps Sentry) :
+- `SENTRY_AUTH_TOKEN`
+- `SENTRY_ORG`
+- `SENTRY_PROJECT`
 
-# Redis
-REDIS_URL=redis://localhost:6379/0
+## Licence
 
-# Serveur
-API_PORT=8000
-DEBUG=true
-```
+Licence **propriétaire (ISSALANHUB)** — **Tous droits réservés**.
 
-### Modes DeepSeek
+## Support
 
-ISSALAN supporte deux modes d'IA :
-
-1. **⚡ Mode Standard** (`deepseek-chat`)
-   - Réponses rapides pour tâches simples
-   - Débogage, questions courantes
-
-2. **🧠 Mode Raisonnement** (`deepseek-reasoner`)
-   - Réflexion approfondie pour problèmes complexes
-   - Planification, analyse, architecture
-
-## 🛡️ Sécurité
-
-- Validation de toutes les entrées utilisateur avec Pydantic/Zod
-- Confirmation requise pour les opérations dangereuses
-- Isolation des processus avec Docker
-- Pas d'injection d'ID utilisateur dans les prompts
-- Stockage sécurisé des clés API
-
-## 📊 Monitoring
-
-Le système inclut un dashboard de monitoring avec :
-
-- **Prometheus** : Métriques en temps réel
-- **Grafana** : Visualisation des performances
-- **Logs structurés** : Suivi des activités des agents
-
-Accédez au monitoring : http://localhost:3001
-
-## 🤖 Agents en Détail
-
-### 1. Orchestrateur
-- **Rôle** : Chef d'orchestre du système
-- **Prompt** : "Tu es un architecte logiciel expert..."
-- **Tâches** : Analyse des demandes, création de plans, délégation
-
-### 2. Planificateur
-- **Rôle** : Architecte de projets
-- **Prompt** : "Tu es un expert en architecture de projets..."
-- **Tâches** : Structure de projets, dépendances, arborescences
-
-### 3. Codeur
-- **Rôle** : Développeur senior
-- **Prompt** : "Tu es un développeur senior expert..."
-- **Tâches** : Génération de code propre, documenté, sécurisé
-
-### 4. Testeur
-- **Rôle** : Testeur QA rigoureux
-- **Prompt** : "Tu es un testeur QA rigoureux..."
-- **Tâches** : Revue de code, détection de bugs, suggestions
-
-### 5. Exécuteur
-- **Rôle** : Créateur de fichiers
-- **Prompt** : "Tu es responsable de créer les fichiers sur le système..."
-- **Tâches** : Création de dossiers/fichiers, exécution de commandes
-
-## 🧪 Tests
-
-```bash
-# Backend tests
-cd packages/shared-bl
-python -m pytest tests/
-
-# Frontend tests
-cd desktop
-npm test
-
-# End-to-end tests
-docker-compose -f docker-compose.test.yml up --build
-```
-
-## 📈 Roadmap
-
-- [ ] Support de plus de langages (Go, Rust, Java)
-- [ ] Intégration avec GitHub/GitLab
-- [ ] Templates personnalisables
-- [ ] Marketplace d'agents
-- [ ] Mode collaboratif multi-utilisateurs
-- [ ] Plugin system pour outils externes
-
-## 🆘 Support & Contribution
-
-### Signaler un bug
-Utilisez les [Issues GitHub](https://github.com/Abdoulfataou/anzar-desktop/issues)
-
-### Contribuer
-1. Fork le projet
-2. Créez une branche (`git checkout -b feature/amazing-feature`)
-3. Commitez vos changements (`git commit -m 'Add amazing feature'`)
-4. Push (`git push origin feature/amazing-feature`)
-5. Ouvrez une Pull Request
-
-### Documentation
-- [Guide des contributeurs](docs/CONTRIBUTING.md)
-- [Architecture détaillée](docs/ARCHITECTURE.md)
-- [Guide API](docs/API.md)
-
-## 📄 Licence
-
-Ce projet est sous licence **propriétaire (ISSALANHUB)** — **Tous droits réservés**.
-
-Si tu veux publier une licence open-source plus tard, on pourra ajouter un fichier `LICENSE` adapté.
-
-## 🙏 Remerciements
-
-- **DeepSeek** pour leur API IA puissante et à faible coût (payante)
-- **AG2 (AutoGen)** pour le framework multi-agent
-- **Tauri** pour l'excellent framework desktop
-- **Expo** pour la simplicité du développement mobile
-
----
-
-**ANZAR** - Transformez vos idées en applications, une ligne à la fois.
-
-**Note** : Ce projet est un prototype. Testez-le et adaptez-le à vos besoins avant une utilisation en production.
+- Issues : https://github.com/Abdoulfataou/anzar-desktop/issues
