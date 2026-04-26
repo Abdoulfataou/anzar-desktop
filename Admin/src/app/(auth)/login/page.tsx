@@ -196,15 +196,12 @@ export default function LoginPage() {
                     Se connecter
                   </Button>
 
-                  <p className="text-center text-xs text-foreground-muted">
-                    Astuce : en production, utilise un mot de passe admin fort et unique.
-                  </p>
                 </form>
               </CardContent>
             </Card>
 
             <div className="mt-6 text-center text-xs text-foreground-muted">
-              <p>© 2026 ANZAR. Admin Console.</p>
+              <p>{"© "}{new Date().getFullYear()} IssalanHub · Tous droits reserves</p>
             </div>
           </motion.div>
         </div>
