@@ -308,6 +308,7 @@ async def create_user(email: str, password: str = "") -> Dict[str, Any]:
         async with session.begin():
             user = User(email=email, password_hash=pw_hash, salt=salt, name=email.split("@")[0])
             session.add(user)
+            await session.flush()  # User row must exist before FK references
             session.add(Credits(user_email=email, balance_fcfa=welcome_bonus, total_recharged=welcome_bonus))
             if welcome_bonus > 0:
                 session.add(
