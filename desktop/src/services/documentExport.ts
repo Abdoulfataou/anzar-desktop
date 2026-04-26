@@ -191,8 +191,7 @@ export async function exportToDocx(content: string, filename?: string): Promise<
 
       case 'paragraph':
       default:
-        // Reset numbered index on non-numbered
-        if (block.type !== 'numbered') numberedIndex = 0;
+        numberedIndex = 0;
         children.push(new Paragraph({
           children: buildTextRuns(block.text),
           spacing: { after: 120, line: 360 },
