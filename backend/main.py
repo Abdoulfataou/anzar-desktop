@@ -806,12 +806,12 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
         input_tokens = sum(len(m.get("content", "")) for m in messages) // 4
         output_tokens = len(response_text) // 4
 
-        cost_fcfa = calculate_cost_fcfa(
+        _cost_usd, cost_fcfa = calculate_cost_fcfa(
             "deepseek", input_tokens, output_tokens
         )
 
         if has_paid and cost_fcfa > 0:
-            await deduct_credits(email, cost_fcfa, f"smart_chat:{model}")
+            await deduct_credits(email, cost_fcfa, description=f"smart_chat:{model}")
             await record_usage(
                 email, "deepseek", model, "smart_chat",
                 input_tokens, output_tokens, cost_fcfa, duration_ms
