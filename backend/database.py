@@ -329,6 +329,35 @@ async def update_last_login(email: str):
             await session.execute(update(User).where(User.email == email).values(last_login=func.now()))
 
 
+async def change_user_password(email: str, new_password: str) -> bool:
+    """Change a user's password. Generates new salt + hash."""
+    email = email.lower().strip()
+    new_hash, new_salt = hash_password(new_password)
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(
+                update(User)
+                .where(User.email == email)
+                .values(password_hash=new_hash, salt=new_salt)
+            )
+            return (res.rowcount or 0) > 0
+
+
+async def deactivate_user(email: str) -> bool:
+    """Soft-delete a user account by marking it inactive."""
+    email = email.lower().strip()
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(
+                update(User)
+                .where(User.email == email)
+                .values(is_active=False)
+            )
+            return (res.rowcount or 0) > 0
+
+
 async def update_user_profile(email: str, name: str) -> bool:
     email = email.lower().strip()
     name = (name or "").strip()
