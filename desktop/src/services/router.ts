@@ -858,8 +858,15 @@ class AIRouter {
   }
 
   private getBackendUrl(path: string): string {
-    const BACKEND = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-    return `${BACKEND}${path}`;
+    // Single source of truth: settingsStore
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { useSettingsStore } = require('@/stores/settingsStore');
+      const BACKEND = useSettingsStore.getState().getBackendUrl();
+      return `${BACKEND}${path}`;
+    } catch {
+      return `http://localhost:8000${path}`;
+    }
   }
 
   // ========================================================================

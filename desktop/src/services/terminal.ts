@@ -9,6 +9,9 @@
  * - Détecter l'OS et adapter les commandes
  */
 
+import { exists, readTextFile } from '@tauri-apps/api/fs'
+import { Command } from '@tauri-apps/api/shell'
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -84,23 +87,24 @@ const BLOCKED_PATTERNS = [
   /rm\s+-rf\s+[/~]/i,            // rm -rf / or ~
   /rm\s+-rf\s+\.\./i,            // rm -rf ..
   />\s*\/dev\//i,                 // redirect to /dev/
-  /\|\s*(bash|sh|zsh|fish)\b/i,  // pipe to shell
-  /curl\s.*\|\s*(bash|sh)/i,     // curl | bash
-  /wget\s.*\|\s*(bash|sh)/i,     // wget | bash
+  /\|/i,                          // pipes (avoid chaining)
+  />/i,                           // redirections (avoid writing files)
+  /</i,                           // redirections (avoid reading sensitive files)
+  /;\s*/i,                        // command chaining
+  /&&/i,                          // command chaining
+  /\|\|/i,                        // command chaining
+  /curl\s/i,                      // downloads
+  /wget\s/i,                      // downloads
   /eval\s*\(/i,
   /\$\(.*\)/,                    // command substitution $(...)
   /`[^`]+`/,                     // backtick substitution
-  /;\s*(sudo|su|chmod\s+777|rm\s+-rf)\b/i,  // chained dangerous commands
-  /&&\s*(sudo|su|chmod\s+777|rm\s+-rf)\b/i,
-  /\|\|\s*(sudo|su|chmod\s+777|rm\s+-rf)\b/i,
   />\s*\/etc\//i,                // write to /etc
   />\s*~\/\./i,                  // write to dotfiles
   /export\s+(PATH|LD_PRELOAD|LD_LIBRARY_PATH)\s*=/i,  // env hijack
-  /curl\s+.*(-o|--output)\s/i,   // download files
-  /wget\s/i,                      // download files
   /nc\s+-/i,                      // netcat
   /python3?\s+-c\s/i,             // inline python execution
   /node\s+-e\s/i,                 // inline node execution
+  /(^|\s)(\/|~\/|[A-Za-z]:\\)/,  // absolute paths (limit to project-relative usage)
 ];
 
 /** Validate a command is safe before execution */
@@ -123,6 +127,65 @@ function validateCommand(command: string): { safe: boolean; reason?: string } {
   }
 
   return { safe: true };
+}
+
+/** Minimal command tokenizer (supports quotes) */
+function tokenize(command: string): string[] {
+  const out: string[] = [];
+  let current = '';
+  let quote: '"' | "'" | null = null;
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
+    if (quote) {
+      if (ch === quote) quote = null;
+      else current += ch;
+      continue;
+    }
+
+    if (ch === '"' || ch === "'") {
+      quote = ch as any;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      if (current) {
+        out.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (current) out.push(current);
+  return out;
+}
+
+/**
+ * Map "typed command" -> tauri allowlisted command name.
+ * (No shell wrapper: no `sh -c`, no `cmd /C`.)
+ */
+const COMMAND_NAME_MAP: Record<string, string> = {
+  npm: 'npm',
+  npx: 'npx',
+  node: 'node',
+  git: 'git',
+  cargo: 'cargo',
+  python3: 'python3',
+  python: 'python',
+  pip3: 'pip3',
+  pip: 'pip',
+};
+
+function parseExecutable(command: string): { cmdName: string; args: string[] } | null {
+  const parts = tokenize(command);
+  if (parts.length === 0) return null;
+  const raw = parts[0].toLowerCase();
+  const cmdName = COMMAND_NAME_MAP[raw];
+  if (!cmdName) return null;
+  return { cmdName, args: parts.slice(1) };
 }
 
 /** Validate and normalize a file path (prevent traversal) */
@@ -188,16 +251,6 @@ class TerminalService {
     return this.platform === 'win32';
   }
 
-  /** Get shell command name for current OS */
-  private get shellName(): string {
-    return this.isWindows ? 'cmd' : 'sh';
-  }
-
-  /** Get shell args prefix for current OS */
-  private get shellArgPrefix(): string {
-    return this.isWindows ? '/C' : '-c';
-  }
-
   // ─── Event System ───
   /** Subscribe to terminal events */
   onEvent(listener: (event: TerminalEvent) => void): () => void {
@@ -216,10 +269,13 @@ class TerminalService {
       cwd?: string;
       env?: Record<string, string>;
       silent?: boolean;
+      /** Called immediately once the process id is allocated (before spawn/output). */
+      onProcessId?: (processId: string) => void;
     } = {}
   ): Promise<string> {
     const processId = `proc-${++this.processCounter}-${Date.now()}`;
     const startTime = Date.now();
+    options.onProcessId?.(processId);
 
     // ─── SECURITY: Validate command before execution ───
     const validation = validateCommand(command);
@@ -229,17 +285,36 @@ class TerminalService {
       return processId;
     }
 
-    // ─── SECURITY: Validate cwd is within allowed project paths ───
-    if (options.cwd) {
-      const normalizedCwd = options.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
-      const isAllowed = this.allowedProjectPaths.size === 0 ||
-        Array.from(this.allowedProjectPaths).some((p) => normalizedCwd.startsWith(p));
+    // ─── SECURITY: No shell wrapper (sh -c). Only allow allowlisted executables. ───
+    const parsed = parseExecutable(command);
+    if (!parsed) {
+      const msg = `Commande non autorisée. Autorisées: ${Object.keys(COMMAND_NAME_MAP).join(', ')}`;
+      this.emitOutput(processId, 'error', `⛔ ${msg}`);
+      this.eventBus.emit({ type: 'process-error', processId, error: msg });
+      return processId;
+    }
 
-      if (!isAllowed) {
-        this.emitOutput(processId, 'error', '⛔ Dossier non autorisé. Ouvre un projet d\'abord.');
-        this.eventBus.emit({ type: 'process-error', processId, error: 'Répertoire non autorisé' });
-        return processId;
-      }
+    // ─── SECURITY: Always require a project cwd (no global execution) ───
+    if (!options.cwd) {
+      this.emitOutput(processId, 'error', '⛔ Commande bloquée: sélectionne un projet (dossier) d’abord.');
+      this.eventBus.emit({ type: 'process-error', processId, error: 'cwd manquant' });
+      return processId;
+    }
+
+    // ─── SECURITY: Validate cwd is within allowed project paths ───
+    const normalizedCwd = options.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+
+    if (this.allowedProjectPaths.size === 0) {
+      this.emitOutput(processId, 'error', '⛔ Dossier non autorisé. Ajoute/ouvre un projet d’abord.');
+      this.eventBus.emit({ type: 'process-error', processId, error: 'Aucun projet autorisé' });
+      return processId;
+    }
+
+    const isAllowed = Array.from(this.allowedProjectPaths).some((p) => normalizedCwd.startsWith(p));
+    if (!isAllowed) {
+      this.emitOutput(processId, 'error', '⛔ Dossier non autorisé. Cette commande est limitée au dossier projet.');
+      this.eventBus.emit({ type: 'process-error', processId, error: 'Répertoire non autorisé' });
+      return processId;
     }
 
     // ─── SECURITY: Block env overrides that could hijack execution ───
@@ -252,8 +327,8 @@ class TerminalService {
 
     const process: RunningProcess = {
       id: processId,
-      command: this.shellName,
-      args: [this.shellArgPrefix, command],
+      command: parsed.cmdName,
+      args: parsed.args,
       cwd: options.cwd,
       startedAt: startTime,
       status: 'running',
@@ -264,15 +339,13 @@ class TerminalService {
 
     // Emit start event
     if (!options.silent) {
-      this.emitOutput(processId, 'system', `$ ${command}`);
+      this.emitOutput(processId, 'system', `$ ${parsed.cmdName} ${parsed.args.join(' ')}`.trim());
     }
     this.eventBus.emit({ type: 'process-start', process });
 
     try {
-      const { Command } = await import('@tauri-apps/api/shell');
-
-      // Create the sidecar command via Tauri Shell
-      const cmd = new Command(this.shellName, [this.shellArgPrefix, command], {
+      // Direct allowlisted command (no sh -c)
+      const cmd = new Command(parsed.cmdName, parsed.args, {
         cwd: options.cwd,
         env: options.env,
       });
@@ -292,35 +365,29 @@ class TerminalService {
       process.pid = child.pid;
       process.childProcess = child;
 
-      // Wait for completion
-      const result = await new Promise<{ code: number }>((resolve) => {
-        cmd.on('close', (data: { code: number }) => {
-          resolve(data);
-        });
-        cmd.on('error', (error: string) => {
-          this.emitOutput(processId, 'error', error);
-          resolve({ code: 1 });
-        });
+      // Attach completion handlers (do not await — keep UI responsive)
+      cmd.on('close', (data: { code: number }) => {
+        process.exitCode = data.code;
+        process.status = data.code === 0 ? 'completed' : 'failed';
+
+        const durationMs = Date.now() - startTime;
+        if (!options.silent) {
+          const statusEmoji = data.code === 0 ? '✓' : '✗';
+          this.emitOutput(
+            processId,
+            data.code === 0 ? 'success' : 'error',
+            `${statusEmoji} Terminé (code ${data.code}) en ${this.formatDuration(durationMs)}`
+          );
+        }
+
+        this.eventBus.emit({ type: 'process-end', processId, exitCode: data.code });
       });
 
-      // Update process
-      process.exitCode = result.code;
-      process.status = result.code === 0 ? 'completed' : 'failed';
-
-      const durationMs = Date.now() - startTime;
-      if (!options.silent) {
-        const statusEmoji = result.code === 0 ? '✓' : '✗';
-        this.emitOutput(
-          processId,
-          result.code === 0 ? 'success' : 'error',
-          `${statusEmoji} Terminé (code ${result.code}) en ${this.formatDuration(durationMs)}`
-        );
-      }
-
-      this.eventBus.emit({
-        type: 'process-end',
-        processId,
-        exitCode: result.code,
+      cmd.on('error', (error: string) => {
+        process.exitCode = 1;
+        process.status = 'failed';
+        this.emitOutput(processId, 'error', error);
+        this.eventBus.emit({ type: 'process-error', processId, error });
       });
 
       return processId;
@@ -362,9 +429,18 @@ class TerminalService {
     }
 
     try {
-      const { Command } = await import('@tauri-apps/api/shell');
+      const parsed = parseExecutable(command);
+      if (!parsed) {
+        return {
+          success: false,
+          exitCode: 1,
+          stdout: '',
+          stderr: '⛔ Commande non autorisée (exécutable non allowlisté)',
+          durationMs: 0,
+        };
+      }
 
-      const cmd = new Command(this.shellName, [this.shellArgPrefix, command], {
+      const cmd = new Command(parsed.cmdName, parsed.args, {
         cwd: options.cwd,
       });
 
@@ -419,8 +495,6 @@ class TerminalService {
     options: { force?: boolean } = {}
   ): Promise<string> {
     // Detect project type by checking for lockfiles/configs
-    const { exists } = await import('@tauri-apps/api/fs');
-
     const checks = [
       { file: 'package.json', type: 'npm' as const },
       { file: 'requirements.txt', type: 'pip' as const },
@@ -510,13 +584,10 @@ class TerminalService {
       return this.runCommand(customCommand, { cwd: projectPath });
     }
 
-    const { exists } = await import('@tauri-apps/api/fs');
-
     // Check for common dev scripts
     try {
       const hasPackageJson = await exists(`${projectPath}/package.json`);
       if (hasPackageJson) {
-        const { readTextFile } = await import('@tauri-apps/api/fs');
         const pkg = JSON.parse(await readTextFile(`${projectPath}/package.json`));
         if (pkg.scripts?.dev) return this.runCommand('npm run dev', { cwd: projectPath });
         if (pkg.scripts?.start) return this.runCommand('npm start', { cwd: projectPath });
@@ -548,12 +619,9 @@ class TerminalService {
    * Run project build
    */
   async buildProject(projectPath: string): Promise<string> {
-    const { exists } = await import('@tauri-apps/api/fs');
-
     try {
       const hasPackageJson = await exists(`${projectPath}/package.json`);
       if (hasPackageJson) {
-        const { readTextFile } = await import('@tauri-apps/api/fs');
         const pkg = JSON.parse(await readTextFile(`${projectPath}/package.json`));
         if (pkg.scripts?.build) return this.runCommand('npm run build', { cwd: projectPath });
       }
@@ -573,8 +641,6 @@ class TerminalService {
    * Run linting
    */
   async lintProject(projectPath: string): Promise<string> {
-    const { exists, readTextFile } = await import('@tauri-apps/api/fs');
-
     try {
       const hasPackageJson = await exists(`${projectPath}/package.json`);
       if (hasPackageJson) {

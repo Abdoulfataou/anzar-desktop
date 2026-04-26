@@ -16,6 +16,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { authService } from '@/services/auth';
 import { Transaction, AI_PROVIDERS, AIProvider } from '@/types';
 import { cn, isTauri } from '@/lib/utils';
+import { openExternalUrl } from '@/services/externalLinks';
 
 /* ===== Toggle Switch ===== */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -272,7 +273,7 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                 if (!isValid) return;
                 try {
                   // Appel au backend pour initier le paiement
-                  const BACKEND = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+                  const BACKEND = useSettingsStore.getState().getBackendUrl();
                   const res = await fetch(`${BACKEND}/api/payments/initiate`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -288,12 +289,7 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                     const data = await res.json();
                     if (data.paymentUrl) {
                       // Ouvrir le lien de paiement (Wave/Orange Money redirigent)
-                      if (isTauri()) {
-                        const { open } = await import('@tauri-apps/api/shell');
-                        await open(data.paymentUrl);
-                      } else {
-                        window.open(data.paymentUrl, '_blank');
-                      }
+                      await openExternalUrl(data.paymentUrl);
                     }
                     onClose();
                   } else {
@@ -656,6 +652,48 @@ export default function SettingsPage() {
             <SettingRow label="Mode hors ligne" description="Fonctionne sans connexion Internet">
               <Toggle checked={form.offlineMode} onChange={(v) => update('offlineMode', v)} />
             </SettingRow>
+
+            <div className="pt-3 border-t border-border-subtle" />
+
+            <SettingRow
+              label="Mode développeur"
+              description="Affiche des options avancées (terminal). Désactivé par défaut pour le grand public."
+            >
+              <Toggle checked={form.developerMode} onChange={(v) => update('developerMode', v)} />
+            </SettingRow>
+
+            <SettingRow
+              label="Exécution des commandes"
+              description="Contrôle comment les commandes proposées par l’IA sont exécutées."
+            >
+              <select
+                value={form.commandExecutionMode}
+                onChange={(e) => update('commandExecutionMode', e.target.value as any)}
+                className={cn(
+                  'px-3 py-2 rounded-xl text-sm',
+                  'bg-bg-secondary border border-border-subtle',
+                  'text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-primary'
+                )}
+              >
+                <option value="manual">Manual (Run requis)</option>
+                <option value="always_ask">Always ask (confirmation)</option>
+                <option value="auto_run">Auto-run (Sûr uniquement)</option>
+              </select>
+            </SettingRow>
+
+            <SettingRow
+              label="Vérifier après application"
+              description="Après Preview → Appliquer, lance automatiquement “Vérifier le projet”."
+            >
+              <Toggle checked={form.autoVerifyAfterApply} onChange={(v) => update('autoVerifyAfterApply', v)} />
+            </SettingRow>
+
+            <SettingRow
+              label="Nettoyage auto des commandes"
+              description="Supprime automatiquement les Command Cards terminées au bout d’un moment."
+            >
+              <Toggle checked={form.autoCleanFinishedCommands} onChange={(v) => update('autoCleanFinishedCommands', v)} />
+            </SettingRow>
           </Section>
 
           <div className="h-px bg-border-subtle" />
@@ -679,12 +717,7 @@ export default function SettingsPage() {
                 <button
                   onClick={async () => {
                     const url = 'https://anzar.dev/docs';
-                    if (isTauri()) {
-                      const { open } = await import('@tauri-apps/api/shell');
-                      await open(url);
-                    } else {
-                      window.open(url, '_blank');
-                    }
+                    await openExternalUrl(url);
                   }}
                   className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
                 >
@@ -694,12 +727,7 @@ export default function SettingsPage() {
                 <button
                   onClick={async () => {
                     const url = 'https://anzar.dev/support';
-                    if (isTauri()) {
-                      const { open } = await import('@tauri-apps/api/shell');
-                      await open(url);
-                    } else {
-                      window.open(url, '_blank');
-                    }
+                    await openExternalUrl(url);
                   }}
                   className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
                 >

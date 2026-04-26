@@ -12,7 +12,6 @@ import { useSettingsStore } from '@/stores/settingsStore';
  * Agent service configuration
  */
 interface AgentConfig {
-  backendUrl: string;
   timeout: number;
   fallbackMode: boolean;
 }
@@ -21,7 +20,6 @@ interface AgentConfig {
  * Default configuration
  */
 const DEFAULT_CONFIG: AgentConfig = {
-  backendUrl: 'http://localhost:8000',
   timeout: 120000, // 2 minutes for long operations
   fallbackMode: false,
 };
@@ -37,6 +35,10 @@ class AgentService {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
+  private getBackendUrl(): string {
+    return useSettingsStore.getState().getBackendUrl();
+  }
+
   /**
    * Check if backend is available
    */
@@ -44,7 +46,7 @@ class AgentService {
     try {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const response = await fetch(`${this.config.backendUrl}/health`, {
+      const response = await fetch(`${this.getBackendUrl()}/health`, {
         method: 'GET',
         signal: controller.signal,
       });
@@ -114,7 +116,7 @@ class AgentService {
 
     try {
       const response = await fetch(
-        `${this.config.backendUrl}/api/projects/${projectId}/execute`,
+        `${this.getBackendUrl()}/api/projects/${projectId}/execute`,
         {
           method: 'POST',
           headers: this.getAuthHeaders(),
@@ -208,7 +210,7 @@ class AgentService {
       const statusCtrl = new AbortController();
       const statusTimeout = setTimeout(() => statusCtrl.abort(), 5000);
       const response = await fetch(
-        `${this.config.backendUrl}/api/projects/${projectId}/status`,
+        `${this.getBackendUrl()}/api/projects/${projectId}/status`,
         { method: 'GET', headers: this.getAuthHeaders(), signal: statusCtrl.signal }
       );
       clearTimeout(statusTimeout);
@@ -248,7 +250,7 @@ class AgentService {
       const cancelCtrl = new AbortController();
       const cancelTimeout = setTimeout(() => cancelCtrl.abort(), 5000);
       await fetch(
-        `${this.config.backendUrl}/api/projects/${projectId}/cancel`,
+        `${this.getBackendUrl()}/api/projects/${projectId}/cancel`,
         { method: 'POST', headers: this.getAuthHeaders(), signal: cancelCtrl.signal }
       );
       clearTimeout(cancelTimeout);
@@ -261,7 +263,7 @@ class AgentService {
    * Set backend URL (for configuration)
    */
   setBackendUrl(url: string): void {
-    this.config.backendUrl = url;
+    useSettingsStore.getState().updateSettings({ backendUrl: url });
   }
 
   /**
@@ -290,7 +292,7 @@ class AgentService {
   private async planViaBackend(description: string): Promise<ProjectPlan> {
     try {
       const response = await fetch(
-        `${this.config.backendUrl}/api/projects/plan`,
+        `${this.getBackendUrl()}/api/projects/plan`,
         {
           method: 'POST',
           headers: this.getAuthHeaders(),

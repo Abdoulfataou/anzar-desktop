@@ -8,6 +8,7 @@ import { persist } from 'zustand/middleware';
 import { Project, ProjectFile, AgentStatus, FileOperation } from '@/types';
 import { generateId } from '@/lib/utils';
 import { fileSystemService } from '@/services/fileSystem';
+import { terminalService } from '@/services/terminal';
 
 /**
  * Project store state and actions
@@ -79,7 +80,11 @@ interface ProjectStore {
   saveAllFilesToDisk: (projectId: string) => Promise<void>;
 
   /** Execute batch file operations and sync store */
-  executeBatchOperations: (projectId: string, operations: FileOperation[]) => Promise<void>;
+  executeBatchOperations: (
+    projectId: string,
+    operations: FileOperation[],
+    options?: { writeToDisk?: boolean }
+  ) => Promise<void>;
 
   /** Clear all projects */
   clearAllProjects: () => void;
@@ -170,6 +175,16 @@ export const useProjectStore = create<ProjectStore>()(
        * Update a project
        */
       updateProject: (id: string, updates: Partial<Project>) => {
+        // Register allowed project paths for terminal execution when a localPath appears
+        const existing = get().projects.find((p) => p.id === id);
+        const nextLocalPath =
+          (updates.metadata as any)?.localPath ??
+          (existing?.metadata as any)?.localPath;
+
+        if (typeof nextLocalPath === 'string' && nextLocalPath.trim()) {
+          terminalService.registerProjectPath(nextLocalPath);
+        }
+
         set((state) => ({
           projects: state.projects.map((p) =>
             p.id === id
@@ -183,6 +198,12 @@ export const useProjectStore = create<ProjectStore>()(
        * Delete a project
        */
       deleteProject: (id: string) => {
+        const project = get().projects.find((p) => p.id === id);
+        const localPath = (project?.metadata as any)?.localPath;
+        if (typeof localPath === 'string' && localPath.trim()) {
+          terminalService.unregisterProjectPath(localPath);
+        }
+
         set((state) => {
           const filtered = state.projects.filter((p) => p.id !== id);
           let newActiveId = state.activeProjectId;
@@ -411,7 +432,11 @@ export const useProjectStore = create<ProjectStore>()(
       /**
        * Execute batch file operations and sync store
        */
-      executeBatchOperations: async (projectId: string, operations: FileOperation[]) => {
+      executeBatchOperations: async (
+        projectId: string,
+        operations: FileOperation[],
+        options: { writeToDisk?: boolean } = {}
+      ) => {
         const project = get().projects.find((p) => p.id === projectId);
         if (!project) return;
 
@@ -455,8 +480,8 @@ export const useProjectStore = create<ProjectStore>()(
           }),
         }));
 
-        // Also write to disk if local project
-        if (localPath) {
+        // Also write to disk if explicitly requested (A-mode: no silent disk writes)
+        if (options.writeToDisk && localPath) {
           try {
             await fileSystemService.executeBatch(localPath, operations);
           } catch (error) {
@@ -469,6 +494,14 @@ export const useProjectStore = create<ProjectStore>()(
        * Clear all projects (destructive)
        */
       clearAllProjects: () => {
+        // Unregister all allowed paths
+        for (const p of get().projects) {
+          const localPath = (p.metadata as any)?.localPath;
+          if (typeof localPath === 'string' && localPath.trim()) {
+            terminalService.unregisterProjectPath(localPath);
+          }
+        }
+
         set({
           projects: [],
           activeProjectId: null,
@@ -479,6 +512,13 @@ export const useProjectStore = create<ProjectStore>()(
        * Import projects from backup
        */
       importProjects: (projects: Project[]) => {
+        // Register local paths from imported projects
+        for (const p of projects) {
+          const localPath = (p.metadata as any)?.localPath;
+          if (typeof localPath === 'string' && localPath.trim()) {
+            terminalService.registerProjectPath(localPath);
+          }
+        }
         set((state) => ({
           projects: [...state.projects, ...projects],
         }));
@@ -497,6 +537,20 @@ export const useProjectStore = create<ProjectStore>()(
       partialize: (state) => ({
         projects: state.projects,
       }),
+      onRehydrateStorage: () => (state) => {
+        // After hydration, re-register approved project paths (TerminalService)
+        try {
+          const projects = state?.projects || [];
+          for (const p of projects) {
+            const localPath = (p.metadata as any)?.localPath;
+            if (typeof localPath === 'string' && localPath.trim()) {
+              terminalService.registerProjectPath(localPath);
+            }
+          }
+        } catch {
+          // ignore
+        }
+      },
     }
   )
 );

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { useProjectStore, useSortedProjects } from '@/stores/projectStore';
 import { cn, generateId } from '@/lib/utils';
+import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 import { agentService } from '@/services/agents';
 import { useActivityStore } from '@/stores/activityStore';
 import ProjectCard from './ProjectCard';
@@ -185,6 +186,11 @@ const ProjectsView: React.FC = () => {
       });
 
       if (selected && typeof selected === 'string') {
+        const allowed = await isAllowedProjectRoot(selected);
+        if (!allowed) {
+          await showPathNotAllowedMessage();
+          return;
+        }
         // Extract folder name from path
         const folderName = selected.split(/[/\\]/).pop() || 'Projet importé';
 

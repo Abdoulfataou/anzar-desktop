@@ -6,8 +6,29 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import * as Sentry from '@sentry/react';
 import App from './App';
 import './index.css';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Sentry (crash reporting) — activé uniquement si VITE_SENTRY_DSN est défini
+// ─────────────────────────────────────────────────────────────────────────────
+try {
+  const dsn = import.meta.env.VITE_SENTRY_DSN;
+  if (dsn && dsn.trim()) {
+    const tracesSampleRate = Number(import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE ?? '0.1');
+    Sentry.init({
+      dsn,
+      release: typeof __SENTRY_RELEASE__ === 'string' ? __SENTRY_RELEASE__ : `anzar-desktop@${__APP_VERSION__}`,
+      environment: import.meta.env.MODE,
+      tracesSampleRate: Number.isFinite(tracesSampleRate) ? tracesSampleRate : 0.1,
+      integrations: [Sentry.browserTracingIntegration()],
+    });
+  }
+} catch (e) {
+  // Sentry must never block the app.
+  console.warn('Sentry init failed:', e);
+}
 
 // Error Boundary pour capturer et afficher les erreurs React
 class ErrorBoundary extends React.Component<
@@ -25,6 +46,15 @@ class ErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ANZAR Error Boundary caught:', error, errorInfo);
+    try {
+      Sentry.captureException(error, {
+        contexts: {
+          react: { componentStack: errorInfo.componentStack },
+        },
+      });
+    } catch {
+      // ignore
+    }
   }
 
   render() {

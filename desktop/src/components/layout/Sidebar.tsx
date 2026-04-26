@@ -17,6 +17,7 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useAccountStore } from '@/stores/accountStore';
+import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 
 interface SidebarProps {
   className?: string;
@@ -57,6 +58,12 @@ export default function Sidebar({
       });
 
       if (selected && typeof selected === 'string') {
+        const allowed = await isAllowedProjectRoot(selected);
+        if (!allowed) {
+          await showPathNotAllowedMessage();
+          return;
+        }
+
         const folderName = selected.split(/[/\\]/).pop() || 'Projet importé';
         const { createProject, updateProject } = useProjectStore.getState();
         const project = createProject(folderName, `Projet: ${selected}`, 'fast');

@@ -9,6 +9,7 @@
 import React, { useEffect } from 'react';
 import ChatView from '@/components/chat/ChatView';
 import { useChatStore } from '@/stores/chatStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 export default function ChatExample() {
   const { createConversation, activeConversationId } = useChatStore();
@@ -60,7 +61,8 @@ export function AdvancedChatExample() {
 
     try {
       // Call ANZAR backend API with streaming
-      const response = await fetch('http://localhost:8000/api/chat/completions', {
+      const BACKEND = useSettingsStore.getState().getBackendUrl();
+      const response = await fetch(`${BACKEND}/api/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

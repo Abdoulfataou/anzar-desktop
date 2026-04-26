@@ -6,6 +6,7 @@
 
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
+import { secureTokenStore } from '@/services/secureTokenStore';
 
 // ============================================================================
 // TYPES
@@ -37,7 +38,7 @@ interface SendCodeResponse {
 class AuthService {
   private getBackendUrl(): string {
     const store = useSettingsStore.getState();
-    return store.getBackendUrl?.() || import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
+    return store.getBackendUrl();
   }
 
   // ──────────────────────────────────────────────────────────
@@ -82,7 +83,7 @@ class AuthService {
     }
 
     // Store session
-    this.setSession(data);
+    await this.setSession(data);
     return data;
   }
 
@@ -106,7 +107,7 @@ class AuthService {
       throw new Error(data?.error?.message || data?.detail || "Erreur lors de l'inscription");
     }
 
-    this.setSession(data);
+    await this.setSession(data);
     return data;
   }
 
@@ -126,7 +127,7 @@ class AuthService {
       throw new Error(data?.error?.message || data?.detail || 'Email ou mot de passe incorrect');
     }
 
-    this.setSession(data);
+    await this.setSession(data);
     return data;
   }
 
@@ -157,6 +158,7 @@ class AuthService {
   logout(): void {
     useSettingsStore.getState().setAuthToken(null);
     useAccountStore.getState().logout();
+    void secureTokenStore.clearToken();
   }
 
   /**
@@ -169,8 +171,10 @@ class AuthService {
   /**
    * Store session data after login/register/verify-code
    */
-  private setSession(data: AuthResponse): void {
+  private async setSession(data: AuthResponse): Promise<void> {
     useSettingsStore.getState().setAuthToken(data.token);
+    // Persist token securely (encrypted vault)
+    await secureTokenStore.setToken(data.token);
 
     const accountStore = useAccountStore.getState();
     accountStore.setUser({
@@ -184,6 +188,34 @@ class AuthService {
     if (data.credits) {
       accountStore.syncCreditsFromServer(data.credits);
     }
+  }
+
+  /**
+   * Bootstrap session on app startup.
+   * - Load token from Stronghold
+   * - Verify token with backend
+   * - If invalid: clear everything and force login
+   */
+  async bootstrapSession(): Promise<void> {
+    const token = await secureTokenStore.getToken();
+
+    if (!token) {
+      // Ensure we don't keep a "loggedIn" flag without token
+      useSettingsStore.getState().setAuthToken(null);
+      useAccountStore.getState().logout();
+      return;
+    }
+
+    useSettingsStore.getState().setAuthToken(token);
+    const ok = await this.verifyToken();
+    if (!ok) {
+      await secureTokenStore.clearToken();
+      useSettingsStore.getState().setAuthToken(null);
+      useAccountStore.getState().logout();
+      return;
+    }
+
+    // token is valid; keep user state as-is (persisted by accountStore)
   }
 }
 

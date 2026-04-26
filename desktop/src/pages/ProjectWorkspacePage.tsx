@@ -23,6 +23,10 @@ import AgentProgress from '@/components/projects/AgentProgress';
 import TerminalPanel from '@/components/terminal/Terminal';
 import { terminalService } from '@/services/terminal';
 import { diagnosticService, DiagnosticReport, DiagnosticSolution } from '@/services/diagnostic';
+import RunPanel from '@/components/runs/RunPanel';
+import { runService } from '@/services/runService';
+import { useChangeStore } from '@/stores/changeStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 /* ===== Convert ProjectFile[] to FileNode[] tree ===== */
 function buildFileTree(files: ProjectFile[]): FileNode[] {
@@ -216,6 +220,7 @@ const ProjectWorkspacePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { projects, updateFile, addFile, updateProject } = useProjectStore();
+  const developerMode = useSettingsStore((s) => s.settings.developerMode);
 
   const project = useMemo(
     () => projects.find((p) => p.id === id) || null,
@@ -262,16 +267,16 @@ const ProjectWorkspacePage: React.FC = () => {
 
   // Quick actions for toolbar
   const handleRunProject = useCallback(async () => {
-    if (!projectPath) return;
+    if (!project || !projectPath) return;
     setShowTerminal(true);
-    await terminalService.runDevServer(projectPath);
-  }, [projectPath]);
+    await runService.executeAction({ projectId: project.id, projectPath, actionId: 'dev' });
+  }, [project, projectPath]);
 
   const handleInstallDeps = useCallback(async () => {
-    if (!projectPath) return;
+    if (!project || !projectPath) return;
     setShowTerminal(true);
-    await terminalService.installDependencies(projectPath);
-  }, [projectPath]);
+    await runService.executeAction({ projectId: project.id, projectPath, actionId: 'install' });
+  }, [project, projectPath]);
 
   const handleDiagnose = useCallback(async () => {
     setIsAnalyzing(true);
@@ -371,11 +376,12 @@ const ProjectWorkspacePage: React.FC = () => {
   // Apply code from chat
   const handleApplyCode = useCallback((code: string, filePath: string) => {
     if (!id) return;
-    updateFile(id, filePath, {
-      content: code,
-      size: code.length,
-      updatedAt: Date.now(),
-    });
+    // A-mode (public): ne pas écrire sur disque sans preview/apply.
+    useChangeStore.getState().queue(
+      id,
+      `Chat: appliquer code → ${filePath}`,
+      [{ type: 'edit', path: filePath, content: code }]
+    );
   }, [id, updateFile]);
 
   // Redirect if project not found
@@ -495,17 +501,19 @@ const ProjectWorkspacePage: React.FC = () => {
             </>
           )}
 
-          {/* Terminal toggle */}
-          <button
-            onClick={() => setShowTerminal(!showTerminal)}
-            className={cn(
-              'p-1.5 rounded-lg transition-colors',
-              showTerminal ? 'text-accent-primary bg-accent-primary/10' : 'text-text-muted hover:bg-surface-hover'
-            )}
-            title={showTerminal ? 'Masquer le terminal' : 'Afficher le terminal'}
-          >
-            <TerminalIcon size={16} />
-          </button>
+          {/* Terminal toggle (mode dev uniquement) */}
+          {developerMode && (
+            <button
+              onClick={() => setShowTerminal(!showTerminal)}
+              className={cn(
+                'p-1.5 rounded-lg transition-colors',
+                showTerminal ? 'text-accent-primary bg-accent-primary/10' : 'text-text-muted hover:bg-surface-hover'
+              )}
+              title={showTerminal ? 'Masquer le terminal' : 'Afficher le terminal'}
+            >
+              <TerminalIcon size={16} />
+            </button>
+          )}
 
           <button
             onClick={() => setShowExplorer(!showExplorer)}
@@ -537,6 +545,13 @@ const ProjectWorkspacePage: React.FC = () => {
           <AgentProgress projectId={project.id} />
         </div>
       )}
+
+      {/* Runs panel (timeline + actions) */}
+      <RunPanel
+        projectId={project.id}
+        projectPath={projectPath}
+        onOpenTerminal={() => setShowTerminal(true)}
+      />
 
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
@@ -632,8 +647,8 @@ const ProjectWorkspacePage: React.FC = () => {
             </div>
           )}
 
-          {/* Terminal panel */}
-          {showTerminal && (
+          {/* Terminal panel (mode dev uniquement) */}
+          {developerMode && showTerminal && (
             <TerminalPanel
               projectPath={projectPath}
               onClose={() => setShowTerminal(false)}

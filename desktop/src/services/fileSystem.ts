@@ -11,6 +11,16 @@
 import { ProjectFile, FileOperation } from '@/types';
 import { FileNode } from '@/types/file-project';
 import { generateId, isTauri as checkTauri } from '@/lib/utils';
+import {
+  readDir,
+  readTextFile,
+  writeTextFile,
+  createDir,
+  removeFile,
+  removeDir,
+  renameFile,
+  exists as fsExists,
+} from '@tauri-apps/api/fs';
 
 // ============================================================================
 // LANGUAGE DETECTION
@@ -96,7 +106,6 @@ class FileSystemService {
     }
 
     try {
-      const { readDir } = await import('@tauri-apps/api/fs');
       const entries = await readDir(dirPath, { recursive: false });
 
       const nodes: FileNode[] = [];
@@ -153,7 +162,6 @@ class FileSystemService {
       throw new Error('Tauri non disponible');
     }
 
-    const { readTextFile } = await import('@tauri-apps/api/fs');
     return readTextFile(filePath);
   }
 
@@ -205,8 +213,6 @@ class FileSystemService {
   async writeFile(filePath: string, content: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
 
-    const { writeTextFile } = await import('@tauri-apps/api/fs');
-
     // Ensure parent directory exists
     const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
     if (dirPath) {
@@ -221,8 +227,6 @@ class FileSystemService {
    */
   async createDirectory(dirPath: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
-
-    const { createDir } = await import('@tauri-apps/api/fs');
     try {
       await createDir(dirPath, { recursive: true });
     } catch {
@@ -235,8 +239,6 @@ class FileSystemService {
    */
   async deleteFile(filePath: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
-
-    const { removeFile } = await import('@tauri-apps/api/fs');
     await removeFile(filePath);
   }
 
@@ -245,8 +247,6 @@ class FileSystemService {
    */
   async deleteDirectory(dirPath: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
-
-    const { removeDir } = await import('@tauri-apps/api/fs');
     await removeDir(dirPath, { recursive: true });
   }
 
@@ -255,8 +255,6 @@ class FileSystemService {
    */
   async renameFile(oldPath: string, newPath: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
-
-    const { renameFile } = await import('@tauri-apps/api/fs');
     await renameFile(oldPath, newPath);
   }
 
@@ -265,9 +263,7 @@ class FileSystemService {
    */
   async exists(path: string): Promise<boolean> {
     if (!this.isTauri) return false;
-
-    const { exists } = await import('@tauri-apps/api/fs');
-    return exists(path);
+    return fsExists(path);
   }
 
   // ========================================================================

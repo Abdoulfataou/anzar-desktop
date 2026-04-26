@@ -20,3 +20,12 @@ export { useThemeStore } from './themeStore';
 
 // Account store (profil, crédits, abonnement)
 export { useAccountStore } from './accountStore';
+
+// Runs
+export { useRunStore } from './runStore';
+
+// Pending changes (A-mode approval queue)
+export { useChangeStore } from './changeStore';
+
+// Command cards (Trae/Claude cowork-like)
+export { useCommandStore } from './commandStore';

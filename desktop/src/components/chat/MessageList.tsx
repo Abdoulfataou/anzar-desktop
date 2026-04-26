@@ -21,6 +21,8 @@ interface Message {
 interface MessageListProps {
   messages: Message[];
   isLoading?: boolean;
+  selectedProjectId?: string | null;
+  selectedProjectPath?: string;
 }
 
 const getDateSeparator = (date: Date): string => {
@@ -42,7 +44,7 @@ const getDateSeparator = (date: Date): string => {
   }
 };
 
-export default function MessageList({ messages, isLoading = false }: MessageListProps) {
+export default function MessageList({ messages, isLoading = false, selectedProjectId = null, selectedProjectPath }: MessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
 
@@ -104,7 +106,7 @@ export default function MessageList({ messages, isLoading = false }: MessageList
                     )}
                   </div>
                 )}
-                <MessageBubble message={message} />
+                <MessageBubble message={message} selectedProjectId={selectedProjectId} selectedProjectPath={selectedProjectPath} />
               </div>
             ))}
           </div>

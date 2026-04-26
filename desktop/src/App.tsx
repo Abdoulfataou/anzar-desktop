@@ -3,11 +3,12 @@
  * Interface unifiée: Vue principale (chat + projets) | Workspace | Paramètres
  * Auth guard: redirige vers /login si non authentifié
  */
-import React, { lazy, Suspense } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
 import { useAccountStore } from '@/stores/accountStore';
+import { authService } from '@/services/auth';
 
 // Lazy-load des pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
@@ -31,6 +32,24 @@ function RequireAuth() {
 }
 
 export default function App() {
+  const [booting, setBooting] = useState(true);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        await authService.bootstrapSession();
+      } finally {
+        if (alive) setBooting(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (booting) return <LoadingFallback />;
+
   return (
     <Suspense fallback={<LoadingFallback />}>
       <Routes>

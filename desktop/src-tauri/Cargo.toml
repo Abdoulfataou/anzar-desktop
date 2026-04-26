@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.0"
+version = "2.0.0"
 description = "A Tauri App"
 authors = ["you"]
 license = ""
@@ -17,8 +17,10 @@ tauri-build = { version = "1.5.6", features = [] }
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.8.3", features = [ "shell-execute", "shell-open", "dialog-all", "fs-read-file", "fs-write-file", "fs-copy-file", "fs-create-dir", "fs-rename-file", "fs-remove-file", "fs-remove-dir", "fs-read-dir", "fs-exists", "dialog"] }
+tauri = { version = "1.8.3", features = [ "updater", "shell-execute", "shell-open", "dialog-all", "fs-read-file", "fs-write-file", "fs-copy-file", "fs-create-dir", "fs-rename-file", "fs-remove-file", "fs-remove-dir", "fs-read-dir", "fs-exists", "dialog"] }
 dirs = "5.0"
+blake3 = "1.5"
+tauri-plugin-stronghold = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.

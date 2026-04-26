@@ -3,7 +3,7 @@
 import { useState, useCallback } from 'react';
 import { Upload, File, Image, X, AlertCircle, Check, Loader2, Eye, Trash2, Download, Brain, Sparkles } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
-// import { useAIAnalysis, AIAnalysisResult } from '@/hooks/useAIAnalysis';
+import { useAnzarIA } from '@/hooks/useAnzarIA';
 
 
 
@@ -39,7 +39,7 @@ export default function FileUploader({
   const [analyzingFile, setAnalyzingFile] = useState<UploadedFile | null>(null);
   const [analysisResult, setAnalysisResult] = useState<any /* AIAnalysisResult */ | null>(null);
   
-  const { analyzeImage, analyzeDocument, isAnalyzing, error: aiError, clearError } = useANZAR IA();
+  const { analyzeImage, analyzeDocument, isAnalyzing, error: aiError, clearError } = useAnzarIA();
 
   const onDrop = useCallback(async (acceptedFiles: File[], fileRejections: any[]) => {
     setError(null);

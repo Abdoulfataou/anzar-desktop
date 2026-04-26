@@ -1,10 +1,16 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from './CodeBlock';
 import { cn } from '@/lib/utils';
+import { openExternalUrl } from '@/services/externalLinks';
+import { useCommandStore } from '@/stores/commandStore';
+import CommandCard from '@/components/chat/CommandCard';
+import { useSettingsStore } from '@/stores/settingsStore';
+import { commandCardService } from '@/services/commandCardService';
+import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 
 interface Message {
   id: string;
@@ -22,13 +28,27 @@ interface MessageBubbleProps {
   message: Message;
   onCopy?: (text: string) => void;
   onRegenerate?: () => void;
+  selectedProjectId?: string | null;
+  selectedProjectPath?: string;
 }
 
-export default function MessageBubble({ message, onCopy, onRegenerate }: MessageBubbleProps) {
+export default function MessageBubble({ message, onCopy, onRegenerate, selectedProjectId = null, selectedProjectPath }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
   const textRef = useRef<HTMLDivElement>(null);
+  const ensureCard = useCommandStore((s) => s.ensureCard);
+  const commandOrder = useCommandStore((s) => s.order);
+  const commandCards = useCommandStore((s) => s.cards);
+  const settings = useSettingsStore((s) => s.settings);
+
+  const cardsForThisMessage = useMemo(() => {
+    return commandOrder
+      .map((id) => commandCards[id])
+      .filter(Boolean)
+      .filter((c) => c.messageId === message.id)
+      .map((c) => c.id);
+  }, [commandOrder, commandCards, message.id]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -127,7 +147,17 @@ export default function MessageBubble({ message, onCopy, onRegenerate }: Message
               components={{
                 p: ({ children }) => <p className="text-sm leading-relaxed mb-2 last:mb-0">{children}</p>,
                 a: ({ href, children }) => (
-                  <a href={href} className="text-accent-primary hover:underline">{children}</a>
+                  <a
+                    href={href}
+                    className="text-accent-primary hover:underline"
+                    onClick={(e) => {
+                      // Grand public: empêcher la navigation interne, ouvrir via wrapper sécurisé
+                      e.preventDefault();
+                      if (href) void openExternalUrl(String(href));
+                    }}
+                  >
+                    {children}
+                  </a>
                 ),
                 code: ({ inline, className, children, ...props }: any) => {
                   const match = /language-(\w+)/.exec(className || '');
@@ -141,10 +171,34 @@ export default function MessageBubble({ message, onCopy, onRegenerate }: Message
                     );
                   }
 
+                  const raw = String(children).replace(/\n$/, '');
+                  const isShell =
+                    ['bash', 'sh', 'shell', 'zsh', 'cmd', 'powershell'].includes(language.toLowerCase());
+                  if (isShell && raw.trim()) {
+                    const cmdText = raw.trim();
+                    const cardId = `${message.id}::cmd::${Math.abs(hashCode(cmdText))}`;
+                    // Ensure a stable card exists (Trae/Claude cowork-style command card)
+                    ensureCard({
+                      id: cardId,
+                      messageId: message.id,
+                      command: cmdText,
+                      title: 'Commande proposée',
+                      projectId: selectedProjectId,
+                      projectPath: selectedProjectPath,
+                    });
+                    // Auto-run mode (safe only)
+                    if (selectedProjectPath) {
+                      const auto = shouldAutoRunCommand(cmdText, settings);
+                      if (auto.ok) void commandCardService.run(cardId);
+                    }
+                    // The card will be rendered below the message; keep markdown clean.
+                    return <span className="hidden" />;
+                  }
+
                   return (
                     <CodeBlock
                       language={language}
-                      code={String(children).replace(/\n$/, '')}
+                      code={raw}
                     />
                   );
                 },
@@ -170,6 +224,15 @@ export default function MessageBubble({ message, onCopy, onRegenerate }: Message
             </ReactMarkdown>
           </div>
         </div>
+
+        {/* Command Cards docked under message (Trae/Claude cowork-like) */}
+        {cardsForThisMessage.length > 0 && (
+          <div className="space-y-2">
+            {cardsForThisMessage.map((id) => (
+              <CommandCard key={id} cardId={id} />
+            ))}
+          </div>
+        )}
 
         {/* Actions bar */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
@@ -225,4 +288,13 @@ export default function MessageBubble({ message, onCopy, onRegenerate }: Message
       </div>
     </div>
   );
+}
+
+function hashCode(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return hash;
 }

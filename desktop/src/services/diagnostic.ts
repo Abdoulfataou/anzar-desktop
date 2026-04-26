@@ -501,7 +501,10 @@ Réponds UNIQUEMENT en JSON valide avec ce format exact:
     {
       "title": "Titre de la solution",
       "description": "Explication claire",
+      "type": "command | edit_file | config_change",
       "command": "commande shell à exécuter (ou null)",
+      "filePath": "chemin relatif du fichier à modifier (ou null)",
+      "content": "contenu complet du fichier après correction (ou null)",
       "confidence": 0.9
     }
   ]
@@ -533,20 +536,30 @@ Réponds UNIQUEMENT en JSON valide avec ce format exact:
 
       const parsed = JSON.parse(jsonMatch[0]);
 
-      const aiSolutions: DiagnosticSolution[] = (parsed.solutions || []).map(
-        (s: any, i: number) => ({
+      const aiSolutions: DiagnosticSolution[] = (parsed.solutions || []).map((s: any, i: number) => {
+        const type = String(s.type || (s.command ? 'command' : s.filePath ? 'edit_file' : 'command'));
+        const command = typeof s.command === 'string' ? s.command : null;
+        const filePath = typeof s.filePath === 'string' ? s.filePath : null;
+        const content = typeof s.content === 'string' ? s.content : null;
+
+        const fixAction =
+          type === 'command' && command
+            ? { type: 'command' as const, command }
+            : (type === 'edit_file' || type === 'config_change') && filePath && content
+              ? { type: type as any, filePath, content }
+              : undefined;
+
+        return {
           id: `ai-fix-${Date.now()}-${i}`,
           errorId: errors[0]?.id || 'unknown',
           title: s.title || 'Solution IA',
           description: s.description || '',
           confidence: typeof s.confidence === 'number' ? s.confidence : 0.7,
-          autoFixable: !!s.command,
-          fixAction: s.command
-            ? { type: 'command' as const, command: s.command }
-            : undefined,
+          autoFixable: !!fixAction && (fixAction.type === 'command' || fixAction.type === 'install_package'),
+          fixAction,
           aiExplanation: s.description,
-        })
-      );
+        } as DiagnosticSolution;
+      });
 
       return {
         solutions: aiSolutions,

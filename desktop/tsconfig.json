@@ -23,6 +23,7 @@
   "exclude": [
     "src/app",
     "src/api",
+    "src/components/files",
     "src/components/AnzarLayout.tsx",
     "src/components/Header.tsx",
     "src/components/Layout.tsx",

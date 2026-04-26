@@ -5,11 +5,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Sparkles, Loader2, Bot, User, Code2,
-  FileCode, Trash2,
+  FileCode, Trash2, Wrench,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aiRouter } from '@/services/router';
 import { getSystemPrompt } from '@/services/prompts';
+import { ANZAR_TOOLS } from '@/types';
+import { createChangeToolExecutor } from '@/services/aiToolChangeExecutor';
 
 interface ChatMessage {
   id: string;
@@ -129,6 +131,7 @@ const ProjectChat: React.FC<ProjectChatProps> = ({
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showQuickActions, setShowQuickActions] = useState(true);
+  const [agentMode, setAgentMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -162,7 +165,11 @@ const ProjectChat: React.FC<ProjectChatProps> = ({
     const apiMessages = aiRouter.prepareMessages([
       {
         role: 'system' as const,
-        content: `${getSystemPrompt('code_review')}\n\nTu travailles sur le projet "${projectName}".${contextInfo}`,
+        content: `${getSystemPrompt('code_review')}\n\nTu travailles sur le projet "${projectName}".${contextInfo}${
+          agentMode
+            ? "\n\nMODE AGENT (A-mode): quand tu veux créer/modifier/supprimer des fichiers, utilise les tools. Ne propose pas de commande shell. Les changements doivent être proposés via tools pour preview/apply par l'utilisateur."
+            : ''
+        }`,
       },
       ...messages.map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -179,24 +186,35 @@ const ProjectChat: React.FC<ProjectChatProps> = ({
     ]);
 
     try {
-      let fullContent = '';
+      if (agentMode) {
+        const toolExecutor = createChangeToolExecutor(projectId);
+        const resp = await aiRouter.chatWithTools(apiMessages as any, ANZAR_TOOLS as any, toolExecutor, {
+          model: 'fast',
+          enableFallback: true,
+        } as any);
 
-      for await (const delta of aiRouter.chatStream(apiMessages, {
-        model: 'fast',
-        enableFallback: true,
-      })) {
-        if (delta.content) {
-          fullContent += delta.content;
-          setMessages((prev) =>
-            prev.map((m) => (m.id === aiMsgId ? { ...m, content: fullContent } : m))
-          );
+        const content = resp?.choices?.[0]?.message?.content || '';
+        setMessages((prev) => prev.map((m) => (m.id === aiMsgId ? { ...m, content } : m)));
+      } else {
+        let fullContent = '';
+
+        for await (const delta of aiRouter.chatStream(apiMessages, {
+          model: 'fast',
+          enableFallback: true,
+        })) {
+          if (delta.content) {
+            fullContent += delta.content;
+            setMessages((prev) =>
+              prev.map((m) => (m.id === aiMsgId ? { ...m, content: fullContent } : m))
+            );
+          }
         }
-      }
 
-      // Finalize
-      setMessages((prev) =>
-        prev.map((m) => (m.id === aiMsgId ? { ...m, content: fullContent } : m))
-      );
+        // Finalize
+        setMessages((prev) =>
+          prev.map((m) => (m.id === aiMsgId ? { ...m, content: fullContent } : m))
+        );
+      }
     } catch (error: any) {
       const errorContent = error.name === 'AbortError'
         ? 'Génération arrêtée.'
@@ -208,7 +226,7 @@ const ProjectChat: React.FC<ProjectChatProps> = ({
     } finally {
       setIsLoading(false);
     }
-  }, [isLoading, currentFile, currentFileContent, messages, projectName]);
+  }, [isLoading, currentFile, currentFileContent, messages, projectName, agentMode, projectId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -242,15 +260,31 @@ const ProjectChat: React.FC<ProjectChatProps> = ({
             <p className="text-[10px] text-text-muted truncate max-w-[160px]">{projectName}</p>
           </div>
         </div>
-        {messages.length > 0 && (
+        <div className="flex items-center gap-2">
           <button
-            onClick={clearChat}
-            className="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover hover:text-accent-error transition-colors"
-            title="Effacer le chat"
+            onClick={() => setAgentMode((v) => !v)}
+            className={cn(
+              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-medium border transition-all',
+              agentMode
+                ? 'border-accent-primary/40 bg-accent-primary/10 text-accent-primary'
+                : 'border-border-subtle text-text-muted hover:text-text-primary hover:bg-surface-hover'
+            )}
+            title="Mode Agent: l’IA propose des changements via Preview/Apply (A-mode)"
           >
-            <Trash2 size={14} />
+            <Wrench size={12} />
+            Mode Agent
           </button>
-        )}
+
+          {messages.length > 0 && (
+            <button
+              onClick={clearChat}
+              className="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover hover:text-accent-error transition-colors"
+              title="Effacer le chat"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages area */}

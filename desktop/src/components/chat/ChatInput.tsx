@@ -11,6 +11,8 @@ import {
 import { cn, isTauri } from '@/lib/utils';
 import { AIModel, Project } from '@/types';
 import { useProjectStore } from '@/stores/projectStore';
+import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
+import { readTextFile } from '@tauri-apps/api/fs';
 
 interface ChatInputProps {
   onSendMessage: (message: string) => Promise<void> | void;
@@ -221,6 +223,11 @@ export default function ChatInput({
         title: 'Ajouter un projet',
       });
       if (selected && typeof selected === 'string') {
+        const allowed = await isAllowedProjectRoot(selected);
+        if (!allowed) {
+          await showPathNotAllowedMessage();
+          return;
+        }
         const folderName = selected.split(/[/\\]/).pop() || 'Projet';
         const { createProject, updateProject } = useProjectStore.getState();
         const project = createProject(folderName, `Projet: ${selected}`, 'fast');
@@ -305,7 +312,6 @@ export default function ChatInput({
                       });
                       if (selected) {
                         const files = Array.isArray(selected) ? selected : [selected];
-                        const { readTextFile } = await import('@tauri-apps/api/fs');
                         for (const filePath of files) {
                           try {
                             const content = await readTextFile(filePath);
