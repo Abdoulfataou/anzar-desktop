@@ -48,7 +48,7 @@ from database import (
     # Payments (prep)
     create_payment_intent, admin_list_payment_intents, admin_mark_payment_intent_paid,
 )
-from agents import OrchestratorAgent, PlannerAgent, CoderAgent, TesterAgent, ExecutorAgent
+from agents import OrchestratorAgent, PlannerAgent, CoderAgent, TesterAgent, ExecutorAgent, EnricherAgent
 from services.deepseek_client import DeepSeekClient
 from services.email import send_otp_email
 from services.web_search import search_web, format_search_results, WEB_SEARCH_TOOL
@@ -1288,6 +1288,7 @@ _deepseek_client = DeepSeekClient()
 class PlanRequest(BaseModel):
     description: str = Field(..., min_length=1, max_length=10000)
     project_name: str = Field(default="my_project", max_length=128)
+    project_type: str = Field(default="other", max_length=50)
     tech_stack: list[str] = Field(default_factory=list)
     requirements: list[str] = Field(default_factory=list)
 
@@ -1307,10 +1308,22 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
 
     try:
-        # Step 1: Orchestrator
+        # Step 0: Enrichir la description utilisateur
+        enricher = EnricherAgent(deepseek_client=_deepseek_client)
+        enrich_result = await enricher.execute({
+            "description": body.description,
+            "project_name": body.project_name,
+            "project_type": body.project_type,
+            "tech_stack": body.tech_stack,
+        })
+        enriched_desc = enrich_result.get("enriched_description", body.description)
+        enrich_tokens = enrich_result.get("tokens_used", 0)
+        logger.info(f"Enrichment done: {len(enriched_desc)} chars, {enrich_tokens} tokens")
+
+        # Step 1: Orchestrator (avec description enrichie)
         orchestrator = OrchestratorAgent(deepseek_client=_deepseek_client)
         orch_result = await orchestrator.execute({
-            "description": body.description,
+            "description": enriched_desc,
             "project_name": body.project_name,
             "tech_stack": body.tech_stack,
             "requirements": body.requirements,
@@ -1355,7 +1368,7 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
             "complexity": "medium",
             "notes": "",
             "architecture": architecture,
-            "tokens_used": orch_result.get("tokens_used", 0) + plan_result.get("tokens_used", 0),
+            "tokens_used": enrich_tokens + orch_result.get("tokens_used", 0) + plan_result.get("tokens_used", 0),
         }
 
         # Save project to DB

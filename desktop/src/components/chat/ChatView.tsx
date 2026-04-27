@@ -394,6 +394,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const [showDocumentMenu, setShowDocumentMenu] = useState(false);
   const [showProjectWizard, setShowProjectWizard] = useState(false);
   const forceProjectGenerationOnceRef = useRef(false);
+  const wizardMetaRef = useRef<{ projectType: string; techs: string[] } | null>(null);
   const projectBaseDirOverrideRef = useRef<string | null>(null);
   const lastProjectGenerationWasUserActionRef = useRef(false);
 
@@ -637,8 +638,16 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       let lastPlan: PlanResult | null = null;
 
+      const wizardMeta = wizardMetaRef.current;
+      wizardMetaRef.current = null;
+
       const plan = await projectGeneration.generate(
-        { description: content, project_name: projectName },
+        {
+          description: content,
+          project_name: projectName,
+          project_type: wizardMeta?.projectType || 'other',
+          tech_stack: wizardMeta?.techs || [],
+        },
         {
           onPhaseChange: (phase, message) => {
             if (phase === 'planning') {
@@ -1392,10 +1401,11 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       {showProjectWizard && (
         <ProjectWizardModal
           onClose={() => setShowProjectWizard(false)}
-          onGenerate={async (prompt, projectName) => {
+          onGenerate={async (prompt, projectName, projectType, techs) => {
             setShowProjectWizard(false);
             await prepareProjectGeneration();
             forceProjectGenerationOnceRef.current = true;
+            wizardMetaRef.current = { projectType, techs };
 
             // Show a clean user message instead of the full technical prompt
             const displayMessage = `Genere le projet "${projectName}"`;

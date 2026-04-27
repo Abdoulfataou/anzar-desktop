@@ -6,6 +6,7 @@ from .planner import PlannerAgent
 from .coder import CoderAgent
 from .tester import TesterAgent
 from .executor import ExecutorAgent
+from .enricher import EnricherAgent
 
 __all__ = [
     "BaseAgent",
@@ -13,5 +14,6 @@ __all__ = [
     "PlannerAgent",
     "CoderAgent",
     "TesterAgent",
-    "ExecutorAgent"
+    "ExecutorAgent",
+    "EnricherAgent",
 ]

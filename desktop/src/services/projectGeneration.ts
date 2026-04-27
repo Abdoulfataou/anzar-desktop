@@ -17,6 +17,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 export interface PlanRequest {
   description: string;
   project_name: string;
+  project_type?: string;
   tech_stack?: string[];
   requirements?: string[];
 }
@@ -127,6 +128,7 @@ class ProjectGenerationService {
       body: JSON.stringify({
         description: request.description,
         project_name: request.project_name,
+        project_type: request.project_type || 'other',
         tech_stack: request.tech_stack || [],
         requirements: request.requirements || [],
       }),
@@ -249,13 +251,13 @@ class ProjectGenerationService {
 
     try {
       // ── Phase 1: Planification ──
-      callbacks.onPhaseChange('planning', 'Orchestrator analyse ta demande...');
+      callbacks.onPhaseChange('planning', 'Analyse et enrichissement de ta demande...');
       const plan = await this.plan(request, signal);
       callbacks.onPlanReady(plan);
       callbacks.onPhaseChange('planned', `Plan prêt: ${plan.files.length} fichiers prévus`);
 
       // ── Phase 2: Exécution ──
-      callbacks.onPhaseChange('executing', 'Génération du code en cours...');
+      callbacks.onPhaseChange('executing', 'Generation du code en cours...');
       await this.execute(plan.project_id, plan, callbacks.onAgentUpdate, baseDir, signal);
       callbacks.onPhaseChange('complete', 'Projet généré avec succès !');
       callbacks.onComplete(plan.project_id);

@@ -109,7 +109,7 @@ const POPULAR_TECHS = [
 
 interface ProjectWizardModalProps {
   onClose: () => void;
-  onGenerate: (prompt: string, projectName: string) => void;
+  onGenerate: (prompt: string, projectName: string, projectType: string, techs: string[]) => void;
 }
 
 type WizardStep = 'type' | 'details';
@@ -194,7 +194,7 @@ export default function ProjectWizardModal({ onClose, onGenerate }: ProjectWizar
 
   const handleGenerate = () => {
     const name = projectName.trim() || typeObj?.title || 'mon_projet';
-    onGenerate(buildPrompt(), name);
+    onGenerate(buildPrompt(), name, selectedType || 'other', selectedTechs);
   };
 
   const canGenerate = selectedType && (projectName.trim() || description.trim());
