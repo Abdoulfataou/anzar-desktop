@@ -769,10 +769,13 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       endSession(sessionId, 'error');
       setProjectStatus(projectId, 'error', errorMsg);
 
+      const isCredit = /solde|insuffisant|credit|402|epuis/i.test(errorMsg);
       const nextContent =
         error?.name === 'AbortError'
-          ? 'Generation arretee.'
-          : `**Erreur de generation**\n\n${errorMsg}\n\nVerifie ta connexion et tes credits.`;
+          ? 'Generation annulee.'
+          : isCredit
+            ? 'Credits insuffisants. Recharge ton compte pour continuer.'
+            : 'Une erreur est survenue. Verifie ta connexion et reessaie.';
       updateConversationMessage(aiMessageId, {
         content: nextContent,
         isStreaming: false,
@@ -1050,9 +1053,12 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       });
       endSession(sessionId, 'error');
 
+      const isCreditErr = /solde|insuffisant|credit|402|epuis/i.test(error.message || '');
       const errorContent = error.name === 'AbortError'
-        ? "Generation arretee."
-        : `Erreur: ${error.message || "Connexion echouee. Verifie ta connexion et la configuration API."}`;
+        ? "Generation annulee."
+        : isCreditErr
+          ? "Credits insuffisants. Recharge ton compte pour continuer."
+          : "Une erreur est survenue. Verifie ta connexion et reessaie.";
 
       // Stop any pending UI streaming
       useChatStore.getState().stopGeneration();
