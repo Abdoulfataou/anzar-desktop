@@ -40,9 +40,10 @@
         "renameFile": true,
         "exists": true,
         "scope": [
-          "$DOCUMENTS/ANZAR/**",
-          "$DESKTOP/ANZAR/**",
-          "$DOWNLOAD/ANZAR/**"
+          "$DOCUMENTS/**",
+          "$DESKTOP/**",
+          "$DOWNLOAD/**",
+          "$HOME/**"
         ]
       },
       "dialog": {

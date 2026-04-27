@@ -418,7 +418,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         if (selected && typeof selected === 'string') {
           const allowed = await isAllowedProjectRoot(selected);
           if (!allowed) {
-            toast.error('Dossier non autorisé. Utilise Documents/ANZAR (ou Bureau/ANZAR / Téléchargements/ANZAR).');
+            toast.error('Dossier non autorisé. Choisis un dossier dans ton répertoire personnel.');
             projectBaseDirOverrideRef.current = defaultBase;
             return;
           }
@@ -495,7 +495,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       const allowed = await isAllowedProjectRoot(selected);
       if (!allowed) {
-        toast.error('Dossier non autorisé. Utilise Documents/ANZAR (ou Bureau/ANZAR / Téléchargements/ANZAR).');
+        toast.error('Dossier non autorisé. Choisis un dossier dans ton répertoire personnel.');
         return;
       }
 
@@ -909,9 +909,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       const rawMessages = [
       {
-        role: ‘system’ as const,
+        role: 'system' as const,
         content:
-          "Tu es ANZAR, un assistant IA intelligent. Tu peux chercher des informations sur le web quand l’utilisateur pose des questions sur l’actualité ou des sujets récents. Si tu proposes des commandes à exécuter, mets-les dans un bloc ```bash```.",
+          "Tu es ANZAR, un assistant IA intelligent. Tu peux chercher des informations sur le web. Si tu proposes des commandes, mets-les dans un bloc ```bash```.",
       },
       ...history.map((m) => ({ role: m.role as any, content: m.content })),
     ];
@@ -941,26 +941,27 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     let routingWasFallback = false;
 
     try {
-      let fullContent = ‘’;
+      let fullContent = '';
 
       // Step 2: Routing / Classification
       const routingStepId = addStep(sessionId, {
-        type: ‘analyzing’,
-        label: ‘Classification de la tâche’,
+        type: 'analyzing',
+        label: 'Classification de la tache',
       });
 
-      // ── Smart chat: backend handles web search (Serper) + tool calling ──
+      // Smart chat: backend handles web search (Serper) + tool calling
       completeStep(sessionId, routingStepId);
-      addStep(sessionId, { type: ‘planning’, label: ‘Recherche et rédaction’ });
+      addStep(sessionId, { type: 'planning', label: 'Recherche et redaction' });
 
-      const modelId = aiService.resolveModel(‘deepseek’, selectedModel);
+      const modelId = aiService.resolveModel('deepseek', selectedModel);
 
       const resp = await aiService.smartChat(apiMessages as any, {
         model: modelId,
         temperature: 0.7,
       });
 
-      fullContent = resp?.choices?.[0]?.message?.content || ‘’;
+      fullContent = resp?.choices?.[0]?.message?.content || '';
+      const reasoningContent = resp?.choices?.[0]?.message?.reasoning_content || '';
 
       // Extract bash commands from response and create command cards
       const ensureCard = useCommandStore.getState().ensureCard;
@@ -968,14 +969,14 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       let cmdMatch: RegExpExecArray | null;
       let cardIdx = 0;
       while ((cmdMatch = bashRegex.exec(fullContent)) !== null) {
-        const cmds = cmdMatch[1].trim().split(‘\n’).filter((l: string) => l.trim() && !l.trim().startsWith(‘#’));
+        const cmds = cmdMatch[1].trim().split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#'));
         for (const cmd of cmds) {
           const cardId = `${aiMessageId}::tool::${cardIdx++}`;
           ensureCard({
             id: cardId,
             messageId: aiMessageId,
             command: cmd.trim(),
-            title: ‘Commande proposée’,
+            title: 'Commande proposee',
             projectId: selectedProjectId,
             projectPath: selectedProjectPath,
           });
@@ -1007,8 +1008,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       }
       // Finalize (marks message as non-streaming + clears streamingContent/isGenerating)
       finalizeStreamingMessage();
-      // Persist metadata after finalize (routing/activity)
-      updateConversationMessage(aiMessageId, {
+      // Persist metadata after finalize (routing/activity + reasoning)
+      const msgUpdate: Record<string, any> = {
         activitySessionId: sessionId,
         routingInfo: {
           provider: routingProvider,
@@ -1016,7 +1017,12 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           wasFallback: routingWasFallback,
           reason: 'smart-chat-with-search',
         },
-      });
+      };
+      if (reasoningContent) {
+        msgUpdate.reasoning = [reasoningContent];
+        msgUpdate.thinking = true;
+      }
+      updateConversationMessage(aiMessageId, msgUpdate);
 
       // Track usage (approx)
       const inputTokens = Math.ceil(apiMessages.reduce((sum, m) => sum + (m.content?.length || 0), 0) / 4);

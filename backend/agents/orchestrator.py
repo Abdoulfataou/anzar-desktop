@@ -90,11 +90,12 @@ Génère un plan d'architecture détaillé et une liste de tâches pour la créa
         ]
 
         try:
-            # Appel DeepSeek
+            # Appel DeepSeek avec JSON mode forcé
             response = await self.call_deepseek(
                 messages=messages,
                 temperature=0.7,
-                max_tokens=3000
+                max_tokens=3000,
+                response_format={"type": "json_object"},
             )
 
             # Parser le JSON

@@ -26,6 +26,7 @@ class DeepSeekClient:
         model: str = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        response_format: Optional[dict] = None,
     ) -> AsyncGenerator[str, None]:
         """Stream chat completion tokens from DeepSeek.
 
@@ -47,6 +48,8 @@ class DeepSeekClient:
             "temperature": min(max(temperature, 0), 2),
             "max_tokens": min(max_tokens, 16384),
         }
+        if response_format:
+            payload["response_format"] = response_format
         
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -90,6 +93,7 @@ class DeepSeekClient:
         model: str = None,
         temperature: float = 0.7,
         max_tokens: int = 4096,
+        response_format: Optional[dict] = None,
     ) -> str:
         """Get complete chat response from DeepSeek.
 
@@ -103,7 +107,7 @@ class DeepSeekClient:
             Complete response text.
         """
         result = ""
-        async for token in self.stream_chat(messages, model, temperature, max_tokens):
+        async for token in self.stream_chat(messages, model, temperature, max_tokens, response_format=response_format):
             result += token
         return result
     

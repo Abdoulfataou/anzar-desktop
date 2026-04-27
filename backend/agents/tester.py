@@ -82,7 +82,8 @@ Identifie tous les problèmes, failles de sécurité et suggestions d'améliorat
             response = await self.call_deepseek(
                 messages=messages,
                 temperature=0.6,
-                max_tokens=2000
+                max_tokens=2000,
+                response_format={"type": "json_object"},
             )
 
             report = self.parse_json_response(response)

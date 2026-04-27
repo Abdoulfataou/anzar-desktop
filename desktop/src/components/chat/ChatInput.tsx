@@ -234,7 +234,7 @@ function ProjectSelector({
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute bottom-full mb-2 left-0 w-56 bg-bg-secondary/95 backdrop-blur-xl border border-border-medium rounded-xl shadow-2xl z-50 overflow-hidden py-1">
+          <div className="absolute bottom-full mb-2 left-0 w-56 bg-bg-secondary border border-border-medium rounded-xl shadow-2xl z-50 overflow-hidden py-1">
             {/* No project option */}
             <button
               onClick={() => { onSelectProject(null); setIsOpen(false); }}
@@ -438,7 +438,7 @@ export default function ChatInput({
       if (selected && typeof selected === 'string') {
         const allowed = await isAllowedProjectRoot(selected);
         if (!allowed) {
-          toast.error('Dossier non autorisé. Place le projet dans Documents/ANZAR (ou Bureau/ANZAR / Téléchargements/ANZAR).');
+          toast.error('Dossier non autorisé. Choisis un dossier dans ton répertoire personnel.');
           return;
         }
         const folderName = selected.split(/[/\\]/).pop() || 'Projet';

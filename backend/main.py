@@ -777,29 +777,40 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
         return json.dumps({"error": f"Unknown tool: {name}"})
 
     start_time = time.time()
+    reasoning_content = ""
 
     try:
         client = DeepSeekClient()
-        # Only inject web_search tool if Serper is configured
-        tools = [WEB_SEARCH_TOOL] if settings.serper_api_key else []
 
-        if tools:
-            response_text = await client.chat_with_tools(
+        # Reasoner model — uses dedicated endpoint, no tools/temperature/streaming
+        is_reasoner = "reasoner" in model.lower()
+
+        if is_reasoner:
+            reasoning_content, response_text = await client.chat_with_reasoning(
                 messages=messages,
-                tools=tools,
-                tool_executor=tool_executor,
                 model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
             )
         else:
-            # No search configured — fallback to normal chat
-            response_text = await client.chat(
-                messages=messages,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
+            # Only inject web_search tool if Serper is configured
+            tools = [WEB_SEARCH_TOOL] if settings.serper_api_key else []
+
+            if tools:
+                response_text = await client.chat_with_tools(
+                    messages=messages,
+                    tools=tools,
+                    tool_executor=tool_executor,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            else:
+                # No search configured — fallback to normal chat
+                response_text = await client.chat(
+                    messages=messages,
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
 
         duration_ms = int((time.time() - start_time) * 1000)
 
@@ -819,12 +830,16 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
                 duration_ms=duration_ms, task_type="smart_chat"
             )
 
+        message_payload = {
+            "role": "assistant",
+            "content": response_text,
+        }
+        if reasoning_content:
+            message_payload["reasoning_content"] = reasoning_content
+
         return JSONResponse({
             "choices": [{
-                "message": {
-                    "role": "assistant",
-                    "content": response_text,
-                },
+                "message": message_payload,
                 "finish_reason": "stop",
             }],
             "usage": {

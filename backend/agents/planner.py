@@ -85,7 +85,8 @@ Pour le projet: {project_name}"""
             response = await self.call_deepseek(
                 messages=messages,
                 temperature=0.6,
-                max_tokens=2500
+                max_tokens=2500,
+                response_format={"type": "json_object"},
             )
 
             architecture = self.parse_json_response(response)

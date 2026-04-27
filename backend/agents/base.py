@@ -5,6 +5,7 @@ Fournit les fonctionnalités communes: appels DeepSeek, tracking tokens, retry l
 
 import logging
 import json
+import re
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 
@@ -58,7 +59,8 @@ class BaseAgent(ABC):
         model: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 2048,
-        stream: bool = False
+        stream: bool = False,
+        response_format: Optional[Dict] = None,
     ) -> str:
         """
         Effectue un appel à l'API DeepSeek avec gestion d'erreur.
@@ -85,7 +87,8 @@ class BaseAgent(ABC):
                     messages=messages,
                     model=model,
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    response_format=response_format,
                 ):
                     result += chunk
                 return result
@@ -94,12 +97,29 @@ class BaseAgent(ABC):
                     messages=messages,
                     model=model,
                     temperature=temperature,
-                    max_tokens=max_tokens
+                    max_tokens=max_tokens,
+                    response_format=response_format,
                 )
 
         except Exception as e:
             logger.error(f"[{self.name}] Erreur DeepSeek: {e}")
             raise
+
+    @staticmethod
+    def _repair_json(text: str) -> str:
+        """Try to fix common LLM JSON errors so json.loads succeeds."""
+        # Remove trailing commas before } or ]
+        text = re.sub(r',\s*([}\]])', r'\1', text)
+        # Add missing commas between "value" "key" (adjacent strings)
+        text = re.sub(r'("\s*)\n(\s*")', r'\1,\n\2', text)
+        # Add missing commas between } "key" or ] "key"
+        text = re.sub(r'([}\]]\s*)\n(\s*")', r'\1,\n\2', text)
+        # Add missing commas between "value"\n{ or "value"\n[
+        text = re.sub(r'("\s*)\n(\s*[{\[])', r'\1,\n\2', text)
+        # Fix unescaped newlines inside string values (crude but effective)
+        # Remove any control characters except \n \r \t
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f]', '', text)
+        return text
 
     def parse_json_response(self, response: str) -> Dict[str, Any]:
         """
@@ -147,6 +167,19 @@ class BaseAgent(ABC):
                     return parsed
             except json.JSONDecodeError as e:
                 last_error = e
+                continue
+
+        # Strategy 5: try repairing common LLM JSON errors
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                repaired = self._repair_json(candidate)
+                parsed = json.loads(repaired)
+                if isinstance(parsed, dict):
+                    logger.info(f"[{self.name}] JSON parsé après réparation")
+                    return parsed
+            except json.JSONDecodeError:
                 continue
 
         logger.error(f"[{self.name}] Erreur parsing JSON: {last_error}")

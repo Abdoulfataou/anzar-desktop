@@ -109,9 +109,9 @@ class FileSystemService {
     // Traversal grossier
     if (p.includes('..')) throw new Error('Chemin invalide (..) bloqué');
 
-    // Cache par racine (ex: .../Documents/ANZAR) pour éviter des appels répétés
-    const idx = p.indexOf('/ANZAR');
-    const key = idx >= 0 ? p.slice(0, idx + '/ANZAR'.length) : p;
+    // Cache par les 3 premiers segments du chemin pour éviter des appels répétés
+    const segments = p.split('/').filter(Boolean);
+    const key = '/' + segments.slice(0, Math.min(segments.length, 3)).join('/');
     const cached = this.allowCache.get(key);
     if (cached === true) return;
     if (cached === false) throw new Error('Dossier non autorisé');
