@@ -1440,17 +1440,40 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             return json.dumps({"agents": state["agents"]}) + "\n"
 
         try:
-            # ── Coder ──
-            update_agent("coder", "running", 10, "Génération du code...")
+            # ── Coder (with keepalive) ──
+            update_agent("coder", "running", 10, "Generation du code...")
             yield emit()
 
             coder = CoderAgent(deepseek_client=_deepseek_client)
             architecture = plan.get("architecture", plan)
-            coder_result = await coder.execute({
+
+            # Run coder with keepalive to prevent Railway/frontend timeout
+            coder_task = asyncio.create_task(coder.execute({
                 "architecture": architecture,
                 "plan": plan,
                 "project_name": plan.get("title", project_id),
-            })
+            }))
+
+            # Send keepalive every 15s while coder is working
+            keepalive_progress = 10
+            while not coder_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(coder_task), timeout=15.0)
+                except asyncio.TimeoutError:
+                    # Coder still working — send keepalive with incremented progress
+                    keepalive_progress = min(keepalive_progress + 5, 80)
+                    update_agent("coder", "running", keepalive_progress, "Generation du code...")
+                    yield emit()
+
+            # Get result — handle exceptions from the task
+            try:
+                coder_result = coder_task.result()
+            except Exception as coder_exc:
+                logger.error(f"Coder task exception: {coder_exc}")
+                update_agent("coder", "error", 0, "Erreur generation du code")
+                yield emit()
+                await update_project(project_id, status="error")
+                return
 
             if coder_result.get("status") == "error":
                 update_agent("coder", "error", 0, coder_result.get("error", "Erreur"))
@@ -1460,44 +1483,75 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
 
             files = coder_result.get("files", {})
             total_tokens += coder_result.get("tokens_used", 0)
-            update_agent("coder", "done", 100, f"{len(files)} fichiers générés")
+            update_agent("coder", "done", 100, f"{len(files)} fichiers generes")
             yield emit()
 
-            # ── Tester ──
-            update_agent("tester", "running", 10, "Analyse qualité...")
+            # ── Tester + Executor EN PARALLELE ──
+            update_agent("tester", "running", 10, "Analyse qualite...")
+            update_agent("executor", "running", 10, "Ecriture des fichiers...")
             yield emit()
 
-            tester = TesterAgent(deepseek_client=_deepseek_client)
-            test_result = await tester.execute({"files": files, "plan": plan})
-            total_tokens += test_result.get("tokens_used", 0)
+            async def run_tester():
+                tester = TesterAgent(deepseek_client=_deepseek_client)
+                return await tester.execute({"files": files, "plan": plan})
 
-            if test_result.get("status") == "error":
-                update_agent("tester", "done", 100, "Test échoué (non bloquant)")
+            async def run_executor():
+                executor = ExecutorAgent(deepseek_client=_deepseek_client)
+                return await executor.execute({
+                    "files": files,
+                    "architecture": architecture,
+                    "project_name": plan.get("title", project_id),
+                    "base_dir": body.base_dir or f"./projects/{project_id}",
+                })
+
+            # Run with keepalive for tester+executor too
+            gather_task = asyncio.create_task(
+                asyncio.gather(run_tester(), run_executor(), return_exceptions=True)
+            )
+
+            te_progress = 10
+            while not gather_task.done():
+                try:
+                    await asyncio.wait_for(asyncio.shield(gather_task), timeout=15.0)
+                except asyncio.TimeoutError:
+                    te_progress = min(te_progress + 10, 80)
+                    update_agent("tester", "running", te_progress, "Analyse qualite...")
+                    update_agent("executor", "running", te_progress, "Ecriture des fichiers...")
+                    yield emit()
+
+            try:
+                test_result, exec_result = gather_task.result()
+            except Exception as gather_exc:
+                logger.error(f"Tester/Executor task exception: {gather_exc}")
+                update_agent("tester", "done", 100, "Test non disponible")
+                update_agent("executor", "error", 0, "Erreur ecriture fichiers")
+                yield emit()
+                await update_project(project_id, status="error")
+                return
+
+            # Process tester result
+            if isinstance(test_result, Exception):
+                update_agent("tester", "done", 100, "Test non disponible")
+            elif test_result.get("status") == "error":
+                update_agent("tester", "done", 100, "Test non bloquant")
             else:
+                total_tokens += test_result.get("tokens_used", 0)
                 report = test_result.get("report", {})
                 quality = report.get("code_quality", "?")
                 issues = len(report.get("issues", []))
-                update_agent("tester", "done", 100, f"Qualité: {quality}/10 — {issues} issues")
-            yield emit()
+                update_agent("tester", "done", 100, f"Qualite: {quality}/10 - {issues} issues")
 
-            # ── Executor ──
-            update_agent("executor", "running", 10, "Écriture des fichiers...")
-            yield emit()
-
-            executor = ExecutorAgent(deepseek_client=_deepseek_client)
-            exec_result = await executor.execute({
-                "files": files,
-                "architecture": architecture,
-                "project_name": plan.get("title", project_id),
-                "base_dir": body.base_dir or f"./projects/{project_id}",
-            })
-
-            if exec_result.get("status") == "error":
+            # Process executor result
+            if isinstance(exec_result, Exception):
+                update_agent("executor", "error", 0, f"Erreur: {str(exec_result)[:80]}")
+                await update_project(project_id, status="error")
+            elif exec_result.get("status") == "error":
                 update_agent("executor", "error", 0, exec_result.get("error", "Erreur"))
                 await update_project(project_id, status="error")
             else:
+                total_tokens += exec_result.get("tokens_used", 0) if isinstance(exec_result, dict) else 0
                 count = exec_result.get("file_count", 0)
-                update_agent("executor", "done", 100, f"{count} fichiers écrits")
+                update_agent("executor", "done", 100, f"{count} fichiers ecrits")
                 await update_project(
                     project_id,
                     status="complete",

@@ -637,6 +637,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       });
 
       let lastPlan: PlanResult | null = null;
+      const addedSteps = new Set<string>();
 
       const wizardMeta = wizardMetaRef.current;
       wizardMetaRef.current = null;
@@ -651,15 +652,20 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         {
           onPhaseChange: (phase, message) => {
             if (phase === 'planning') {
-              updateConversationMessage(aiMessageId, { content: `**${projectName}** - ${message || 'Planification...'}` });
+              addStep(sessionId, { type: 'understanding', label: 'Analyse de ta demande' });
+              updateConversationMessage(aiMessageId, { content: `**${projectName}**\n\nAnalyse et enrichissement de ta demande...` });
+            } else if (phase === 'planned') {
+              updateConversationMessage(aiMessageId, { content: `**${projectName}**\n\n${message || 'Plan pret.'}` });
+            } else if (phase === 'executing') {
+              updateConversationMessage(aiMessageId, { content: `**${projectName}**\n\nGeneration du code en cours...` });
             }
           },
 
           onPlanReady: (p) => {
             lastPlan = p;
             completeStep(sessionId, planStepId);
-            updateAgentStatus(projectId, 'orchestrator', { status: 'done', progress: 100, message: 'Plan créé' });
-            updateAgentStatus(projectId, 'planner', { status: 'done', progress: 100, message: `${p.files.length} fichiers planifiés` });
+            updateAgentStatus(projectId, 'orchestrator', { status: 'done', progress: 100, message: 'Architecture definie' });
+            updateAgentStatus(projectId, 'planner', { status: 'done', progress: 100, message: p.files.length + ' fichiers planifies' });
             setProjectProgress(projectId, 30);
 
             // Persist backend project id for reference
@@ -667,13 +673,16 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
               metadata: { ...(project.metadata as any), localPath, backendProjectId: p.project_id },
             });
 
+            addStep(sessionId, { type: 'complete', label: 'Architecture: ' + p.files.length + ' fichiers planifies' });
+            addStep(sessionId, { type: 'writing', label: 'Generation du code' });
+
             const nextContent =
-              `**${p.title || projectName}**\n\nPlan valide - ${p.files.length} fichiers prevus.\n\nGeneration du code en cours...`;
+              '**' + (p.title || projectName) + '**\n\n' +
+              'Architecture validee - ' + p.files.length + ' fichiers prevus.\n\n' +
+              'Generation du code en cours...';
             updateConversationMessage(aiMessageId, { content: nextContent });
 
-            // Start execution step
-            addStep(sessionId, { type: 'writing', label: 'Generation du code' });
-            updateAgentStatus(projectId, 'coder', { status: 'working', progress: 10, message: 'Génération du code...' });
+            updateAgentStatus(projectId, 'coder', { status: 'working', progress: 10, message: 'Generation du code...' });
           },
 
           onAgentUpdate: (event: ExecutionEvent) => {
@@ -683,17 +692,45 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                 progress: agent.progress,
                 message: agent.message || '',
               });
+
+              // Add granular timeline steps (deduplicated)
+              const stepKey = agent.name + ':' + agent.status;
+              if (!addedSteps.has(stepKey)) {
+                addedSteps.add(stepKey);
+                if (agent.status === 'running' && agent.name === 'tester') {
+                  addStep(sessionId, { type: 'testing', label: 'Tests qualite du code' });
+                } else if (agent.status === 'running' && agent.name === 'executor') {
+                  addStep(sessionId, { type: 'creating', label: 'Ecriture des fichiers sur disque' });
+                } else if (agent.status === 'done' && agent.name === 'coder') {
+                  addStep(sessionId, { type: 'complete', label: 'Code genere' });
+                } else if (agent.status === 'done' && agent.name === 'executor') {
+                  addStep(sessionId, { type: 'complete', label: 'Fichiers ecrits' });
+                } else if (agent.status === 'done' && agent.name === 'tester') {
+                  addStep(sessionId, { type: 'complete', label: 'Tests valides' });
+                }
+              }
             }
+
             const totalProgress = event.agents.reduce((sum, a) => sum + a.progress, 0);
             const overallProgress = Math.round(30 + (totalProgress / event.agents.length) * 0.7);
             setProjectProgress(projectId, overallProgress);
 
             const doneAgents = event.agents.filter((a) => a.status === 'done');
+            const runningAgent = event.agents.find((a) => a.status === 'running');
             const total = event.agents.length;
             const pct = total > 0 ? Math.round((doneAgents.length / total) * 100) : 0;
 
+            const statusLine = runningAgent
+              ? (runningAgent.name === 'coder' ? 'Generation du code...'
+                : runningAgent.name === 'tester' ? 'Tests qualite...'
+                : runningAgent.name === 'executor' ? 'Ecriture des fichiers...'
+                : runningAgent.message || runningAgent.name)
+              : doneAgents.length === total ? 'Finalisation...' : 'En cours...';
+
             const nextContent =
-              `**${lastPlan?.title || projectName}**\n\nGeneration en cours... ${pct}%\n\n${doneAgents.length}/${total} etapes terminees`;
+              '**' + (lastPlan?.title || projectName) + '**\n\n' +
+              statusLine + ' ' + pct + '%\n\n' +
+              doneAgents.length + '/' + total + ' etapes terminees';
             updateConversationMessage(aiMessageId, { content: nextContent });
           },
 

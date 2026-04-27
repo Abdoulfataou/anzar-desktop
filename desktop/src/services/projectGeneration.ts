@@ -185,7 +185,7 @@ class ProjectGenerationService {
     const decoder = new TextDecoder();
     let buffer = '';
     let lastEventTime = Date.now();
-    const STREAM_TIMEOUT_MS = 120_000; // 2 minutes sans événement = timeout
+    const STREAM_TIMEOUT_MS = 300_000; // 5 minutes sans événement = timeout (keepalives every 15s)
 
     try {
       while (true) {

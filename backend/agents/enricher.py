@@ -166,7 +166,7 @@ Si l'utilisateur mentionne un contexte geographique ou culturel, adapte le conte
             response = await self.call_deepseek(
                 messages=messages,
                 temperature=0.7,
-                max_tokens=3000,
+                max_tokens=2000,
                 response_format={"type": "json_object"},
             )
 
