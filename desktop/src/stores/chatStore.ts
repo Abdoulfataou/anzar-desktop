@@ -317,11 +317,21 @@ export const useChatStore = create<ChatStore>()(
 
           if (!activeConversation) return state;
 
+          // Auto-title: use first user message content as title
+          const isFirstUserMsg =
+            message.role === 'user' &&
+            activeConversation.messages.filter((m) => m.role === 'user').length === 0;
+
+          const autoTitle = isFirstUserMsg
+            ? message.content.replace(/\*\*/g, '').replace(/\n/g, ' ').trim().slice(0, 50) + (message.content.length > 50 ? '...' : '')
+            : undefined;
+
           const updated = state.conversations.map((c) => {
             if (c.id === state.activeConversationId) {
               return {
                 ...c,
                 messages: [...c.messages, message],
+                title: autoTitle || c.title,
                 updatedAt: Date.now(),
               };
             }

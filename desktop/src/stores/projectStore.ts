@@ -46,6 +46,9 @@ interface ProjectStore {
   /** Set the active project */
   setActiveProject: (id: string | null) => void;
 
+  /** Replace all files in a project (for loading from disk) */
+  setProjectFiles: (projectId: string, files: ProjectFile[]) => void;
+
   /** Add a file to a project */
   addFile: (projectId: string, file: ProjectFile) => void;
 
@@ -230,6 +233,14 @@ export const useProjectStore = create<ProjectStore>()(
       /**
        * Add a file to a project
        */
+      setProjectFiles: (projectId: string, files: ProjectFile[]) => {
+        set((state) => ({
+          projects: state.projects.map((p) =>
+            p.id === projectId ? { ...p, files, updatedAt: Date.now() } : p
+          ),
+        }));
+      },
+
       addFile: (projectId: string, file: ProjectFile) => {
         set((state) => ({
           projects: state.projects.map((p) => {

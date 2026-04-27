@@ -25,6 +25,7 @@ import { terminalService } from '@/services/terminal';
 import { diagnosticService, DiagnosticReport, DiagnosticSolution } from '@/services/diagnostic';
 import RunPanel from '@/components/runs/RunPanel';
 import { runService } from '@/services/runService';
+import { fileSystemService } from '@/services/fileSystem';
 import { useChangeStore } from '@/stores/changeStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
@@ -248,6 +249,35 @@ const ProjectWorkspacePage: React.FC = () => {
 
   // Project path (from metadata for imported projects)
   const projectPath = project?.metadata?.localPath as string | undefined;
+
+  // Auto-load files from disk when project has localPath but no files in store
+  const setProjectFiles = useProjectStore((s) => s.setProjectFiles);
+  const [isLoadingFiles, setIsLoadingFiles] = useState(false);
+
+  useEffect(() => {
+    if (!id || !projectPath || !project) return;
+    if (project.files.length > 0) return; // Already have files
+    if (project.status === 'generating') return; // Still generating
+    if (isLoadingFiles) return;
+
+    let alive = true;
+    setIsLoadingFiles(true);
+
+    (async () => {
+      try {
+        const files = await fileSystemService.readProjectFiles(projectPath);
+        if (alive && files.length > 0) {
+          setProjectFiles(id, files);
+        }
+      } catch (err) {
+        console.warn('Failed to load project files from disk:', err);
+      } finally {
+        if (alive) setIsLoadingFiles(false);
+      }
+    })();
+
+    return () => { alive = false; };
+  }, [id, projectPath, project?.files.length, project?.status]);
 
   // Start diagnostic monitoring when terminal opens
   useEffect(() => {
@@ -549,12 +579,14 @@ const ProjectWorkspacePage: React.FC = () => {
         </div>
       )}
 
-      {/* Runs panel (timeline + actions) */}
-      <RunPanel
-        projectId={project.id}
-        projectPath={projectPath}
-        onOpenTerminal={() => setShowTerminal(true)}
-      />
+      {/* Runs panel — developer mode only */}
+      {developerMode && (
+        <RunPanel
+          projectId={project.id}
+          projectPath={projectPath}
+          onOpenTerminal={() => setShowTerminal(true)}
+        />
+      )}
 
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
@@ -602,6 +634,11 @@ const ProjectWorkspacePage: React.FC = () => {
                 onSave={handleSave}
                 onChange={handleChange}
               />
+            ) : isLoadingFiles ? (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <Loader2 size={28} className="animate-spin text-accent-primary mb-4" />
+                <p className="text-sm text-text-muted">Chargement des fichiers...</p>
+              </div>
             ) : (
               <EmptyEditorState projectName={project.name} />
             )}
