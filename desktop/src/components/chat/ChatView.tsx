@@ -52,11 +52,11 @@ interface ChatViewProps {
 /* ===== Feature Cards ===== */
 const FEATURES = [
   {
-    title: ‘Générer un projet’,
-    description: ‘Choisis le type, donne un nom et ANZAR code tout pour toi.’,
+    title: 'Générer un projet',
+    description: 'Choisis le type, donne un nom et ANZAR code tout pour toi.',
     icon: Code2,
-    color: ‘from-violet-500 to-indigo-500’,
-    prompt: ‘’,
+    color: 'from-violet-500 to-indigo-500',
+    prompt: '',
   },
   {
     title: 'Importer un dossier',
@@ -106,7 +106,7 @@ const QUICK_STARTS = [
   'Prépare un exposé sur les énergies renouvelables en Afrique',
 ];
 
-/* ===== Assistant Étudiant — Menu interactif ===== */
+/* ===== Assistant Étudiant - Menu interactif ===== */
 const STUDENT_OPTIONS = [
   {
     id: 'memoire',
@@ -114,7 +114,7 @@ const STUDENT_OPTIONS = [
     description: 'Mémoire de fin d\'études : plan, introduction, développement, conclusion, bibliographie.',
     icon: BookOpen,
     color: 'from-pink-500 to-rose-500',
-    prompt: `Je veux rédiger un mémoire de fin d’études. Pose-moi d’abord les questions essentielles (sujet, niveau, contraintes, nombre de pages, plan existant), puis propose une structure/plan détaillé et les prochaines étapes.`,
+    prompt: `Je veux rédiger un mémoire de fin d'études. Pose-moi d'abord les questions essentielles (sujet, niveau, contraintes, nombre de pages, plan existant), puis propose une structure/plan détaillé et les prochaines étapes.`,
   },
   {
     id: 'rapport',
@@ -132,7 +132,7 @@ const STUDENT_OPTIONS = [
     color: 'from-emerald-500 to-green-500',
     prompt: `Je veux faire corriger/reformuler un document (mémoire/rapport/etc.).
 
-Commence par m’expliquer comment te l’envoyer (PDF/Word ou texte collé), puis pose 2–3 questions (type de document, niveau, consignes).
+Commence par m'expliquer comment te l'envoyer (PDF/Word ou texte collé), puis pose 2-3 questions (type de document, niveau, consignes).
 
 Ensuite propose les options sous forme de liste numérotée claire :
 1) Correction complète
@@ -142,7 +142,7 @@ Ensuite propose les options sous forme de liste numérotée claire :
 5) Adaptation du ton
 6) Tout corriger
 
-IMPORTANT : évite les tableaux ASCII, les barres verticales “|”, et les séparateurs à base de tirets. Utilise seulement des titres et des listes.`,
+IMPORTANT : évite les tableaux ASCII, les barres verticales "|", et les séparateurs à base de tirets. Utilise seulement des titres et des listes.`,
     opensFileDialog: true,
   },
   {
@@ -167,11 +167,11 @@ IMPORTANT : évite les tableaux ASCII, les barres verticales “|”, et les sé
     description: 'Plan, contenu, notes de présentation et support pour ton exposé oral.',
     icon: Presentation,
     color: 'from-teal-500 to-cyan-500',
-    prompt: `Aide-moi à préparer un exposé. Demande-moi le sujet, la durée, le public, le type de support attendu (PowerPoint/poster), puis propose un plan, le contenu par partie, et des notes pour l’oral.`,
+    prompt: `Aide-moi à préparer un exposé. Demande-moi le sujet, la durée, le public, le type de support attendu (PowerPoint/poster), puis propose un plan, le contenu par partie, et des notes pour l'oral.`,
   },
 ];
 
-/* ===== Analyser des données — Menu interactif ===== */
+/* ===== Analyser des données - Menu interactif ===== */
 const DATA_OPTIONS = [
   {
     id: 'csv_excel',
@@ -188,7 +188,7 @@ const DATA_OPTIONS = [
     description: 'Génère des visualisations claires à partir de tes données.',
     icon: TrendingUp,
     color: 'from-blue-500 to-indigo-500',
-    prompt: `Je veux créer des graphiques à partir de mes données. Demande-moi le type de graphique (courbe/barres/camembert/scatter/histogramme) et ce que je veux montrer, puis propose 2–3 graphiques pertinents + explication (et si possible le code Python).`,
+    prompt: `Je veux créer des graphiques à partir de mes données. Demande-moi le type de graphique (courbe/barres/camembert/scatter/histogramme) et ce que je veux montrer, puis propose 2-3 graphiques pertinents + explication (et si possible le code Python).`,
     opensFileDialog: true,
   },
   {
@@ -197,7 +197,7 @@ const DATA_OPTIONS = [
     description: 'Traite les résultats d\'un sondage, questionnaire ou formulaire.',
     icon: PieChart,
     color: 'from-violet-500 to-purple-500',
-    prompt: `Je veux analyser les résultats d’un sondage. À partir du fichier, résume d’abord (nb répondants si présent, questions, types de réponses), puis donne : pourcentages, tendances, points surprenants et recommandations.`,
+    prompt: `Je veux analyser les résultats d'un sondage. À partir du fichier, résume d'abord (nb répondants si présent, questions, types de réponses), puis donne : pourcentages, tendances, points surprenants et recommandations.`,
     opensFileDialog: true,
   },
   {
@@ -211,7 +211,7 @@ const DATA_OPTIONS = [
   },
 ];
 
-/* ===== Recherche intelligente — Menu interactif ===== */
+/* ===== Recherche intelligente - Menu interactif ===== */
 const SEARCH_OPTIONS = [
   {
     id: 'research',
@@ -219,7 +219,7 @@ const SEARCH_OPTIONS = [
     description: 'Recherche complète sur un sujet avec sources, synthèse et analyse.',
     icon: Search,
     color: 'from-blue-500 to-cyan-500',
-    prompt: `Fais une recherche approfondie sur mon sujet avec des sources. Commence par me demander le sujet, le niveau de profondeur et l’angle, puis donne une synthèse structurée + sources + conclusion.`,
+    prompt: `Fais une recherche approfondie sur mon sujet avec des sources. Commence par me demander le sujet, le niveau de profondeur et l'angle, puis donne une synthèse structurée + sources + conclusion.`,
   },
   {
     id: 'news',
@@ -227,7 +227,7 @@ const SEARCH_OPTIONS = [
     description: 'Les dernières nouvelles et tendances sur un sujet précis.',
     icon: Newspaper,
     color: 'from-red-500 to-pink-500',
-    prompt: `Donne-moi les dernières actualités sur mon sujet (période + domaine). Résume les 5–10 infos clés, avec sources, tendances et points à retenir.`,
+    prompt: `Donne-moi les dernières actualités sur mon sujet (période + domaine). Résume les 5-10 infos clés, avec sources, tendances et points à retenir.`,
   },
   {
     id: 'factcheck',
@@ -235,7 +235,7 @@ const SEARCH_OPTIONS = [
     description: 'Vérifie si une affirmation, une rumeur ou un chiffre est vrai.',
     icon: HelpCircle,
     color: 'from-amber-500 to-yellow-500',
-    prompt: `Je veux vérifier une information. Demande-moi l’affirmation exacte et la source, puis donne un verdict (vrai/faux/partiel/non vérifiable) avec preuves et sources.`,
+    prompt: `Je veux vérifier une information. Demande-moi l'affirmation exacte et la source, puis donne un verdict (vrai/faux/partiel/non vérifiable) avec preuves et sources.`,
   },
   {
     id: 'compare_options',
@@ -247,7 +247,7 @@ const SEARCH_OPTIONS = [
   },
 ];
 
-/* ===== Rédiger un document — Menu interactif ===== */
+/* ===== Rédiger un document - Menu interactif ===== */
 const DOCUMENT_OPTIONS = [
   {
     id: 'email_pro',
@@ -255,7 +255,7 @@ const DOCUMENT_OPTIONS = [
     description: 'Rédige un email clair, professionnel et adapté au contexte.',
     icon: Mail,
     color: 'from-blue-500 to-indigo-500',
-    prompt: `Aide-moi à rédiger un email professionnel. Demande-moi le destinataire, l’objectif, le ton et les points à inclure, puis propose un email complet (objet + corps + formule de politesse).`,
+    prompt: `Aide-moi à rédiger un email professionnel. Demande-moi le destinataire, l'objectif, le ton et les points à inclure, puis propose un email complet (objet + corps + formule de politesse).`,
   },
   {
     id: 'rapport_pro',
@@ -287,7 +287,7 @@ const DOCUMENT_OPTIONS = [
     description: 'Crée ou améliore ton CV et ta lettre de motivation.',
     icon: Briefcase,
     color: 'from-amber-500 to-orange-500',
-    prompt: `Aide-moi à créer/améliorer mon CV et/ou ma lettre de motivation. Demande-moi le poste visé, mon expérience, mes formations/compétences et (si j’ai déjà un CV) analyse-le puis propose une version améliorée.`,
+    prompt: `Aide-moi à créer/améliorer mon CV et/ou ma lettre de motivation. Demande-moi le poste visé, mon expérience, mes formations/compétences et (si j'ai déjà un CV) analyse-le puis propose une version améliorée.`,
     opensFileDialog: true,
   },
   {
@@ -307,7 +307,7 @@ Rédige un document professionnel avec les clauses standards. ATTENTION : préci
 ];
 
 // ============================================================================
-// INTENT DETECTION — Détecte si le message demande une génération de projet
+// INTENT DETECTION - Détecte si le message demande une génération de projet
 // ============================================================================
 
 function detectProjectIntent(message: string): boolean {
@@ -412,7 +412,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         // ignore
       }
 
-      // Proposer (sans insister) le dossier par défaut. Si non, laisser l’utilisateur choisir.
+      // Proposer (sans insister) le dossier par défaut. Si non, laisser l'utilisateur choisir.
       try {
         const { confirm, open } = await import('@tauri-apps/api/dialog');
         const okDefault = await confirm(
@@ -439,7 +439,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           return;
         }
       } catch {
-        // ignore — fallback default
+        // ignore - fallback default
       }
 
       projectBaseDirOverrideRef.current = defaultBase;
@@ -468,7 +468,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const settings = useSettingsStore((s) => s.settings);
   const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() => globalThis.navigator?.onLine ?? true);
 
-  // Network listeners (grand public) — n'affiche pas d'alert, juste un état
+  // Network listeners (grand public) - n'affiche pas d'alert, juste un état
   useEffect(() => {
     const onOnline = () => setIsBrowserOnline(true);
     const onOffline = () => setIsBrowserOnline(false);
@@ -539,7 +539,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       // Feedback minimal dans le chat
       ensureActiveConversation();
       const msgId = `msg_${Date.now()}`;
-      const content = '❌ Impossible d’ouvrir le sélecteur de dossier. (Fonction disponible sur l’app desktop Tauri.)';
+      const content = `Impossible d'ouvrir le selecteur de dossier. (Fonction disponible sur l'app desktop Tauri.)`;
       addConversationMessage({
         id: msgId,
         role: 'assistant',
@@ -548,7 +548,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         model: selectedModel,
         isError: true,
       });
-      toast.error('Impossible d’importer le dossier');
+      toast.error("Impossible d'importer le dossier");
     }
   }, [selectedModel, ensureActiveConversation, addConversationMessage, navigate]);
 
@@ -620,7 +620,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     addConversationMessage({
       id: aiMessageId,
       role: 'assistant',
-      content: `**${projectName}** — Preparation en cours...`,
+      content: `**${projectName}** - Preparation en cours...`,
       timestamp: Date.now(),
       model: selectedModel,
       isStreaming: true,
@@ -642,7 +642,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         {
           onPhaseChange: (phase, message) => {
             if (phase === 'planning') {
-              updateConversationMessage(aiMessageId, { content: `**${projectName}** — ${message || 'Planification...'}` });
+              updateConversationMessage(aiMessageId, { content: `**${projectName}** - ${message || 'Planification...'}` });
             }
           },
 
@@ -659,7 +659,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             });
 
             const nextContent =
-              `**${p.title || projectName}**\n\nPlan valide — ${p.files.length} fichiers prevus.\n\nGeneration du code en cours...`;
+              `**${p.title || projectName}**\n\nPlan valide - ${p.files.length} fichiers prevus.\n\nGeneration du code en cours...`;
             updateConversationMessage(aiMessageId, { content: nextContent });
 
             // Start execution step
@@ -730,7 +730,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       endSession(sessionId, 'done');
 
       const nextContent =
-        `**${plan.title || projectName}** — Projet pret !\n\n` +
+        `**${plan.title || projectName}** - Projet pret !\n\n` +
         `${plan.files.length} fichiers crees en ${elapsed}s.\n\n` +
         `Tu peux ouvrir le projet depuis la barre laterale pour explorer les fichiers et le code.`;
       updateConversationMessage(aiMessageId, {
@@ -822,7 +822,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     if (!isEffectivelyOnline) {
       // En mode "retry" (pas de doublon dans le chat) => toast uniquement
       if (opts?.skipUserMessage) {
-        toast.error('Hors ligne — impossible d’envoyer pour le moment.');
+        toast.error("Hors ligne - impossible d'envoyer pour le moment.");
         setPendingRetry({
           userMessageId,
           content,
@@ -837,7 +837,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       addConversationMessage({
         id: `msg_${Date.now() + 1}`,
         role: 'assistant',
-        content: 'Hors ligne — connecte-toi à internet pour continuer. Tu peux préparer ton message et réessayer.',
+        content: 'Hors ligne - connecte-toi à internet pour continuer. Tu peux préparer ton message et réessayer.',
         timestamp: Date.now(),
         isError: true,
         model: selectedModel,
@@ -896,7 +896,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       label: 'Compréhension de la demande',
     });
 
-      // Build API messages — le routeur injecte le prompt système optimisé pour le cache
+      // Build API messages - le routeur injecte le prompt système optimisé pour le cache
     const history = useChatStore
       .getState()
       .getMessagesForAPI()
@@ -1051,8 +1051,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       endSession(sessionId, 'error');
 
       const errorContent = error.name === 'AbortError'
-        ? '⏹ Génération arrêtée.'
-        : `❌ Erreur: ${error.message || 'Connexion échouée. Vérifie ta connexion et la configuration API.'}`;
+        ? "Generation arretee."
+        : `Erreur: ${error.message || "Connexion echouee. Verifie ta connexion et la configuration API."}`;
 
       // Stop any pending UI streaming
       useChatStore.getState().stopGeneration();
@@ -1085,7 +1085,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           });
         }
         if (!prev) {
-          toast('Connexion instable — réessai automatique dès que possible.', { id: 'net-auto' });
+          toast('Connexion instable - réessai automatique dès que possible.', { id: 'net-auto' });
         }
       }
       return false;
@@ -1150,7 +1150,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     if (autoRetryInFlightRef.current) return;
 
     autoRetryInFlightRef.current = true;
-    toast.loading('Reconnexion… Réessai en cours', { id: 'net-retry' });
+    toast.loading("Reconnexion... Reessai en cours", { id: 'net-retry' });
     void (async () => {
       try {
         const ok = await handleSendMessage(pendingRetry.content, pendingRetry.hasImages, {

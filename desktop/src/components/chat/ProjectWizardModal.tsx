@@ -1,5 +1,5 @@
 /**
- * ProjectWizardModal — Wizard de creation de projet ANZAR
+ * ProjectWizardModal - Wizard de creation de projet ANZAR
  * Collecte: type de projet, nom, description, technos
  * Genere un prompt professionnel pour le pipeline multi-agents
  */
@@ -223,7 +223,7 @@ export default function ProjectWizardModal({ onClose, onGenerate }: ProjectWizar
                 <p className="text-xs text-text-muted mt-0.5">
                   {step === 'type'
                     ? 'Quel type de projet veux-tu creer ?'
-                    : `${typeObj?.title || 'Projet'} — personnalise ton projet`}
+                    : `${typeObj?.title || 'Projet'} - personnalise ton projet`}
                 </p>
               </div>
             </div>
