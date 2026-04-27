@@ -26,6 +26,7 @@
 import { AIProvider, AIModel, ChatOptions, APIMessage, StreamDelta } from '@/types';
 import { aiService } from './ai';
 import { getSystemPrompt, type PromptContext } from './prompts';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 // ============================================================================
 // TASK CLASSIFICATION
@@ -788,6 +789,7 @@ class AIRouter {
       this.getBackendUrl('/api/deepseek/files'),
       {
         method: 'POST',
+        headers: this.getAuthHeaders(),
         body: formData,
       }
     );
@@ -800,7 +802,7 @@ class AIRouter {
       this.getBackendUrl('/api/deepseek/batches'),
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...this.getAuthHeaders() },
         body: JSON.stringify({
           input_file_id: uploadData.id,
           endpoint: '/v1/chat/completions',
@@ -825,7 +827,7 @@ class AIRouter {
   }> {
     const res = await fetch(
       this.getBackendUrl(`/api/deepseek/batches/${batchId}`),
-      { method: 'GET' }
+      { method: 'GET', headers: this.getAuthHeaders() }
     );
 
     if (!res.ok) throw new Error(`Batch status failed: ${res.status}`);
@@ -845,7 +847,7 @@ class AIRouter {
   async retrieveBatchResults(outputFileId: string): Promise<BatchResult[]> {
     const res = await fetch(
       this.getBackendUrl(`/api/deepseek/files/${outputFileId}/content`),
-      { method: 'GET' }
+      { method: 'GET', headers: this.getAuthHeaders() }
     );
 
     if (!res.ok) throw new Error(`Batch results failed: ${res.status}`);
@@ -866,15 +868,18 @@ class AIRouter {
   }
 
   private getBackendUrl(path: string): string {
-    // Single source of truth: settingsStore
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { useSettingsStore } = require('@/stores/settingsStore');
-      const BACKEND = useSettingsStore.getState().getBackendUrl();
-      return `${BACKEND}${path}`;
-    } catch {
-      return `https://anzar-desktop-production.up.railway.app${path}`;
+    const BACKEND = useSettingsStore.getState().getBackendUrl() || 'https://anzar-desktop-production.up.railway.app';
+    return `${BACKEND}${path}`;
+  }
+
+  /** Get auth headers for direct fetch calls (same pattern as ai.ts) */
+  private getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {};
+    const token = useSettingsStore.getState().getAuthToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
     }
+    return headers;
   }
 
   // ========================================================================

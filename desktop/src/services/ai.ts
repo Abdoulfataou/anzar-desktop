@@ -19,25 +19,20 @@ import {
   APIMessage, ChatOptions, ChatResponse, StreamDelta,
   ToolDefinition, ToolCall,
 } from '@/types';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 // ============================================================================
 // CONFIGURATION
 // ============================================================================
 
-/** Lazy-load settings store to avoid circular imports */
+/** Get settings store state (direct import — no lazy-load needed) */
 function getSettingsStore() {
-  try {
-    const { useSettingsStore } = require('@/stores/settingsStore');
-    return useSettingsStore.getState();
-  } catch {
-    return null;
-  }
+  return useSettingsStore.getState();
 }
 
 /** Get the backend proxy URL (single source of truth) */
 function getBackendUrl(): string {
-  const store = getSettingsStore();
-  return store?.getBackendUrl?.() || 'https://anzar-desktop-production.up.railway.app';
+  return getSettingsStore().getBackendUrl() || 'https://anzar-desktop-production.up.railway.app';
 }
 
 // ============================================================================
@@ -73,8 +68,7 @@ class AIService {
     };
 
     // Add user auth token if available (JWT from login)
-    const store = getSettingsStore();
-    const token = store?.getAuthToken?.();
+    const token = getSettingsStore().getAuthToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
     }
