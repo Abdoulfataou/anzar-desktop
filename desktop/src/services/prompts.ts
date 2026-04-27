@@ -68,7 +68,7 @@ export const SYSTEM_PROMPT_MAIN = `Tu es ANZAR, un assistant IA de développemen
 - **Backend**: Python (FastAPI), Node.js
 - **Mobile**: React Native, Expo
 - **Base de données**: SQLite, PostgreSQL, Supabase
-- **IA**: DeepSeek API, Kimi/Moonshot API (OpenAI-compatible)
+- **IA**: API propriétaire ANZAR (OpenAI-compatible)
 - **Paiements**: Wave, Orange Money, M-Pesa (marché africain)
 
 ## Outils disponibles

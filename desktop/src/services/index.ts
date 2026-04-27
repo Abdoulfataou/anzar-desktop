@@ -3,7 +3,7 @@
  * Central export point for all services
  */
 
-// AI Router — point d'entrée principal (routage intelligent DeepSeek/Kimi)
+// AI Router — point d'entrée principal (routage intelligent)
 export { aiRouter } from './router';
 export type { default as AIRouter } from './router';
 

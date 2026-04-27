@@ -16,6 +16,7 @@ import {
   Search, Newspaper, HelpCircle, Scale,
   // Document icons
   Mail, FileCheck, Megaphone, ScrollText, Briefcase, Pen,
+  FolderOpen,
 } from 'lucide-react';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -36,6 +37,7 @@ import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 import VerifyFixNotice from './VerifyFixNotice';
 import { runService } from '@/services/runService';
+import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 
 interface Message {
   id: string;
@@ -64,11 +66,19 @@ interface ChatViewProps {
 /* ===== Feature Cards ===== */
 const FEATURES = [
   {
-    title: 'Créer un projet',
-    description: 'Une idée suffit : ANZAR structure, code et génère les fichiers.',
+    title: 'Générer un projet',
+    description: 'À partir d’une idée : ANZAR planifie, code et crée les fichiers (dossier auto par défaut).',
     icon: Code2,
     color: 'from-violet-500 to-indigo-500',
     prompt: 'Je veux créer un nouveau projet',
+  },
+  {
+    title: 'Importer un dossier',
+    description: 'Travaille sur un projet existant en important un dossier local dans ANZAR.',
+    icon: FolderOpen,
+    color: 'from-slate-500 to-gray-600',
+    // Pas de prompt: action locale (dialog)
+    prompt: '',
   },
   {
     title: 'Assistant Étudiant',
@@ -542,6 +552,55 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const settings = useSettingsStore((s) => s.settings);
 
   // ────────────────────────────────────────────────────────────────────────────
+  // Import d'un dossier local (projet existant)
+  // ────────────────────────────────────────────────────────────────────────────
+  const ensureActiveConversation = useCallback(() => {
+    // Crée une conversation par défaut si aucune n'est active (sinon addMessage ne fait rien)
+    if (!useChatStore.getState().activeConversationId) {
+      createConversation(undefined, selectedModel);
+    }
+  }, [createConversation, selectedModel]);
+
+  const handleImportFolder = useCallback(async () => {
+    try {
+      const { open } = await import('@tauri-apps/api/dialog');
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        title: 'Importer un dossier (projet existant)',
+      });
+
+      if (!selected || typeof selected !== 'string') return;
+
+      const allowed = await isAllowedProjectRoot(selected);
+      if (!allowed) {
+        await showPathNotAllowedMessage();
+        return;
+      }
+
+      const folderName = selected.split(/[/\\]/).pop() || 'Projet importé';
+      const project = useProjectStore.getState().createProject(folderName, `Projet importé: ${selected}`, selectedModel);
+      useProjectStore.getState().updateProject(project.id, {
+        status: 'complete',
+        metadata: { localPath: selected, imported: true },
+      } as any);
+      // Optionnel: rendre le projet actif immédiatement
+      useProjectStore.getState().setActiveProject(project.id);
+    } catch (err) {
+      console.error('Import folder failed:', err);
+      // Feedback minimal dans le chat
+      ensureActiveConversation();
+      const msgId = `msg_${Date.now()}`;
+      const content = '❌ Impossible d’ouvrir le sélecteur de dossier. (Fonction disponible sur l’app desktop Tauri.)';
+      setMessages((prev) => [
+        ...prev,
+        { id: msgId, type: 'ai', content, timestamp: new Date(), isError: true, model: selectedModel },
+      ]);
+      addConversationMessage({ id: msgId, role: 'assistant', content, timestamp: Date.now(), model: selectedModel });
+    }
+  }, [selectedModel, ensureActiveConversation, addConversationMessage]);
+
+  // ────────────────────────────────────────────────────────────────────────────
   // Synchronisation ChatView ↔ chatStore
   // Objectif: éviter la désynchronisation avec la Sidebar (activeConversation)
   // ────────────────────────────────────────────────────────────────────────────
@@ -557,13 +616,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       thinking: m.thinking,
     };
   }, []);
-
-  const ensureActiveConversation = useCallback(() => {
-    // Crée une conversation par défaut si aucune n'est active (sinon addMessage ne fait rien)
-    if (!useChatStore.getState().activeConversationId) {
-      createConversation(undefined, selectedModel);
-    }
-  }, [createConversation, selectedModel]);
 
   // Auto-init au premier montage
   useEffect(() => {
@@ -1160,7 +1212,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             </div>
 
             {/* Feature cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 w-full max-w-5xl mb-10">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 w-full max-w-6xl mb-10">
               {FEATURES.map((feature, idx) => {
                 const Icon = feature.icon;
                 return (
@@ -1175,6 +1227,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                         setShowSearchMenu(true);
                       } else if (feature.title === 'Rédiger un document') {
                         setShowDocumentMenu(true);
+                      } else if (feature.title === 'Importer un dossier') {
+                        void handleImportFolder();
                       } else {
                         handleQuickStart(feature.prompt || feature.title);
                       }

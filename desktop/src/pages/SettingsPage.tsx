@@ -8,14 +8,14 @@ import {
   Save, RotateCcw, Cpu, Palette, Wifi, Info,
   ExternalLink, Check, Gauge, Zap, Brain,
   User, CreditCard, ArrowUpRight, History,
-  Sparkles, Smartphone,
-  Plus, Gift, X, Shield, LogOut,
+  Smartphone,
+  Plus, Gift, X, LogOut,
   Mail, Phone, MessageCircle, Send, MapPin, Globe,
 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { authService } from '@/services/auth';
-import { Transaction, AI_PROVIDERS, AIProvider } from '@/types';
+import { Transaction } from '@/types';
 import { cn, isTauri } from '@/lib/utils';
 import { openExternalUrl } from '@/services/externalLinks';
 import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch } from '@/services/updateService';
@@ -553,92 +553,8 @@ export default function SettingsPage() {
 
           <div className="h-px bg-border-subtle" />
 
-          {/* ===== INTELLIGENCE ARTIFICIELLE ===== */}
-          <Section icon={Cpu} title="Intelligence Artificielle" description="Fournisseur et mode de réponse de l'IA">
-            {/* Provider selector */}
-            <SettingRow label="Fournisseur IA" description="Choisis le moteur d'intelligence artificielle">
-              <div className="flex flex-col gap-2 w-full">
-                {(Object.keys(AI_PROVIDERS) as AIProvider[]).map((key) => {
-                  const p = AI_PROVIDERS[key];
-                  const isSelected = form.provider === key;
-                  return (
-                    <button
-                      key={key}
-                      onClick={() => update('provider', key)}
-                      className={cn(
-                        'flex items-start gap-3 p-3 rounded-xl border transition-all text-left w-full',
-                        isSelected
-                          ? 'border-accent-primary/60 bg-accent-primary/5 shadow-sm'
-                          : 'border-border-subtle bg-bg-tertiary/30 hover:border-border-default hover:bg-bg-tertiary/60'
-                      )}
-                    >
-                      <div className={cn(
-                        'w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5',
-                        isSelected ? 'bg-accent-primary/20' : 'bg-bg-tertiary'
-                      )}>
-                        <Sparkles size={14} className={isSelected ? 'text-accent-primary' : 'text-text-muted'} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className={cn('text-sm font-semibold', isSelected ? 'text-text-primary' : 'text-text-secondary')}>
-                            {p.label}
-                          </span>
-                          {isSelected && (
-                            <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-accent-primary/15 text-accent-primary text-[10px] font-medium">
-                              <Check size={10} /> Actif
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex flex-wrap gap-1 mt-1.5">
-                          {p.features.map((f) => (
-                            <span
-                              key={f}
-                              className="px-1.5 py-0.5 rounded-md bg-bg-tertiary/80 text-[10px] text-text-muted border border-border-subtle/50"
-                            >
-                              {f}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </SettingRow>
-
-            {/* Backend Connection */}
-            <SettingRow label="Serveur backend" description="Toutes les requêtes IA transitent par le backend sécurisé ANZAR.">
-              <div className="flex flex-col gap-3 w-full">
-                <div>
-                  <label className="flex items-center gap-1.5 text-[11px] font-medium text-text-secondary mb-1.5">
-                    <Shield size={10} className="text-accent-primary" />
-                    URL du backend
-                  </label>
-                  <input
-                    type="url"
-                    value={form.backendUrl || ''}
-                    onChange={(e) => update('backendUrl', e.target.value)}
-                    placeholder="https://api.anzar.app"
-                    className={cn(
-                      'w-full px-3 py-2.5 rounded-xl text-xs font-mono',
-                      'bg-bg-tertiary border border-border-subtle',
-                      'text-text-primary placeholder-text-muted',
-                      'focus:outline-none focus:ring-1 focus:ring-accent-primary transition-all'
-                    )}
-                  />
-                </div>
-
-                {/* Security note */}
-                <div className="flex items-start gap-2 p-2.5 rounded-lg bg-accent-success/5 border border-accent-success/20">
-                  <Shield size={12} className="text-accent-success flex-shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-text-muted leading-relaxed">
-                    Les clés API (DeepSeek, Kimi) sont stockées uniquement sur le serveur.
-                    Elles ne transitent jamais par ton appareil. Connexion sécurisée HTTPS.
-                  </p>
-                </div>
-              </div>
-            </SettingRow>
-
+          {/* ===== MODE IA ===== */}
+          <Section icon={Cpu} title="Mode de réponse" description="Choisis comment ANZAR répond à tes questions">
             {/* Model mode selector */}
             <SettingRow label="Mode par défaut" description="Rapide pour les réponses directes, Réflexion pour l'analyse approfondie">
               <div className="flex gap-1 p-0.5 rounded-xl bg-bg-tertiary/70 border border-border-subtle">

@@ -127,7 +127,7 @@ class AIService {
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
-      throw new Error(error.error?.message || `Erreur API ${provider}: ${response.status}`);
+      throw new Error(error.error?.message || `Erreur du service IA (${response.status})`);
     }
 
     return response.json();
@@ -207,7 +207,7 @@ class AIService {
 
       if (!response.ok) {
         const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
-        throw new Error(error.error?.message || `Erreur API ${provider}: ${response.status}`);
+        throw new Error(error.error?.message || `Erreur du service IA (${response.status})`);
       }
 
       const reader = response.body?.getReader();

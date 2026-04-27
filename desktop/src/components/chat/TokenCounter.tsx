@@ -10,7 +10,7 @@ interface TokenCounterProps {
   /** Current token count */
   tokenCount: number;
 
-  /** Optional: maximum tokens before hard limit (defaults to 262K for Kimi) */
+  /** Optional: maximum tokens before hard limit */
   maxTokens?: number;
 }
 
@@ -27,7 +27,7 @@ function formatTokens(count: number): string {
 
 export const TokenCounter: React.FC<TokenCounterProps> = ({
   tokenCount,
-  maxTokens = 262000, // Kimi K2.6 max context
+  maxTokens = 262000,
 }) => {
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -45,13 +45,8 @@ export const TokenCounter: React.FC<TokenCounterProps> = ({
     return 'text-gray-500'; // Gray otherwise
   };
 
-  const deepseekMax = 128000;
-  const kimiMax = 262000;
-
   const tooltipText = `${tokenCount.toLocaleString()} tokens estimés
-Limites:
-• DeepSeek: ${deepseekMax.toLocaleString()} tokens
-• Kimi: ${kimiMax.toLocaleString()} tokens`;
+Limite max: ${maxTokens.toLocaleString()} tokens`;
 
   return (
     <div
@@ -69,7 +64,7 @@ Limites:
         <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-gray-100 text-xs rounded shadow-lg whitespace-nowrap z-50">
           <div>{tokenCount.toLocaleString()} tokens estimés</div>
           <div className="text-gray-400 mt-1">
-            DeepSeek: 128K / Kimi: 262K
+            Limite: {formatTokens(maxTokens)}
           </div>
           <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
         </div>

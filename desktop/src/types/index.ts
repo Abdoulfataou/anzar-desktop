@@ -105,7 +105,7 @@ export interface AIProviderConfig {
 export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
   deepseek: {
     provider: 'deepseek',
-    label: 'DeepSeek',
+    label: 'ANZAR Rapide',
     baseUrl: 'https://api.deepseek.com',
     models: { fast: 'deepseek-chat', thinking: 'deepseek-reasoner' },
     defaultTemperature: { fast: 1.0, thinking: 1.0 },
@@ -113,7 +113,7 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
   },
   kimi: {
     provider: 'kimi',
-    label: 'Kimi (Moonshot)',
+    label: 'ANZAR Vision',
     baseUrl: 'https://api.moonshot.ai/v1',
     models: { fast: 'kimi-k2.6', thinking: 'kimi-k2.5' },
     defaultTemperature: { fast: 0.7, thinking: 0.7 },

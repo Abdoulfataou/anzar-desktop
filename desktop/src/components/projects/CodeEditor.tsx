@@ -320,7 +320,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
                 'flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-medium transition-colors',
                 fimEnabled ? 'bg-accent-primary/15 text-accent-primary' : 'text-text-muted hover:bg-surface-hover'
               )}
-              title="Autocomplétion IA (DeepSeek FIM)"
+              title="Autocomplétion IA"
             >
               {fimLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
               IA
