@@ -1399,7 +1399,7 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
 
 @app.post("/api/projects/{project_id}/execute")
 async def execute_project(project_id: str, body: ExecuteRequest, user: dict = Depends(get_current_user)):
-    """Execute a project plan. Returns SSE stream with agent status updates."""
+    """Execute a project plan. Runs generation as a background task, returns SSE observer stream."""
     email = user["sub"]
     plan = body.plan
 
@@ -1416,15 +1416,16 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
     _project_states[project_id] = {
         "status": "running",
         "agents": [
-            {"name": "orchestrator", "status": "done", "progress": 100, "message": "Plan prêt"},
-            {"name": "planner", "status": "done", "progress": 100, "message": "Architecture prête"},
+            {"name": "orchestrator", "status": "done", "progress": 100, "message": "Plan pret"},
+            {"name": "planner", "status": "done", "progress": 100, "message": "Architecture prete"},
             {"name": "coder", "status": "pending", "progress": 0},
             {"name": "tester", "status": "pending", "progress": 0},
             {"name": "executor", "status": "pending", "progress": 0},
         ],
     }
 
-    async def execution_stream():
+    # ── Background task: runs independently of SSE connection ──
+    async def _run_generation():
         state = _project_states[project_id]
         total_tokens = 0
 
@@ -1436,60 +1437,32 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                     if message:
                         a["message"] = message
 
-        def emit():
-            return json.dumps({"agents": state["agents"]}) + "\n"
-
         try:
-            # ── Coder (with keepalive) ──
+            # ── Coder ──
             update_agent("coder", "running", 10, "Generation du code...")
-            yield emit()
 
             coder = CoderAgent(deepseek_client=_deepseek_client)
             architecture = plan.get("architecture", plan)
 
-            # Run coder with keepalive to prevent Railway/frontend timeout
-            coder_task = asyncio.create_task(coder.execute({
+            coder_result = await coder.execute({
                 "architecture": architecture,
                 "plan": plan,
                 "project_name": plan.get("title", project_id),
-            }))
-
-            # Send keepalive every 15s while coder is working
-            keepalive_progress = 10
-            while not coder_task.done():
-                try:
-                    await asyncio.wait_for(asyncio.shield(coder_task), timeout=15.0)
-                except asyncio.TimeoutError:
-                    # Coder still working — send keepalive with incremented progress
-                    keepalive_progress = min(keepalive_progress + 5, 80)
-                    update_agent("coder", "running", keepalive_progress, "Generation du code...")
-                    yield emit()
-
-            # Get result — handle exceptions from the task
-            try:
-                coder_result = coder_task.result()
-            except Exception as coder_exc:
-                logger.error(f"Coder task exception: {coder_exc}")
-                update_agent("coder", "error", 0, "Erreur generation du code")
-                yield emit()
-                await update_project(project_id, status="error")
-                return
+            })
 
             if coder_result.get("status") == "error":
                 update_agent("coder", "error", 0, coder_result.get("error", "Erreur"))
-                yield emit()
+                state["status"] = "error"
                 await update_project(project_id, status="error")
                 return
 
             files = coder_result.get("files", {})
             total_tokens += coder_result.get("tokens_used", 0)
             update_agent("coder", "done", 100, f"{len(files)} fichiers generes")
-            yield emit()
 
             # ── Tester + Executor EN PARALLELE ──
             update_agent("tester", "running", 10, "Analyse qualite...")
             update_agent("executor", "running", 10, "Ecriture des fichiers...")
-            yield emit()
 
             async def run_tester():
                 tester = TesterAgent(deepseek_client=_deepseek_client)
@@ -1504,30 +1477,10 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                     "base_dir": body.base_dir or f"./projects/{project_id}",
                 })
 
-            # Run with keepalive for tester+executor too
-            gather_task = asyncio.create_task(
-                asyncio.gather(run_tester(), run_executor(), return_exceptions=True)
+            results = await asyncio.gather(
+                run_tester(), run_executor(), return_exceptions=True
             )
-
-            te_progress = 10
-            while not gather_task.done():
-                try:
-                    await asyncio.wait_for(asyncio.shield(gather_task), timeout=15.0)
-                except asyncio.TimeoutError:
-                    te_progress = min(te_progress + 10, 80)
-                    update_agent("tester", "running", te_progress, "Analyse qualite...")
-                    update_agent("executor", "running", te_progress, "Ecriture des fichiers...")
-                    yield emit()
-
-            try:
-                test_result, exec_result = gather_task.result()
-            except Exception as gather_exc:
-                logger.error(f"Tester/Executor task exception: {gather_exc}")
-                update_agent("tester", "done", 100, "Test non disponible")
-                update_agent("executor", "error", 0, "Erreur ecriture fichiers")
-                yield emit()
-                await update_project(project_id, status="error")
-                return
+            test_result, exec_result = results
 
             # Process tester result
             if isinstance(test_result, Exception):
@@ -1544,23 +1497,23 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             # Process executor result
             if isinstance(exec_result, Exception):
                 update_agent("executor", "error", 0, f"Erreur: {str(exec_result)[:80]}")
+                state["status"] = "error"
                 await update_project(project_id, status="error")
             elif exec_result.get("status") == "error":
                 update_agent("executor", "error", 0, exec_result.get("error", "Erreur"))
+                state["status"] = "error"
                 await update_project(project_id, status="error")
             else:
                 total_tokens += exec_result.get("tokens_used", 0) if isinstance(exec_result, dict) else 0
                 count = exec_result.get("file_count", 0)
                 update_agent("executor", "done", 100, f"{count} fichiers ecrits")
+                state["status"] = "completed"
                 await update_project(
                     project_id,
                     status="complete",
                     result_json=json.dumps({"files_created": exec_result.get("files_created", [])}),
                     tokens_used=total_tokens,
                 )
-
-            state["status"] = "completed"
-            yield emit()
 
             # Bill for execution
             if total_tokens > 0:
@@ -1575,13 +1528,35 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
 
         except Exception as e:
             logger.error(f"Execute project error: {e}", exc_info=True)
-            update_agent("executor", "error", 0, "Erreur lors de la génération.")
+            update_agent("executor", "error", 0, "Erreur lors de la generation.")
             state["status"] = "error"
             await update_project(project_id, status="error")
-            yield emit()
+
+    # Launch generation as a fire-and-forget background task
+    asyncio.create_task(_run_generation())
+
+    # ── SSE observer stream: emits state every 3s, survives independently ──
+    async def _observe_stream():
+        """Observe _project_states and emit updates. Client disconnect does NOT stop generation."""
+        last_snapshot = ""
+        while True:
+            state = _project_states.get(project_id)
+            if not state:
+                break
+
+            snapshot = json.dumps({"agents": state["agents"]})
+            # Always emit (acts as keepalive + progress update)
+            yield snapshot + "\n"
+            last_snapshot = snapshot
+
+            # Stop streaming if generation is done
+            if state.get("status") in ("completed", "error"):
+                break
+
+            await asyncio.sleep(3)
 
     return StreamingResponse(
-        execution_stream(),
+        _observe_stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

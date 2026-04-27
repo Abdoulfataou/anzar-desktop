@@ -41,6 +41,7 @@ import VerifyFixNotice from './VerifyFixNotice';
 import ProjectWizardModal from './ProjectWizardModal';
 import { runService } from '@/services/runService';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
+import { generationTracker } from '@/services/generationTracker';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -673,6 +674,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
               metadata: { ...(project.metadata as any), localPath, backendProjectId: p.project_id },
             });
 
+            // Register background tracker so generation survives navigation
+            generationTracker.track(projectId, p.project_id, p.title || projectName);
+
             addStep(sessionId, { type: 'complete', label: 'Architecture: ' + p.files.length + ' fichiers planifies' });
             addStep(sessionId, { type: 'writing', label: 'Generation du code' });
 
@@ -735,6 +739,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           },
 
           onComplete: async () => {
+            // SSE stream completed — stop background tracker (no longer needed)
+            generationTracker.untrack(projectId);
+
             // Sync generated files into the store
             if (localPath) {
               try {
@@ -755,6 +762,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           },
 
           onError: (errorMsg) => {
+            generationTracker.untrack(projectId);
             throw new Error(errorMsg);
           },
         },
@@ -810,18 +818,27 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       }
 
     } catch (error: any) {
-      const errorMsg = error?.message || 'Erreur lors de la génération';
+      const isAbort = error?.name === 'AbortError';
+      const errorMsg = error?.message || 'Erreur lors de la generation';
+
+      if (isAbort) {
+        // User explicitly cancelled — stop tracking, backend will also stop
+        generationTracker.untrack(projectId);
+      } else {
+        // Real error (network, credits, etc.) — stop tracking
+        generationTracker.untrack(projectId);
+      }
+
       addStep(sessionId, { type: 'error', label: errorMsg.slice(0, 80) });
       endSession(sessionId, 'error');
       setProjectStatus(projectId, 'error', errorMsg);
 
       const isCredit = /solde|insuffisant|credit|402|epuis/i.test(errorMsg);
-      const nextContent =
-        error?.name === 'AbortError'
-          ? 'Generation annulee.'
-          : isCredit
-            ? 'Credits insuffisants. Recharge ton compte pour continuer.'
-            : 'Une erreur est survenue. Verifie ta connexion et reessaie.';
+      const nextContent = isAbort
+        ? 'Generation annulee.'
+        : isCredit
+          ? 'Credits insuffisants. Recharge ton compte pour continuer.'
+          : 'Une erreur est survenue. Verifie ta connexion et reessaie.';
       updateConversationMessage(aiMessageId, {
         content: nextContent,
         isStreaming: false,
