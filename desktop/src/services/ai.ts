@@ -37,7 +37,7 @@ function getSettingsStore() {
 /** Get the backend proxy URL (single source of truth) */
 function getBackendUrl(): string {
   const store = getSettingsStore();
-  return store?.getBackendUrl?.() || 'http://localhost:8000';
+  return store?.getBackendUrl?.() || 'https://anzar-desktop-production.up.railway.app';
 }
 
 // ============================================================================

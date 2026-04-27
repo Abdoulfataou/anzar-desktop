@@ -94,6 +94,8 @@
     -moz-osx-font-smoothing: grayscale;
     scroll-behavior: smooth;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    height: 100%;
+    overflow: hidden;
   }
 
   body {
@@ -101,6 +103,12 @@
     color: var(--color-text-primary);
     overflow: hidden;
     margin: 0;
+    height: 100%;
+  }
+
+  #root {
+    height: 100%;
+    overflow: hidden;
   }
 
   code, pre, kbd {

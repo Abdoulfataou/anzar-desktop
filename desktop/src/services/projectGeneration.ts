@@ -51,9 +51,9 @@ export type OnAgentUpdate = (event: ExecutionEvent) => void;
 
 function getBackendUrl(): string {
   try {
-    return useSettingsStore.getState().getBackendUrl?.() || 'http://localhost:8000';
+    return useSettingsStore.getState().getBackendUrl?.() || 'https://anzar-desktop-production.up.railway.app';
   } catch {
-    return 'http://localhost:8000';
+    return 'https://anzar-desktop-production.up.railway.app';
   }
 }
 

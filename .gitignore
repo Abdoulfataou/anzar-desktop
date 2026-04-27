@@ -15,6 +15,9 @@ target/
 .env
 .env.local
 .env.production
+.env.tauri
+desktop/.env.tauri
+Admin/.env.tauri
 
 # IDE
 .idea/

@@ -873,7 +873,7 @@ class AIRouter {
       const BACKEND = useSettingsStore.getState().getBackendUrl();
       return `${BACKEND}${path}`;
     } catch {
-      return `http://localhost:8000${path}`;
+      return `https://anzar-desktop-production.up.railway.app${path}`;
     }
   }
 

@@ -164,7 +164,7 @@ def _provider_unavailable_message(provider: str) -> str:
 def get_provider_config(provider: str) -> dict:
     """Get provider config or raise 400."""
     if provider not in PROVIDERS:
-        raise HTTPException(400, f"Provider inconnu: {provider}. Disponibles: {list(PROVIDERS.keys())}")
+        raise HTTPException(400, "Provider inconnu ou indisponible.")
     if _is_provider_disabled(provider):
         raise HTTPException(503, _provider_unavailable_message(provider))
     config = PROVIDERS[provider]
@@ -229,7 +229,8 @@ async def health():
         from database import db_ping
         await db_ping()
     except Exception as e:
-        checks["database"] = f"error: {str(e)[:100]}"
+        checks["database"] = "error"
+        logger.error("Health check DB failure: %s", e)
 
     # Provider availability
     if not settings.deepseek_api_key:
@@ -835,7 +836,7 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
 
     except Exception as e:
         logger.error(f"Smart chat error: {e}")
-        raise HTTPException(500, sanitize_error(str(e)))
+        raise HTTPException(500, "Erreur interne. Réessaie plus tard.")
 
 
 @app.post("/api/{provider}/beta/completions")
@@ -1184,7 +1185,8 @@ async def _proxy_stream_with_billing(
             else:
                 yield f"data: {json.dumps({'error': {'message': 'Provider timeout'}})}\n\n"
         except Exception as e:
-            yield f"data: {json.dumps({'error': {'message': sanitize_error(e)}})}\n\n"
+            logger.error("Stream error: %s", e)
+            yield f"data: {json.dumps({'error': {'message': 'Erreur interne. Réessaie.'}})}\n\n"
         finally:
             await client.aclose()
 
@@ -1299,7 +1301,8 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         })
 
         if orch_result.get("status") == "error":
-            raise HTTPException(500, f"Orchestration failed: {orch_result.get('error', 'Unknown')}")
+            logger.error("Orchestration failed: %s", orch_result.get("error", "Unknown"))
+            raise HTTPException(500, "Erreur lors de la planification du projet.")
 
         plan = orch_result.get("plan", {})
 
@@ -1311,7 +1314,8 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         })
 
         if plan_result.get("status") == "error":
-            raise HTTPException(500, f"Planning failed: {plan_result.get('error', 'Unknown')}")
+            logger.error("Planning failed: %s", plan_result.get("error", "Unknown"))
+            raise HTTPException(500, "Erreur lors de la planification du projet.")
 
         architecture = plan_result.get("architecture", {})
 
@@ -1356,7 +1360,7 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         raise
     except Exception as e:
         logger.error(f"Plan project error: {e}", exc_info=True)
-        raise HTTPException(500, f"Erreur planification: {sanitize_error(e)}")
+        raise HTTPException(500, "Erreur lors de la planification du projet.")
 
 
 @app.post("/api/projects/{project_id}/execute")
@@ -1483,7 +1487,7 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
 
         except Exception as e:
             logger.error(f"Execute project error: {e}", exc_info=True)
-            update_agent("executor", "error", 0, sanitize_error(e))
+            update_agent("executor", "error", 0, "Erreur lors de la génération.")
             state["status"] = "error"
             await update_project(project_id, status="error")
             yield emit()

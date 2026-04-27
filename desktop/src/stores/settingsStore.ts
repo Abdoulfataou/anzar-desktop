@@ -90,7 +90,7 @@ function generateDeviceVaultKey(): string {
 const defaultSettings: Settings = {
   model: 'fast',
   provider: 'deepseek',
-  backendUrl: import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000',
+  backendUrl: import.meta.env.VITE_BACKEND_URL || 'https://anzar-desktop-production.up.railway.app',
   deviceVaultKey: generateDeviceVaultKey(),
   theme: 'dark',
   language: 'fr',
@@ -137,13 +137,20 @@ export const useSettingsStore = create<SettingsStore>()(
       // ─── Backend URL ───
 
       getBackendUrl: () => {
-        // Single source of truth = settings.backendUrl (modifiable in UI)
         const configured = (get().settings.backendUrl || '').trim();
-        if (configured) return configured;
 
-        // Fallback only
+        // If user explicitly set a non-default URL in settings, use it
+        // But ignore stale localhost defaults — prefer env variable
+        if (configured && !configured.includes('localhost')) {
+          return configured;
+        }
+
+        // Env variable takes priority over localhost fallback
         const envUrl = (import.meta.env.VITE_BACKEND_URL || '').trim();
-        return envUrl || 'http://localhost:8000';
+        if (envUrl) return envUrl;
+
+        // Final fallback
+        return configured || 'https://anzar-desktop-production.up.railway.app';
       },
 
       isAPIConfigured: () => {
