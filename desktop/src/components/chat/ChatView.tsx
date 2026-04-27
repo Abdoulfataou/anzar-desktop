@@ -1386,11 +1386,25 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       {showProjectWizard && (
         <ProjectWizardModal
           onClose={() => setShowProjectWizard(false)}
-          onGenerate={async (prompt, _projectName) => {
+          onGenerate={async (prompt, projectName) => {
             setShowProjectWizard(false);
             await prepareProjectGeneration();
             forceProjectGenerationOnceRef.current = true;
-            handleSendMessage(prompt);
+
+            // Show a clean user message instead of the full technical prompt
+            const displayMessage = `Genere le projet "${projectName}"`;
+            ensureActiveConversation();
+            const userMsgId = `msg_${Date.now()}`;
+            addConversationMessage({
+              id: userMsgId,
+              content: displayMessage,
+              role: 'user',
+              timestamp: Date.now(),
+              model: selectedModel,
+            });
+
+            // Send the full prompt to the pipeline but skip adding another user message
+            handleSendMessage(prompt, false, { skipUserMessage: true, userMessageId: userMsgId });
           }}
         />
       )}
