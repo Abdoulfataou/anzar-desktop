@@ -38,6 +38,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 import VerifyFixNotice from './VerifyFixNotice';
+import ProjectWizardModal from './ProjectWizardModal';
 import { runService } from '@/services/runService';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 import toast from 'react-hot-toast';
@@ -51,11 +52,11 @@ interface ChatViewProps {
 /* ===== Feature Cards ===== */
 const FEATURES = [
   {
-    title: 'Générer un projet',
-    description: 'À partir d’une idée : ANZAR planifie, code et crée les fichiers (dossier auto par défaut).',
+    title: ‘Générer un projet’,
+    description: ‘Choisis le type, donne un nom et ANZAR code tout pour toi.’,
     icon: Code2,
-    color: 'from-violet-500 to-indigo-500',
-    prompt: 'Je veux créer un nouveau projet',
+    color: ‘from-violet-500 to-indigo-500’,
+    prompt: ‘’,
   },
   {
     title: 'Importer un dossier',
@@ -391,6 +392,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const [showDataMenu, setShowDataMenu] = useState(false);
   const [showSearchMenu, setShowSearchMenu] = useState(false);
   const [showDocumentMenu, setShowDocumentMenu] = useState(false);
+  const [showProjectWizard, setShowProjectWizard] = useState(false);
   const forceProjectGenerationOnceRef = useRef(false);
   const projectBaseDirOverrideRef = useRef<string | null>(null);
   const lastProjectGenerationWasUserActionRef = useRef(false);
@@ -618,10 +620,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     addConversationMessage({
       id: aiMessageId,
       role: 'assistant',
-      content:
-        `🚀 **Génération de projet lancée : ${projectName}**\n\n` +
-        (localPath ? `📁 Dossier: \`${localPath}\`\n\n` : '') +
-        `Le pipeline multi-agents démarre...`,
+      content: `**${projectName}** — Preparation en cours...`,
       timestamp: Date.now(),
       model: selectedModel,
       isStreaming: true,
@@ -633,7 +632,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     try {
       const planStepId = addStep(sessionId, {
         type: 'planning',
-        label: 'Orchestrator + Planner — architecture du projet',
+        label: 'Architecture du projet',
       });
 
       let lastPlan: PlanResult | null = null;
@@ -642,10 +641,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         { description: content, project_name: projectName },
         {
           onPhaseChange: (phase, message) => {
-            // Keep activity steps meaningful
             if (phase === 'planning') {
-              const nextContent = `🚀 **${projectName}**\n\n⏳ ${message}`;
-              updateConversationMessage(aiMessageId, { content: nextContent });
+              updateConversationMessage(aiMessageId, { content: `**${projectName}** — ${message || 'Planification...'}` });
             }
           },
 
@@ -661,14 +658,12 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
               metadata: { ...(project.metadata as any), localPath, backendProjectId: p.project_id },
             });
 
-            const fileList = p.files.slice(0, 10).map((f) => `  • \`${f.path}\``).join('\n');
-            const moreFiles = p.files.length > 10 ? `\n  ... et ${p.files.length - 10} autres fichiers` : '';
             const nextContent =
-              `🚀 **${p.title || projectName}**\n\n✅ **Plan prêt** — ${p.files.length} fichiers prévus :\n${fileList}${moreFiles}\n\n⏳ **Coder** génère le code...`;
+              `**${p.title || projectName}**\n\nPlan valide — ${p.files.length} fichiers prevus.\n\nGeneration du code en cours...`;
             updateConversationMessage(aiMessageId, { content: nextContent });
 
             // Start execution step
-            addStep(sessionId, { type: 'writing', label: 'Coder + Tester + Executor — génération du code' });
+            addStep(sessionId, { type: 'writing', label: 'Generation du code' });
             updateAgentStatus(projectId, 'coder', { status: 'working', progress: 10, message: 'Génération du code...' });
           },
 
@@ -685,15 +680,11 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             setProjectProgress(projectId, overallProgress);
 
             const doneAgents = event.agents.filter((a) => a.status === 'done');
-            const agentLines = event.agents
-              .map((a) => {
-                const icon = a.status === 'done' ? '✅' : a.status === 'running' ? '⏳' : a.status === 'error' ? '❌' : '⬜';
-                return `${icon} **${a.name}** — ${a.message || a.status}`;
-              })
-              .join('\n');
+            const total = event.agents.length;
+            const pct = total > 0 ? Math.round((doneAgents.length / total) * 100) : 0;
 
             const nextContent =
-              `🚀 **${lastPlan?.title || projectName}**\n\n${agentLines}\n\n_${doneAgents.length}/${event.agents.length} agents terminés_`;
+              `**${lastPlan?.title || projectName}**\n\nGeneration en cours... ${pct}%\n\n${doneAgents.length}/${total} etapes terminees`;
             updateConversationMessage(aiMessageId, { content: nextContent });
           },
 
@@ -735,18 +726,13 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       });
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      addStep(sessionId, { type: 'complete', label: `Projet généré en ${elapsed}s` });
+      addStep(sessionId, { type: 'complete', label: `Projet genere en ${elapsed}s` });
       endSession(sessionId, 'done');
 
-      const fileList = plan.files.slice(0, 10).map((f) => `  • \`${f.path}\``).join('\n');
-      const moreFiles = plan.files.length > 10 ? `\n  ... et ${plan.files.length - 10} autres fichiers` : '';
       const nextContent =
-        `🎉 **${plan.title || projectName}** — Projet généré avec succès !\n\n` +
-        `📁 **${plan.files.length} fichiers** créés en **${elapsed}s**\n` +
-        `🏗️ Complexité: ${plan.complexity || 'medium'}\n\n` +
-        `**Fichiers générés :**\n${fileList}${moreFiles}\n\n` +
-        (localPath ? `📂 Sauvegardé dans: \`${localPath}\`\n\n` : '') +
-        `👉 Ouvre le projet dans la barre latérale pour voir les fichiers et le code.`;
+        `**${plan.title || projectName}** — Projet pret !\n\n` +
+        `${plan.files.length} fichiers crees en ${elapsed}s.\n\n` +
+        `Tu peux ouvrir le projet depuis la barre laterale pour explorer les fichiers et le code.`;
       updateConversationMessage(aiMessageId, {
         content: nextContent,
         isStreaming: false,
@@ -785,8 +771,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       const nextContent =
         error?.name === 'AbortError'
-          ? '⏹ Génération arrêtée.'
-          : `❌ **Erreur de génération**\n\n${errorMsg}\n\n_Vérifie ta connexion au backend et tes crédits._`;
+          ? 'Generation arretee.'
+          : `**Erreur de generation**\n\n${errorMsg}\n\nVerifie ta connexion et tes credits.`;
       updateConversationMessage(aiMessageId, {
         content: nextContent,
         isStreaming: false,
@@ -891,9 +877,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     if (forceProject || detectProjectIntent(content)) {
       const detectStepId = addStep(sessionId, {
         type: 'understanding',
-        label: forceProject
-          ? 'Génération de projet (action utilisateur)'
-          : 'Intention détectée: génération de projet',
+        label: 'Preparation du projet',
       });
       completeStep(sessionId, detectStepId);
 
@@ -1257,12 +1241,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                       } else if (feature.title === 'Importer un dossier') {
                         void handleImportFolder();
                       } else if (feature.title === 'Générer un projet') {
-                        // UX grand public: action déterministe (pas d'heuristique)
-                        void (async () => {
-                          await prepareProjectGeneration();
-                          forceProjectGenerationOnceRef.current = true;
-                          handleQuickStart(feature.prompt || 'Je veux créer un projet');
-                        })();
+                        setShowProjectWizard(true);
                       } else {
                         handleQuickStart(feature.prompt || feature.title);
                       }
@@ -1400,6 +1379,19 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           options={SEARCH_OPTIONS}
           onSelect={(opt) => { setShowSearchMenu(false); handleSendMessage(opt.prompt); }}
           onClose={() => setShowSearchMenu(false)}
+        />
+      )}
+
+      {/* ===== PROJECT WIZARD (modal overlay) ===== */}
+      {showProjectWizard && (
+        <ProjectWizardModal
+          onClose={() => setShowProjectWizard(false)}
+          onGenerate={async (prompt, _projectName) => {
+            setShowProjectWizard(false);
+            await prepareProjectGeneration();
+            forceProjectGenerationOnceRef.current = true;
+            handleSendMessage(prompt);
+          }}
         />
       )}
 
