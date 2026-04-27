@@ -375,14 +375,18 @@ function extractProjectName(message: string): string {
 export default function ChatView({ onlineStatus = true, showWelcome = true }: ChatViewProps) {
   const navigate = useNavigate();
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
-  const storeProjectId = useProjectStore((s) => s.activeProjectId);
-  const storeSetActiveProject = useProjectStore((s) => s.setActiveProject);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
-  // The store is the source of truth — ChatView follows it
-  const selectedProjectId = storeProjectId;
-  const setSelectedProjectId = useCallback((id: string | null) => {
-    storeSetActiveProject(id);
-  }, [storeSetActiveProject]);
+  // When Sidebar clicks "Nouvelle tache" it sets activeProjectId to null.
+  // Listen to that and clear the local state so the old project stops following.
+  const storeActiveProjectId = useProjectStore((s) => s.activeProjectId);
+  const prevStoreRef = useRef(storeActiveProjectId);
+  useEffect(() => {
+    if (prevStoreRef.current !== null && storeActiveProjectId === null) {
+      setSelectedProjectId(null);
+    }
+    prevStoreRef.current = storeActiveProjectId;
+  }, [storeActiveProjectId]);
   const [showStudentMenu, setShowStudentMenu] = useState(false);
   const [showDataMenu, setShowDataMenu] = useState(false);
   const [showSearchMenu, setShowSearchMenu] = useState(false);
