@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/settingsStore'
 
 const CLIENT_NAME = 'anzar-client'
 const STORE_KEY = 'auth_token'
+const LS_FALLBACK_KEY = 'anzar_tkn_fb'
 
 function toBytes(text: string): number[] {
   return Array.from(new TextEncoder().encode(text))
@@ -15,14 +16,11 @@ function fromBytes(bytes: number[]): string {
 
 async function getSnapshotPath(): Promise<string> {
   const dir = await appDataDir()
-  // Keep a dedicated stronghold snapshot file
   return `${dir}/anzar.vault.hold`
 }
 
 async function ensureClient(snapshotPath: string, password: string): Promise<void> {
-  // Initialize (loads existing snapshot if present, otherwise creates new)
   await invoke('plugin:stronghold|initialize', { snapshotPath, password })
-
   try {
     await invoke('plugin:stronghold|load_client', { snapshotPath, client: CLIENT_NAME })
   } catch {
@@ -30,53 +28,89 @@ async function ensureClient(snapshotPath: string, password: string): Promise<voi
   }
 }
 
+// ── localStorage fallback (light obfuscation, not encryption) ──
+function lsSet(token: string): void {
+  try {
+    localStorage.setItem(LS_FALLBACK_KEY, btoa(token))
+  } catch { /* quota exceeded or private mode */ }
+}
+function lsGet(): string | null {
+  try {
+    const v = localStorage.getItem(LS_FALLBACK_KEY)
+    if (!v) return null
+    return atob(v)
+  } catch { return null }
+}
+function lsClear(): void {
+  try { localStorage.removeItem(LS_FALLBACK_KEY) } catch { /* ignore */ }
+}
+
 /**
- * Secure token store (Stronghold).
+ * Secure token store with Stronghold + localStorage fallback.
  *
- * Note: This protects the token at rest (encrypted vault). It does NOT protect against
- * malicious JS execution inside the app (XSS/injection). That's why we also hardened
- * terminal/fs earlier.
+ * Primary: Tauri Stronghold vault (encrypted at rest)
+ * Fallback: localStorage (base64 obfuscated) — used when Stronghold
+ * is unavailable (dev mode, plugin not loaded, vault corrupted).
+ *
+ * This ensures the user stays logged in across app restarts.
  */
 export const secureTokenStore = {
   async setToken(token: string): Promise<void> {
-    const snapshotPath = await getSnapshotPath()
-    const password = useSettingsStore.getState().getDeviceVaultKey()
-    await ensureClient(snapshotPath, password)
+    // Always store in localStorage fallback
+    lsSet(token)
 
-    await invoke('plugin:stronghold|save_store_record', {
-      snapshotPath,
-      client: CLIENT_NAME,
-      key: STORE_KEY,
-      value: toBytes(token),
-    })
+    // Try Stronghold (may fail in dev or if plugin missing)
+    try {
+      const snapshotPath = await getSnapshotPath()
+      const password = useSettingsStore.getState().getDeviceVaultKey()
+      await ensureClient(snapshotPath, password)
 
-    await invoke('plugin:stronghold|save', { snapshotPath })
+      await invoke('plugin:stronghold|save_store_record', {
+        snapshotPath,
+        client: CLIENT_NAME,
+        key: STORE_KEY,
+        value: toBytes(token),
+      })
+
+      await invoke('plugin:stronghold|save', { snapshotPath })
+    } catch {
+      // Stronghold unavailable — localStorage fallback is already set
+    }
   },
 
   async getToken(): Promise<string | null> {
-    const snapshotPath = await getSnapshotPath()
-    const password = useSettingsStore.getState().getDeviceVaultKey()
-
+    // Try Stronghold first
     try {
+      const snapshotPath = await getSnapshotPath()
+      const password = useSettingsStore.getState().getDeviceVaultKey()
       await ensureClient(snapshotPath, password)
+
       const bytes = (await invoke('plugin:stronghold|get_store_record', {
         snapshotPath,
         client: CLIENT_NAME,
         key: STORE_KEY,
       })) as number[] | null
 
-      if (!bytes || bytes.length === 0) return null
-      return fromBytes(bytes)
+      if (bytes && bytes.length > 0) {
+        const token = fromBytes(bytes)
+        // Sync to localStorage in case Stronghold breaks later
+        lsSet(token)
+        return token
+      }
     } catch {
-      return null
+      // Stronghold unavailable — fall through to localStorage
     }
+
+    // Fallback: localStorage
+    return lsGet()
   },
 
   async clearToken(): Promise<void> {
-    const snapshotPath = await getSnapshotPath()
-    const password = useSettingsStore.getState().getDeviceVaultKey()
+    lsClear()
 
     try {
+      const snapshotPath = await getSnapshotPath()
+      const password = useSettingsStore.getState().getDeviceVaultKey()
       await ensureClient(snapshotPath, password)
       await invoke('plugin:stronghold|remove_store_record', {
         snapshotPath,
@@ -89,4 +123,3 @@ export const secureTokenStore = {
     }
   },
 }
-

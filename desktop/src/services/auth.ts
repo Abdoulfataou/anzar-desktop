@@ -192,30 +192,50 @@ class AuthService {
 
   /**
    * Bootstrap session on app startup.
-   * - Load token from Stronghold
+   * - Load token from Stronghold (or localStorage fallback)
    * - Verify token with backend
-   * - If invalid: clear everything and force login
+   * - If token expired (401): clear everything and force login
+   * - If network error: keep session alive (offline-friendly)
    */
   async bootstrapSession(): Promise<void> {
     const token = await secureTokenStore.getToken();
 
     if (!token) {
-      // Ensure we don't keep a "loggedIn" flag without token
+      // No token stored anywhere — user must log in
       useSettingsStore.getState().setAuthToken(null);
       useAccountStore.getState().logout();
       return;
     }
 
+    // Set token in memory so API calls work
     useSettingsStore.getState().setAuthToken(token);
-    const ok = await this.verifyToken();
-    if (!ok) {
-      await secureTokenStore.clearToken();
-      useSettingsStore.getState().setAuthToken(null);
-      useAccountStore.getState().logout();
-      return;
-    }
 
-    // token is valid; keep user state as-is (persisted by accountStore)
+    // Try to verify with backend
+    try {
+      const res = await fetch(`${this.getBackendUrl()}/api/auth/verify`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.ok) {
+        // Token is valid — session continues
+        return;
+      }
+
+      if (res.status === 401 || res.status === 403) {
+        // Token is expired or revoked — force re-login
+        await secureTokenStore.clearToken();
+        useSettingsStore.getState().setAuthToken(null);
+        useAccountStore.getState().logout();
+        return;
+      }
+
+      // Server error (500, 503...) — keep session alive, don't punish the user
+      // They'll get proper errors when they try to use the API
+    } catch {
+      // Network error (offline, DNS failure, etc.) — keep session alive
+      // The user can still browse cached data, and API calls will
+      // show proper error messages when attempted
+    }
   }
 }
 
