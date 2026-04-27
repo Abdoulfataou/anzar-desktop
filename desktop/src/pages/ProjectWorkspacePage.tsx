@@ -385,7 +385,7 @@ const ProjectWorkspacePage: React.FC = () => {
       `Chat: appliquer code → ${filePath}`,
       [{ type: 'edit', path: filePath, content: code }]
     );
-  }, [id, updateFile]);
+  }, [id]);
 
   // Redirect if project not found
   if (!project) {
@@ -684,4 +684,53 @@ const ProjectWorkspacePage: React.FC = () => {
   );
 };
 
-export default ProjectWorkspacePage;
+/* ===== Error Boundary ===== */
+class ProjectWorkspaceErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return <ProjectWorkspaceErrorFallback onReset={() => this.setState({ hasError: false })} />;
+    }
+    return this.props.children;
+  }
+}
+
+function ProjectWorkspaceErrorFallback({ onReset }: { onReset: () => void }) {
+  const navigate = (window as any).__navigate;
+  return (
+    <div className="flex flex-col items-center justify-center h-full text-center gap-4">
+      <AlertTriangle size={40} className="text-accent-error" />
+      <h3 className="text-base font-semibold text-text-primary">Erreur d'affichage</h3>
+      <p className="text-sm text-text-muted max-w-[320px]">
+        Ce projet n'a pas pu etre affiche. Il est peut-etre corrompu ou incomplet.
+      </p>
+      <div className="flex gap-3">
+        <button
+          onClick={() => { onReset(); window.history.back(); }}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium gradient-bg text-white hover:opacity-90 transition-all"
+        >
+          <ArrowLeft size={14} />
+          Retour
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProjectWorkspacePageWrapped() {
+  return (
+    <ProjectWorkspaceErrorBoundary>
+      <ProjectWorkspacePage />
+    </ProjectWorkspaceErrorBoundary>
+  );
+}
+
+export default ProjectWorkspacePageWrapped;

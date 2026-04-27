@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Play, RotateCcw, X, Terminal, History, Download } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
@@ -12,6 +12,8 @@ import ChangePreviewModal from '@/components/runs/ChangePreviewModal'
 import { isTauri } from '@/lib/utils'
 import { save } from '@tauri-apps/api/dialog'
 import { writeTextFile } from '@tauri-apps/api/fs'
+
+const EMPTY_ARRAY: never[] = []
 
 function exportRunAsText(run: any): string {
   const lines: string[] = []
@@ -56,11 +58,15 @@ export default function RunPanel({
   const [collapsed, setCollapsed] = useState(false)
   const [previewId, setPreviewId] = useState<string | null>(null)
 
-  const runs = useRunStore((s) => s.runs.filter((r) => r.projectId === projectId))
+  const allRuns = useRunStore((s) => s.runs)
   const activeRunId = useRunStore((s) => s.activeRunId)
   const setActiveRun = useRunStore((s) => s.setActiveRun)
   const deleteRun = useRunStore((s) => s.deleteRun)
-  const pendingSets = useChangeStore((s) => s.pending[projectId] || [])
+  const pendingMap = useChangeStore((s) => s.pending)
+
+  // Stable derived values — avoid creating new array references in selectors
+  const runs = useMemo(() => allRuns.filter((r) => r.projectId === projectId), [allRuns, projectId])
+  const pendingSets = useMemo(() => pendingMap[projectId] || EMPTY_ARRAY, [pendingMap, projectId])
   const applyPending = useChangeStore((s) => s.apply)
   const removePending = useChangeStore((s) => s.remove)
 

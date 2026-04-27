@@ -97,6 +97,14 @@ export default function Sidebar({
   };
 
   const handleSelectProject = (projectId: string) => {
+    const proj = projects.find((p) => p.id === projectId);
+    if (proj?.status === 'error') {
+      if (window.confirm('Ce projet a echoue. Veux-tu le supprimer ?')) {
+        deleteProject(projectId);
+        if (location.pathname === `/projects/${projectId}`) navigate('/');
+      }
+      return;
+    }
     navigate(`/projects/${projectId}`);
   };
 
