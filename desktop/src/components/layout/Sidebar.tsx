@@ -17,6 +17,7 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useAccountStore } from '@/stores/accountStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 
 interface SidebarProps {
@@ -43,9 +44,12 @@ export default function Sidebar({
   const conversations = useChatStore((s) => s.conversations);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const createConversation = useChatStore((s) => s.createConversation);
   const projects = useProjectStore((s) => s.projects);
+  const setActiveProject = useProjectStore((s) => s.setActiveProject);
   const user = useAccountStore((s) => s.user);
   const credits = useAccountStore((s) => s.credits);
+  const model = useSettingsStore((s) => s.settings.model);
 
   // Open folder via Tauri dialog
   const handleOpenFolder = useCallback(async () => {
@@ -78,9 +82,12 @@ export default function Sidebar({
   }, []);
 
   const handleNewTask = () => {
-    if (location.pathname !== '/') navigate('/');
+    // Nouveau chat = nouvelle conversation (source de vérité pour ChatView)
+    setActiveProject(null);
     onSelectProject?.(null);
+    createConversation(undefined, model);
     onNewTask?.();
+    if (location.pathname !== '/') navigate('/');
   };
 
   const handleSelectConversation = (convId: string) => {

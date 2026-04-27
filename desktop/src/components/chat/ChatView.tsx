@@ -4,7 +4,7 @@
  * Routage intelligent: DeepSeek 80% / Kimi 20%
  * Câblage agents: détection d'intention projet → pipeline multi-agents
  */
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Code2, BarChart3, GraduationCap,
   Globe, FileText, BookOpen, PenTool,
@@ -20,13 +20,14 @@ import {
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import { cn } from '@/lib/utils';
-import { AIModel, ToolDefinition } from '@/types';
+import { AIModel, ToolDefinition, type Message as StoreMessage } from '@/types';
 import { aiRouter } from '@/services/router';
 import { projectGeneration, type PlanResult, type ExecutionEvent } from '@/services/projectGeneration';
 import { fileSystemService } from '@/services/fileSystem';
 import { useUsageStore } from '@/stores/usageStore';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProjectStore } from '@/stores/projectStore';
+import { useActiveConversation, useChatStore } from '@/stores/chatStore';
 import { documentDir } from '@tauri-apps/api/path';
 import BackgroundTasksDock from './BackgroundTasksDock';
 import { useCommandStore } from '@/stores/commandStore';
@@ -528,9 +529,65 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const [showSearchMenu, setShowSearchMenu] = useState(false);
   const [showDocumentMenu, setShowDocumentMenu] = useState(false);
   const streamingRef = useRef<string>('');
+  const lastLoadedConversationIdRef = useRef<string | null>(null);
+
+  // Chat store (source de vérité pour l'historique / sélection via Sidebar)
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const activeConversation = useActiveConversation();
+  const createConversation = useChatStore((s) => s.createConversation);
+  const addConversationMessage = useChatStore((s) => s.addMessage);
+  const updateConversationMessage = useChatStore((s) => s.updateMessage);
   const projects = useProjectStore((s) => s.projects);
   const selectedProjectPath = projects.find((p) => p.id === selectedProjectId)?.metadata?.localPath as string | undefined;
   const settings = useSettingsStore((s) => s.settings);
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Synchronisation ChatView ↔ chatStore
+  // Objectif: éviter la désynchronisation avec la Sidebar (activeConversation)
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const mapStoreToUIMessage = useCallback((m: StoreMessage): Message => {
+    return {
+      id: m.id,
+      type: m.role === 'user' ? 'user' : 'ai',
+      content: m.content,
+      timestamp: new Date(m.timestamp),
+      model: m.model,
+      isStreaming: m.isStreaming,
+      thinking: m.thinking,
+    };
+  }, []);
+
+  const ensureActiveConversation = useCallback(() => {
+    // Crée une conversation par défaut si aucune n'est active (sinon addMessage ne fait rien)
+    if (!useChatStore.getState().activeConversationId) {
+      createConversation(undefined, selectedModel);
+    }
+  }, [createConversation, selectedModel]);
+
+  // Auto-init au premier montage
+  useEffect(() => {
+    if (!activeConversationId) {
+      createConversation(undefined, selectedModel);
+    }
+  }, [activeConversationId, createConversation, selectedModel]);
+
+  // Quand l'utilisateur sélectionne une conversation dans la Sidebar,
+  // on charge ses messages dans l'UI (MessageList/ChatView).
+  useEffect(() => {
+    if (!activeConversationId) return;
+    if (lastLoadedConversationIdRef.current === activeConversationId) return;
+    lastLoadedConversationIdRef.current = activeConversationId;
+
+    const convMessages = (activeConversation?.messages || [])
+      // L'UI actuelle n'affiche pas explicitement les messages "tool"
+      .filter((m) => m.role !== 'tool')
+      .map(mapStoreToUIMessage);
+
+    setMessages(convMessages);
+    setIsLoading(false);
+    streamingRef.current = '';
+  }, [activeConversationId, activeConversation, mapStoreToUIMessage]);
 
   // Project store actions
   const createProject = useProjectStore((s) => s.createProject);
@@ -580,6 +637,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
     // AI placeholder message for generation progress
     const aiMessageId = `msg_${Date.now() + 1}`;
+    ensureActiveConversation();
     setMessages((prev) => [
       ...prev,
       {
@@ -592,6 +650,15 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         activitySessionId: sessionId,
       },
     ]);
+    // Persist dans l'historique (pour que la Sidebar + sélection soient cohérentes)
+    addConversationMessage({
+      id: aiMessageId,
+      role: 'assistant',
+      content: `🚀 **Génération de projet lancée : ${projectName}**\n\nLe pipeline multi-agents démarre...`,
+      timestamp: Date.now(),
+      model: selectedModel,
+      isStreaming: true,
+    });
 
     const startTime = Date.now();
 
@@ -609,13 +676,15 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           onPhaseChange: (phase, message) => {
             // Keep activity steps meaningful
             if (phase === 'planning') {
+              const nextContent = `🚀 **${projectName}**\n\n⏳ ${message}`;
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === aiMessageId
-                    ? { ...m, content: `🚀 **${projectName}**\n\n⏳ ${message}` }
+                    ? { ...m, content: nextContent }
                     : m
                 )
               );
+              updateConversationMessage(aiMessageId, { content: nextContent });
             }
           },
 
@@ -633,16 +702,19 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
             const fileList = p.files.slice(0, 10).map((f) => `  • \`${f.path}\``).join('\n');
             const moreFiles = p.files.length > 10 ? `\n  ... et ${p.files.length - 10} autres fichiers` : '';
+            const nextContent =
+              `🚀 **${p.title || projectName}**\n\n✅ **Plan prêt** — ${p.files.length} fichiers prévus :\n${fileList}${moreFiles}\n\n⏳ **Coder** génère le code...`;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === aiMessageId
                   ? {
                       ...m,
-                      content: `🚀 **${p.title || projectName}**\n\n✅ **Plan prêt** — ${p.files.length} fichiers prévus :\n${fileList}${moreFiles}\n\n⏳ **Coder** génère le code...`,
+                      content: nextContent,
                     }
                   : m
               )
             );
+            updateConversationMessage(aiMessageId, { content: nextContent });
 
             // Start execution step
             addStep(sessionId, { type: 'writing', label: 'Coder + Tester + Executor — génération du code' });
@@ -669,16 +741,19 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
               })
               .join('\n');
 
+            const nextContent =
+              `🚀 **${lastPlan?.title || projectName}**\n\n${agentLines}\n\n_${doneAgents.length}/${event.agents.length} agents terminés_`;
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === aiMessageId
                   ? {
                       ...m,
-                      content: `🚀 **${lastPlan?.title || projectName}**\n\n${agentLines}\n\n_${doneAgents.length}/${event.agents.length} agents terminés_`,
+                      content: nextContent,
                     }
                   : m
               )
             );
+            updateConversationMessage(aiMessageId, { content: nextContent });
           },
 
           onComplete: async () => {
@@ -724,17 +799,19 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       const fileList = plan.files.slice(0, 10).map((f) => `  • \`${f.path}\``).join('\n');
       const moreFiles = plan.files.length > 10 ? `\n  ... et ${plan.files.length - 10} autres fichiers` : '';
+      const nextContent =
+        `🎉 **${plan.title || projectName}** — Projet généré avec succès !\n\n` +
+        `📁 **${plan.files.length} fichiers** créés en **${elapsed}s**\n` +
+        `🏗️ Complexité: ${plan.complexity || 'medium'}\n\n` +
+        `**Fichiers générés :**\n${fileList}${moreFiles}\n\n` +
+        (localPath ? `📂 Sauvegardé dans: \`${localPath}\`\n\n` : '') +
+        `👉 Ouvre le projet dans la barre latérale pour voir les fichiers et le code.`;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiMessageId
             ? {
                 ...m,
-                content: `🎉 **${plan.title || projectName}** — Projet généré avec succès !\n\n` +
-                  `📁 **${plan.files.length} fichiers** créés en **${elapsed}s**\n` +
-                  `🏗️ Complexité: ${plan.complexity || 'medium'}\n\n` +
-                  `**Fichiers générés :**\n${fileList}${moreFiles}\n\n` +
-                  (localPath ? `📂 Sauvegardé dans: \`${localPath}\`\n\n` : '') +
-                  `👉 Ouvre le projet dans la barre latérale pour voir les fichiers et le code.`,
+                content: nextContent,
                 isStreaming: false,
                 activitySessionId: sessionId,
                 routingInfo: {
@@ -747,6 +824,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             : m
         )
       );
+      updateConversationMessage(aiMessageId, { content: nextContent, isStreaming: false });
 
       useProjectStore.getState().setActiveProject(projectId);
 
@@ -756,15 +834,16 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       endSession(sessionId, 'error');
       setProjectStatus(projectId, 'error', errorMsg);
 
+      const nextContent =
+        error?.name === 'AbortError'
+          ? '⏹ Génération arrêtée.'
+          : `❌ **Erreur de génération**\n\n${errorMsg}\n\n_Vérifie ta connexion au backend et tes crédits._`;
       setMessages((prev) =>
         prev.map((m) =>
           m.id === aiMessageId
             ? {
                 ...m,
-                content:
-                  error?.name === 'AbortError'
-                    ? '⏹ Génération arrêtée.'
-                    : `❌ **Erreur de génération**\n\n${errorMsg}\n\n_Vérifie ta connexion au backend et tes crédits._`,
+                content: nextContent,
                 isStreaming: false,
                 isError: true,
                 activitySessionId: sessionId,
@@ -772,8 +851,23 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             : m
         )
       );
+      updateConversationMessage(aiMessageId, { content: nextContent, isStreaming: false });
     }
-  }, [selectedModel, createProject, updateAgentStatus, setProjectStatus, setProjectProgress, updateProject, loadProjectFromDisk, addStep, completeStep, endSession]);
+  }, [
+    selectedModel,
+    createProject,
+    updateAgentStatus,
+    setProjectStatus,
+    setProjectProgress,
+    updateProject,
+    loadProjectFromDisk,
+    addStep,
+    completeStep,
+    endSession,
+    ensureActiveConversation,
+    addConversationMessage,
+    updateConversationMessage,
+  ]);
 
   // ========================================================================
   // MAIN MESSAGE HANDLER
@@ -781,6 +875,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
   const handleSendMessage = useCallback(async (content: string, hasImages = false) => {
     if (!content.trim()) return;
+
+    // Assure une conversation active (sinon l'historique Sidebar ne suivra pas)
+    ensureActiveConversation();
 
     const userMessage: Message = {
       id: `msg_${Date.now()}`,
@@ -791,6 +888,13 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     };
 
     setMessages((prev) => [...prev, userMessage]);
+    addConversationMessage({
+      id: userMessage.id,
+      role: 'user',
+      content: userMessage.content,
+      timestamp: userMessage.timestamp.getTime(),
+      model: selectedModel,
+    });
     setIsLoading(true);
     streamingRef.current = '';
     const startTime = Date.now();
@@ -855,6 +959,14 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       activitySessionId: sessionId,
     };
     setMessages((prev) => [...prev, placeholderMessage]);
+    addConversationMessage({
+      id: aiMessageId,
+      role: 'assistant',
+      content: '',
+      timestamp: placeholderMessage.timestamp.getTime(),
+      model: selectedModel,
+      isStreaming: true,
+    });
 
     // Routing info captured during stream
     let routingProvider = 'deepseek';
@@ -944,6 +1056,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             : m
         )
       );
+      updateConversationMessage(aiMessageId, { content: fullContent, isStreaming: false });
 
       // Track usage (approx)
       const inputTokens = Math.ceil(apiMessages.reduce((sum, m) => sum + (m.content?.length || 0), 0) / 4);
@@ -983,10 +1096,26 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             : m
         )
       );
+      updateConversationMessage(aiMessageId, { content: errorContent, isStreaming: false });
     } finally {
       setIsLoading(false);
     }
-  }, [selectedModel, messages, addUsageRecord, startSession, endSession, addStep, completeStep, handleProjectGeneration]);
+  }, [
+    selectedModel,
+    messages,
+    addUsageRecord,
+    startSession,
+    endSession,
+    addStep,
+    completeStep,
+    handleProjectGeneration,
+    ensureActiveConversation,
+    addConversationMessage,
+    updateConversationMessage,
+    selectedProjectId,
+    selectedProjectPath,
+    settings,
+  ]);
 
   const handleStopGeneration = useCallback(() => {
     // Stop normal chat streaming
