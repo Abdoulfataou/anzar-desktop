@@ -336,61 +336,32 @@ export async function exportToPptx(content: string, filename?: string): Promise<
   // Write
   const name = filename || `anzar_presentation_${Date.now()}.pptx`;
 
-  // pptxgenjs peut renvoyer différents formats selon l'environnement (WebView, navigateur, etc.)
-  // On tente d'abord uint8array, puis blob en fallback.
-  let out: string | ArrayBuffer | Blob | Uint8Array;
-  try {
-    out = await pptx.write({ outputType: 'uint8array' });
-  } catch {
-    out = await pptx.write({ outputType: 'blob' });
+  if (isTauri()) {
+    // Tauri: get raw bytes, then save via dialog
+    try {
+      const out = await (pptx.write as any)('uint8array') as Uint8Array;
+      await saveBytes(out, name);
+    } catch {
+      // Fallback: try arraybuffer
+      const out = await (pptx.write as any)('arraybuffer') as ArrayBuffer;
+      await saveBytes(new Uint8Array(out), name);
+    }
+  } else {
+    // Web: use writeFile for automatic browser download
+    await (pptx as any).writeFile({ fileName: name });
   }
-
-  const bytes = await normalizeToBytes(out);
-  await saveBytes(bytes, name);
-}
-
-async function normalizeToBytes(out: string | ArrayBuffer | Blob | Uint8Array): Promise<Uint8Array> {
-  if (out instanceof Uint8Array) return out;
-  if (out instanceof ArrayBuffer) return new Uint8Array(out);
-  if (typeof out === 'string') {
-    // fallback: base64 string (rare) -> bytes
-    const binary = atob(out);
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-  // Blob
-  const buf = await out.arrayBuffer();
-  return new Uint8Array(buf);
 }
 
 async function saveBytes(bytes: Uint8Array, filename: string): Promise<void> {
-  if (isTauri()) {
-    const { save } = await import('@tauri-apps/api/dialog');
-    const { writeBinaryFile } = await import('@tauri-apps/api/fs');
-    const { documentDir } = await import('@tauri-apps/api/path');
-    const dir = await documentDir();
-    const filePath = await save({
-      defaultPath: `${dir}${filename}`,
-      filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
-    });
-    if (filePath) {
-      await writeBinaryFile(filePath, bytes);
-    }
-    return;
-  }
-
-  // Web fallback
-  // Crée une copie pour garantir un ArrayBuffer standard (évite SharedArrayBuffer / ArrayBufferLike)
-  const blob = new Blob([new Uint8Array(bytes).buffer], {
-    type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  const { save } = await import('@tauri-apps/api/dialog');
+  const { writeBinaryFile } = await import('@tauri-apps/api/fs');
+  const { documentDir } = await import('@tauri-apps/api/path');
+  const dir = await documentDir();
+  const filePath = await save({
+    defaultPath: `${dir}${filename}`,
+    filters: [{ name: 'PowerPoint', extensions: ['pptx'] }],
   });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  if (filePath) {
+    await writeBinaryFile(filePath, bytes);
+  }
 }
