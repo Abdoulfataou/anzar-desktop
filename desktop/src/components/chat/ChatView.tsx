@@ -375,7 +375,14 @@ function extractProjectName(message: string): string {
 export default function ChatView({ onlineStatus = true, showWelcome = true }: ChatViewProps) {
   const navigate = useNavigate();
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const storeProjectId = useProjectStore((s) => s.activeProjectId);
+  const storeSetActiveProject = useProjectStore((s) => s.setActiveProject);
+
+  // The store is the source of truth — ChatView follows it
+  const selectedProjectId = storeProjectId;
+  const setSelectedProjectId = useCallback((id: string | null) => {
+    storeSetActiveProject(id);
+  }, [storeSetActiveProject]);
   const [showStudentMenu, setShowStudentMenu] = useState(false);
   const [showDataMenu, setShowDataMenu] = useState(false);
   const [showSearchMenu, setShowSearchMenu] = useState(false);

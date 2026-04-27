@@ -47,6 +47,7 @@ export default function Sidebar({
   const createConversation = useChatStore((s) => s.createConversation);
   const projects = useProjectStore((s) => s.projects);
   const setActiveProject = useProjectStore((s) => s.setActiveProject);
+  const deleteProject = useProjectStore((s) => s.deleteProject);
   const user = useAccountStore((s) => s.user);
   const credits = useAccountStore((s) => s.credits);
   const model = useSettingsStore((s) => s.settings.model);
@@ -180,27 +181,39 @@ export default function Sidebar({
                 </div>
               ) : (
                 sortedProjects.map((project) => (
-                  <button
-                    key={project.id}
-                    onClick={() => handleSelectProject(project.id)}
-                    className={cn(
-                      'w-full flex items-center gap-2 px-3 py-1.5 rounded-lg',
-                      'text-xs transition-colors duration-150 group text-left',
-                      location.pathname === `/projects/${project.id}`
-                        ? 'bg-accent-primary/10 text-accent-primary'
-                        : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
-                    )}
-                  >
-                    <FolderOpen size={13} className="flex-shrink-0 text-accent-secondary" />
-                    <span className="truncate flex-1">{project.name}</span>
-                    <span className={cn(
-                      'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                      project.status === 'complete' ? 'bg-accent-success' :
-                      project.status === 'generating' ? 'bg-accent-info animate-pulse' :
-                      project.status === 'error' ? 'bg-accent-error' :
-                      'bg-accent-warning'
-                    )} />
-                  </button>
+                  <div key={project.id} className="group flex items-center">
+                    <button
+                      onClick={() => handleSelectProject(project.id)}
+                      className={cn(
+                        'flex-1 flex items-center gap-2 px-3 py-1.5 rounded-lg min-w-0',
+                        'text-xs transition-colors duration-150 text-left',
+                        location.pathname === `/projects/${project.id}`
+                          ? 'bg-accent-primary/10 text-accent-primary'
+                          : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+                      )}
+                    >
+                      <FolderOpen size={13} className="flex-shrink-0 text-accent-secondary" />
+                      <span className="truncate flex-1">{project.name}</span>
+                      <span className={cn(
+                        'w-1.5 h-1.5 rounded-full flex-shrink-0',
+                        project.status === 'complete' ? 'bg-accent-success' :
+                        project.status === 'generating' ? 'bg-accent-info animate-pulse' :
+                        project.status === 'error' ? 'bg-accent-error' :
+                        'bg-accent-warning'
+                      )} />
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm('Supprimer ce projet ?')) {
+                          deleteProject(project.id);
+                          if (location.pathname === `/projects/${project.id}`) navigate('/');
+                        }
+                      }}
+                      className="p-1 rounded text-text-muted/30 hover:text-accent-error hover:bg-accent-error/10 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0 mr-1"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  </div>
                 ))
               )}
 
