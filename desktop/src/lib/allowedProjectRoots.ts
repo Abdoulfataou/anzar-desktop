@@ -1,23 +1,17 @@
-import { isTauri } from ‘@/lib/utils’
-import { desktopDir, documentDir, downloadDir, homeDir } from ‘@tauri-apps/api/path’
+import { isTauri } from '@/lib/utils'
+import { desktopDir, documentDir, downloadDir, homeDir } from '@tauri-apps/api/path'
 
 function normalize(p: string): string {
-  return p.replace(/\\/g, ‘/’).replace(/\/+$/, ‘’)
+  return p.replace(/\\/g, '/').replace(/\/+$/, '')
 }
 
 /**
- * Vérifie si un chemin projet est dans un des répertoires autorisés par tauri.conf.json:
- * - Documents/**
- * - Desktop/**
- * - Downloads/**
- * - $HOME/**
- *
- * L’utilisateur peut importer n’importe quel dossier depuis ces emplacements.
+ * Checks if a project path is within allowed directories (tauri.conf.json scope).
+ * Allowed: Documents, Desktop, Downloads, $HOME.
  */
 export async function isAllowedProjectRoot(selectedPath: string): Promise<boolean> {
   const selected = normalize(selectedPath)
 
-  // En mode web (non-tauri), on n’applique pas ce contrôle
   if (!isTauri()) return true
 
   try {
@@ -37,21 +31,20 @@ export async function isAllowedProjectRoot(selectedPath: string): Promise<boolea
 
     return roots.some((r) => selected.startsWith(r))
   } catch {
-    // Si l’API path n’est pas dispo, fallback permissif pour éviter un blocage total.
     return true
   }
 }
 
 export async function showPathNotAllowedMessage(): Promise<void> {
   try {
-    const { message } = await import(‘@tauri-apps/api/dialog’)
+    const { message } = await import('@tauri-apps/api/dialog')
     await message(
-      "Pour des raisons de sécurité, ANZAR n’ouvre que les projets situés dans ton dossier utilisateur (Documents, Bureau, Téléchargements, etc.).\n\nVérifie que le dossier sélectionné est bien dans ton répertoire personnel.",
-      { title: ‘Dossier non autorisé’, type: ‘warning’ }
+      "Dossier non autorise. Verifie que le dossier est dans ton repertoire personnel (Documents, Bureau, etc.).",
+      { title: 'Dossier non autorise', type: 'warning' }
     )
   } catch {
     alert(
-      "Dossier non autorisé.\n\nVérifie que le dossier sélectionné est dans ton répertoire personnel (Documents, Bureau, Téléchargements, etc.)."
+      "Dossier non autorise. Verifie que le dossier est dans ton repertoire personnel."
     )
   }
 }
