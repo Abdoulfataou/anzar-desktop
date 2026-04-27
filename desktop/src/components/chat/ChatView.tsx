@@ -128,7 +128,19 @@ const STUDENT_OPTIONS = [
     description: 'Upload ton document (PDF, Word) ou colle ton texte. Correction complète sur mesure.',
     icon: ListChecks,
     color: 'from-emerald-500 to-green-500',
-    prompt: `Je veux faire corriger/reformuler un document (mémoire/rapport/etc.). Dis-moi comment te l’envoyer (PDF/Word ou texte collé), puis propose les options (correction, reformulation, mise en forme, amélioration, adaptation du ton, tout corriger).`,
+    prompt: `Je veux faire corriger/reformuler un document (mémoire/rapport/etc.).
+
+Commence par m’expliquer comment te l’envoyer (PDF/Word ou texte collé), puis pose 2–3 questions (type de document, niveau, consignes).
+
+Ensuite propose les options sous forme de liste numérotée claire :
+1) Correction complète
+2) Reformulation
+3) Mise en forme académique
+4) Amélioration du contenu
+5) Adaptation du ton
+6) Tout corriger
+
+IMPORTANT : évite les tableaux ASCII, les barres verticales “|”, et les séparateurs à base de tirets. Utilise seulement des titres et des listes.`,
     opensFileDialog: true,
   },
   {
@@ -165,21 +177,8 @@ const DATA_OPTIONS = [
     description: 'Importe ton fichier de données et obtiens statistiques, tendances et insights.',
     icon: Table2,
     color: 'from-emerald-500 to-green-500',
-    prompt: `Tu es un expert en analyse de données. L'utilisateur veut analyser un fichier de données. Dis-lui :
-"Bienvenue dans l'assistant d'analyse ! Tu peux :
-📎 **Joindre ton fichier** (CSV, Excel, texte) avec le bouton 📎 en bas
-✍️ **Coller tes données** directement ici
-
-Je vais analyser tes données et te fournir :"
-
-Puis propose :
-1. **Résumé statistique** — moyennes, médianes, min/max, écart-type, distribution
-2. **Tendances et patterns** — évolutions dans le temps, corrélations, anomalies
-3. **Nettoyage des données** — valeurs manquantes, doublons, incohérences
-4. **Tableaux croisés** — regroupements, comparaisons entre catégories
-5. **Recommandations** — insights actionables basés sur les données
-
-Quand l'utilisateur envoie ses données, commence TOUJOURS par un résumé rapide : nombre de lignes/colonnes, types de données détectés, aperçu des premières valeurs. Puis propose les analyses pertinentes.`,
+    prompt: `Je veux analyser un fichier de données (CSV/Excel). À partir du fichier, commence par me donner un aperçu (colonnes, types, 5 premières lignes), puis propose : résumé statistique, tendances/corrélations, nettoyage, tableaux croisés et recommandations.`,
+    opensFileDialog: true,
   },
   {
     id: 'visualize',
@@ -187,12 +186,8 @@ Quand l'utilisateur envoie ses données, commence TOUJOURS par un résumé rapid
     description: 'Génère des visualisations claires à partir de tes données.',
     icon: TrendingUp,
     color: 'from-blue-500 to-indigo-500',
-    prompt: `Tu es un expert en visualisation de données. L'utilisateur veut créer des graphiques. Demande-lui :
-1. Quelles données veux-tu visualiser ? (colle-les ou joins un fichier avec 📎)
-2. Quel type de graphique ? (courbe d'évolution, barres comparatives, camembert, scatter plot, histogramme)
-3. Que veux-tu mettre en évidence ?
-
-Génère du code Python (matplotlib/seaborn) ou des descriptions précises de graphiques. Explique ce que chaque visualisation révèle sur les données.`,
+    prompt: `Je veux créer des graphiques à partir de mes données. Demande-moi le type de graphique (courbe/barres/camembert/scatter/histogramme) et ce que je veux montrer, puis propose 2–3 graphiques pertinents + explication (et si possible le code Python).`,
+    opensFileDialog: true,
   },
   {
     id: 'survey',
@@ -200,13 +195,8 @@ Génère du code Python (matplotlib/seaborn) ou des descriptions précises de gr
     description: 'Traite les résultats d\'un sondage, questionnaire ou formulaire.',
     icon: PieChart,
     color: 'from-violet-500 to-purple-500',
-    prompt: `Tu es un expert en analyse de sondages et enquêtes. L'utilisateur a des résultats de sondage à analyser. Demande-lui :
-1. Colle les résultats ou joins le fichier avec 📎
-2. Combien de répondants ?
-3. Quel était l'objectif du sondage ?
-4. Y a-t-il des questions spécifiques à analyser en priorité ?
-
-Fournis : distribution des réponses par question, pourcentages, tendances principales, segments intéressants, et une conclusion synthétique avec recommandations.`,
+    prompt: `Je veux analyser les résultats d’un sondage. À partir du fichier, résume d’abord (nb répondants si présent, questions, types de réponses), puis donne : pourcentages, tendances, points surprenants et recommandations.`,
+    opensFileDialog: true,
   },
   {
     id: 'compare',
@@ -214,12 +204,8 @@ Fournis : distribution des réponses par question, pourcentages, tendances princ
     description: 'Compare des périodes, des groupes ou des produits entre eux.',
     icon: Filter,
     color: 'from-amber-500 to-orange-500',
-    prompt: `Tu es un expert en analyse comparative. L'utilisateur veut comparer des données. Demande-lui :
-1. Quelles données veux-tu comparer ? (colle-les ou joins un fichier)
-2. Quels groupes/périodes/catégories comparer ?
-3. Quels critères sont importants pour la comparaison ?
-
-Produis une analyse structurée : tableau comparatif, écarts significatifs, avantages/inconvénients de chaque option, et recommandation finale.`,
+    prompt: `Je veux comparer des données (groupes/périodes/produits). À partir du fichier, fais une comparaison claire (écarts, points forts/faibles) puis une recommandation finale.`,
+    opensFileDialog: true,
   },
 ];
 
@@ -231,19 +217,7 @@ const SEARCH_OPTIONS = [
     description: 'Recherche complète sur un sujet avec sources, synthèse et analyse.',
     icon: Search,
     color: 'from-blue-500 to-cyan-500',
-    prompt: `Tu es un assistant de recherche expert. L'utilisateur veut une recherche approfondie. Demande-lui :
-1. Quel est le sujet de recherche ?
-2. Quel niveau de profondeur ? (survol rapide, analyse détaillée, recherche exhaustive)
-3. Y a-t-il un angle spécifique ou une question précise ?
-4. C'est pour quel contexte ? (travail, études, curiosité personnelle, projet professionnel)
-
-Effectue une recherche web complète, puis fournis :
-- Une synthèse structurée avec les points clés
-- Les sources et réf��rences
-- Les différents points de vue s'il y en a
-- Une conclusion avec recommandations
-
-Utilise la recherche web pour trouver des informations actualisées.`,
+    prompt: `Fais une recherche approfondie sur mon sujet avec des sources. Commence par me demander le sujet, le niveau de profondeur et l’angle, puis donne une synthèse structurée + sources + conclusion.`,
   },
   {
     id: 'news',
@@ -251,18 +225,7 @@ Utilise la recherche web pour trouver des informations actualisées.`,
     description: 'Les dernières nouvelles et tendances sur un sujet précis.',
     icon: Newspaper,
     color: 'from-red-500 to-pink-500',
-    prompt: `Tu es un journaliste de recherche expert. L'utilisateur veut les dernières actualités. Demande-lui :
-1. Sur quel sujet veux-tu les actualités ?
-2. Quelle période ? (aujourd'hui, cette semaine, ce mois)
-3. Quel domaine ? (tech, business, politique, sport, science, santé, Afrique)
-
-Recherche les actualités les plus récentes sur le web, puis fournis :
-- Un résumé des 5-10 actualités les plus importantes
-- Les sources pour chaque information
-- Les tendances qui se dégagent
-- Ce qu'il faut retenir
-
-Utilise la recherche web pour avoir les informations les plus récentes.`,
+    prompt: `Donne-moi les dernières actualités sur mon sujet (période + domaine). Résume les 5–10 infos clés, avec sources, tendances et points à retenir.`,
   },
   {
     id: 'factcheck',
@@ -270,18 +233,7 @@ Utilise la recherche web pour avoir les informations les plus récentes.`,
     description: 'Vérifie si une affirmation, une rumeur ou un chiffre est vrai.',
     icon: HelpCircle,
     color: 'from-amber-500 to-yellow-500',
-    prompt: `Tu es un fact-checker rigoureux. L'utilisateur veut vérifier une information. Demande-lui :
-1. Quelle information veux-tu vérifier ?
-2. Où as-tu vu/entendu cette information ?
-
-Recherche sur le web pour vérifier, puis donne :
-- Verdict : VRAI / FAUX / PARTIELLEMENT VRAI / NON VÉRIFIABLE
-- Les preuves pour et contre
-- Les sources fiables qui confirment ou infirment
-- Le contexte complet de l'information
-- Conclusion claire
-
-Sois objectif et cite toujours tes sources.`,
+    prompt: `Je veux vérifier une information. Demande-moi l’affirmation exacte et la source, puis donne un verdict (vrai/faux/partiel/non vérifiable) avec preuves et sources.`,
   },
   {
     id: 'compare_options',
@@ -289,18 +241,7 @@ Sois objectif et cite toujours tes sources.`,
     description: 'Compare des produits, services, technologies ou solutions.',
     icon: Scale,
     color: 'from-green-500 to-emerald-500',
-    prompt: `Tu es un expert en analyse comparative. L'utilisateur veut comparer des options. Demande-lui :
-1. Quelles options veux-tu comparer ? (produits, services, technologies, villes, formations...)
-2. Quels critères sont importants pour toi ? (prix, qualité, facilité, performance...)
-3. Quel est le contexte de ta décision ?
-
-Recherche sur le web les informations à jour, puis fournis :
-- Un tableau comparatif clair
-- Avantages et inconvénients de chaque option
-- Le meilleur choix selon différents profils/besoins
-- Sources consultées
-
-Sois objectif et factuel.`,
+    prompt: `Compare des options (produits/services/technos). Demande-moi les critères, puis fais une comparaison claire (sans tableau ASCII) + recommandation + sources.`,
   },
 ];
 
@@ -312,13 +253,7 @@ const DOCUMENT_OPTIONS = [
     description: 'Rédige un email clair, professionnel et adapté au contexte.',
     icon: Mail,
     color: 'from-blue-500 to-indigo-500',
-    prompt: `Tu es un expert en communication professionnelle. L'utilisateur veut rédiger un email. Demande-lui :
-1. À qui est destiné l'email ? (patron, client, collègue, fournisseur, recruteur)
-2. Quel est l'objet/le but ? (demande, relance, remerciement, réclamation, candidature, information)
-3. Quel ton ? (formel, semi-formel, amical mais professionnel)
-4. Y a-t-il des points spécifiques à inclure ?
-
-Rédige un email complet avec : objet, formule d'appel, corps structuré, formule de politesse. Propose 2 versions si le ton n'est pas clair (une formelle, une plus décontractée).`,
+    prompt: `Aide-moi à rédiger un email professionnel. Demande-moi le destinataire, l’objectif, le ton et les points à inclure, puis propose un email complet (objet + corps + formule de politesse).`,
   },
   {
     id: 'rapport_pro',
@@ -326,14 +261,7 @@ Rédige un email complet avec : objet, formule d'appel, corps structuré, formul
     description: 'Rapport d\'activité, de mission, d\'analyse ou de projet.',
     icon: FileCheck,
     color: 'from-emerald-500 to-green-500',
-    prompt: `Tu es un expert en rédaction de rapports professionnels. L'utilisateur veut rédiger un rapport. Demande-lui :
-1. Quel type de rapport ? (activité, mission, analyse, audit, projet, bilan)
-2. Pour qui ? (direction, client, équipe, partenaire)
-3. Quelle période couvre-t-il ?
-4. Quels sont les points clés à inclure ?
-5. Quelle longueur attendue ?
-
-Structure le rapport avec : page de titre, sommaire, résumé exécutif, introduction, développement, conclusion, recommandations, annexes si nécessaire. Utilise un ton professionnel et factuel.`,
+    prompt: `Aide-moi à rédiger un rapport professionnel. Demande-moi le type, le destinataire, la période et les points clés, puis propose une structure complète + un exemple de rédaction section par section.`,
   },
   {
     id: 'lettre',
@@ -341,13 +269,7 @@ Structure le rapport avec : page de titre, sommaire, résumé exécutif, introdu
     description: 'Lettre de motivation, de réclamation, administrative ou de demande.',
     icon: ScrollText,
     color: 'from-violet-500 to-purple-500',
-    prompt: `Tu es un expert en rédaction de lettres officielles et administratives. L'utilisateur veut rédiger une lettre. Demande-lui :
-1. Quel type de lettre ? (motivation, réclamation, démission, demande administrative, recommandation, mise en demeure)
-2. À qui est-elle adressée ? (entreprise, administration, personne)
-3. Quel est le contexte précis ?
-4. Y a-t-il des informations obligatoires à inclure ?
-
-Rédige une lettre complète aux normes : lieu/date, coordonnées expéditeur/destinataire, objet, corps structuré avec formules appropriées, signature. Respecte les conventions françaises/africaines selon le contexte.`,
+    prompt: `Aide-moi à rédiger une lettre officielle. Demande-moi le type de lettre, le destinataire, le contexte et les infos obligatoires, puis rédige une lettre complète (date, objet, corps, formule, signature).`,
   },
   {
     id: 'article',
@@ -355,14 +277,7 @@ Rédige une lettre complète aux normes : lieu/date, coordonnées expéditeur/de
     description: 'Article de blog, post LinkedIn, contenu marketing ou éditorial.',
     icon: Megaphone,
     color: 'from-pink-500 to-rose-500',
-    prompt: `Tu es un expert en rédaction de contenu et copywriting. L'utilisateur veut rédiger un article ou post. Demande-lui :
-1. Quel type ? (article de blog, post LinkedIn, post Instagram, communiqué de presse, newsletter)
-2. Quel sujet ?
-3. Quel public cible ?
-4. Quel ton ? (informatif, engageant, persuasif, inspirant, technique)
-5. Quelle longueur ? (court 200 mots, moyen 500 mots, long 1000+ mots)
-
-Rédige le contenu avec : titre accrocheur, introduction captivante, corps structuré, conclusion avec appel à l'action. Optimise pour le format choisi (hashtags pour LinkedIn, sous-titres pour blog, etc.).`,
+    prompt: `Aide-moi à écrire un article/post. Demande-moi le format (blog/LinkedIn/etc.), le sujet, la cible, le ton et la longueur, puis rédige un contenu structuré (titre → intro → sections → conclusion).`,
   },
   {
     id: 'cv',
@@ -370,14 +285,8 @@ Rédige le contenu avec : titre accrocheur, introduction captivante, corps struc
     description: 'Crée ou améliore ton CV et ta lettre de motivation.',
     icon: Briefcase,
     color: 'from-amber-500 to-orange-500',
-    prompt: `Tu es un expert en recrutement et rédaction de CV. L'utilisateur veut créer ou améliorer son CV et/ou sa lettre de motivation. Demande-lui :
-1. Créer un nouveau CV ou améliorer un existant ? (s'il a un existant, demande-lui de le coller ou joindre avec 📎)
-2. Quel poste vise-t-il ?
-3. Quel est son niveau d'expérience ? (étudiant, junior, confirmé, senior)
-4. Quels sont ses points forts, formations et expériences clés ?
-
-Pour le CV : structure claire, mots-clés adaptés au poste, formulation percutante des expériences (verbes d'action + résultats chiffrés).
-Pour la lettre : personnalisée pour l'entreprise/poste, valorise les compétences pertinentes, montre la motivation.`,
+    prompt: `Aide-moi à créer/améliorer mon CV et/ou ma lettre de motivation. Demande-moi le poste visé, mon expérience, mes formations/compétences et (si j’ai déjà un CV) analyse-le puis propose une version améliorée.`,
+    opensFileDialog: true,
   },
   {
     id: 'contrat',
@@ -1440,10 +1349,17 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           options={STUDENT_OPTIONS}
           onSelect={(opt) => {
             setShowStudentMenu(false);
-            handleSendMessage(opt.prompt);
+            // Pour "Corriger / Reformuler": on évite d'envoyer un message séparé
+            // puis un second "Analyse les pièces jointes.".
+            // On demande au ChatInput d'ouvrir le picker puis d'envoyer UN seul message
+            // (prompt + pièces jointes) dès qu'un fichier est ajouté.
             if ((opt as any).opensFileDialog) {
-              window.dispatchEvent(new CustomEvent('anzar:open-file-dialog'));
+              window.dispatchEvent(new CustomEvent('anzar:compose-with-attachments', {
+                detail: { text: opt.prompt, autoSend: true },
+              }));
+              return;
             }
+            handleSendMessage(opt.prompt);
           }}
           onClose={() => setShowStudentMenu(false)}
         />
@@ -1457,7 +1373,16 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           icon={BarChart3}
           iconColor="from-emerald-500 to-teal-500"
           options={DATA_OPTIONS}
-          onSelect={(opt) => { setShowDataMenu(false); handleSendMessage(opt.prompt); }}
+          onSelect={(opt) => {
+            setShowDataMenu(false);
+            if ((opt as any).opensFileDialog) {
+              window.dispatchEvent(new CustomEvent('anzar:compose-with-attachments', {
+                detail: { text: opt.prompt, autoSend: true },
+              }));
+              return;
+            }
+            handleSendMessage(opt.prompt);
+          }}
           onClose={() => setShowDataMenu(false)}
         />
       )}
@@ -1483,7 +1408,16 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           icon={FileText}
           iconColor="from-orange-500 to-amber-500"
           options={DOCUMENT_OPTIONS}
-          onSelect={(opt) => { setShowDocumentMenu(false); handleSendMessage(opt.prompt); }}
+          onSelect={(opt) => {
+            setShowDocumentMenu(false);
+            if ((opt as any).opensFileDialog) {
+              window.dispatchEvent(new CustomEvent('anzar:compose-with-attachments', {
+                detail: { text: opt.prompt, autoSend: true },
+              }));
+              return;
+            }
+            handleSendMessage(opt.prompt);
+          }}
           onClose={() => setShowDocumentMenu(false)}
         />
       )}
@@ -1499,7 +1433,7 @@ function FeatureMenuModal({
   subtitle: string;
   icon: React.ElementType;
   iconColor: string;
-  options: { id: string; title: string; description: string; icon: React.ElementType; color: string; prompt: string }[];
+  options: { id: string; title: string; description: string; icon: React.ElementType; color: string; prompt: string; opensFileDialog?: boolean }[];
   onSelect: (option: typeof options[number]) => void;
   onClose: () => void;
 }) {

@@ -354,6 +354,8 @@ export default function ChatInput({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachButtonRef = useRef<HTMLButtonElement>(null);
+  const pendingAutoSendRef = useRef(false);
+  const pendingAutoSendTextRef = useRef<string>('');
   const projects = useProjectStore((s) => s.projects);
 
   // Auto-resize textarea
@@ -377,6 +379,28 @@ export default function ChatInput({
     return () => window.removeEventListener('anzar:open-file-dialog', onOpen as any);
   }, [isLoading]);
 
+  // Compose flow: pré-remplir le message + ouvrir le picker + (optionnel) auto-send après sélection
+  useEffect(() => {
+    const onCompose = (e: any) => {
+      try {
+        const detail = e?.detail || {};
+        const text = typeof detail.text === 'string' ? detail.text : '';
+        const autoSend = !!detail.autoSend;
+        pendingAutoSendRef.current = autoSend;
+        pendingAutoSendTextRef.current = text;
+        if (text) setMessage(text);
+        // Ouvrir le picker
+        if (!isLoading) attachButtonRef.current?.click();
+        // Focus input
+        setTimeout(() => textareaRef.current?.focus(), 50);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('anzar:compose-with-attachments', onCompose as any);
+    return () => window.removeEventListener('anzar:compose-with-attachments', onCompose as any);
+  }, [isLoading]);
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!isOnline) {
@@ -386,7 +410,7 @@ export default function ChatInput({
     const hasText = message.trim().length > 0;
     const hasAttachments = attachments.length > 0;
     if ((hasText || hasAttachments) && !isLoading) {
-      const contentToSend = hasText ? message.trim() : 'Analyse les pièces jointes.';
+      const contentToSend = hasText ? message.trim() : 'Voici mon document. Peux-tu l’analyser et le corriger ?';
       await onSendMessage(contentToSend, attachments);
       setMessage('');
       setAttachments([]);
@@ -515,6 +539,8 @@ export default function ChatInput({
                 disabled={isLoading}
                 onClick={async () => {
                   try {
+                    const baseAttachments = attachments;
+                    const newItems: ChatAttachment[] = [];
                     // Essayer Tauri dialog en premier
                     if (isTauri()) {
                       const { open: openDialog } = await import('@tauri-apps/api/dialog');
@@ -540,73 +566,60 @@ export default function ChatInput({
                             if (kind === 'pdf') {
                               const bytes = await readBinaryFile(filePath);
                               if (bytes.byteLength > MAX_BYTES_PDF) {
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>12MB).]' },
-                                ]).slice(0, 8));
+                                newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>12MB).]' });
                                 added++;
                                 continue;
                               }
                               const text = await extractPdfText(bytes);
-                              setAttachments((prev) => ([
-                                ...prev,
-                                { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
-                              ]).slice(0, 8));
+                              newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
                               added++;
                             } else if (kind === 'docx') {
                               const bytes = await readBinaryFile(filePath);
                               if (bytes.byteLength > MAX_BYTES_DOCX) {
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' },
-                                ]).slice(0, 8));
+                                newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' });
                                 added++;
                                 continue;
                               }
                               const text = await extractDocxText(bytes);
-                              setAttachments((prev) => ([
-                                ...prev,
-                                { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
-                              ]).slice(0, 8));
+                              newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
                               added++;
                             } else if (kind === 'xlsx') {
                               const bytes = await readBinaryFile(filePath);
                               if (bytes.byteLength > MAX_BYTES_XLSX) {
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>8MB).]' },
-                                ]).slice(0, 8));
+                                newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>8MB).]' });
                                 added++;
                                 continue;
                               }
                               const text = await extractExcelText(bytes);
-                              setAttachments((prev) => ([
-                                ...prev,
-                                { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
-                              ]).slice(0, 8));
+                              newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
                               added++;
                             } else if (kind === 'csv' || kind === 'tsv') {
                               const content = await readTextFile(filePath);
-                              setAttachments((prev) => ([
-                                ...prev,
-                                { id: generateId(), name, kind, excerpt: truncateMiddle(content, MAX_ATTACH_TEXT) },
-                              ]).slice(0, 8));
+                              newItems.push({ id: generateId(), name, kind, excerpt: truncateMiddle(content, MAX_ATTACH_TEXT) });
                               added++;
                             } else {
                               // Try reading as text file, otherwise keep as binary attachment
                               const content = await readTextFile(filePath);
-                              setAttachments((prev) => ([
-                                ...prev,
-                                { id: generateId(), name, kind: kind === 'binary' ? 'text' : kind, excerpt: truncateMiddle(content, 9000) },
-                              ]).slice(0, 8));
+                              newItems.push({ id: generateId(), name, kind: kind === 'binary' ? 'text' : kind, excerpt: truncateMiddle(content, 9000) });
                               added++;
                             }
                           } catch {
-                            setAttachments((prev) => ([
-                              ...prev,
-                              { id: generateId(), name, kind, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' },
-                            ]).slice(0, 8));
+                            newItems.push({ id: generateId(), name, kind, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' });
                             added++;
+                          }
+                        }
+                        if (newItems.length > 0) {
+                          const merged = [...baseAttachments, ...newItems].slice(0, 8);
+                          setAttachments(merged);
+                          // Auto-send si demandé par le menu (ex: correction de document)
+                          if (pendingAutoSendRef.current) {
+                            const text = (pendingAutoSendTextRef.current || message || 'Voici mon document.').trim() || 'Voici mon document.';
+                            pendingAutoSendRef.current = false;
+                            pendingAutoSendTextRef.current = '';
+                            await onSendMessage(text, merged);
+                            setMessage('');
+                            setAttachments([]);
+                            if (textareaRef.current) textareaRef.current.style.height = 'auto';
                           }
                         }
                         toast.dismiss(loadingToast);
@@ -622,84 +635,68 @@ export default function ChatInput({
                         if (input.files) {
                           const loadingToast = toast.loading('Lecture des fichiers…');
                           let added = 0;
+                          const webNewItems: ChatAttachment[] = [];
                           for (const file of Array.from(input.files)) {
                             const kind = detectAttachmentKind(file.name);
                             try {
                               if (kind === 'pdf') {
                                 if (file.size > MAX_BYTES_PDF) {
-                                  setAttachments((prev) => ([
-                                    ...prev,
-                                    { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>12MB).]' },
-                                  ]).slice(0, 8));
+                                  webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>12MB).]' });
                                   added++;
                                   continue;
                                 }
                                 const buffer = await file.arrayBuffer();
                                 const text = await extractPdfText(new Uint8Array(buffer));
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
-                                ]).slice(0, 8));
+                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
                                 added++;
                               } else if (kind === 'docx') {
                                 if (file.size > MAX_BYTES_DOCX) {
-                                  setAttachments((prev) => ([
-                                    ...prev,
-                                    { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' },
-                                  ]).slice(0, 8));
+                                  webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' });
                                   added++;
                                   continue;
                                 }
                                 const buffer = await file.arrayBuffer();
                                 const text = await extractDocxText(new Uint8Array(buffer));
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
-                                ]).slice(0, 8));
+                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
                                 added++;
                               } else if (kind === 'xlsx') {
                                 if (file.size > MAX_BYTES_XLSX) {
-                                  setAttachments((prev) => ([
-                                    ...prev,
-                                    { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>8MB).]' },
-                                  ]).slice(0, 8));
+                                  webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>8MB).]' });
                                   added++;
                                   continue;
                                 }
                                 const buffer = await file.arrayBuffer();
                                 const text = await extractExcelText(new Uint8Array(buffer));
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
-                                ]).slice(0, 8));
+                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
                                 added++;
                               } else if (kind === 'csv' || kind === 'tsv') {
                                 const content = await file.text();
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(content, MAX_ATTACH_TEXT) },
-                                ]).slice(0, 8));
+                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(content, MAX_ATTACH_TEXT) });
                                 added++;
                               } else if (file.type.startsWith('text/') || kind === 'code' || kind === 'text') {
                                 const content = await file.text();
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name: file.name, kind: kind === 'binary' ? 'text' : kind, sizeBytes: file.size, excerpt: truncateMiddle(content, 9000) },
-                                ]).slice(0, 8));
+                                webNewItems.push({ id: generateId(), name: file.name, kind: kind === 'binary' ? 'text' : kind, sizeBytes: file.size, excerpt: truncateMiddle(content, 9000) });
                                 added++;
                               } else {
-                                setAttachments((prev) => ([
-                                  ...prev,
-                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' },
-                                ]).slice(0, 8));
+                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' });
                                 added++;
                               }
                             } catch {
-                              setAttachments((prev) => ([
-                                ...prev,
-                                { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier joint]' },
-                              ]).slice(0, 8));
+                              webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier joint]' });
                               added++;
+                            }
+                          }
+                          if (webNewItems.length > 0) {
+                            const merged = [...baseAttachments, ...webNewItems].slice(0, 8);
+                            setAttachments(merged);
+                            if (pendingAutoSendRef.current) {
+                              const text = (pendingAutoSendTextRef.current || message || 'Voici mon document.').trim() || 'Voici mon document.';
+                              pendingAutoSendRef.current = false;
+                              pendingAutoSendTextRef.current = '';
+                              await onSendMessage(text, merged);
+                              setMessage('');
+                              setAttachments([]);
+                              if (textareaRef.current) textareaRef.current.style.height = 'auto';
                             }
                           }
                           toast.dismiss(loadingToast);

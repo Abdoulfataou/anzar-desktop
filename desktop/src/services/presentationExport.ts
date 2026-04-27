@@ -335,12 +335,21 @@ export async function exportToPptx(content: string, filename?: string): Promise<
 
   // Write
   const name = filename || `anzar_presentation_${Date.now()}.pptx`;
-  const out = await pptx.write({ outputType: 'uint8array' });
-  const bytes = normalizeToBytes(out);
+
+  // pptxgenjs peut renvoyer différents formats selon l'environnement (WebView, navigateur, etc.)
+  // On tente d'abord uint8array, puis blob en fallback.
+  let out: string | ArrayBuffer | Blob | Uint8Array;
+  try {
+    out = await pptx.write({ outputType: 'uint8array' });
+  } catch {
+    out = await pptx.write({ outputType: 'blob' });
+  }
+
+  const bytes = await normalizeToBytes(out);
   await saveBytes(bytes, name);
 }
 
-function normalizeToBytes(out: string | ArrayBuffer | Blob | Uint8Array): Uint8Array {
+async function normalizeToBytes(out: string | ArrayBuffer | Blob | Uint8Array): Promise<Uint8Array> {
   if (out instanceof Uint8Array) return out;
   if (out instanceof ArrayBuffer) return new Uint8Array(out);
   if (typeof out === 'string') {
@@ -351,9 +360,8 @@ function normalizeToBytes(out: string | ArrayBuffer | Blob | Uint8Array): Uint8A
     return bytes;
   }
   // Blob
-  // Note: in browsers/Tauri, Blob#arrayBuffer exists
-  // This helper is sync; blob case should not happen with outputType:uint8array but we handle safely
-  throw new Error('Sortie PPTX inattendue (Blob).');
+  const buf = await out.arrayBuffer();
+  return new Uint8Array(buf);
 }
 
 async function saveBytes(bytes: Uint8Array, filename: string): Promise<void> {

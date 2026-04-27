@@ -3,6 +3,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Bug, Presentation } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
 import { cn } from '@/lib/utils';
 import { openExternalUrl } from '@/services/externalLinks';
@@ -13,6 +14,7 @@ import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 import { exportToDocx, exportToPdf } from '@/services/documentExport';
 import { exportToPptx } from '@/services/presentationExport';
+import toast from 'react-hot-toast';
 import type { Message } from '@/types';
 
 interface MessageBubbleProps {
@@ -125,10 +127,13 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const handleExportPptx = async () => {
     if (exporting || exportingPptx) return;
     setExportingPptx(true);
+    const t = toast.loading('Génération PowerPoint…');
     try {
       await exportToPptx(message.content);
+      toast.success('PowerPoint exporté', { id: t });
     } catch (err) {
       console.error('Export PPTX failed:', err);
+      toast.error('Export PowerPoint impossible', { id: t });
     } finally {
       setExportingPptx(false);
     }
@@ -245,6 +250,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             )}
           >
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 p: ({ children }) => <p className="text-sm leading-relaxed mb-2 last:mb-0">{children}</p>,
                 a: ({ href, children }) => (

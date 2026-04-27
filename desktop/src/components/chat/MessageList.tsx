@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { useVirtualizer } from '@tanstack/react-virtual';
 import MessageBubble from './MessageBubble';
 import StreamingDots from './StreamingDots';
 import ActivityTimeline, { InlineActivity } from './ActivityTimeline';
@@ -36,12 +35,12 @@ const getDateSeparator = (date: Date): string => {
 
 export default function MessageList({ messages, isLoading = false, selectedProjectId = null, selectedProjectPath, onRegenerateMessage }: MessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const isNearBottomRef = useRef(true);
   const [visibleCount, setVisibleCount] = useState(200);
   const prevMessageCountRef = useRef(messages.length);
-  const lastRenderIdRef = useRef<string | null>(null);
 
-  // --- Windowing: render only last N messages by default (grand public + perf) ---
+  // --- Windowing: render only last N messages by default ---
   const hasHidden = messages.length > visibleCount;
   const visibleMessages = useMemo(() => {
     if (!hasHidden) return messages;
@@ -50,11 +49,10 @@ export default function MessageList({ messages, isLoading = false, selectedProje
 
   const handleShowMore = () => {
     setVisibleCount((n) => Math.min(messages.length, n + 200));
-    // Quand on charge l'historique, on évite l'auto-scroll.
     isNearBottomRef.current = false;
   };
 
-  // Track whether user is near the bottom (avoid forcing scroll when reading older messages)
+  // Track whether user is near the bottom
   const handleScroll = () => {
     const el = scrollContainerRef.current;
     if (!el) return;
@@ -62,6 +60,7 @@ export default function MessageList({ messages, isLoading = false, selectedProje
     isNearBottomRef.current = distanceFromBottom < 160;
   };
 
+  // Group messages by date
   type ListItem =
     | { type: 'sep'; key: string; label: string }
     | { type: 'msg'; key: string; message: Message };
@@ -87,40 +86,27 @@ export default function MessageList({ messages, isLoading = false, selectedProje
     return out;
   }, [visibleMessages]);
 
-  const rowVirtualizer = useVirtualizer({
-    count: items.length,
-    getScrollElement: () => scrollContainerRef.current,
-    estimateSize: (index) => {
-      const item = items[index];
-      if (!item) return 120;
-      return item.type === 'sep' ? 52 : 140;
-    },
-    overscan: 10,
-  });
-
-  // Auto-scroll to bottom only if user is near bottom and a new message arrived
+  // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-
     const prevCount = prevMessageCountRef.current;
     const nextCount = messages.length;
     prevMessageCountRef.current = nextCount;
 
-    // If we loaded older messages (count increased but we're not near bottom), do nothing.
-    // If a new message appended and user is near bottom, scroll.
-    const lastId = messages[messages.length - 1]?.id ?? null;
-    const didAppend = nextCount >= prevCount && lastId !== lastRenderIdRef.current;
-    lastRenderIdRef.current = lastId;
-
-    if (didAppend && isNearBottomRef.current) {
-      const lastIndex = items.length - 1;
-      if (lastIndex >= 0) {
-        // smooth scrolling on huge lists can be janky
-        rowVirtualizer.scrollToIndex(lastIndex, { align: 'end', behavior: nextCount < 120 ? 'smooth' : 'auto' });
-      }
+    if (nextCount > prevCount && isNearBottomRef.current) {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: nextCount < 120 ? 'smooth' : 'auto' });
+      });
     }
-  }, [messages, isLoading]);
+  }, [messages.length, isLoading]);
+
+  // Also scroll when streaming content changes
+  useEffect(() => {
+    if (isNearBottomRef.current) {
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'auto' });
+      });
+    }
+  }, [visibleMessages[visibleMessages.length - 1]?.content]);
 
   return (
     <div
@@ -139,63 +125,42 @@ export default function MessageList({ messages, isLoading = false, selectedProje
         </div>
       )}
 
-      <div
-        style={{
-          height: rowVirtualizer.getTotalSize(),
-          width: '100%',
-          position: 'relative',
-        }}
-      >
-        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-          const item = items[virtualRow.index];
-          if (!item) return null;
-          return (
-            <div
-              key={item.key}
-              ref={rowVirtualizer.measureElement}
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                transform: `translateY(${virtualRow.start}px)`,
-              }}
-              className="space-y-2"
-            >
-              {item.type === 'sep' ? (
-                <div className="flex items-center gap-3 mb-2 px-4">
-                  <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[var(--color-border-subtle)] dark:via-[#2a2a2a] to-transparent" />
-                  <span className="text-xs text-[var(--color-text-secondary)] dark:text-gray-500 whitespace-nowrap">
-                    {item.label}
-                  </span>
-                  <div className="flex-1 h-px bg-gradient-to-r from-transparent via-[var(--color-border-subtle)] dark:via-[#2a2a2a] to-transparent" />
-                </div>
-              ) : (
-                <div className="animate-in fade-in slide-in-from-bottom-2 duration-200">
-                  {/* Activity Timeline — shown above AI messages that have a session */}
-                  {item.message.role === 'assistant' && item.message.activitySessionId && (
-                    <div className="px-4 mb-2 ml-10">
-                      {item.message.isStreaming ? (
-                        <InlineActivity sessionId={item.message.activitySessionId} />
-                      ) : (
-                        <ActivityTimeline sessionId={item.message.activitySessionId} compact={false} />
-                      )}
-                    </div>
-                  )}
-                  <MessageBubble
-                    message={item.message}
-                    onRegenerate={item.message.role === 'assistant' ? () => onRegenerateMessage?.(item.message.id) : undefined}
-                    selectedProjectId={selectedProjectId}
-                    selectedProjectPath={selectedProjectPath}
-                  />
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div className="space-y-2">
+        {items.map((item) => (
+          <div key={item.key}>
+            {item.type === 'sep' ? (
+              <div className="flex items-center gap-3 my-4 px-4">
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border-subtle to-transparent" />
+                <span className="text-xs text-text-secondary whitespace-nowrap">
+                  {item.label}
+                </span>
+                <div className="flex-1 h-px bg-gradient-to-r from-transparent via-border-subtle to-transparent" />
+              </div>
+            ) : (
+              <div>
+                {/* Activity Timeline — shown above AI messages that have a session */}
+                {item.message.role === 'assistant' && item.message.activitySessionId && (
+                  <div className="mb-2 ml-10 px-4">
+                    {item.message.isStreaming ? (
+                      <InlineActivity sessionId={item.message.activitySessionId} />
+                    ) : (
+                      <ActivityTimeline sessionId={item.message.activitySessionId} compact={false} />
+                    )}
+                  </div>
+                )}
+                <MessageBubble
+                  message={item.message}
+                  onRegenerate={item.message.role === 'assistant' ? () => onRegenerateMessage?.(item.message.id) : undefined}
+                  selectedProjectId={selectedProjectId}
+                  selectedProjectPath={selectedProjectPath}
+                />
+              </div>
+            )}
+          </div>
+        ))}
       </div>
 
-      {/* Loading indicator — show StreamingDots only when no activity session exists yet */}
+      {/* Loading indicator */}
       {isLoading && visibleMessages.length > 0 && !visibleMessages[visibleMessages.length - 1]?.activitySessionId && (
         <div className="flex justify-start mt-3">
           <div className="animate-in fade-in duration-300">
@@ -203,6 +168,9 @@ export default function MessageList({ messages, isLoading = false, selectedProje
           </div>
         </div>
       )}
+
+      {/* Scroll anchor */}
+      <div ref={bottomRef} className="h-1" />
     </div>
   );
 }

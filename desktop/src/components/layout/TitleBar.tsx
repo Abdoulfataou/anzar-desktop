@@ -2,7 +2,6 @@
  * Custom Tauri window title bar — macOS traffic-light style
  */
 import { useState, useEffect, useCallback } from 'react';
-import { Minus, Square, X, Copy } from 'lucide-react';
 import { cn, isTauri } from '@/lib/utils';
 import { appWindow } from '@tauri-apps/api/window';
 
@@ -41,9 +40,8 @@ export default function TitleBar({ className }: TitleBarProps) {
     appWindow.close().catch(console.error);
   }, []);
 
-  const TrafficButton = ({ color, hoverIcon, onClick, label }: {
+  const TrafficButton = ({ color, onClick, label }: {
     color: string;
-    hoverIcon: React.ReactNode;
     onClick: () => void;
     label: string;
   }) => (
@@ -55,12 +53,16 @@ export default function TitleBar({ className }: TitleBarProps) {
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClick(); }}
       onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
-      style={{ width: 14, height: 14, borderRadius: '50%', backgroundColor: color }}
-      className="flex items-center justify-center cursor-pointer group transition-all duration-150 hover:brightness-110 active:brightness-90"
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: '50%',
+        backgroundColor: color,
+        boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.18)',
+      }}
+      className="flex items-center justify-center cursor-pointer transition-all duration-150 hover:brightness-110 active:brightness-90"
     >
-      <span className="opacity-0 group-hover:opacity-100 transition-opacity">
-        {hoverIcon}
-      </span>
+      {/* Style macOS: pas d’icônes, uniquement les pastilles */}
     </div>
   );
 
@@ -80,23 +82,16 @@ export default function TitleBar({ className }: TitleBarProps) {
             color="#FF5F57"
             label="Fermer"
             onClick={handleClose}
-            hoverIcon={<X size={9} strokeWidth={2.5} color="#4D0000" />}
           />
           <TrafficButton
             color="#FEBC2E"
             label="Reduire"
             onClick={handleMinimize}
-            hoverIcon={<Minus size={9} strokeWidth={2.5} color="#995700" />}
           />
           <TrafficButton
             color="#28C840"
             label={isMaximized ? 'Restaurer' : 'Agrandir'}
             onClick={handleMaximize}
-            hoverIcon={
-              isMaximized
-                ? <Copy size={8} strokeWidth={2.5} color="#006500" />
-                : <Square size={8} strokeWidth={2.5} color="#006500" />
-            }
           />
         </div>
       )}
