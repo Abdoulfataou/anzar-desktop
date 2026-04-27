@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Bug } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Bug, Presentation } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from './CodeBlock';
 import { cn } from '@/lib/utils';
@@ -12,6 +12,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 import { exportToDocx, exportToPdf } from '@/services/documentExport';
+import { exportToPptx } from '@/services/presentationExport';
 import type { Message } from '@/types';
 
 interface MessageBubbleProps {
@@ -27,6 +28,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const [showThinking, setShowThinking] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
   const [exporting, setExporting] = useState<'docx' | 'pdf' | null>(null);
+  const [exportingPptx, setExportingPptx] = useState(false);
   const [expandedLong, setExpandedLong] = useState(false);
   const textRef = useRef<HTMLDivElement>(null);
   const ensureCard = useCommandStore((s) => s.ensureCard);
@@ -120,8 +122,27 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     }
   };
 
-  /** Show export buttons only for substantial AI responses (>200 chars) */
-  const showExportButtons = message.content.length > 200 && !message.isStreaming && !message.isError;
+  const handleExportPptx = async () => {
+    if (exporting || exportingPptx) return;
+    setExportingPptx(true);
+    try {
+      await exportToPptx(message.content);
+    } catch (err) {
+      console.error('Export PPTX failed:', err);
+    } finally {
+      setExportingPptx(false);
+    }
+  };
+
+  /** Show export buttons for document-like content (student assistant, reports, etc.) */
+  const looksLikeDocument =
+    message.content.length > 200 ||
+    message.content.includes('\n') ||
+    /(^|\n)#{1,3}\s/m.test(message.content) ||
+    /(^|\n)\d+[.)]\s/m.test(message.content) ||
+    /(^|\n)[-*•]\s/m.test(message.content);
+
+  const showExportButtons = looksLikeDocument && !message.isStreaming && !message.isError;
 
   const formatTime = (ts: number) =>
     new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
@@ -375,6 +396,19 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
               >
                 <FileText size={13} />
                 <span>{exporting === 'docx' ? 'Export...' : 'Word'}</span>
+              </button>
+              <button
+                onClick={handleExportPptx}
+                disabled={exporting !== null || exportingPptx}
+                className={cn(
+                  'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
+                  exportingPptx
+                    ? 'text-accent-secondary bg-accent-secondary/10'
+                    : 'text-text-muted hover:text-accent-secondary hover:bg-accent-secondary/10'
+                )}
+              >
+                <Presentation size={13} />
+                <span>{exportingPptx ? 'Export...' : 'PPTX'}</span>
               </button>
               <button
                 onClick={handleExportPdf}

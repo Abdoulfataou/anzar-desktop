@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 type Theme = 'dark' | 'light' | 'system';
 
@@ -32,74 +32,55 @@ const applyTheme = (theme: 'dark' | 'light') => {
 };
 
 export const useThemeStore = create<ThemeStore>()(
-  persist(
-    (set, get) => ({
-      theme: 'system',
-      effectiveTheme: 'dark',
+  (set, get) => ({
+    theme: 'system',
+    effectiveTheme: 'dark',
 
-      initializeTheme: () => {
-        const stored = localStorage.getItem('theme') as Theme | null;
-        const theme = stored || 'system';
+    initializeTheme: () => {
+      // Source-of-truth: settingsStore (persisté). Le themeStore applique au DOM.
+      const theme = useSettingsStore.getState().settings.theme || 'system';
 
-        let effectiveTheme: 'dark' | 'light';
+      const effectiveTheme: 'dark' | 'light' =
+        theme === 'system' ? getSystemTheme() : theme;
 
-        if (theme === 'system') {
-          effectiveTheme = getSystemTheme();
-        } else {
-          effectiveTheme = theme;
-        }
+      set({ theme, effectiveTheme });
+      applyTheme(effectiveTheme);
 
-        set({
-          theme,
-          effectiveTheme,
-        });
+      // Listen for system theme changes (only in system mode)
+      if (theme === 'system') {
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        const handleChange = (e: MediaQueryListEvent) => {
+          const next = e.matches ? 'dark' : 'light';
+          set({ effectiveTheme: next });
+          applyTheme(next);
+        };
 
-        applyTheme(effectiveTheme);
+        mediaQuery.addEventListener('change', handleChange);
+        return () => mediaQuery.removeEventListener('change', handleChange);
+      }
+    },
 
-        // Listen for system theme changes
-        if (theme === 'system') {
-          const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-          const handleChange = (e: MediaQueryListEvent) => {
-            const newTheme = e.matches ? 'dark' : 'light';
-            set({ effectiveTheme: newTheme });
-            applyTheme(newTheme);
-          };
+    toggleTheme: () => {
+      const current = get().effectiveTheme;
+      const next = current === 'dark' ? 'light' : 'dark';
+      get().setTheme(next);
+    },
 
-          mediaQuery.addEventListener('change', handleChange);
+    setTheme: (theme: Theme) => {
+      const effectiveTheme: 'dark' | 'light' =
+        theme === 'system' ? getSystemTheme() : theme;
 
-          return () => mediaQuery.removeEventListener('change', handleChange);
-        }
-      },
+      set({ theme, effectiveTheme });
+      applyTheme(effectiveTheme);
 
-      toggleTheme: () => {
-        const current = get().effectiveTheme;
-        const newTheme = current === 'dark' ? 'light' : 'dark';
-        get().setTheme(newTheme);
-      },
-
-      setTheme: (theme: Theme) => {
-        let effectiveTheme: 'dark' | 'light';
-
-        if (theme === 'system') {
-          effectiveTheme = getSystemTheme();
-        } else {
-          effectiveTheme = theme;
-        }
-
-        set({
-          theme,
-          effectiveTheme,
-        });
-
-        applyTheme(effectiveTheme);
-        localStorage.setItem('theme', theme);
-      },
-    }),
-    {
-      name: 'anzar-theme-store',
-      partialize: (state) => ({ theme: state.theme }),
-    }
-  )
+      // Sync to settings store so SettingsPage + persistence stay consistent.
+      try {
+        useSettingsStore.getState().updateSettings({ theme });
+      } catch {
+        // ignore
+      }
+    },
+  })
 );
 
 // Initialize theme on load

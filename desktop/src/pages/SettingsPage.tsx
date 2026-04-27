@@ -19,6 +19,7 @@ import { Transaction } from '@/types';
 import { cn, isTauri } from '@/lib/utils';
 import { openExternalUrl } from '@/services/externalLinks';
 import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch } from '@/services/updateService';
+import { useThemeStore } from '@/stores/themeStore';
 
 /* ===== Toggle Switch ===== */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -397,6 +398,7 @@ export default function SettingsPage() {
   const settings = useSettingsStore((s) => s.settings);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const resetSettings = useSettingsStore((s) => s.resetSettings);
+  const setTheme = useThemeStore((s) => s.setTheme);
 
   const user = useAccountStore((s) => s.user);
   const credits = useAccountStore((s) => s.credits);
@@ -422,6 +424,11 @@ export default function SettingsPage() {
   }>({ checking: false, installing: false, available: false });
 
   const appVersion = (typeof __APP_VERSION__ === 'string' && __APP_VERSION__) ? __APP_VERSION__ : '—';
+
+  useEffect(() => {
+    // Sync UI state if settings change elsewhere (ex: theme applied via header toggle)
+    setForm(settings);
+  }, [settings]);
 
   useEffect(() => {
     // Prime from cache to avoid "empty" state
@@ -452,6 +459,14 @@ export default function SettingsPage() {
 
   const update = <K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+
+    // UX: appliquer le thème immédiatement (pas besoin de cliquer "Sauvegarder")
+    if (key === 'theme') {
+      setTheme(value as any);
+      updateSettings({ theme: value as any });
+      setStatus('saved');
+      setTimeout(() => setStatus('idle'), 1200);
+    }
   };
 
   const handleSave = () => {

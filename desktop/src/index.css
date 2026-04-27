@@ -128,12 +128,14 @@
     opacity: 0.3;
   }
 
-  /* Scrollbar */
-  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  /* Scrollbar
+   * UX desktop: évite les “traits” (scrollbars visibles) sur certains OS.
+   * Le scroll reste fonctionnel (trackpad / molette).
+   */
+  ::-webkit-scrollbar { width: 0px; height: 0px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: var(--color-border-medium); border-radius: 100px; }
-  ::-webkit-scrollbar-thumb:hover { background: var(--color-border-strong); }
-  * { scrollbar-width: thin; scrollbar-color: var(--color-border-medium) transparent; }
+  ::-webkit-scrollbar-thumb { background: transparent; }
+  * { scrollbar-width: none; scrollbar-color: transparent transparent; }
 }
 
 @layer components {

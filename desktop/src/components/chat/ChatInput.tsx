@@ -217,10 +217,11 @@ function ProjectSelector({
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
           'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
-          'border',
+          'border shadow-sm',
+          'focus:outline-none focus:ring-1 focus:ring-accent-primary/40',
           selectedProject
-            ? 'bg-accent-primary/8 border-accent-primary/20 text-accent-primary'
-            : 'bg-bg-tertiary/50 border-border-subtle text-text-muted hover:text-text-secondary hover:bg-bg-tertiary'
+            ? 'bg-accent-primary/15 border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20'
+            : 'bg-surface-default/80 border-border-medium text-text-secondary hover:text-text-primary hover:bg-surface-hover'
         )}
       >
         <FolderOpen size={13} />
@@ -352,6 +353,7 @@ export default function ChatInput({
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const attachButtonRef = useRef<HTMLButtonElement>(null);
   const projects = useProjectStore((s) => s.projects);
 
   // Auto-resize textarea
@@ -364,6 +366,16 @@ export default function ChatInput({
       textarea.style.height = `${newHeight}px`;
     }
   }, [message, maxHeight]);
+
+  // Permet à d'autres composants (ex: menus) d'ouvrir directement le sélecteur de fichiers
+  useEffect(() => {
+    const onOpen = () => {
+      if (isLoading) return;
+      attachButtonRef.current?.click();
+    };
+    window.addEventListener('anzar:open-file-dialog', onOpen as any);
+    return () => window.removeEventListener('anzar:open-file-dialog', onOpen as any);
+  }, [isLoading]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -499,6 +511,7 @@ export default function ChatInput({
               <div className="w-px h-4 bg-border-subtle" />
 
               <button
+                ref={attachButtonRef}
                 disabled={isLoading}
                 onClick={async () => {
                   try {
