@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useChatStore, useActiveConversation } from '@/stores/chatStore';
+import { useShallow } from 'zustand/react/shallow';
 import { aiRouter } from '@/services/router';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useOffline } from '@/hooks/useOffline';
@@ -67,16 +68,22 @@ export function useChat(): UseChatReturn {
   const errorTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const retryCountRef = useRef<number>(0);
 
-  // Store hooks
+  // Store hooks — use selectors to avoid subscribing to entire store
   const {
     addMessage,
     updateStreamingContent,
     appendStreamingContent,
     finalizeStreamingMessage,
     setIsGenerating,
-  } = useChatStore();
+  } = useChatStore(useShallow((s) => ({
+    addMessage: s.addMessage,
+    updateStreamingContent: s.updateStreamingContent,
+    appendStreamingContent: s.appendStreamingContent,
+    finalizeStreamingMessage: s.finalizeStreamingMessage,
+    setIsGenerating: s.setIsGenerating,
+  })));
 
-  const { getSetting } = useSettingsStore();
+  const getSetting = useSettingsStore((s) => s.getSetting);
 
   // Network status
   const { isOnline } = useOffline();
@@ -449,7 +456,8 @@ export function useChatInput(onSend?: (message: string) => Promise<void> | void)
  */
 export function useMessageActions() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const { updateMessage, deleteMessage } = useChatStore();
+  const updateMessage = useChatStore((s) => s.updateMessage);
+  const deleteMessage = useChatStore((s) => s.deleteMessage);
 
   const copyMessage = useCallback((messageId: string, content: string) => {
     navigator.clipboard.writeText(content);

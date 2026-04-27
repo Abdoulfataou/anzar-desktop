@@ -32,7 +32,7 @@ function groupByDate(items: MemoryItem[]): Record<string, MemoryItem[]> {
 }
 
 export default function ConversationList({ memories }: ConversationListProps) {
-  const { deleteMemory } = useMemoryStore();
+  const deleteMemory = useMemoryStore((s) => s.deleteMemory);
   const navigate = useNavigate();
 
   const grouped = useMemo(() => groupByDate(memories), [memories]);

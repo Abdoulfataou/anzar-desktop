@@ -27,7 +27,8 @@ const statusConfig: Record<string, { label: string; color: string }> = {
 
 const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
   const navigate = useNavigate();
-  const { deleteProject, updateProject } = useProjectStore();
+  const deleteProject = useProjectStore((s) => s.deleteProject);
+  const updateProject = useProjectStore((s) => s.updateProject);
   const [showMenu, setShowMenu] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(project.name);

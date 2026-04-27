@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import { Project, ProjectFile, AgentStatus, FileOperation } from '@/types';
 import { generateId } from '@/lib/utils';
 import { fileSystemService } from '@/services/fileSystem';
@@ -560,13 +561,19 @@ export const useProjectStore = create<ProjectStore>()(
 // ============================================================================
 
 /**
- * Hook to get the active project
+ * Hook to get the active project.
+ * Uses primitive ID selector to avoid new object references on every render.
  */
-export const useActiveProject = () =>
-  useProjectStore((state) => state.getActiveProject());
+export const useActiveProject = () => {
+  const activeId = useProjectStore((state) => state.activeProjectId);
+  return useProjectStore((state) =>
+    activeId ? state.projects.find((p) => p.id === activeId) ?? null : null
+  );
+};
 
 /**
- * Hook to get sorted projects
+ * Hook to get sorted projects — uses useShallow to prevent
+ * infinite re-renders from new array references.
  */
 export const useSortedProjects = () =>
-  useProjectStore((state) => state.getSortedProjects());
+  useProjectStore(useShallow((state) => state.getSortedProjects()));

@@ -8,8 +8,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useOffline } from '@/hooks/useOffline';
 
 export default function StatusBar() {
-  const { getSetting } = useSettingsStore();
-  const model = getSetting('model');
+  const model = useSettingsStore((s) => s.settings.model);
   const { isOnline } = useOffline();
 
   return (

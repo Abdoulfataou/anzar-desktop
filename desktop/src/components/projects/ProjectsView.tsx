@@ -20,8 +20,11 @@ type SortBy = 'date' | 'status' | 'name';
 function NewProjectModal({ onClose }: { onClose: () => void }) {
   const [description, setDescription] = useState('');
   const [isCreating, setIsCreating] = useState(false);
-  const { createProject } = useProjectStore();
-  const { startSession, endSession, addStep, completeStep } = useActivityStore();
+  const createProject = useProjectStore((s) => s.createProject);
+  const startSession = useActivityStore((s) => s.startSession);
+  const endSession = useActivityStore((s) => s.endSession);
+  const addStep = useActivityStore((s) => s.addStep);
+  const completeStep = useActivityStore((s) => s.completeStep);
 
   const handleCreate = async () => {
     if (!description.trim()) return;
@@ -168,7 +171,8 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
 
 /* ===== Main View ===== */
 const ProjectsView: React.FC = () => {
-  const { projects, createProject } = useProjectStore();
+  const projects = useProjectStore((s) => s.projects);
+  const createProject = useProjectStore((s) => s.createProject);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<SortBy>('date');
   const [filterStatus, setFilterStatus] = useState<string | null>(null);

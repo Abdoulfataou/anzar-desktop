@@ -12,7 +12,8 @@ import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 export default function ChatExample() {
-  const { createConversation, activeConversationId } = useChatStore();
+  const createConversation = useChatStore((s) => s.createConversation);
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
 
   // Initialize a new conversation on mount if needed
   useEffect(() => {
@@ -33,14 +34,12 @@ export default function ChatExample() {
  * Shows how to integrate with AI backend, streaming, and custom hooks
  */
 export function AdvancedChatExample() {
-  const {
-    createConversation,
-    activeConversationId,
-    addMessage,
-    setIsGenerating,
-    appendStreamingContent,
-    finalizeStreamingMessage,
-  } = useChatStore();
+  const createConversation = useChatStore((s) => s.createConversation);
+  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const addMessage = useChatStore((s) => s.addMessage);
+  const setIsGenerating = useChatStore((s) => s.setIsGenerating);
+  const appendStreamingContent = useChatStore((s) => s.appendStreamingContent);
+  const finalizeStreamingMessage = useChatStore((s) => s.finalizeStreamingMessage);
 
   useEffect(() => {
     if (!activeConversationId) {

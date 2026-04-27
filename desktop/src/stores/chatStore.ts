@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import { Conversation, Message } from '@/types';
 import { generateId } from '@/lib/utils';
 
@@ -507,22 +508,30 @@ export const useChatStore = create<ChatStore>()(
 // ============================================================================
 
 /**
- * Hook to get the active conversation
+ * Hook to get the active conversation.
+ * Uses primitive selector (ID) to avoid creating new object references
+ * that would cause infinite re-renders with Zustand's shallow comparison.
  */
-export const useActiveConversation = () =>
-  useChatStore((state) => state.getActiveConversation());
+export const useActiveConversation = () => {
+  const activeId = useChatStore((state) => state.activeConversationId);
+  const conversation = useChatStore((state) =>
+    activeId ? state.conversations.find((c) => c.id === activeId) ?? null : null
+  );
+  return conversation;
+};
 
 /**
- * Hook to get sorted conversations
+ * Hook to get sorted conversations — uses useShallow to avoid
+ * infinite re-renders from new array references.
  */
 export const useSortedConversations = () =>
-  useChatStore((state) => state.getSortedConversations());
+  useChatStore(useShallow((state) => state.getSortedConversations()));
 
 /**
- * Hook to get generation state
+ * Hook to get generation state — uses useShallow for object comparison.
  */
 export const useGenerationState = () =>
-  useChatStore((state) => ({
+  useChatStore(useShallow((state) => ({
     isGenerating: state.isGenerating,
     streamingContent: state.streamingContent,
-  }));
+  })));

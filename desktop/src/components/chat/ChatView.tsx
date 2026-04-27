@@ -545,7 +545,10 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const addUsageRecord = useUsageStore((s) => s.addRecord);
 
   // Activity tracking
-  const { startSession, endSession, addStep, completeStep } = useActivityStore();
+  const startSession = useActivityStore((s) => s.startSession);
+  const endSession = useActivityStore((s) => s.endSession);
+  const addStep = useActivityStore((s) => s.addStep);
+  const completeStep = useActivityStore((s) => s.completeStep);
 
   // ========================================================================
   // PROJECT GENERATION HANDLER

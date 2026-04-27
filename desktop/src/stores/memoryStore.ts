@@ -5,6 +5,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
 import { MemoryItem } from '@/types';
 import { generateId } from '@/lib/utils';
 
@@ -216,18 +217,18 @@ export const useMemoryStore = create<MemoryStore>()(
 // ============================================================================
 
 /**
- * Hook to get search results
+ * Hook to get search results — uses useShallow to avoid infinite re-renders.
  */
 export const useMemorySearch = () =>
-  useMemoryStore((state) => ({
+  useMemoryStore(useShallow((state) => ({
     results: state.getSearchResults(),
     query: state.searchQuery,
     setQuery: state.setSearchQuery,
     clearSearch: state.clearSearch,
-  }));
+  })));
 
 /**
- * Hook to get all tags
+ * Hook to get all tags — uses useShallow for array comparison.
  */
 export const useMemoryTags = () =>
-  useMemoryStore((state) => state.getAllTags());
+  useMemoryStore(useShallow((state) => state.getAllTags()));

@@ -219,7 +219,10 @@ function NewFileModal({
 const ProjectWorkspacePage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { projects, updateFile, addFile, updateProject } = useProjectStore();
+  const projects = useProjectStore((s) => s.projects);
+  const updateFile = useProjectStore((s) => s.updateFile);
+  const addFile = useProjectStore((s) => s.addFile);
+  const updateProject = useProjectStore((s) => s.updateProject);
   const developerMode = useSettingsStore((s) => s.settings.developerMode);
 
   const project = useMemo(

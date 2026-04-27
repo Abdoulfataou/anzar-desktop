@@ -10,7 +10,11 @@ import ConversationList from './ConversationList';
 import { cn } from '@/lib/utils';
 
 export default function MemoryView() {
-  const { memories, searchQuery, setSearchQuery, getSearchResults, getAllTags } = useMemoryStore();
+  const memories = useMemoryStore((s) => s.memories);
+  const searchQuery = useMemoryStore((s) => s.searchQuery);
+  const setSearchQuery = useMemoryStore((s) => s.setSearchQuery);
+  const getSearchResults = useMemoryStore((s) => s.getSearchResults);
+  const getAllTags = useMemoryStore((s) => s.getAllTags);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   const results: MemoryItem[] = useMemo(() => {

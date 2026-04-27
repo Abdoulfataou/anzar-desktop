@@ -12,7 +12,9 @@ interface SearchBarProps {
 }
 
 export default function SearchBar({ className }: SearchBarProps) {
-  const { searchQuery, setSearchQuery, clearSearch } = useMemoryStore();
+  const searchQuery = useMemoryStore((s) => s.searchQuery);
+  const setSearchQuery = useMemoryStore((s) => s.setSearchQuery);
+  const clearSearch = useMemoryStore((s) => s.clearSearch);
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
