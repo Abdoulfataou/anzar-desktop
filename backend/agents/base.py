@@ -104,33 +104,54 @@ class BaseAgent(ABC):
     def parse_json_response(self, response: str) -> Dict[str, Any]:
         """
         Parse une réponse JSON de DeepSeek.
+        Handles: raw JSON, ```json blocks, ```blocks, and JSON embedded in text.
 
         Args:
             response: Réponse texte contenant du JSON
 
         Returns:
-            Dict parsé ou vide si erreur
+            Dict parsé
 
         Raises:
             ValueError si le JSON est invalide
         """
-        try:
-            # Chercher les blocs JSON entre ``` ou directement
-            if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-            elif "```" in response:
-                json_str = response.split("```")[1].split("```")[0].strip()
-            else:
-                json_str = response.strip()
+        if not response or not response.strip():
+            raise ValueError("Réponse vide de l'IA")
 
-            parsed = json.loads(json_str)
-            logger.debug(f"[{self.name}] JSON parsé avec succès")
-            return parsed
+        candidates = []
 
-        except json.JSONDecodeError as e:
-            logger.error(f"[{self.name}] Erreur parsing JSON: {e}")
-            logger.debug(f"Réponse: {response[:200]}...")
-            raise ValueError(f"Réponse JSON invalide: {e}")
+        # Strategy 1: ```json block
+        if "```json" in response:
+            candidates.append(response.split("```json")[1].split("```")[0].strip())
+        # Strategy 2: ``` block
+        if "```" in response and "```json" not in response:
+            parts = response.split("```")
+            if len(parts) >= 3:
+                candidates.append(parts[1].strip())
+        # Strategy 3: raw string
+        candidates.append(response.strip())
+        # Strategy 4: find first { ... last }
+        first_brace = response.find("{")
+        last_brace = response.rfind("}")
+        if first_brace != -1 and last_brace > first_brace:
+            candidates.append(response[first_brace:last_brace + 1].strip())
+
+        last_error = None
+        for candidate in candidates:
+            if not candidate:
+                continue
+            try:
+                parsed = json.loads(candidate)
+                if isinstance(parsed, dict):
+                    logger.debug(f"[{self.name}] JSON parsé avec succès")
+                    return parsed
+            except json.JSONDecodeError as e:
+                last_error = e
+                continue
+
+        logger.error(f"[{self.name}] Erreur parsing JSON: {last_error}")
+        logger.debug(f"Réponse: {response[:300]}...")
+        raise ValueError(f"Réponse JSON invalide: {last_error}")
 
     def log_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques de l'agent."""

@@ -814,8 +814,9 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
         if has_paid and cost_fcfa > 0:
             await deduct_credits(email, cost_fcfa, description=f"smart_chat:{model}")
             await record_usage(
-                email, "deepseek", model, "smart_chat",
-                input_tokens, output_tokens, cost_fcfa, duration_ms
+                email, "deepseek", model,
+                input_tokens, output_tokens, _cost_usd, cost_fcfa,
+                duration_ms=duration_ms, task_type="smart_chat"
             )
 
         return JSONResponse({
@@ -1301,10 +1302,14 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         })
 
         if orch_result.get("status") == "error":
-            logger.error("Orchestration failed: %s", orch_result.get("error", "Unknown"))
-            raise HTTPException(500, "Erreur lors de la planification du projet.")
+            err_detail = orch_result.get("error", "Unknown orchestration error")
+            logger.error("Orchestration failed: %s", err_detail)
+            raise HTTPException(500, f"Erreur orchestration: {err_detail}")
 
         plan = orch_result.get("plan", {})
+        if not plan:
+            logger.error("Orchestrator returned empty plan")
+            raise HTTPException(500, "L'orchestrateur n'a pas pu générer de plan. Réessaie.")
 
         # Step 2: Planner
         planner = PlannerAgent(deepseek_client=_deepseek_client)
@@ -1314,8 +1319,9 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         })
 
         if plan_result.get("status") == "error":
-            logger.error("Planning failed: %s", plan_result.get("error", "Unknown"))
-            raise HTTPException(500, "Erreur lors de la planification du projet.")
+            err_detail = plan_result.get("error", "Unknown planner error")
+            logger.error("Planning failed: %s", err_detail)
+            raise HTTPException(500, f"Erreur planification: {err_detail}")
 
         architecture = plan_result.get("architecture", {})
 
@@ -1360,7 +1366,7 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         raise
     except Exception as e:
         logger.error(f"Plan project error: {e}", exc_info=True)
-        raise HTTPException(500, "Erreur lors de la planification du projet.")
+        raise HTTPException(500, f"Erreur lors de la planification: {str(e)[:200]}")
 
 
 @app.post("/api/projects/{project_id}/execute")

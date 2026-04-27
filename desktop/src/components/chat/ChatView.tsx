@@ -22,8 +22,9 @@ import {
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import { cn } from '@/lib/utils';
-import { AIModel, ToolDefinition, type Message, type ChatAttachment } from '@/types';
+import { AIModel, type Message, type ChatAttachment } from '@/types';
 import { aiRouter } from '@/services/router';
+import { aiService } from '@/services/ai';
 import { projectGeneration, type PlanResult, type ExecutionEvent } from '@/services/projectGeneration';
 import { fileSystemService } from '@/services/fileSystem';
 import { useUsageStore } from '@/stores/usageStore';
@@ -908,9 +909,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       const rawMessages = [
       {
-        role: 'system' as const,
+        role: ‘system’ as const,
         content:
-          "Quand tu veux exécuter une commande, utilise le tool run_command (ne mets pas de commande en bloc ```bash```). Donne d’abord une explication courte, puis propose les commandes via run_command.",
+          "Tu es ANZAR, un assistant IA intelligent. Tu peux chercher des informations sur le web quand l’utilisateur pose des questions sur l’actualité ou des sujets récents. Si tu proposes des commandes à exécuter, mets-les dans un bloc ```bash```.",
       },
       ...history.map((m) => ({ role: m.role as any, content: m.content })),
     ];
@@ -940,65 +941,50 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     let routingWasFallback = false;
 
     try {
-      let fullContent = '';
+      let fullContent = ‘’;
 
       // Step 2: Routing / Classification
       const routingStepId = addStep(sessionId, {
-        type: 'analyzing',
-        label: 'Classification de la tâche',
+        type: ‘analyzing’,
+        label: ‘Classification de la tâche’,
       });
 
-      // ── DEFAULT: tool-calling (command cards), cowork-style ──
+      // ── Smart chat: backend handles web search (Serper) + tool calling ──
       completeStep(sessionId, routingStepId);
-      addStep(sessionId, { type: 'planning', label: 'Propositions de commandes' });
+      addStep(sessionId, { type: ‘planning’, label: ‘Recherche et rédaction’ });
 
-      const tools: ToolDefinition[] = [
-        {
-          type: 'function',
-          function: {
-            name: 'run_command',
-            description:
-              "Propose une commande à exécuter. IMPORTANT: ne l’exécute pas automatiquement sauf si l’app est configurée en auto-run allowlist.",
-            parameters: {
-              type: 'object',
-              properties: {
-                command: { type: 'string', description: "Commande à exécuter (ex: 'npm test')" },
-              },
-              required: ['command'],
-            },
-          },
-        },
-      ];
+      const modelId = aiService.resolveModel(‘deepseek’, selectedModel);
 
+      const resp = await aiService.smartChat(apiMessages as any, {
+        model: modelId,
+        temperature: 0.7,
+      });
+
+      fullContent = resp?.choices?.[0]?.message?.content || ‘’;
+
+      // Extract bash commands from response and create command cards
       const ensureCard = useCommandStore.getState().ensureCard;
-      let idx = 0;
-      const toolExecutor = async (name: string, args: Record<string, any>) => {
-        if (name !== 'run_command') return JSON.stringify({ ok: false, error: 'Tool inconnu' });
-        const cmd = String(args?.command || '').trim();
-        if (!cmd) return JSON.stringify({ ok: false, error: 'Commande vide' });
-        const cardId = `${aiMessageId}::tool::${idx++}`;
-        ensureCard({
-          id: cardId,
-          messageId: aiMessageId,
-          command: cmd,
-          title: 'Commande proposée',
-          projectId: selectedProjectId,
-          projectPath: selectedProjectPath,
-        });
-        if (selectedProjectPath) {
-          const auto = shouldAutoRunCommand(cmd, settings);
-          if (auto.ok) void commandCardService.run(cardId);
+      const bashRegex = /```(?:bash|sh|shell)\n([\s\S]*?)```/g;
+      let cmdMatch: RegExpExecArray | null;
+      let cardIdx = 0;
+      while ((cmdMatch = bashRegex.exec(fullContent)) !== null) {
+        const cmds = cmdMatch[1].trim().split(‘\n’).filter((l: string) => l.trim() && !l.trim().startsWith(‘#’));
+        for (const cmd of cmds) {
+          const cardId = `${aiMessageId}::tool::${cardIdx++}`;
+          ensureCard({
+            id: cardId,
+            messageId: aiMessageId,
+            command: cmd.trim(),
+            title: ‘Commande proposée’,
+            projectId: selectedProjectId,
+            projectPath: selectedProjectPath,
+          });
+          if (selectedProjectPath) {
+            const auto = shouldAutoRunCommand(cmd.trim(), settings);
+            if (auto.ok) void commandCardService.run(cardId);
+          }
         }
-        return JSON.stringify({ ok: true, cardId, status: 'suggested' });
-      };
-
-      const resp = await aiRouter.chatWithTools(apiMessages as any, tools as any, toolExecutor, {
-        model: selectedModel,
-        enableFallback: true,
-        hasImages,
-      } as any);
-
-      fullContent = resp?.choices?.[0]?.message?.content || '';
+      }
 
       addStep(sessionId, { type: 'complete', label: `Terminé (${((Date.now() - startTime) / 1000).toFixed(1)}s)` });
       endSession(sessionId, 'done');
@@ -1026,9 +1012,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         activitySessionId: sessionId,
         routingInfo: {
           provider: routingProvider,
-          taskType: 'cowork',
+          taskType: 'smart_chat',
           wasFallback: routingWasFallback,
-          reason: 'cowork-default',
+          reason: 'smart-chat-with-search',
         },
       });
 
@@ -1040,7 +1026,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         timestamp: Date.now(),
         provider: routingProvider as any,
         model: selectedModel,
-        taskType: 'cowork',
+        taskType: 'smart_chat',
         inputTokens,
         outputTokens,
         costUSD: cost.costUSD,

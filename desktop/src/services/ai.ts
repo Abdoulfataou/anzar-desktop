@@ -526,6 +526,79 @@ class AIService {
   }
 
   // ========================================================================
+  // SMART CHAT (backend-side web search via Serper)
+  // ========================================================================
+
+  /**
+   * Send a chat request to /api/chat/smart — the backend handles web search
+   * automatically via Serper API + DeepSeek tool calling.
+   *
+   * Returns the same ChatResponse shape as chat().
+   */
+  async smartChat(
+    messages: APIMessage[],
+    options: {
+      model?: string;
+      temperature?: number;
+      maxTokens?: number;
+      signal?: AbortSignal;
+    } = {}
+  ): Promise<ChatResponse> {
+    const body: Record<string, any> = {
+      messages,
+      model: options.model || this.resolveModel('deepseek', 'fast'),
+      temperature: options.temperature ?? 0.7,
+      max_tokens: options.maxTokens || 4096,
+    };
+
+    const maxAttempts = 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await fetch(`${getBackendUrl()}/api/chat/smart`, {
+          method: 'POST',
+          headers: this.getAuthHeaders(),
+          body: JSON.stringify(body),
+          signal: options.signal,
+        });
+
+        if (!response.ok) {
+          const status = response.status;
+          const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
+          const msg = error.detail || error.error?.message || `Erreur du service IA (${status})`;
+
+          if (
+            attempt < maxAttempts - 1 &&
+            this.shouldRetryStatus(status) &&
+            !options.signal?.aborted &&
+            this.isOnline()
+          ) {
+            await this.sleep(status === 429 ? 1200 : 600);
+            continue;
+          }
+          throw new Error(msg);
+        }
+
+        return response.json();
+      } catch (err: any) {
+        if (
+          attempt < maxAttempts - 1 &&
+          !options.signal?.aborted &&
+          this.isOnline() &&
+          this.isTransientFetchError(err)
+        ) {
+          await this.sleep(700);
+          continue;
+        }
+        if (!this.isOnline()) {
+          throw new Error('Hors ligne — vérifie ta connexion internet.');
+        }
+        throw err;
+      }
+    }
+    throw new Error('Erreur réseau');
+  }
+
+  // ========================================================================
   // PROJECT GENERATION (high-level)
   // ========================================================================
 

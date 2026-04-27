@@ -17,7 +17,7 @@ class DeepSeekClient:
         base = (settings.deepseek_base_url or "").rstrip("/")
         # DeepSeek est compatible OpenAI: /v1/chat/completions
         self.base_url = base if base.endswith("/v1") else f"{base}/v1"
-        self.timeout = httpx.Timeout(60.0, connect=10.0)
+        self.timeout = httpx.Timeout(120.0, connect=15.0)
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def stream_chat(
