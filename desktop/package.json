@@ -11,15 +11,22 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "smoke": "npm run lint && npm run build"
   },
   "dependencies": {
     "@sentry/react": "^8.30.0",
+    "@tanstack/react-virtual": "^3.13.24",
     "@tauri-apps/api": "^1.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
+    "docx": "^8.5.0",
+    "file-saver": "^2.0.5",
+    "html2pdf.js": "^0.14.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.462.0",
+    "pdfjs-dist": "^5.6.205",
     "prismjs": "^1.30.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -27,11 +34,6 @@
     "react-markdown": "^9.0.3",
     "react-router-dom": "^6.28.1",
     "tailwind-merge": "^2.6.0",
-    "docx": "^8.5.0",
-    "file-saver": "^2.0.5",
-    "html2pdf.js": "^0.10.2",
-    "jszip": "^3.10.1",
-    "pdfjs-dist": "^3.11.174",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

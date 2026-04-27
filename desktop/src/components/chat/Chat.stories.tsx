@@ -11,18 +11,19 @@ import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import CodeBlock from './CodeBlock';
 import StreamingDots from './StreamingDots';
+import type { Message } from '@/types';
 
 // Example messages for testing
-const EXAMPLE_MESSAGES = [
+const EXAMPLE_MESSAGES: Message[] = [
   {
     id: '1',
-    type: 'user' as const,
+    role: 'user',
     content: 'Comment puis-je créer une application React avec TypeScript?',
-    timestamp: new Date('2024-01-15T10:00:00'),
+    timestamp: new Date('2024-01-15T10:00:00').getTime(),
   },
   {
     id: '2',
-    type: 'ai' as const,
+    role: 'assistant',
     content: `Voici les étapes pour créer une application React avec TypeScript:
 
 1. **Créer le projet** avec Vite:
@@ -55,20 +56,20 @@ npm run dev
 \`\`\`
 
 Avez-vous besoin d'aide pour une étape spécifique?`,
-    timestamp: new Date('2024-01-15T10:01:00'),
+    timestamp: new Date('2024-01-15T10:01:00').getTime(),
     model: 'fast' as const,
   },
   {
     id: '3',
-    type: 'user' as const,
+    role: 'user',
     content: 'Montre-moi un exemple de hook personnalisé',
-    timestamp: new Date('2024-01-15T10:02:00'),
+    timestamp: new Date('2024-01-15T10:02:00').getTime(),
   },
   {
     id: '4',
-    type: 'ai' as const,
+    role: 'assistant',
     content: 'Voici un exemple de hook personnalisé pour gérer un formulaire:',
-    timestamp: new Date('2024-01-15T10:03:00'),
+    timestamp: new Date('2024-01-15T10:03:00').getTime(),
     model: 'fast' as const,
   },
 ];
@@ -116,9 +117,9 @@ export const MessageBubbleError = () => (
     <MessageBubble
       message={{
         id: 'error-1',
-        type: 'ai',
+        role: 'assistant',
         content: 'Une erreur s\'est produite. Veuillez réessayer.',
-        timestamp: new Date(),
+        timestamp: Date.now(),
         isError: true,
       }}
     />
@@ -130,9 +131,9 @@ export const MessageBubbleWithThinking = () => (
     <MessageBubble
       message={{
         id: 'thinking-1',
-        type: 'ai',
+        role: 'assistant',
         content: 'La réponse à votre question est complexe et nécessite une réflexion approfondie.',
-        timestamp: new Date(),
+        timestamp: Date.now(),
         thinking: 'Je dois analyser plusieurs aspects: 1) La structure générale, 2) Les dépendances, 3) Les optimisations de performance...',
         reasoning: [
           'D\'abord, je dois comprendre le contexte du problème',
@@ -176,8 +177,9 @@ export const MessageListLoading = () => (
 export const ChatInputDefault = () => (
   <div className="p-8 bg-[var(--color-bg-primary)] dark:bg-[#0a0a0a]">
     <ChatInput
-      onSendMessage={(msg) => console.log('Send:', msg)}
+      onSendMessage={(msg, attachments) => console.log('Send:', msg, attachments)}
       isLoading={false}
+      isOnline={true}
       selectedModel="fast"
     />
   </div>
@@ -186,8 +188,9 @@ export const ChatInputDefault = () => (
 export const ChatInputLoading = () => (
   <div className="p-8 bg-[var(--color-bg-primary)] dark:bg-[#0a0a0a]">
     <ChatInput
-      onSendMessage={(msg) => console.log('Send:', msg)}
+      onSendMessage={(msg, attachments) => console.log('Send:', msg, attachments)}
       isLoading={true}
+      isOnline={true}
       selectedModel="fast"
     />
   </div>
@@ -196,8 +199,9 @@ export const ChatInputLoading = () => (
 export const ChatInputWithReasoner = () => (
   <div className="p-8 bg-[var(--color-bg-primary)] dark:bg-[#0a0a0a]">
     <ChatInput
-      onSendMessage={(msg) => console.log('Send:', msg)}
+      onSendMessage={(msg, attachments) => console.log('Send:', msg, attachments)}
       isLoading={false}
+      isOnline={true}
       selectedModel="thinking"
     />
   </div>
@@ -303,8 +307,9 @@ export const FullChatExperience = () => (
       <MessageList messages={EXAMPLE_MESSAGES} isLoading={false} />
     </div>
     <ChatInput
-      onSendMessage={(msg) => console.log('Send:', msg)}
+      onSendMessage={(msg, attachments) => console.log('Send:', msg, attachments)}
       isLoading={false}
+      isOnline={true}
       selectedModel="fast"
     />
   </div>

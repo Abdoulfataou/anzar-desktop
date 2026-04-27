@@ -72,7 +72,7 @@ export default function App() {
 
 **Features:**
 - Auto-resizing textarea (52px min, 200px max)
-- Model selector dropdown (deepseek-chat / deepseek-reasoner)
+- Model selector dropdown (fast / thinking)
 - Send button (visible when text present)
 - Stop generation button (during streaming)
 - Attachment button (placeholder for future file upload)
@@ -89,8 +89,8 @@ interface ChatInputProps {
   onSendMessage: (message: string) => Promise<void> | void;
   onStopGeneration?: () => void;
   isLoading?: boolean;
-  selectedModel?: 'deepseek-chat' | 'deepseek-reasoner';
-  onModelChange?: (model: 'deepseek-chat' | 'deepseek-reasoner') => void;
+  selectedModel?: 'fast' | 'thinking';
+  onModelChange?: (model: 'fast' | 'thinking') => void;
   placeholder?: string;
   maxHeight?: number; // default: 200px
 }
@@ -177,14 +177,14 @@ export default function MyComponent() {
     // Call API
     setIsGenerating(true);
     try {
-      const response = await deepseekAPI.chat(content);
+      const response = await aiAPI.chat(content);
       
       addMessage({
         id: generateId(),
         role: 'assistant',
         content: response.content,
         timestamp: Date.now(),
-        model: 'deepseek-chat',
+        model: 'fast',
       });
     } finally {
       setIsGenerating(false);
@@ -193,23 +193,23 @@ export default function MyComponent() {
 }
 ```
 
-### With DeepSeek API
+### With AI backend
 
-Example integration with DeepSeek API for streaming:
+Example integration with backend streaming:
 
 ```typescript
 async function streamChatResponse(
   message: string, 
   onToken: (token: string) => void
 ) {
-  const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+  const response = await fetch('https://<ai-backend>/api/chat/completions', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'deepseek-chat',
+      model: 'fast',
       messages: [{ role: 'user', content: message }],
       stream: true,
     }),

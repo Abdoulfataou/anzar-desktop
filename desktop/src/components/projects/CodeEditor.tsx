@@ -184,7 +184,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({
 
   const lang = useMemo(() => detectLanguage(filePath), [filePath]);
 
-  // FIM autocompletion (DeepSeek)
+  // FIM autocompletion (modèle compatible)
   const {
     suggestion: fimSuggestion,
     isLoading: fimLoading,

@@ -11,6 +11,7 @@
 import { ProjectFile, FileOperation } from '@/types';
 import { FileNode } from '@/types/file-project';
 import { generateId, isTauri as checkTauri } from '@/lib/utils';
+import { isAllowedProjectRoot } from '@/lib/allowedProjectRoots';
 import {
   readDir,
   readTextFile,
@@ -83,9 +84,41 @@ function shouldIgnore(name: string): boolean {
 
 class FileSystemService {
   private isTauri: boolean;
+  private allowCache = new Map<string, boolean>(); // path -> allowed?
 
   constructor() {
     this.isTauri = checkTauri();
+  }
+
+  private normalize(p: string): string {
+    return String(p || '').replace(/\\/g, '/').replace(/\/+$/, '');
+  }
+
+  /**
+   * Sécurité grand public:
+   * - limite les opérations aux répertoires autorisés par l’app (Documents/ANZAR, etc.)
+   * - bloque toute tentative de traversée (..), même si l'appelant se trompe
+   *
+   * IMPORTANT: aucune UI ici (pas de modal). On jette une erreur, l'UI décidera comment informer.
+   */
+  private async assertAllowedPath(path: string): Promise<void> {
+    const p = this.normalize(path);
+    if (!p) throw new Error('Chemin vide');
+    if (!this.isTauri) return; // Web mode: pas de FS local
+
+    // Traversal grossier
+    if (p.includes('..')) throw new Error('Chemin invalide (..) bloqué');
+
+    // Cache par racine (ex: .../Documents/ANZAR) pour éviter des appels répétés
+    const idx = p.indexOf('/ANZAR');
+    const key = idx >= 0 ? p.slice(0, idx + '/ANZAR'.length) : p;
+    const cached = this.allowCache.get(key);
+    if (cached === true) return;
+    if (cached === false) throw new Error('Dossier non autorisé');
+
+    const ok = await isAllowedProjectRoot(p);
+    this.allowCache.set(key, ok);
+    if (!ok) throw new Error('Dossier non autorisé');
   }
 
   // ========================================================================
@@ -106,6 +139,7 @@ class FileSystemService {
     }
 
     try {
+      await this.assertAllowedPath(dirPath);
       const entries = await readDir(dirPath, { recursive: false });
 
       const nodes: FileNode[] = [];
@@ -162,6 +196,7 @@ class FileSystemService {
       throw new Error('Tauri non disponible');
     }
 
+    await this.assertAllowedPath(filePath);
     return readTextFile(filePath);
   }
 
@@ -213,6 +248,7 @@ class FileSystemService {
   async writeFile(filePath: string, content: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
 
+    await this.assertAllowedPath(filePath);
     // Ensure parent directory exists
     const dirPath = filePath.substring(0, filePath.lastIndexOf('/'));
     if (dirPath) {
@@ -227,6 +263,7 @@ class FileSystemService {
    */
   async createDirectory(dirPath: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
+    await this.assertAllowedPath(dirPath);
     try {
       await createDir(dirPath, { recursive: true });
     } catch {
@@ -239,6 +276,7 @@ class FileSystemService {
    */
   async deleteFile(filePath: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
+    await this.assertAllowedPath(filePath);
     await removeFile(filePath);
   }
 
@@ -247,6 +285,7 @@ class FileSystemService {
    */
   async deleteDirectory(dirPath: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
+    await this.assertAllowedPath(dirPath);
     await removeDir(dirPath, { recursive: true });
   }
 
@@ -255,6 +294,8 @@ class FileSystemService {
    */
   async renameFile(oldPath: string, newPath: string): Promise<void> {
     if (!this.isTauri) throw new Error('Tauri non disponible');
+    await this.assertAllowedPath(oldPath);
+    await this.assertAllowedPath(newPath);
     await renameFile(oldPath, newPath);
   }
 
@@ -263,6 +304,11 @@ class FileSystemService {
    */
   async exists(path: string): Promise<boolean> {
     if (!this.isTauri) return false;
+    try {
+      await this.assertAllowedPath(path);
+    } catch {
+      return false;
+    }
     return fsExists(path);
   }
 
@@ -296,6 +342,12 @@ class FileSystemService {
   ): Promise<{ success: string[]; errors: { path: string; error: string }[] }> {
     const success: string[] = [];
     const errors: { path: string; error: string }[] = [];
+
+    try {
+      await this.assertAllowedPath(rootPath);
+    } catch (e: any) {
+      return { success, errors: [{ path: rootPath, error: e?.message || 'Dossier non autorisé' }] };
+    }
 
     for (const op of operations) {
       try {
@@ -343,6 +395,7 @@ class FileSystemService {
     rootPath: string,
     files: ProjectFile[]
   ): Promise<void> {
+    await this.assertAllowedPath(rootPath);
     for (const file of files) {
       const fullPath = `${rootPath}/${file.path}`;
       await this.writeFile(fullPath, file.content);

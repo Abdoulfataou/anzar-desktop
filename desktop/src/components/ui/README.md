@@ -345,7 +345,7 @@ import {
   formatRelativeTime,    // "2 hours ago"
   truncate,             // "Hello..."
   debounce,             // Debounced function
-  estimateTokens,       // Token estimation for DeepSeek
+  estimateTokens,       // Token estimation
   clamp,                // Clamp value between min/max
   isInViewport,         // Check if element is visible
   generateId,           // Generate UUID or fallback

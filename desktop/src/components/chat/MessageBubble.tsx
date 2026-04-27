@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Bug } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import CodeBlock from './CodeBlock';
 import { cn } from '@/lib/utils';
@@ -12,18 +12,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 import { exportToDocx, exportToPdf } from '@/services/documentExport';
-
-interface Message {
-  id: string;
-  type: 'user' | 'ai';
-  content: string;
-  timestamp: Date;
-  reasoning?: string[];
-  model?: 'fast' | 'thinking';
-  isError?: boolean;
-  isStreaming?: boolean;
-  thinking?: string;
-}
+import type { Message } from '@/types';
 
 interface MessageBubbleProps {
   message: Message;
@@ -38,6 +27,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const [showThinking, setShowThinking] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
   const [exporting, setExporting] = useState<'docx' | 'pdf' | null>(null);
+  const [expandedLong, setExpandedLong] = useState(false);
   const textRef = useRef<HTMLDivElement>(null);
   const ensureCard = useCommandStore((s) => s.ensureCard);
   const commandOrder = useCommandStore((s) => s.order);
@@ -57,6 +47,53 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     setCopied(true);
     onCopy?.(message.content);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const LONG_THRESHOLD = 12000;
+  const isLong = message.content.length > LONG_THRESHOLD && !message.isStreaming;
+  const displayContent = useMemo(() => {
+    if (!isLong) return message.content;
+    if (expandedLong) return message.content;
+    const head = message.content.slice(0, 6000);
+    const tail = message.content.slice(-2000);
+    const omitted = message.content.length - head.length - tail.length;
+    return `${head}\n\n[... ${omitted} caractères masqués ...]\n\n${tail}`;
+  }, [message.content, isLong, expandedLong, message.isStreaming]);
+
+  const handleCopyErrorReport = async () => {
+    try {
+      const report = {
+        type: 'anzar_error_report',
+        createdAt: new Date().toISOString(),
+        message: {
+          id: message.id,
+          role: message.role,
+          timestamp: message.timestamp,
+          model: message.model,
+          // On ne met pas d'infos de provider ici (beta-safe)
+          isError: message.isError,
+          content: message.content,
+        },
+        context: {
+          selectedProjectId,
+          selectedProjectPath,
+          userAgent: globalThis.navigator?.userAgent,
+          online: globalThis.navigator?.onLine,
+        },
+      };
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      try {
+        window.prompt(
+          'Copie ce rapport:',
+          JSON.stringify({ id: message.id, content: message.content }, null, 2)
+        );
+      } catch {
+        // ignore
+      }
+    }
   };
 
   const handleExportDocx = async () => {
@@ -86,11 +123,11 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   /** Show export buttons only for substantial AI responses (>200 chars) */
   const showExportButtons = message.content.length > 200 && !message.isStreaming && !message.isError;
 
-  const formatTime = (date: Date) =>
-    date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+  const formatTime = (ts: number) =>
+    new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
   // ===== USER MESSAGE =====
-  if (message.type === 'user') {
+  if (message.role === 'user') {
     return (
       <div className="flex justify-end gap-3 group px-4">
         <div className="flex flex-col items-end max-w-[80%] sm:max-w-[70%]">
@@ -101,6 +138,20 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             <p className="text-text-primary text-sm leading-relaxed break-words whitespace-pre-wrap">
               {message.content}
             </p>
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {message.attachments.map((a) => (
+                  <span
+                    key={a.id}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] border border-border-subtle bg-bg-tertiary/60 text-text-secondary"
+                    title={a.name}
+                  >
+                    <span className="font-semibold">{a.ref || ''}</span>
+                    <span className="truncate max-w-[220px]">{a.name}</span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <span className="text-[11px] text-text-muted mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
             {formatTime(message.timestamp)}
@@ -249,9 +300,17 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                 th: ({ children }) => <th className="px-3 py-2 bg-bg-tertiary font-semibold text-left text-xs uppercase tracking-wide">{children}</th>,
               }}
             >
-              {message.content}
+              {displayContent}
             </ReactMarkdown>
           </div>
+          {isLong && (
+            <button
+              onClick={() => setExpandedLong((v) => !v)}
+              className="mt-2 text-xs text-text-muted hover:text-text-primary transition-colors"
+            >
+              {expandedLong ? 'Afficher moins' : 'Afficher tout'}
+            </button>
+          )}
         </div>
 
         {/* Command Cards docked under message (Trae/Claude cowork-like) */}
@@ -277,14 +336,28 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             <span>{copied ? 'Copié' : 'Copier'}</span>
           </button>
 
-          {/* Regenerate */}
-          <button
-            onClick={onRegenerate}
-            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-all duration-200"
-          >
-            <RefreshCw size={13} />
-            <span>Régénérer</span>
-          </button>
+          {/* Regenerate / Retry */}
+          {onRegenerate && (
+            <button
+              onClick={onRegenerate}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-all duration-200"
+            >
+              <RefreshCw size={13} />
+              <span>{message.isError ? 'Réessayer' : 'Régénérer'}</span>
+            </button>
+          )}
+
+          {/* Copier rapport d'erreur (support) */}
+          {message.isError && (
+            <button
+              onClick={handleCopyErrorReport}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-all duration-200"
+              title="Copier un rapport utile pour le support"
+            >
+              <Bug size={13} />
+              <span>Rapport</span>
+            </button>
+          )}
 
           {/* Export buttons — only for substantial responses */}
           {showExportButtons && (

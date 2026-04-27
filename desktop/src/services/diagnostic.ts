@@ -4,7 +4,7 @@
  * Ce service :
  * 1. Parse les sorties terminal (stdout/stderr) pour détecter les erreurs
  * 2. Classifie les types d'erreurs (dépendance manquante, syntaxe, port, permission...)
- * 3. Envoie le contexte à l'IA (DeepSeek) pour obtenir une explication + solution
+ * 3. Envoie le contexte à l'IA (via backend ANZAR) pour obtenir une explication + solution
  * 4. Propose des actions automatiques (installer un package, corriger un fichier, etc.)
  */
 
@@ -472,7 +472,7 @@ class DiagnosticService {
   }
 
   /**
-   * Ask DeepSeek AI to analyze errors and propose solutions
+   * Ask the AI to analyze errors and propose solutions
    */
   private async askAIForDiagnosis(
     errors: DiagnosticError[],

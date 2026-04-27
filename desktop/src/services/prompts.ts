@@ -1,8 +1,7 @@
 /**
- * Prompts centralisés ANZAR — Optimisés pour le cache DeepSeek
+ * Prompts centralisés ANZAR — Optimisés pour le cache (provider standard)
  *
  * STRATÉGIE DE CACHE:
- * DeepSeek offre un discount de 90% sur les tokens déjà cachés.
  * Le cache se déclenche quand le PRÉFIXE des messages est identique
  * entre deux requêtes (minimum 1024 tokens de préfixe commun).
  *
@@ -11,8 +10,8 @@
  *   2. Suffisamment long (>1024 tokens ≈ 4000 chars)
  *   3. Placé en premier dans la conversation
  *
- * Résultat: après la 1ère requête, l'input passe de 0.14$ à 0.014$/M tokens
- * → ÉCONOMIE DE 90% sur tous les appels subséquents de la session.
+ * Résultat: après la 1ère requête, les coûts d'input sont fortement réduits
+ * sur tous les appels subséquents de la session.
  */
 
 // ============================================================================
@@ -124,7 +123,7 @@ Règles strictes:
 
 
 /**
- * Prompt système pour l'analyse d'images (Kimi vision)
+ * Prompt système pour l'analyse d'images (provider vision)
  */
 export const SYSTEM_PROMPT_VISION = `${SYSTEM_PROMPT_MAIN}
 
@@ -140,7 +139,7 @@ Sois précis dans tes descriptions visuelles. Pour l'image-to-code, produis du c
 
 
 /**
- * Prompt pour le raisonnement profond (DeepSeek R1 / Kimi thinking)
+ * Prompt pour le raisonnement profond (modèle de raisonnement)
  */
 export const SYSTEM_PROMPT_REASONING = `${SYSTEM_PROMPT_MAIN}
 

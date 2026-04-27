@@ -7,17 +7,20 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Paperclip, Square, Zap, Brain, ArrowUp,
   FolderOpen, ChevronDown, Plus, Check,
+  X,
 } from 'lucide-react';
-import { cn, isTauri } from '@/lib/utils';
-import { AIModel, Project } from '@/types';
+import toast from 'react-hot-toast';
+import { cn, isTauri, generateId } from '@/lib/utils';
+import { AIModel, Project, ChatAttachment, ChatAttachmentKind } from '@/types';
 import { useProjectStore } from '@/stores/projectStore';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 import { readTextFile, readBinaryFile } from '@tauri-apps/api/fs';
 
 interface ChatInputProps {
-  onSendMessage: (message: string) => Promise<void> | void;
+  onSendMessage: (message: string, attachments?: ChatAttachment[]) => Promise<void> | void;
   onStopGeneration?: () => void;
   isLoading?: boolean;
+  isOnline?: boolean;
   selectedModel?: AIModel;
   onModelChange?: (model: AIModel) => void;
   selectedProjectId?: string | null;
@@ -28,6 +31,27 @@ interface ChatInputProps {
 
 const MAX_HEIGHT = 200;
 const MIN_HEIGHT = 48;
+
+function truncateMiddle(text: string, maxChars: number): string {
+  if (!text) return '';
+  if (text.length <= maxChars) return text;
+  const head = Math.floor(maxChars * 0.65);
+  const tail = Math.floor(maxChars * 0.25);
+  const omitted = text.length - head - tail;
+  return `${text.slice(0, head)}\n\n[... tronqué: ${omitted} caractères ...]\n\n${text.slice(text.length - tail)}`;
+}
+
+function detectAttachmentKind(filename: string): ChatAttachmentKind {
+  const ext = filename.split('.').pop()?.toLowerCase() || '';
+  if (ext === 'pdf') return 'pdf';
+  if (ext === 'docx' || ext === 'doc') return 'docx';
+  if (ext === 'xlsx' || ext === 'xls') return 'xlsx';
+  if (ext === 'csv') return 'csv';
+  if (ext === 'tsv') return 'tsv';
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
+  if (['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'html', 'css', 'json', 'yaml', 'yml', 'md', 'txt', 'sql', 'xml'].includes(ext)) return 'code';
+  return 'binary';
+}
 
 /** Extract text from a .docx file (ZIP containing XML) */
 async function extractDocxText(bytes: Uint8Array): Promise<string> {
@@ -63,11 +87,23 @@ async function extractExcelText(bytes: Uint8Array): Promise<string> {
     const { default: JSZip } = await import('jszip');
     const zip = await JSZip.loadAsync(bytes);
 
-    // xlsx stores sheets in xl/worksheets/sheet1.xml, etc.
-    const sheetFile = zip.file('xl/worksheets/sheet1.xml');
+    // xlsx stores sheets in xl/worksheets/sheet1.xml, sheet2.xml, etc.
+    // Grand public: on lit plusieurs feuilles si présentes (limité)
+    const sheetFolder = zip.folder('xl/worksheets');
+    const sheetFiles = sheetFolder
+      ? Object.keys(sheetFolder.files)
+        .filter((p) => /xl\/worksheets\/sheet\d+\.xml$/i.test(p))
+        .sort((a, b) => {
+          const na = Number((a.match(/sheet(\d+)\.xml/i)?.[1]) || 0);
+          const nb = Number((b.match(/sheet(\d+)\.xml/i)?.[1]) || 0);
+          return na - nb;
+        })
+      : [];
+
+    const sheetsToRead = sheetFiles.slice(0, 3); // max 3 feuilles pour éviter freeze
     const stringsFile = zip.file('xl/sharedStrings.xml');
 
-    if (!sheetFile) return '[Impossible de lire le fichier Excel]';
+    if (sheetsToRead.length === 0) return '[Impossible de lire le fichier Excel]';
 
     // Parse shared strings (Excel stores text in a shared strings table)
     let sharedStrings: string[] = [];
@@ -77,39 +113,50 @@ async function extractExcelText(bytes: Uint8Array): Promise<string> {
       sharedStrings = matches.map((m) => m.replace(/<[^>]+>/g, ''));
     }
 
-    // Parse sheet data
-    const sheetXml = await sheetFile.async('string');
-    const rows: string[][] = [];
-    const rowMatches = sheetXml.match(/<row[^>]*>[\s\S]*?<\/row>/g) || [];
+    const blocks: string[] = [];
+    const MAX_ROWS_PER_SHEET = 120;
 
-    for (const rowXml of rowMatches) {
-      const cells: string[] = [];
-      const cellMatches = rowXml.match(/<c[^>]*>[\s\S]*?<\/c>|<c[^/]*\/>/g) || [];
+    for (const path of sheetsToRead) {
+      const file = zip.file(path);
+      if (!file) continue;
+      const sheetXml = await file.async('string');
+      const rows: string[][] = [];
+      const rowMatches = sheetXml.match(/<row[^>]*>[\s\S]*?<\/row>/g) || [];
 
-      for (const cellXml of cellMatches) {
-        const isSharedString = /t="s"/.test(cellXml);
-        const valueMatch = cellXml.match(/<v>([^<]*)<\/v>/);
-        if (valueMatch) {
-          const val = valueMatch[1];
-          if (isSharedString && sharedStrings[parseInt(val)]) {
-            cells.push(sharedStrings[parseInt(val)]);
+      for (const rowXml of rowMatches) {
+        const cells: string[] = [];
+        const cellMatches = rowXml.match(/<c[^>]*>[\s\S]*?<\/c>|<c[^/]*\/>/g) || [];
+
+        for (const cellXml of cellMatches) {
+          const isSharedString = /t="s"/.test(cellXml);
+          const valueMatch = cellXml.match(/<v>([^<]*)<\/v>/);
+          if (valueMatch) {
+            const val = valueMatch[1];
+            if (isSharedString && sharedStrings[parseInt(val)]) {
+              cells.push(sharedStrings[parseInt(val)]);
+            } else {
+              cells.push(val);
+            }
           } else {
-            cells.push(val);
+            cells.push('');
           }
-        } else {
-          cells.push('');
         }
+        if (cells.some((c) => c.trim())) rows.push(cells);
+        if (rows.length >= MAX_ROWS_PER_SHEET) break;
       }
-      if (cells.some((c) => c.trim())) rows.push(cells);
+
+      const sheetNum = Number((path.match(/sheet(\d+)\.xml/i)?.[1]) || 0) || 1;
+      if (rows.length === 0) {
+        blocks.push(`Feuille ${sheetNum}: [vide]`);
+        continue;
+      }
+      const text = rows.map((row) => row.join('\t')).join('\n');
+      blocks.push(`Feuille ${sheetNum} — aperçu (${rows.length} lignes)\n${text}`);
     }
 
-    if (rows.length === 0) return '[Fichier Excel vide]';
-
-    // Format as CSV-like text
-    const maxRows = Math.min(rows.length, 200);
-    const text = rows.slice(0, maxRows).map((row) => row.join('\t')).join('\n');
-    const suffix = rows.length > 200 ? `\n[... ${rows.length - 200} lignes supplémentaires ...]` : '';
-    return `${rows.length} lignes × ${rows[0]?.length || 0} colonnes\n\n${text}${suffix}`;
+    const moreSheets = sheetFiles.length - sheetsToRead.length;
+    const suffix = moreSheets > 0 ? `\n\n[... ${moreSheets} feuille(s) supplémentaire(s) non chargée(s) ...]` : '';
+    return `${blocks.join('\n\n---\n\n')}${suffix}`;
   } catch {
     return '[Erreur lors de la lecture du fichier Excel — essayez de l\'exporter en CSV]';
   }
@@ -120,9 +167,15 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
   try {
     // Use pdfjs-dist for text extraction
     const pdfjsLib = await import('pdfjs-dist');
-    // Set worker (use CDN for simplicity)
-    pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    // Set worker (local bundle first; CDN fallback)
+    try {
+      const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min?url')).default as string;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+    } catch {
+      // Fallback: CDN (peut échouer offline)
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
     const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
     const pages: string[] = [];
     const maxPages = Math.min(doc.numPages, 50); // Limit to 50 pages
@@ -287,6 +340,7 @@ export default function ChatInput({
   onSendMessage,
   onStopGeneration,
   isLoading = false,
+  isOnline = true,
   selectedModel = 'fast',
   onModelChange,
   selectedProjectId = null,
@@ -296,6 +350,7 @@ export default function ChatInput({
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const projects = useProjectStore((s) => s.projects);
 
@@ -312,9 +367,17 @@ export default function ChatInput({
 
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (message.trim() && !isLoading) {
-      await onSendMessage(message.trim());
+    if (!isOnline) {
+      toast.error('Hors ligne — impossible d’envoyer pour le moment.');
+      return;
+    }
+    const hasText = message.trim().length > 0;
+    const hasAttachments = attachments.length > 0;
+    if ((hasText || hasAttachments) && !isLoading) {
+      const contentToSend = hasText ? message.trim() : 'Analyse les pièces jointes.';
+      await onSendMessage(contentToSend, attachments);
       setMessage('');
+      setAttachments([]);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -339,7 +402,7 @@ export default function ChatInput({
       if (selected && typeof selected === 'string') {
         const allowed = await isAllowedProjectRoot(selected);
         if (!allowed) {
-          await showPathNotAllowedMessage();
+          toast.error('Dossier non autorisé. Place le projet dans Documents/ANZAR (ou Bureau/ANZAR / Téléchargements/ANZAR).');
           return;
         }
         const folderName = selected.split(/[/\\]/).pop() || 'Projet';
@@ -356,7 +419,11 @@ export default function ChatInput({
     }
   };
 
-  const hasMessage = message.trim().length > 0;
+  const hasMessage = message.trim().length > 0 || attachments.length > 0;
+  const MAX_BYTES_PDF = 12 * 1024 * 1024;   // 12MB
+  const MAX_BYTES_DOCX = 10 * 1024 * 1024;  // 10MB
+  const MAX_BYTES_XLSX = 8 * 1024 * 1024;   // 8MB
+  const MAX_ATTACH_TEXT = 15000;
 
   return (
     <div className="relative z-40 bg-bg-primary">
@@ -395,6 +462,29 @@ export default function ChatInput({
             />
           </div>
 
+          {/* Attachments chips */}
+          {attachments.length > 0 && (
+            <div className="px-4 pb-2 flex flex-wrap gap-2">
+              {attachments.map((a) => (
+                <div
+                  key={a.id}
+                  className="flex items-center gap-2 max-w-full px-2.5 py-1.5 rounded-full border border-border-subtle bg-bg-tertiary/60 text-xs text-text-secondary"
+                  title={a.name}
+                >
+                  <span className="truncate max-w-[260px]">{a.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                    className="p-0.5 rounded-full hover:bg-surface-hover text-text-muted hover:text-text-primary"
+                    title="Retirer"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Bottom toolbar */}
           <div className="flex items-center justify-between px-3 py-2 border-t border-border-subtle/50">
             {/* Left side: Project selector + attachment */}
@@ -428,35 +518,86 @@ export default function ChatInput({
                       });
                       if (selected) {
                         const files = Array.isArray(selected) ? selected : [selected];
+                        const loadingToast = toast.loading('Lecture des fichiers…');
+                        let added = 0;
                         for (const filePath of files) {
                           const name = (filePath as string).split(/[/\\]/).pop() || 'fichier';
-                          const ext = name.split('.').pop()?.toLowerCase() || '';
+                          const kind = detectAttachmentKind(name);
                           try {
-                            if (ext === 'pdf') {
+                            if (kind === 'pdf') {
                               const bytes = await readBinaryFile(filePath);
+                              if (bytes.byteLength > MAX_BYTES_PDF) {
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>12MB).]' },
+                                ]).slice(0, 8));
+                                added++;
+                                continue;
+                              }
                               const text = await extractPdfText(bytes);
-                              setMessage((prev) => `${prev}\n\n📄 --- ${name} ---\n${text.slice(0, 15000)}\n---\n`);
-                            } else if (ext === 'docx' || ext === 'doc') {
+                              setAttachments((prev) => ([
+                                ...prev,
+                                { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
+                              ]).slice(0, 8));
+                              added++;
+                            } else if (kind === 'docx') {
                               const bytes = await readBinaryFile(filePath);
+                              if (bytes.byteLength > MAX_BYTES_DOCX) {
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' },
+                                ]).slice(0, 8));
+                                added++;
+                                continue;
+                              }
                               const text = await extractDocxText(bytes);
-                              setMessage((prev) => `${prev}\n\n📄 --- ${name} ---\n${text.slice(0, 15000)}\n---\n`);
-                            } else if (ext === 'xlsx' || ext === 'xls') {
+                              setAttachments((prev) => ([
+                                ...prev,
+                                { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
+                              ]).slice(0, 8));
+                              added++;
+                            } else if (kind === 'xlsx') {
                               const bytes = await readBinaryFile(filePath);
+                              if (bytes.byteLength > MAX_BYTES_XLSX) {
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>8MB).]' },
+                                ]).slice(0, 8));
+                                added++;
+                                continue;
+                              }
                               const text = await extractExcelText(bytes);
-                              setMessage((prev) => `${prev}\n\n📊 --- ${name} ---\n${text.slice(0, 15000)}\n---\n`);
-                            } else if (ext === 'csv' || ext === 'tsv') {
+                              setAttachments((prev) => ([
+                                ...prev,
+                                { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
+                              ]).slice(0, 8));
+                              added++;
+                            } else if (kind === 'csv' || kind === 'tsv') {
                               const content = await readTextFile(filePath);
-                              setMessage((prev) => `${prev}\n\n📊 --- ${name} ---\n${content.slice(0, 15000)}\n---\n`);
+                              setAttachments((prev) => ([
+                                ...prev,
+                                { id: generateId(), name, kind, excerpt: truncateMiddle(content, MAX_ATTACH_TEXT) },
+                              ]).slice(0, 8));
+                              added++;
                             } else {
-                              // Try reading as text file
+                              // Try reading as text file, otherwise keep as binary attachment
                               const content = await readTextFile(filePath);
-                              setMessage((prev) => `${prev}\n\n--- ${name} ---\n${content.slice(0, 8000)}\n---\n`);
+                              setAttachments((prev) => ([
+                                ...prev,
+                                { id: generateId(), name, kind: kind === 'binary' ? 'text' : kind, excerpt: truncateMiddle(content, 9000) },
+                              ]).slice(0, 8));
+                              added++;
                             }
                           } catch {
-                            // Binary file (image etc.) — just insert the path
-                            setMessage((prev) => `${prev}\n[Fichier joint: ${name}]`);
+                            setAttachments((prev) => ([
+                              ...prev,
+                              { id: generateId(), name, kind, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' },
+                            ]).slice(0, 8));
+                            added++;
                           }
                         }
+                        toast.dismiss(loadingToast);
+                        if (added > 0) toast.success(`${added} fichier(s) ajouté(s)`);
                       }
                     } else {
                       // Fallback web: input file caché
@@ -466,40 +607,97 @@ export default function ChatInput({
                       input.accept = '.pdf,.docx,.doc,.txt,.md,.rtf,.csv,.tsv,.xlsx,.xls,.json,.xml,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.html,.css,.png,.jpg,.jpeg,.svg';
                       input.onchange = async () => {
                         if (input.files) {
+                          const loadingToast = toast.loading('Lecture des fichiers…');
+                          let added = 0;
                           for (const file of Array.from(input.files)) {
-                            const ext = file.name.split('.').pop()?.toLowerCase() || '';
+                            const kind = detectAttachmentKind(file.name);
                             try {
-                              if (ext === 'pdf') {
+                              if (kind === 'pdf') {
+                                if (file.size > MAX_BYTES_PDF) {
+                                  setAttachments((prev) => ([
+                                    ...prev,
+                                    { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>12MB).]' },
+                                  ]).slice(0, 8));
+                                  added++;
+                                  continue;
+                                }
                                 const buffer = await file.arrayBuffer();
                                 const text = await extractPdfText(new Uint8Array(buffer));
-                                setMessage((prev) => `${prev}\n\n📄 --- ${file.name} ---\n${text.slice(0, 15000)}\n---\n`);
-                              } else if (ext === 'docx' || ext === 'doc') {
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
+                                ]).slice(0, 8));
+                                added++;
+                              } else if (kind === 'docx') {
+                                if (file.size > MAX_BYTES_DOCX) {
+                                  setAttachments((prev) => ([
+                                    ...prev,
+                                    { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' },
+                                  ]).slice(0, 8));
+                                  added++;
+                                  continue;
+                                }
                                 const buffer = await file.arrayBuffer();
                                 const text = await extractDocxText(new Uint8Array(buffer));
-                                setMessage((prev) => `${prev}\n\n📄 --- ${file.name} ---\n${text.slice(0, 15000)}\n---\n`);
-                              } else if (ext === 'xlsx' || ext === 'xls') {
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
+                                ]).slice(0, 8));
+                                added++;
+                              } else if (kind === 'xlsx') {
+                                if (file.size > MAX_BYTES_XLSX) {
+                                  setAttachments((prev) => ([
+                                    ...prev,
+                                    { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>8MB).]' },
+                                  ]).slice(0, 8));
+                                  added++;
+                                  continue;
+                                }
                                 const buffer = await file.arrayBuffer();
                                 const text = await extractExcelText(new Uint8Array(buffer));
-                                setMessage((prev) => `${prev}\n\n📊 --- ${file.name} ---\n${text.slice(0, 15000)}\n---\n`);
-                              } else if (ext === 'csv' || ext === 'tsv') {
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) },
+                                ]).slice(0, 8));
+                                added++;
+                              } else if (kind === 'csv' || kind === 'tsv') {
                                 const content = await file.text();
-                                setMessage((prev) => `${prev}\n\n📊 --- ${file.name} ---\n${content.slice(0, 15000)}\n---\n`);
-                              } else if (file.type.startsWith('text/') || file.name.match(/\.(ts|tsx|js|jsx|py|rs|go|java|html|css|json|yaml|md|txt|sql|xml)$/)) {
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(content, MAX_ATTACH_TEXT) },
+                                ]).slice(0, 8));
+                                added++;
+                              } else if (file.type.startsWith('text/') || kind === 'code' || kind === 'text') {
                                 const content = await file.text();
-                                setMessage((prev) => `${prev}\n\n--- ${file.name} ---\n${content.slice(0, 8000)}\n---\n`);
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name: file.name, kind: kind === 'binary' ? 'text' : kind, sizeBytes: file.size, excerpt: truncateMiddle(content, 9000) },
+                                ]).slice(0, 8));
+                                added++;
                               } else {
-                                setMessage((prev) => `${prev}\n[Fichier joint: ${file.name}]`);
+                                setAttachments((prev) => ([
+                                  ...prev,
+                                  { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' },
+                                ]).slice(0, 8));
+                                added++;
                               }
                             } catch {
-                              setMessage((prev) => `${prev}\n[Fichier joint: ${file.name}]`);
+                              setAttachments((prev) => ([
+                                ...prev,
+                                { id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier joint]' },
+                              ]).slice(0, 8));
+                              added++;
                             }
                           }
+                          toast.dismiss(loadingToast);
+                          if (added > 0) toast.success(`${added} fichier(s) ajouté(s)`);
                         }
                       };
                       input.click();
                     }
                   } catch (err) {
                     console.error('Failed to attach file:', err);
+                    toast.error('Impossible de joindre le fichier');
                   }
                 }}
                 className={cn(
@@ -539,14 +737,14 @@ export default function ChatInput({
               ) : (
                 <button
                   onClick={() => handleSubmit()}
-                  disabled={!hasMessage}
+                disabled={!hasMessage || !isOnline}
                   className={cn(
                     'p-2 rounded-xl transition-all duration-200',
-                    hasMessage
+                  hasMessage && isOnline
                       ? 'gradient-bg text-white shadow-md hover:opacity-90 active:scale-95'
                       : 'bg-bg-tertiary text-text-muted cursor-not-allowed'
                   )}
-                  title="Envoyer"
+                title={isOnline ? 'Envoyer' : 'Hors ligne'}
                 >
                   <ArrowUp size={16} strokeWidth={2.5} />
                 </button>

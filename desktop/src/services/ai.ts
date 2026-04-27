@@ -7,11 +7,11 @@
  *
  * Fonctionnalités:
  * - Chat completions avec streaming SSE
- * - Thinking mode (CoT) pour DeepSeek-Reasoner et Kimi K2.5
+ * - Thinking mode (raisonnement) pour les modèles compatibles
  * - Tool calling / Function calling
  * - JSON output mode
- * - FIM (Fill-In-the-Middle) pour DeepSeek
- * - Contexte ultra-long (262K) pour Kimi K2.6
+ * - FIM (Fill-In-the-Middle) pour les modèles compatibles
+ * - Contexte ultra-long (262K) pour le provider vision
  */
 
 import {
@@ -41,6 +41,30 @@ function getBackendUrl(): string {
 
 class AIService {
   private abortControllers = new Map<string, AbortController>();
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
+  private isOnline(): boolean {
+    return globalThis.navigator?.onLine ?? true;
+  }
+
+  private shouldRetryStatus(status: number): boolean {
+    // Transient server errors + rate limit
+    return status === 408 || status === 429 || (status >= 500 && status <= 599);
+  }
+
+  private isTransientFetchError(err: any): boolean {
+    const msg = String(err?.message || err || '');
+    return (
+      err?.name === 'TypeError' || // fetch() network error
+      /failed to fetch/i.test(msg) ||
+      /networkerror/i.test(msg) ||
+      /timeout/i.test(msg) ||
+      /load failed/i.test(msg)
+    );
+  }
 
   // ========================================================================
   // CONFIGURATION — Proxy mode only (secure)
@@ -98,7 +122,7 @@ class AIService {
       stream: false,
     };
 
-    // Temperature (not supported for deepseek-reasoner)
+    // Temperature (non supportée par certains modèles de raisonnement)
     if (!(provider === 'deepseek' && mode === 'thinking')) {
       body.temperature = options.temperature ?? config.defaultTemperature[mode];
     }
@@ -118,19 +142,53 @@ class AIService {
       body.response_format = options.responseFormat;
     }
 
-    const response = await fetch(this.getEndpoint(provider), {
-      method: 'POST',
-      headers: this.getAuthHeaders(),
-      body: JSON.stringify(body),
-      signal: options.signal,
-    });
+    const maxAttempts = 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await fetch(this.getEndpoint(provider), {
+          method: 'POST',
+          headers: this.getAuthHeaders(),
+          body: JSON.stringify(body),
+          signal: options.signal,
+        });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
-      throw new Error(error.error?.message || `Erreur du service IA (${response.status})`);
+        if (!response.ok) {
+          const status = response.status;
+          const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
+          const msg = error.error?.message || `Erreur du service IA (${status})`;
+
+          // Retry only for transient statuses and only if user is online
+          if (
+            attempt < maxAttempts - 1 &&
+            this.shouldRetryStatus(status) &&
+            !options.signal?.aborted &&
+            this.isOnline()
+          ) {
+            await this.sleep(status === 429 ? 1200 : 600);
+            continue;
+          }
+          throw new Error(msg);
+        }
+
+        return response.json();
+      } catch (err: any) {
+        if (
+          attempt < maxAttempts - 1 &&
+          !options.signal?.aborted &&
+          this.isOnline() &&
+          this.isTransientFetchError(err)
+        ) {
+          await this.sleep(700);
+          continue;
+        }
+        if (!this.isOnline()) {
+          throw new Error('Hors ligne — vérifie ta connexion internet.');
+        }
+        throw err;
+      }
     }
-
-    return response.json();
+    // Should never reach
+    throw new Error('Erreur réseau');
   }
 
   /**
@@ -179,7 +237,7 @@ class AIService {
       body.response_format = options.responseFormat;
     }
 
-    // Kimi-specific: include usage in stream
+    // Provider vision: include usage in stream
     if (provider === 'kimi') {
       body.stream_options = { include_usage: true };
     }
@@ -188,37 +246,53 @@ class AIService {
     const fetchTimeoutController = new AbortController();
     const fetchTimeoutId = setTimeout(() => fetchTimeoutController.abort(), 30000);
 
-    try {
-      const response = await Promise.race([
-        fetch(this.getEndpoint(provider), {
-          method: 'POST',
-          headers: this.getAuthHeaders(),
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        }),
-        new Promise<Response>((_, reject) =>
-          fetchTimeoutController.signal.addEventListener('abort', () => {
-            reject(new Error('Timeout d\'initialisation du streaming (30s)'));
-          })
-        ),
-      ]);
+    // Retry only if nothing has been yielded yet (avoid duplicate content)
+    let yielded = false;
+    const maxAttempts = 2;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await Promise.race([
+          fetch(this.getEndpoint(provider), {
+            method: 'POST',
+            headers: this.getAuthHeaders(),
+            body: JSON.stringify(body),
+            signal: controller.signal,
+          }),
+          new Promise<Response>((_, reject) =>
+            fetchTimeoutController.signal.addEventListener('abort', () => {
+              reject(new Error('Timeout d\'initialisation du streaming (30s)'));
+            })
+          ),
+        ]);
 
-      clearTimeout(fetchTimeoutId);
+        clearTimeout(fetchTimeoutId);
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
-        throw new Error(error.error?.message || `Erreur du service IA (${response.status})`);
-      }
+        if (!response.ok) {
+          const status = response.status;
+          const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
+          const msg = error.error?.message || `Erreur du service IA (${status})`;
+          if (
+            attempt < maxAttempts - 1 &&
+            this.shouldRetryStatus(status) &&
+            this.isOnline() &&
+            !controller.signal.aborted &&
+            !yielded
+          ) {
+            await this.sleep(status === 429 ? 1200 : 700);
+            continue;
+          }
+          throw new Error(msg);
+        }
 
-      const reader = response.body?.getReader();
-      if (!reader) throw new Error('Streaming non supporté');
+        const reader = response.body?.getReader();
+        if (!reader) throw new Error('Streaming non supporté');
 
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let lastChunkTime = Date.now();
-      const CHUNK_TIMEOUT = 45000; // 45s chunk-level timeout
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let lastChunkTime = Date.now();
+        const CHUNK_TIMEOUT = 45000; // 45s chunk-level timeout
 
-      while (true) {
+        while (true) {
         // Set up chunk timeout
         const chunkTimeoutController = new AbortController();
         const chunkTimeoutId = setTimeout(() => chunkTimeoutController.abort(), CHUNK_TIMEOUT);
@@ -257,6 +331,7 @@ class AIService {
 
               const delta = json.choices?.[0]?.delta;
               if (delta) {
+                yielded = true;
                 yield {
                   content: delta.content || undefined,
                   reasoning_content: delta.reasoning_content || undefined,
@@ -279,14 +354,29 @@ class AIService {
           }
           throw timeoutError;
         }
+        }
+        // Completed successfully
+        break;
+      } catch (err: any) {
+        clearTimeout(fetchTimeoutId);
+        if (
+          attempt < maxAttempts - 1 &&
+          !yielded &&
+          this.isOnline() &&
+          !controller.signal.aborted &&
+          (this.isTransientFetchError(err) || /timeout/i.test(String(err?.message || '')))
+        ) {
+          await this.sleep(800);
+          continue;
+        }
+        if (!this.isOnline()) {
+          throw new Error('Hors ligne — vérifie ta connexion internet.');
+        }
+        throw err;
+      } finally {
+        clearTimeout(fetchTimeoutId);
+        this.abortControllers.delete(requestId);
       }
-    } catch (err) {
-      clearTimeout(fetchTimeoutId);
-      // Re-throw to allow caller to handle error and save partial content
-      throw err;
-    } finally {
-      clearTimeout(fetchTimeoutId);
-      this.abortControllers.delete(requestId);
     }
   }
 
@@ -305,11 +395,11 @@ class AIService {
   }
 
   // ========================================================================
-  // FIM (Fill-In-the-Middle) — DeepSeek only
+  // FIM (Fill-In-the-Middle) — modèles compatibles uniquement
   // ========================================================================
 
   /**
-   * FIM completion for code autocomplete (DeepSeek Beta)
+   * FIM completion for code autocomplete (beta)
    */
   async fimComplete(
     prefix: string,

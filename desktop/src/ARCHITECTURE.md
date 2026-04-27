@@ -2,7 +2,7 @@
 
 ## Overview
 
-ANZAR is a sophisticated Tauri + React + TypeScript desktop application leveraging DeepSeek AI models for intelligent code generation and project planning. The architecture follows modern best practices with clear separation of concerns.
+ANZAR is a sophisticated Tauri + React + TypeScript desktop application leveraging AI models (via backend proxy) for intelligent code generation and project planning. The architecture follows modern best practices with clear separation of concerns.
 
 ## Directory Structure
 
@@ -20,7 +20,7 @@ src/
 │   └── authStore.ts             # Authentication state
 ├── services/
 │   ├── index.ts                 # Services export index
-│   ├── deepseek.ts              # DeepSeek API client
+│   ├── ai.ts                    # AI client (via backend)
 │   ├── storage.ts               # Storage abstraction layer
 │   └── agents.ts                # Multi-agent orchestration
 ├── hooks/
@@ -28,7 +28,7 @@ src/
 │   ├── useChat.ts               # Chat interactions
 │   ├── useTheme.ts              # Theme management
 │   ├── useOffline.ts            # Network status
-│   └── useDeepSeek.ts           # DeepSeek analysis
+│   └── useAnzarIA.ts            # AI analysis (via backend)
 ├── lib/
 │   └── utils.ts                 # Utility functions
 └── ARCHITECTURE.md              # This file
@@ -160,8 +160,8 @@ useSettingsStore.getState().updateSettings({
 
 ### 3. Services (Business Logic)
 
-#### DeepSeek Service (`deepseek.ts`)
-Low-level API client for DeepSeek models.
+#### AI Service (`ai.ts`)
+Low-level client for AI calls (via backend proxy).
 
 **Features:**
 - Streaming responses (AsyncGenerator pattern)
@@ -253,7 +253,7 @@ Multi-agent orchestration with graceful degradation.
 
 **Features:**
 - Backend availability checking
-- Project planning via backend or DeepSeek
+- Project planning via backend (AI proxy)
 - Project execution streaming
 - Status monitoring
 - Fallback to direct API when backend unavailable
@@ -420,7 +420,7 @@ User Creates Project
          │
 ┌────────▼──────────┐
 │ Backend or        │
-│ DeepSeek API      │
+│ AI Backend API    │
 └────────┬──────────┘
          │
 ┌────────▼──────────┐

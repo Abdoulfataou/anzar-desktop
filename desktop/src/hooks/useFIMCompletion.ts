@@ -1,5 +1,5 @@
 /**
- * useFIMCompletion — Hook d'autocomplétion via DeepSeek FIM
+ * useFIMCompletion — Hook d'autocomplétion FIM (modèle compatible)
  *
  * Fill-In-the-Middle: envoie le code avant et après le curseur
  * pour prédire le code manquant. Ultra rapide, ultra cheap.
@@ -8,8 +8,7 @@
  * Annulation: nouvelle frappe, Escape, ou clic ailleurs
  * Acceptation: Tab pour insérer la suggestion
  *
- * Coût: même tarif que DeepSeek V3 chat (~0.14$/M tokens)
- * → Coût très faible pour des compléments de 50-200 tokens
+ * Coût: faible (compléments typiques 50-200 tokens)
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';

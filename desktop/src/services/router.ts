@@ -1,25 +1,25 @@
 /**
- * AIRouter — Routage intelligent DeepSeek (80%) / Kimi (20%)
+ * AIRouter — Routage multi-providers (via backend ANZAR)
  *
  * STRATÉGIE DE COÛTS:
  * ┌─────────────────────────────────────────────────────────────────┐
- * │ DeepSeek V3/R1 (~80% des requêtes)                            │
+ * │ Provider standard (~80% des requêtes)                         │
  * │  • Chat simple, Q&A                                           │
  * │  • Génération de code brut                                    │
- * │  • Raisonnement / Thinking (R1)                               │
+ * │  • Raisonnement / Thinking                                   │
  * │  • Tool calling / function calling                            │
  * │  • JSON mode                                                  │
  * │  • FIM autocomplete                                           │
  * │  • Planification de projets                                   │
- * │  Prix: ~0.14$/M input, ~0.28$/M output (V3) — ultra cheap     │
+ * │  Prix: (estimations internes)                                 │
  * ├─────────────────────────────────────────────────────────────────┤
- * │ Kimi K2.6/K2.5 (~20% des requêtes)                            │
+ * │ Provider vision (~20% des requêtes)                           │
  * │  • Vision: images → description/analyse                       │
  * │  • Image-to-code: screenshot → code                           │
  * │  • Compréhension de bugs visuels (UI screenshots)             │
- * │  • Fallback quand DeepSeek échoue (2e tentative)              │
+ * │  • Fallback quand le provider standard échoue (2e tentative)  │
  * │  • Contexte ultra-long (>128K tokens)                         │
- * │  Prix: ~0.60$/M input, ~1.80$/M output — 4-6x plus cher       │
+ * │  Prix: (estimations internes)                                 │
  * └─────────────────────────────────────────────────────────────────┘
  */
 
@@ -62,7 +62,7 @@ export interface RoutedResult {
   provider: AIProvider;
   model: AIModel;
   taskType: TaskType;
-  wasFallback: boolean;     // true si c'est un retry après échec DeepSeek
+  wasFallback: boolean;     // true si c'est un retry après échec du provider standard
   cost: CostEstimate;
 }
 
@@ -81,13 +81,13 @@ export interface CostEstimate {
 
 const COST_PER_M_TOKENS = {
   deepseek: {
-    fast:     { input: 0.14, output: 0.28 },     // DeepSeek V3
-    thinking: { input: 0.55, output: 2.19 },     // DeepSeek R1
+    fast:     { input: 0.14, output: 0.28 },     // Provider standard (estim.)
+    thinking: { input: 0.55, output: 2.19 },     // Provider standard (reasoning, estim.)
     cache_hit: 0.014,                             // Cache discount 90%
   },
   kimi: {
-    fast:     { input: 0.60, output: 1.80 },     // Kimi K2.6
-    thinking: { input: 0.60, output: 1.80 },     // Kimi K2.5
+    fast:     { input: 0.60, output: 1.80 },     // Provider vision (estim.)
+    thinking: { input: 0.60, output: 1.80 },     // Provider vision (estim.)
   },
 } as const;
 
@@ -192,7 +192,7 @@ class AIRouter {
     const estimatedTokens = this.estimateTokens(messages);
     const hasImages = options.hasImages || this.detectImages(messages);
 
-    // ── RÈGLE 1: Images → TOUJOURS Kimi (DeepSeek n'a pas la vision) ──
+    // ── RÈGLE 1: Images → provider vision ──
     if (hasImages) {
       const isImageToCode = this.matchesKeywords(lowerMsg, IMAGE_TO_CODE_KEYWORDS);
       const isDebugVisual = this.matchesKeywords(lowerMsg, DEBUG_VISUAL_KEYWORDS);
@@ -202,7 +202,7 @@ class AIRouter {
           type: 'image_to_code',
           confidence: 0.95,
           provider: 'kimi',
-          reason: 'Image → Code : Kimi est le seul avec la vision',
+          reason: 'Image → Code : provider vision requis',
           hasImages: true,
           estimatedTokens,
         };
@@ -213,7 +213,7 @@ class AIRouter {
           type: 'debug_visual',
           confidence: 0.90,
           provider: 'kimi',
-          reason: 'Debug visuel avec screenshot : Kimi vision requis',
+          reason: 'Debug visuel avec screenshot : provider vision requis',
           hasImages: true,
           estimatedTokens,
         };
@@ -223,19 +223,19 @@ class AIRouter {
         type: 'vision',
         confidence: 0.95,
         provider: 'kimi',
-        reason: 'Message avec image(s) : Kimi vision requis',
+        reason: 'Message avec image(s) : provider vision requis',
         hasImages: true,
         estimatedTokens,
       };
     }
 
-    // ── RÈGLE 2: Contexte ultra-long (>128K) → Kimi (262K context) ──
+    // ── RÈGLE 2: Contexte ultra-long (>128K) → provider vision (262K) ──
     if (estimatedTokens > 120000) {
       return {
         type: 'long_context',
         confidence: 0.85,
         provider: 'kimi',
-        reason: `Contexte très long (~${Math.round(estimatedTokens / 1000)}K tokens) → Kimi 262K`,
+        reason: `Contexte très long (~${Math.round(estimatedTokens / 1000)}K tokens) → provider vision (262K)`,
         hasImages: false,
         estimatedTokens,
       };
@@ -247,68 +247,68 @@ class AIRouter {
         type: 'vision',
         confidence: 0.80,
         provider: 'kimi',
-        reason: 'Référence à une image/screenshot → Kimi vision',
+        reason: 'Référence à une image/screenshot → provider vision',
         hasImages: false,
         estimatedTokens,
       };
     }
 
-    // ── À PARTIR D'ICI: Tout va vers DeepSeek (80%+) ──
+    // ── À PARTIR D'ICI: Tout va vers le provider standard (80%+) ──
 
-    // ── RÈGLE 4: Image-to-code sans image → DeepSeek code gen ──
+    // ── RÈGLE 4: Image-to-code sans image → provider standard (code) ──
     if (this.matchesKeywords(lowerMsg, IMAGE_TO_CODE_KEYWORDS) && !hasImages) {
       return {
         type: 'code_gen',
         confidence: 0.80,
         provider: 'deepseek',
-        reason: 'Demande de code (pas d\'image jointe) → DeepSeek V3',
+        reason: "Demande de code (pas d'image jointe) → provider standard",
         hasImages: false,
         estimatedTokens,
       };
     }
 
-    // ── RÈGLE 5: Planification → DeepSeek (bon et pas cher) ──
+    // ── RÈGLE 5: Planification → provider standard ──
     if (this.matchesKeywords(lowerMsg, PLANNING_KEYWORDS)) {
       return {
         type: 'planning',
         confidence: 0.85,
         provider: 'deepseek',
-        reason: 'Planification de projet → DeepSeek V3 (JSON mode)',
+        reason: 'Planification de projet → provider standard (JSON mode)',
         hasImages: false,
         estimatedTokens,
       };
     }
 
-    // ── RÈGLE 6: Raisonnement complexe → DeepSeek R1 (Thinking) ──
+    // ── RÈGLE 6: Raisonnement complexe → provider standard (thinking) ──
     if (this.matchesKeywords(lowerMsg, REASONING_KEYWORDS) && lowerMsg.length > 100) {
       return {
         type: 'reasoning',
         confidence: 0.80,
         provider: 'deepseek',
-        reason: 'Analyse / raisonnement complexe → DeepSeek R1 (CoT)',
+        reason: 'Analyse / raisonnement complexe → provider standard (thinking)',
         hasImages: false,
         estimatedTokens,
       };
     }
 
-    // ── RÈGLE 7: Génération de code → DeepSeek V3 ──
+    // ── RÈGLE 7: Génération de code → provider standard ──
     if (this.matchesKeywords(lowerMsg, CODE_GEN_KEYWORDS)) {
       return {
         type: 'code_gen',
         confidence: 0.85,
         provider: 'deepseek',
-        reason: 'Génération de code → DeepSeek V3 (rapide et économique)',
+        reason: 'Génération de code → provider standard',
         hasImages: false,
         estimatedTokens,
       };
     }
 
-    // ── RÈGLE 8: Défaut → Chat simple DeepSeek ──
+    // ── RÈGLE 8: Défaut → Chat standard ──
     return {
       type: 'chat',
       confidence: 0.70,
       provider: 'deepseek',
-      reason: 'Chat standard → DeepSeek V3 (économique)',
+      reason: 'Chat standard → provider standard',
       hasImages: false,
       estimatedTokens,
     };
@@ -320,7 +320,7 @@ class AIRouter {
 
   /**
    * Chat routé intelligemment avec fallback automatique
-   * DeepSeek en premier → Kimi si échec
+   * Provider standard en premier → provider vision si échec
    */
   async chat(
     messages: APIMessage[],
@@ -367,9 +367,9 @@ class AIRouter {
         } as RoutedResult,
       };
     } catch (error: any) {
-      // ── FALLBACK: DeepSeek échoue → Kimi prend le relais ──
+      // ── FALLBACK: provider standard échoue → provider vision prend le relais ──
       if (enableFallback && classification.provider === 'deepseek') {
-        console.warn(`[AIRouter] DeepSeek failed, falling back to Kimi: ${error.message}`);
+        console.warn(`[AIRouter] Provider principal en échec, fallback vers provider alternatif: ${error.message}`);
         this.sessionStats.fallbacks++;
 
         const fallbackOptions: ChatOptions = {
@@ -457,9 +457,9 @@ class AIRouter {
       this.sessionStats.totalRequests++;
 
     } catch (error: any) {
-      // ── FALLBACK: retry avec Kimi ──
+      // ── FALLBACK: retry avec provider vision ──
       if (enableFallback && classification.provider === 'deepseek' && error.name !== 'AbortError') {
-        console.warn(`[AIRouter] DeepSeek stream failed, falling back to Kimi: ${error.message}`);
+        console.warn(`[AIRouter] Stream provider principal en échec, fallback vers provider alternatif: ${error.message}`);
         this.sessionStats.fallbacks++;
 
         const fallbackOptions: ChatOptions = {
@@ -484,7 +484,7 @@ class AIRouter {
   }
 
   /**
-   * Tool calling routé — toujours DeepSeek sauf vision
+   * Tool calling routé — provider standard par défaut (sauf vision)
    */
   async chatWithTools(
     messages: APIMessage[],
@@ -492,7 +492,7 @@ class AIRouter {
     toolExecutor: (name: string, args: Record<string, any>) => Promise<string>,
     options: ChatOptions & { hasImages?: boolean } = {}
   ) {
-    // Tool calling est toujours DeepSeek (pas cher, performant)
+    // Tool calling est routé vers le provider standard par défaut
     // sauf si il y a des images
     const provider = options.hasImages ? 'kimi' : 'deepseek';
 
@@ -503,14 +503,14 @@ class AIRouter {
   }
 
   /**
-   * FIM autocomplete — toujours DeepSeek (seul à le supporter)
+   * FIM autocomplete — provider standard (si supporté)
    */
   async fimComplete(prefix: string, suffix: string = '', options?: { maxTokens?: number; signal?: AbortSignal }) {
     return aiService.fimComplete(prefix, suffix, options);
   }
 
   /**
-   * JSON mode routé — DeepSeek par défaut
+   * JSON mode routé — provider standard par défaut
    */
   async chatJSON<T = any>(
     messages: APIMessage[],
@@ -523,7 +523,7 @@ class AIRouter {
   }
 
   /**
-   * Planification de projet — DeepSeek V3 (JSON mode, pas cher)
+   * Planification de projet — provider standard (JSON mode)
    */
   async planProject(description: string, options: ChatOptions = {}) {
     return aiService.planProject(description, {
@@ -533,7 +533,7 @@ class AIRouter {
   }
 
   /**
-   * Génération de code fichier — DeepSeek V3
+   * Génération de code fichier — provider standard
    */
   async generateFileCode(
     filePath: string,
@@ -688,10 +688,10 @@ class AIRouter {
   // ========================================================================
 
   /**
-   * Prépare les messages avec le prompt système optimal pour le cache DeepSeek.
+   * Prépare les messages avec le prompt système optimal pour le cache (provider standard).
    * Le prompt système est:
    * - Identique entre les requêtes (cache hit garanti après la 1ère)
-   * - >1024 tokens (seuil minimum pour le cache DeepSeek)
+   * - >1024 tokens (seuil minimum pour le cache)
    * - Placé en premier (préfixe commun)
    *
    * Résultat: -90% sur les coûts d'input après la 1ère requête.
@@ -733,12 +733,12 @@ class AIRouter {
   }
 
   // ========================================================================
-  // BATCH API (DeepSeek -50% discount)
+  // BATCH API (discount interne)
   // ========================================================================
 
   /**
    * Soumission batch pour la génération de projet multi-fichiers.
-   * DeepSeek Batch API: traitement asynchrone avec -50% sur les coûts.
+   * Batch API: traitement asynchrone avec discount sur les coûts.
    *
    * Workflow:
    * 1. prepareBatchRequests() — prépare les requêtes
@@ -772,7 +772,7 @@ class AIRouter {
   }
 
   /**
-   * Soumet un batch de requêtes à l'API DeepSeek
+   * Soumet un batch de requêtes à l'API (via backend)
    * Retourne l'ID du batch pour le polling
    */
   async submitBatch(requests: BatchRequest[]): Promise<string> {
@@ -883,11 +883,11 @@ class AIRouter {
   }
 
   // ========================================================================
-  // IMAGE OPTIMIZATION (avant envoi à Kimi)
+  // IMAGE OPTIMIZATION (avant envoi au provider vision)
   // ========================================================================
 
   /**
-   * Optimise une image avant envoi à Kimi pour réduire les coûts tokens.
+   * Optimise une image avant envoi au provider vision pour réduire les coûts tokens.
    *
    * Stratégie:
    * - Redimensionner à 1024px max (largeur ou hauteur)
@@ -941,7 +941,7 @@ class AIRouter {
         const optimizedData = canvas.toDataURL('image/jpeg', quality);
         const newPixels = newWidth * newHeight;
 
-        // Estimation tokens: ~1 token pour 750 pixels (règle Kimi/OpenAI)
+        // Estimation tokens: ~1 token pour 750 pixels (heuristique)
         const originalTokens = Math.ceil(originalPixels / 750);
         const newTokens = Math.ceil(newPixels / 750);
         const savedPercent = originalTokens > 0
@@ -1005,13 +1005,13 @@ class AIRouter {
   }
 
   // ========================================================================
-  // FULL PROJECT ANALYSIS (Auto-switch Kimi 262K)
+  // FULL PROJECT ANALYSIS (auto-switch provider vision 262K)
   // ========================================================================
 
   /**
    * Analyse un projet complet en mode contexte long.
-   * Bascule automatiquement sur Kimi K2.6 (262K) si le contexte dépasse 128K.
-   * Sinon utilise DeepSeek (moins cher).
+   * Bascule automatiquement sur le provider vision (262K) si le contexte dépasse 128K.
+   * Sinon utilise le provider standard.
    */
   async analyzeFullProject(
     files: { path: string; content: string }[],

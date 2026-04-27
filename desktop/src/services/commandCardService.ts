@@ -107,12 +107,22 @@ class CommandCardService {
     const mode = settings.commandExecutionMode || 'manual'
     const risk = assessCommandRisk(card.command)
 
-    const needsConfirm = mode === 'always_ask' || risk.level === 'danger'
+    // Grand public: on confirme toute commande non-triviale (warning/danger)
+    // Et on BLOQUE les commandes "danger" sauf si developerMode est activé.
+    if (risk.level === 'danger' && !settings.developerMode) {
+      useCommandStore.getState().appendLog(cardId, { type: 'error', content: `⛔ Commande bloquée (sécurité) — ${risk.reason}` })
+      useCommandStore.getState().setCard(cardId, { status: 'error', endedAt: Date.now() })
+      return
+    }
+
+    const needsConfirm = mode === 'always_ask' || risk.level !== 'safe'
     if (needsConfirm) {
       const msg =
         mode === 'always_ask'
           ? `Exécuter cette commande ?\n\n${card.command}`
-          : `Cette commande est potentiellement dangereuse (${risk.reason}).\n\nExécuter quand même ?\n\n${card.command}`
+          : risk.level === 'danger'
+            ? `⚠️ Commande très risquée (${risk.reason}).\n\nExécuter quand même ?\n\n${card.command}`
+            : `⚠️ Cette commande peut modifier ton projet (${risk.reason}).\n\nExécuter ?\n\n${card.command}`
 
       if ((await this.confirm(msg)) === false) {
         useCommandStore.getState().appendLog(cardId, { type: 'system', content: '⏸ Exécution annulée' })

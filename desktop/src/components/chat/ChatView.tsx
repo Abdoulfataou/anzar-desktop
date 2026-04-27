@@ -1,7 +1,7 @@
 /**
  * ChatView - Vue principale unifiée ANZAR
  * Accueil original + cartes fonctionnalités + chat
- * Routage intelligent: DeepSeek 80% / Kimi 20%
+ * Routage multi-providers (via backend ANZAR)
  * Câblage agents: détection d'intention projet → pipeline multi-agents
  */
 import React, { useEffect, useState, useCallback, useRef } from 'react';
@@ -17,11 +17,12 @@ import {
   // Document icons
   Mail, FileCheck, Megaphone, ScrollText, Briefcase, Pen,
   FolderOpen,
+  WifiOff,
 } from 'lucide-react';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import { cn } from '@/lib/utils';
-import { AIModel, ToolDefinition, type Message as StoreMessage } from '@/types';
+import { AIModel, ToolDefinition, type Message, type ChatAttachment } from '@/types';
 import { aiRouter } from '@/services/router';
 import { projectGeneration, type PlanResult, type ExecutionEvent } from '@/services/projectGeneration';
 import { fileSystemService } from '@/services/fileSystem';
@@ -38,25 +39,8 @@ import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 import VerifyFixNotice from './VerifyFixNotice';
 import { runService } from '@/services/runService';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
-
-interface Message {
-  id: string;
-  type: 'user' | 'ai';
-  content: string;
-  timestamp: Date;
-  reasoning?: string[];
-  model?: AIModel;
-  isError?: boolean;
-  isStreaming?: boolean;
-  thinking?: string;
-  activitySessionId?: string;  // Link to ActivityTimeline
-  routingInfo?: {
-    provider: string;
-    taskType: string;
-    wasFallback: boolean;
-    reason: string;
-  };
-}
+import toast from 'react-hot-toast';
+import { useNavigate } from 'react-router-dom';
 
 interface ChatViewProps {
   onlineStatus?: boolean;
@@ -530,16 +514,68 @@ function extractProjectName(message: string): string {
 // ============================================================================
 
 export default function ChatView({ onlineStatus = true, showWelcome = true }: ChatViewProps) {
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const navigate = useNavigate();
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [showStudentMenu, setShowStudentMenu] = useState(false);
   const [showDataMenu, setShowDataMenu] = useState(false);
   const [showSearchMenu, setShowSearchMenu] = useState(false);
   const [showDocumentMenu, setShowDocumentMenu] = useState(false);
-  const streamingRef = useRef<string>('');
-  const lastLoadedConversationIdRef = useRef<string | null>(null);
+  const forceProjectGenerationOnceRef = useRef(false);
+  const projectBaseDirOverrideRef = useRef<string | null>(null);
+  const lastProjectGenerationWasUserActionRef = useRef(false);
+
+  const prepareProjectGeneration = useCallback(async () => {
+    lastProjectGenerationWasUserActionRef.current = true;
+    projectBaseDirOverrideRef.current = null;
+
+    // En mode non-tauri (web), pas de choix de dossier
+    try {
+      const docsDir = await documentDir();
+      const defaultBase = `${docsDir}ANZAR/Projects`;
+      // Crée le dossier par défaut si possible (non bloquant)
+      try {
+        await fileSystemService.createDirectory(defaultBase);
+      } catch {
+        // ignore
+      }
+
+      // Proposer (sans insister) le dossier par défaut. Si non, laisser l’utilisateur choisir.
+      try {
+        const { confirm, open } = await import('@tauri-apps/api/dialog');
+        const okDefault = await confirm(
+          `Où veux-tu créer le projet ?\n\nPar défaut:\n${defaultBase}\n\nUtiliser cet emplacement ?`,
+          { title: 'Emplacement du projet', type: 'info' as any }
+        );
+        if (okDefault) {
+          projectBaseDirOverrideRef.current = defaultBase;
+          return;
+        }
+        const selected = await open({
+          directory: true,
+          multiple: false,
+          title: 'Choisir le dossier de sortie (dans ANZAR)',
+        });
+        if (selected && typeof selected === 'string') {
+          const allowed = await isAllowedProjectRoot(selected);
+          if (!allowed) {
+            toast.error('Dossier non autorisé. Utilise Documents/ANZAR (ou Bureau/ANZAR / Téléchargements/ANZAR).');
+            projectBaseDirOverrideRef.current = defaultBase;
+            return;
+          }
+          projectBaseDirOverrideRef.current = selected.replace(/\\/g, '/').replace(/\/+$/, '');
+          return;
+        }
+      } catch {
+        // ignore — fallback default
+      }
+
+      projectBaseDirOverrideRef.current = defaultBase;
+    } catch {
+      // Pas de documentDir / tauri: fallback sans override
+      projectBaseDirOverrideRef.current = null;
+    }
+  }, []);
 
   // Chat store (source de vérité pour l'historique / sélection via Sidebar)
   const activeConversationId = useChatStore((s) => s.activeConversationId);
@@ -547,9 +583,35 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const createConversation = useChatStore((s) => s.createConversation);
   const addConversationMessage = useChatStore((s) => s.addMessage);
   const updateConversationMessage = useChatStore((s) => s.updateMessage);
+  const isLoading = useChatStore((s) => s.isGenerating);
+  const setIsGenerating = useChatStore((s) => s.setIsGenerating);
+  const pendingRetry = useChatStore((s) => s.pendingRetry);
+  const setPendingRetry = useChatStore((s) => s.setPendingRetry);
+  const startStreamingMessage = useChatStore((s) => s.startStreamingMessage);
+  const appendStreamingContent = useChatStore((s) => s.appendStreamingContent);
+  const finalizeStreamingMessage = useChatStore((s) => s.finalizeStreamingMessage);
+  const updateStreamingContent = useChatStore((s) => s.updateStreamingContent);
   const projects = useProjectStore((s) => s.projects);
   const selectedProjectPath = projects.find((p) => p.id === selectedProjectId)?.metadata?.localPath as string | undefined;
   const settings = useSettingsStore((s) => s.settings);
+  const [isBrowserOnline, setIsBrowserOnline] = useState<boolean>(() => globalThis.navigator?.onLine ?? true);
+
+  // Network listeners (grand public) — n'affiche pas d'alert, juste un état
+  useEffect(() => {
+    const onOnline = () => setIsBrowserOnline(true);
+    const onOffline = () => setIsBrowserOnline(false);
+    globalThis.addEventListener?.('online', onOnline);
+    globalThis.addEventListener?.('offline', onOffline);
+    return () => {
+      globalThis.removeEventListener?.('online', onOnline);
+      globalThis.removeEventListener?.('offline', onOffline);
+    };
+  }, []);
+
+  const isEffectivelyOnline = onlineStatus && isBrowserOnline && !settings.offlineMode;
+
+  // Messages affichés (on masque les messages 'tool' pour l'UI actuelle)
+  const messages: Message[] = (activeConversation?.messages || []).filter((m) => m.role !== 'tool');
 
   // ────────────────────────────────────────────────────────────────────────────
   // Import d'un dossier local (projet existant)
@@ -574,7 +636,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       const allowed = await isAllowedProjectRoot(selected);
       if (!allowed) {
-        await showPathNotAllowedMessage();
+        toast.error('Dossier non autorisé. Utilise Documents/ANZAR (ou Bureau/ANZAR / Téléchargements/ANZAR).');
         return;
       }
 
@@ -586,36 +648,37 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       } as any);
       // Optionnel: rendre le projet actif immédiatement
       useProjectStore.getState().setActiveProject(project.id);
+      setSelectedProjectId(project.id);
+      toast.success(`Projet importé : ${folderName}`);
+
+      // UX "pro": proposer d'ouvrir le workspace, sans insister
+      try {
+        const { confirm } = await import('@tauri-apps/api/dialog');
+        const ok = await confirm(
+          `Projet importé : ${folderName}\n\nChemin:\n${selected}\n\nOuvrir le projet maintenant ?`,
+          { title: 'Projet importé', type: 'info' as any }
+        );
+        if (ok) navigate(`/projects/${project.id}`);
+      } catch {
+        // Fallback web: pas de dialog natif, rester non-intrusif
+      }
     } catch (err) {
       console.error('Import folder failed:', err);
       // Feedback minimal dans le chat
       ensureActiveConversation();
       const msgId = `msg_${Date.now()}`;
       const content = '❌ Impossible d’ouvrir le sélecteur de dossier. (Fonction disponible sur l’app desktop Tauri.)';
-      setMessages((prev) => [
-        ...prev,
-        { id: msgId, type: 'ai', content, timestamp: new Date(), isError: true, model: selectedModel },
-      ]);
-      addConversationMessage({ id: msgId, role: 'assistant', content, timestamp: Date.now(), model: selectedModel });
+      addConversationMessage({
+        id: msgId,
+        role: 'assistant',
+        content,
+        timestamp: Date.now(),
+        model: selectedModel,
+        isError: true,
+      });
+      toast.error('Impossible d’importer le dossier');
     }
-  }, [selectedModel, ensureActiveConversation, addConversationMessage]);
-
-  // ────────────────────────────────────────────────────────────────────────────
-  // Synchronisation ChatView ↔ chatStore
-  // Objectif: éviter la désynchronisation avec la Sidebar (activeConversation)
-  // ────────────────────────────────────────────────────────────────────────────
-
-  const mapStoreToUIMessage = useCallback((m: StoreMessage): Message => {
-    return {
-      id: m.id,
-      type: m.role === 'user' ? 'user' : 'ai',
-      content: m.content,
-      timestamp: new Date(m.timestamp),
-      model: m.model,
-      isStreaming: m.isStreaming,
-      thinking: m.thinking,
-    };
-  }, []);
+  }, [selectedModel, ensureActiveConversation, addConversationMessage, navigate]);
 
   // Auto-init au premier montage
   useEffect(() => {
@@ -623,23 +686,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       createConversation(undefined, selectedModel);
     }
   }, [activeConversationId, createConversation, selectedModel]);
-
-  // Quand l'utilisateur sélectionne une conversation dans la Sidebar,
-  // on charge ses messages dans l'UI (MessageList/ChatView).
-  useEffect(() => {
-    if (!activeConversationId) return;
-    if (lastLoadedConversationIdRef.current === activeConversationId) return;
-    lastLoadedConversationIdRef.current = activeConversationId;
-
-    const convMessages = (activeConversation?.messages || [])
-      // L'UI actuelle n'affiche pas explicitement les messages "tool"
-      .filter((m) => m.role !== 'tool')
-      .map(mapStoreToUIMessage);
-
-    setMessages(convMessages);
-    setIsLoading(false);
-    streamingRef.current = '';
-  }, [activeConversationId, activeConversation, mapStoreToUIMessage]);
 
   // Project store actions
   const createProject = useProjectStore((s) => s.createProject);
@@ -668,6 +714,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     userMessageId: string,
     sessionId: string,
   ) => {
+    setIsGenerating(true);
     const projectName = extractProjectName(content);
 
     // Create project in store
@@ -678,7 +725,14 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     let localPath: string | undefined;
     try {
       const docsDir = await documentDir();
-      localPath = `${docsDir}ANZAR_Projects/${projectName}`;
+      const base = projectBaseDirOverrideRef.current || `${docsDir}ANZAR/Projects`;
+      // Ensure base dir exists
+      try {
+        await fileSystemService.createDirectory(base);
+      } catch {
+        // ignore
+      }
+      localPath = `${base}/${projectName}`;
       await fileSystemService.createDirectory(localPath);
       // Persist localPath in project metadata
       updateProject(projectId, { metadata: { ...project.metadata, localPath } });
@@ -690,26 +744,18 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     // AI placeholder message for generation progress
     const aiMessageId = `msg_${Date.now() + 1}`;
     ensureActiveConversation();
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: aiMessageId,
-        type: 'ai',
-        content: `🚀 **Génération de projet lancée : ${projectName}**\n\nLe pipeline multi-agents démarre...`,
-        timestamp: new Date(),
-        model: selectedModel,
-        isStreaming: true,
-        activitySessionId: sessionId,
-      },
-    ]);
-    // Persist dans l'historique (pour que la Sidebar + sélection soient cohérentes)
+    // Persist dans l'historique (source unique)
     addConversationMessage({
       id: aiMessageId,
       role: 'assistant',
-      content: `🚀 **Génération de projet lancée : ${projectName}**\n\nLe pipeline multi-agents démarre...`,
+      content:
+        `🚀 **Génération de projet lancée : ${projectName}**\n\n` +
+        (localPath ? `📁 Dossier: \`${localPath}\`\n\n` : '') +
+        `Le pipeline multi-agents démarre...`,
       timestamp: Date.now(),
       model: selectedModel,
       isStreaming: true,
+      activitySessionId: sessionId,
     });
 
     const startTime = Date.now();
@@ -729,13 +775,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             // Keep activity steps meaningful
             if (phase === 'planning') {
               const nextContent = `🚀 **${projectName}**\n\n⏳ ${message}`;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === aiMessageId
-                    ? { ...m, content: nextContent }
-                    : m
-                )
-              );
               updateConversationMessage(aiMessageId, { content: nextContent });
             }
           },
@@ -756,16 +795,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             const moreFiles = p.files.length > 10 ? `\n  ... et ${p.files.length - 10} autres fichiers` : '';
             const nextContent =
               `🚀 **${p.title || projectName}**\n\n✅ **Plan prêt** — ${p.files.length} fichiers prévus :\n${fileList}${moreFiles}\n\n⏳ **Coder** génère le code...`;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMessageId
-                  ? {
-                      ...m,
-                      content: nextContent,
-                    }
-                  : m
-              )
-            );
             updateConversationMessage(aiMessageId, { content: nextContent });
 
             // Start execution step
@@ -795,16 +824,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
             const nextContent =
               `🚀 **${lastPlan?.title || projectName}**\n\n${agentLines}\n\n_${doneAgents.length}/${event.agents.length} agents terminés_`;
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === aiMessageId
-                  ? {
-                      ...m,
-                      content: nextContent,
-                    }
-                  : m
-              )
-            );
             updateConversationMessage(aiMessageId, { content: nextContent });
           },
 
@@ -858,27 +877,35 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         `**Fichiers générés :**\n${fileList}${moreFiles}\n\n` +
         (localPath ? `📂 Sauvegardé dans: \`${localPath}\`\n\n` : '') +
         `👉 Ouvre le projet dans la barre latérale pour voir les fichiers et le code.`;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aiMessageId
-            ? {
-                ...m,
-                content: nextContent,
-                isStreaming: false,
-                activitySessionId: sessionId,
-                routingInfo: {
-                  provider: 'deepseek',
-                  taskType: 'project_generation',
-                  wasFallback: false,
-                  reason: 'multi-agent pipeline',
-                },
-              }
-            : m
-        )
-      );
-      updateConversationMessage(aiMessageId, { content: nextContent, isStreaming: false });
+      updateConversationMessage(aiMessageId, {
+        content: nextContent,
+        isStreaming: false,
+        activitySessionId: sessionId,
+        routingInfo: {
+          provider: 'deepseek',
+          taskType: 'project_generation',
+          wasFallback: false,
+          reason: 'multi-agent pipeline',
+        },
+      });
 
       useProjectStore.getState().setActiveProject(projectId);
+      setSelectedProjectId(projectId);
+
+      // UX pro: proposer d'ouvrir le workspace seulement si l'utilisateur a cliqué sur "Générer un projet"
+      if (lastProjectGenerationWasUserActionRef.current) {
+        lastProjectGenerationWasUserActionRef.current = false;
+        try {
+          const { confirm } = await import('@tauri-apps/api/dialog');
+          const ok = await confirm(
+            `Projet généré : ${plan.title || projectName}\n\nOuvrir le workspace maintenant ?`,
+            { title: 'Projet prêt', type: 'info' as any }
+          );
+          if (ok) navigate(`/projects/${projectId}`);
+        } catch {
+          // ignore
+        }
+      }
 
     } catch (error: any) {
       const errorMsg = error?.message || 'Erreur lors de la génération';
@@ -890,20 +917,16 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         error?.name === 'AbortError'
           ? '⏹ Génération arrêtée.'
           : `❌ **Erreur de génération**\n\n${errorMsg}\n\n_Vérifie ta connexion au backend et tes crédits._`;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aiMessageId
-            ? {
-                ...m,
-                content: nextContent,
-                isStreaming: false,
-                isError: true,
-                activitySessionId: sessionId,
-              }
-            : m
-        )
-      );
-      updateConversationMessage(aiMessageId, { content: nextContent, isStreaming: false });
+      updateConversationMessage(aiMessageId, {
+        content: nextContent,
+        isStreaming: false,
+        isError: true,
+        activitySessionId: sessionId,
+      });
+    } finally {
+      // Reset l'override après usage (évite de réutiliser un vieux dossier par accident)
+      projectBaseDirOverrideRef.current = null;
+      setIsGenerating(false);
     }
   }, [
     selectedModel,
@@ -919,36 +942,69 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     ensureActiveConversation,
     addConversationMessage,
     updateConversationMessage,
+    setIsGenerating,
+    navigate,
   ]);
 
   // ========================================================================
   // MAIN MESSAGE HANDLER
   // ========================================================================
 
-  const handleSendMessage = useCallback(async (content: string, hasImages = false) => {
-    if (!content.trim()) return;
+  const handleSendMessage = useCallback(async (
+    content: string,
+    hasImages = false,
+    opts?: { skipUserMessage?: boolean; userMessageId?: string; attachments?: ChatAttachment[] }
+  ): Promise<boolean> => {
+    if (!content.trim()) return false;
 
     // Assure une conversation active (sinon l'historique Sidebar ne suivra pas)
     ensureActiveConversation();
+    setIsGenerating(true);
 
-    const userMessage: Message = {
-      id: `msg_${Date.now()}`,
-      type: 'user',
-      content,
-      timestamp: new Date(),
-      model: selectedModel,
-    };
+    const userMessageId = opts?.userMessageId || `msg_${Date.now()}`;
 
-    setMessages((prev) => [...prev, userMessage]);
-    addConversationMessage({
-      id: userMessage.id,
-      role: 'user',
-      content: userMessage.content,
-      timestamp: userMessage.timestamp.getTime(),
-      model: selectedModel,
-    });
-    setIsLoading(true);
-    streamingRef.current = '';
+    if (!isEffectivelyOnline) {
+      // En mode "retry" (pas de doublon dans le chat) => toast uniquement
+      if (opts?.skipUserMessage) {
+        toast.error('Hors ligne — impossible d’envoyer pour le moment.');
+        setPendingRetry({
+          userMessageId,
+          content,
+          hasImages,
+          model: selectedModel,
+          attempts: 1,
+          lastError: 'offline',
+        });
+        setIsGenerating(false);
+        return false;
+      }
+      addConversationMessage({
+        id: `msg_${Date.now() + 1}`,
+        role: 'assistant',
+        content: 'Hors ligne — connecte-toi à internet pour continuer. Tu peux préparer ton message et réessayer.',
+        timestamp: Date.now(),
+        isError: true,
+        model: selectedModel,
+      });
+      setIsGenerating(false);
+      return false;
+    }
+
+    if (!opts?.skipUserMessage) {
+      const atts = (opts?.attachments || []).slice(0, 8).map((a, idx) => ({
+        ...a,
+        ref: String.fromCharCode(65 + idx),
+      }));
+      const userMessage: Message = {
+        id: userMessageId,
+        content,
+        role: 'user',
+        timestamp: Date.now(),
+        model: selectedModel,
+        attachments: atts.length > 0 ? atts : undefined,
+      };
+      addConversationMessage(userMessage);
+    }
     const startTime = Date.now();
 
     // ── Start activity session ──
@@ -959,17 +1015,21 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     // ══════════════════════════════════════════════════════════════
     // INTENT DETECTION: est-ce une demande de génération de projet ?
     // ══════════════════════════════════════════════════════════════
-    if (detectProjectIntent(content)) {
+    const forceProject = forceProjectGenerationOnceRef.current;
+    if (forceProject) forceProjectGenerationOnceRef.current = false;
+
+    if (forceProject || detectProjectIntent(content)) {
       const detectStepId = addStep(sessionId, {
         type: 'understanding',
-        label: 'Intention détectée: génération de projet',
+        label: forceProject
+          ? 'Génération de projet (action utilisateur)'
+          : 'Intention détectée: génération de projet',
       });
       completeStep(sessionId, detectStepId);
 
       // Route vers le pipeline multi-agents
-      await handleProjectGeneration(content, userMessage.id, sessionId);
-      setIsLoading(false);
-      return;
+      await handleProjectGeneration(content, userMessageId, sessionId);
+      return true;
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -982,18 +1042,19 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       label: 'Compréhension de la demande',
     });
 
-    // Build API messages — le routeur injecte le prompt système optimisé pour le cache
-    const rawMessages = [
+      // Build API messages — le routeur injecte le prompt système optimisé pour le cache
+    const history = useChatStore
+      .getState()
+      .getMessagesForAPI()
+      .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'system');
+
+      const rawMessages = [
       {
         role: 'system' as const,
         content:
           "Quand tu veux exécuter une commande, utilise le tool run_command (ne mets pas de commande en bloc ```bash```). Donne d’abord une explication courte, puis propose les commandes via run_command.",
       },
-      ...messages.map((m) => ({
-        role: (m.type === 'user' ? 'user' : 'assistant') as 'user' | 'assistant',
-        content: m.content,
-      })),
-      { role: 'user' as const, content },
+      ...history.map((m) => ({ role: m.role as any, content: m.content })),
     ];
     const apiMessages = aiRouter.prepareMessages(rawMessages);
 
@@ -1001,24 +1062,18 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
     // Create placeholder AI message for streaming with activity link
     const aiMessageId = `msg_${Date.now() + 1}`;
-    const placeholderMessage: Message = {
-      id: aiMessageId,
-      type: 'ai',
-      content: '',
-      timestamp: new Date(),
-      model: selectedModel,
-      isStreaming: true,
-      activitySessionId: sessionId,
-    };
-    setMessages((prev) => [...prev, placeholderMessage]);
     addConversationMessage({
       id: aiMessageId,
       role: 'assistant',
       content: '',
-      timestamp: placeholderMessage.timestamp.getTime(),
+      timestamp: Date.now(),
       model: selectedModel,
       isStreaming: true,
+      activitySessionId: sessionId,
     });
+    // Real-time streaming state in store (token-by-token)
+    startStreamingMessage(aiMessageId);
+    updateStreamingContent('');
 
     // Routing info captured during stream
     let routingProvider = 'deepseek';
@@ -1090,25 +1145,34 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       addStep(sessionId, { type: 'complete', label: `Terminé (${((Date.now() - startTime) / 1000).toFixed(1)}s)` });
       endSession(sessionId, 'done');
 
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aiMessageId
-            ? {
-                ...m,
-                content: fullContent,
-                isStreaming: false,
-                activitySessionId: sessionId,
-                routingInfo: {
-                  provider: routingProvider,
-                  taskType: 'cowork',
-                  wasFallback: routingWasFallback,
-                  reason: 'cowork-default',
-                },
-              }
-            : m
-        )
-      );
-      updateConversationMessage(aiMessageId, { content: fullContent, isStreaming: false });
+      // Stream the final content progressively (token-by-token UX)
+      // Note: tool calling itself is non-streaming, but we still render the answer incrementally.
+      const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+      if (fullContent.length <= 420) {
+        // Réponse courte => afficher immédiatement (plus fluide)
+        updateStreamingContent(fullContent);
+      } else {
+        // Réponse longue => incrémental mais rapide (évite une attente artificielle)
+        const chunkSize = 80;
+        for (let i = 0; i < fullContent.length; i += chunkSize) {
+          if (!useChatStore.getState().isGenerating) break;
+          appendStreamingContent(fullContent.slice(i, i + chunkSize));
+          // Yield de temps en temps pour garder l'UI réactive
+          if (i % (chunkSize * 6) === 0) await sleep(0);
+        }
+      }
+      // Finalize (marks message as non-streaming + clears streamingContent/isGenerating)
+      finalizeStreamingMessage();
+      // Persist metadata after finalize (routing/activity)
+      updateConversationMessage(aiMessageId, {
+        activitySessionId: sessionId,
+        routingInfo: {
+          provider: routingProvider,
+          taskType: 'cowork',
+          wasFallback: routingWasFallback,
+          reason: 'cowork-default',
+        },
+      });
 
       // Track usage (approx)
       const inputTokens = Math.ceil(apiMessages.reduce((sum, m) => sum + (m.content?.length || 0), 0) / 4);
@@ -1127,7 +1191,11 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         durationMs: Date.now() - startTime,
       });
 
-      return;
+      // Si un retry était en attente et qu'on a réussi, on le clear
+      if (useChatStore.getState().pendingRetry?.userMessageId === userMessageId) {
+        setPendingRetry(null);
+      }
+      return true;
 
     } catch (error: any) {
       // End activity session with error
@@ -1141,20 +1209,46 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         ? '⏹ Génération arrêtée.'
         : `❌ Erreur: ${error.message || 'Connexion échouée. Vérifie ta connexion et la configuration API.'}`;
 
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aiMessageId
-            ? { ...m, content: errorContent, isStreaming: false, isError: true, activitySessionId: sessionId }
-            : m
-        )
-      );
-      updateConversationMessage(aiMessageId, { content: errorContent, isStreaming: false });
+      // Stop any pending UI streaming
+      useChatStore.getState().stopGeneration();
+      updateConversationMessage(aiMessageId, {
+        content: errorContent,
+        isStreaming: false,
+        isError: true,
+        activitySessionId: sessionId,
+      });
+
+      // Si c'est un problème réseau, on prépare un retry automatique (discret)
+      const msg = String(error?.message || '');
+      const looksNetwork =
+        /hors ligne/i.test(msg) ||
+        /failed to fetch/i.test(msg) ||
+        /timeout/i.test(msg) ||
+        /connexion échouée/i.test(msg) ||
+        /network/i.test(msg);
+      if (looksNetwork) {
+        const prev = useChatStore.getState().pendingRetry;
+        const prevAttempts = prev?.userMessageId === userMessageId ? prev.attempts : 0;
+        if (prevAttempts < 2) {
+          setPendingRetry({
+            userMessageId,
+            content,
+            hasImages,
+            model: selectedModel,
+            attempts: prevAttempts + 1,
+            lastError: msg,
+          });
+        }
+        if (!prev) {
+          toast('Connexion instable — réessai automatique dès que possible.', { id: 'net-auto' });
+        }
+      }
+      return false;
     } finally {
-      setIsLoading(false);
+      setIsGenerating(false);
     }
   }, [
     selectedModel,
-    messages,
     addUsageRecord,
     startSession,
     endSession,
@@ -1167,15 +1261,77 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     selectedProjectId,
     selectedProjectPath,
     settings,
+    setIsGenerating,
+    startStreamingMessage,
+    updateStreamingContent,
+    appendStreamingContent,
+    finalizeStreamingMessage,
+    isEffectivelyOnline,
+    setPendingRetry,
   ]);
+
+  /**
+   * Réessayer depuis un message assistant (souvent un message d'erreur)
+   * - retrouve le dernier message user avant ce message assistant
+   * - relance sans re-poster le message user (évite les doublons)
+   */
+  const handleRegenerateMessage = useCallback(async (assistantMessageId: string) => {
+    const conv = useChatStore.getState().getActiveConversation();
+    const list = (conv?.messages || []).filter((m) => m.role !== 'tool');
+    const idx = list.findIndex((m) => m.id === assistantMessageId);
+    if (idx <= 0) {
+      toast.error('Impossible de retrouver le message à réessayer.');
+      return;
+    }
+    const prevUser = [...list.slice(0, idx)].reverse().find((m) => m.role === 'user');
+    if (!prevUser) {
+      toast.error('Impossible de retrouver la question précédente.');
+      return;
+    }
+    // On efface un retry en attente (l'utilisateur reprend la main)
+    setPendingRetry(null);
+    await handleSendMessage(prevUser.content, false, { skipUserMessage: true, userMessageId: prevUser.id });
+  }, [handleSendMessage, setPendingRetry]);
+
+  /**
+   * Auto-retry discret: dès que l'on redevient online, relancer une fois.
+   */
+  const autoRetryInFlightRef = useRef(false);
+  useEffect(() => {
+    if (!isEffectivelyOnline) return;
+    if (!pendingRetry) return;
+    if (isLoading) return;
+    if (pendingRetry.attempts >= 2) return;
+    if (autoRetryInFlightRef.current) return;
+
+    autoRetryInFlightRef.current = true;
+    toast.loading('Reconnexion… Réessai en cours', { id: 'net-retry' });
+    void (async () => {
+      try {
+        const ok = await handleSendMessage(pendingRetry.content, pendingRetry.hasImages, {
+          skipUserMessage: true,
+          userMessageId: pendingRetry.userMessageId,
+        });
+        if (ok) {
+          setPendingRetry(null);
+          toast.success('Reconnexion OK', { id: 'net-retry' });
+        } else {
+          toast.dismiss('net-retry');
+        }
+      } finally {
+        autoRetryInFlightRef.current = false;
+      }
+    })();
+  }, [isEffectivelyOnline, pendingRetry, isLoading, handleSendMessage, setPendingRetry]);
 
   const handleStopGeneration = useCallback(() => {
     // Stop normal chat streaming
     aiRouter.stopStream();
     // Also abort any running project generation (SSE stream + planning fetch)
     projectGeneration.abort();
-    setIsLoading(false);
-  }, []);
+    useChatStore.getState().stopGeneration();
+    setIsGenerating(false);
+  }, [setIsGenerating]);
 
   const handleQuickStart = useCallback((prompt: string) => {
     handleSendMessage(prompt);
@@ -1188,6 +1344,16 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     <div className="h-full flex flex-col bg-bg-primary">
       {/* Chat area */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {!isEffectivelyOnline && (
+          <div className="px-4 pt-3">
+            <div className="max-w-4xl mx-auto rounded-xl border border-border-subtle bg-surface-default/70 backdrop-blur px-4 py-2 flex items-center gap-2 text-xs text-text-secondary">
+              <WifiOff size={14} className="text-text-muted" />
+              <span>
+                {settings.offlineMode ? 'Mode hors ligne activé.' : 'Hors ligne.'} Certaines fonctionnalités réseau sont désactivées.
+              </span>
+            </div>
+          </div>
+        )}
         {messages.length === 0 && showWelcome ? (
           /* ===== WELCOME SCREEN ===== */
           <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
@@ -1229,6 +1395,13 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                         setShowDocumentMenu(true);
                       } else if (feature.title === 'Importer un dossier') {
                         void handleImportFolder();
+                      } else if (feature.title === 'Générer un projet') {
+                        // UX grand public: action déterministe (pas d'heuristique)
+                        void (async () => {
+                          await prepareProjectGeneration();
+                          forceProjectGenerationOnceRef.current = true;
+                          handleQuickStart(feature.prompt || 'Je veux créer un projet');
+                        })();
                       } else {
                         handleQuickStart(feature.prompt || feature.title);
                       }
@@ -1285,6 +1458,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             isLoading={isLoading}
             selectedProjectId={selectedProjectId}
             selectedProjectPath={selectedProjectPath}
+            onRegenerateMessage={handleRegenerateMessage}
           />
         )}
       </div>
@@ -1292,9 +1466,10 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       {/* ===== INPUT BAR ===== */}
       <VerifyFixNotice />
       <ChatInput
-        onSendMessage={handleSendMessage}
+        onSendMessage={async (msg, attachments) => { await handleSendMessage(msg, false, { attachments }); }}
         onStopGeneration={handleStopGeneration}
         isLoading={isLoading}
+        isOnline={isEffectivelyOnline}
         selectedModel={selectedModel}
         onModelChange={setSelectedModel}
         selectedProjectId={selectedProjectId}
@@ -1371,14 +1546,60 @@ function FeatureMenuModal({
   onSelect: (option: typeof options[number]) => void;
   onClose: () => void;
 }) {
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const modalRef = useRef<HTMLDivElement | null>(null);
+  const idsRef = useRef({
+    titleId: `modal_title_${Math.random().toString(16).slice(2)}`,
+    descId: `modal_desc_${Math.random().toString(16).slice(2)}`,
+  });
+
+  // UX grand public: Escape ferme le modal + focus initial sur "fermer" + focus trap Tab
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+      if (e.key === 'Tab') {
+        const root = modalRef.current;
+        if (!root) return;
+        const focusables = Array.from(
+          root.querySelectorAll<HTMLElement>(
+            'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => !el.hasAttribute('disabled') && el.tabIndex !== -1);
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey) {
+          if (!active || active === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (active === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
+        ref={modalRef}
         className="bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={idsRef.current.titleId}
+        aria-describedby={idsRef.current.descId}
       >
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -1387,12 +1608,13 @@ function FeatureMenuModal({
               <TitleIcon size={20} className="text-white" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-text-primary">{title}</h2>
-              <p className="text-xs text-text-muted">{subtitle}</p>
+              <h2 id={idsRef.current.titleId} className="text-lg font-bold text-text-primary">{title}</h2>
+              <p id={idsRef.current.descId} className="text-xs text-text-muted">{subtitle}</p>
             </div>
           </div>
           <button
             onClick={onClose}
+            ref={closeButtonRef}
             className="p-2 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
           >
             <X size={18} />

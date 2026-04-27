@@ -48,10 +48,10 @@ export interface AIAnalysisResult {
 export type NewFileProject = Omit<FileProject, 'id' | 'uploadedAt' | 'updatedAt' | 'fileCount' | 'totalSize' | 'fileTree'>;
 
 // Memory and Conversation types
-export interface Conversation {
+export interface FileProjectConversation {
   id: string;
   title: string;
-  messages: Message[];
+  messages: FileProjectMessage[];
   createdAt: string;
   updatedAt: string;
   tags: string[];
@@ -59,7 +59,7 @@ export interface Conversation {
   tokenCount: number;
 }
 
-export interface Message {
+export interface FileProjectMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -67,7 +67,12 @@ export interface Message {
   tokens?: number;
 }
 
-export type NewConversation = Omit<Conversation, 'id' | 'createdAt' | 'updatedAt'>;
+/** @deprecated Utiliser FileProjectConversation */
+export type Conversation = FileProjectConversation;
+/** @deprecated Utiliser FileProjectMessage */
+export type Message = FileProjectMessage;
+
+export type NewConversation = Omit<FileProjectConversation, 'id' | 'createdAt' | 'updatedAt'>;
 
 // Agent types
 export type AgentType = 'orchestrator' | 'planner' | 'coder' | 'tester' | 'executor';

@@ -18,7 +18,7 @@ function readFileAsDataUrl(file: File): Promise<string> {
  *
  * Note: Pour l’instant, on renvoie un résultat “soft-fail” car l’intégration
  * Vision/PDF dépend du backend (upload, OCR, etc.). On garde une API stable
- * pour brancher ensuite DeepSeek/Kimi via le backend.
+ * pour brancher ensuite les providers IA via le backend.
  */
 export function useAnzarIA() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
@@ -68,4 +68,3 @@ export function useAnzarIA() {
 
   return { analyzeImage, analyzeDocument, isAnalyzing, error, clearError }
 }
-

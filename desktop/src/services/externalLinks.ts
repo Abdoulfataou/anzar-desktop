@@ -1,6 +1,9 @@
 import { isTauri } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settingsStore'
 
+// Session allowlist (évite de redemander 10 fois la confirmation)
+const sessionAllowedHosts = new Set<string>()
+
 function isSafeHttpUrl(url: string): boolean {
   try {
     const u = new URL(url)
@@ -38,7 +41,7 @@ export async function openExternalUrl(url: string): Promise<void> {
   }
 
   const host = u.hostname.toLowerCase()
-  const allowed = allow.has(host)
+  const allowed = allow.has(host) || sessionAllowedHosts.has(host)
 
   if (!allowed) {
     const { confirm } = await import('@tauri-apps/api/dialog')
@@ -47,9 +50,10 @@ export async function openExternalUrl(url: string): Promise<void> {
       { title: 'Ouvrir un lien externe', type: 'warning' }
     )
     if (!ok) return
+    // Ne plus redemander pendant cette session (moins "tique" utilisateur)
+    sessionAllowedHosts.add(host)
   }
 
   const { open } = await import('@tauri-apps/api/shell')
   await open(url)
 }
-

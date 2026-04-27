@@ -84,6 +84,9 @@ class SimpleEventEmitter<T> {
 const BLOCKED_PATTERNS = [
   /sudo\s/i,
   /su\s+-/i,
+  /\brm\s+-rf\b/i,               // rm -rf (trop destructif pour grand public)
+  /\bgit\s+reset\s+--hard\b/i,   // git reset --hard
+  /\bgit\s+clean\s+-fd\b/i,      // git clean -fd
   /rm\s+-rf\s+[/~]/i,            // rm -rf / or ~
   /rm\s+-rf\s+\.\./i,            // rm -rf ..
   />\s*\/dev\//i,                 // redirect to /dev/

@@ -15,6 +15,7 @@ export function assessCommandRisk(command: string): CommandRisk {
 
   // Very dangerous patterns
   const dangerPatterns: Array<[RegExp, string]> = [
+    // Destructif (suppression)
     [/\brm\s+-rf\b/, 'Suppression récursive forcée (rm -rf)'],
     [/\bmkfs\b|\bformat\b/, 'Formatage disque'],
     [/\bdd\s+if=|\bdd\s+of=/, 'Écriture brute (dd)'],
@@ -26,6 +27,9 @@ export function assessCommandRisk(command: string): CommandRisk {
     [/\bpowershell\b.*(iex|invoke-expression)\b/, 'Téléchargement + exécution (PowerShell IEX)'],
     [/:\s*\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:/, 'Fork bomb'],
     [/\bchmod\s+777\b/, 'Permissions très permissives (chmod 777)'],
+    // Git destructif
+    [/\bgit\s+reset\s+--hard\b/, 'Reset Git destructif (reset --hard)'],
+    [/\bgit\s+clean\s+-fd\b/, 'Nettoyage Git destructif (clean -fd)'],
   ]
   for (const [re, reason] of dangerPatterns) {
     if (re.test(cmd)) return { level: 'danger', reason }
@@ -33,8 +37,6 @@ export function assessCommandRisk(command: string): CommandRisk {
 
   // Potentially risky patterns
   const warnPatterns: Array<[RegExp, string]> = [
-    [/\bgit\s+reset\s+--hard\b/, 'Reset git destructif (--hard)'],
-    [/\bgit\s+clean\s+-fd\b/, 'Nettoyage git destructif (clean -fd)'],
     [/\bnpm\s+install\s+-g\b|\byarn\s+global\b|\bpnpm\s+add\s+-g\b/, 'Installation globale'],
     [/\bpip\s+install\s+--user\b|\bpip\s+install\b/, 'Installation de packages'],
     [/\bnpm\s+run\s+build\b|\bnpm\s+run\s+test\b|\bpytest\b|\bcargo\s+test\b/, 'Commande de build/test (peut être longue)'],
@@ -45,4 +47,3 @@ export function assessCommandRisk(command: string): CommandRisk {
 
   return { level: 'safe', reason: 'Commande considérée comme sûre' }
 }
-

@@ -110,7 +110,7 @@ export const useUsageStore = create<UsageStore>()(
           const { useAccountStore } = require('@/stores/accountStore');
           useAccountStore.getState().deductCredit(
             record.costFCFA,
-            `Requête IA (${record.provider}/${record.model})`
+            `Requête IA (${record.model})`
           );
         }
       },

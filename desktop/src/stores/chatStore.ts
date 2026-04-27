@@ -6,8 +6,33 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
-import { Conversation, Message } from '@/types';
+import { Conversation, Message, AIModel } from '@/types';
 import { generateId } from '@/lib/utils';
+
+function buildAttachmentsContext(attachments: Message['attachments']): string {
+  if (!attachments || attachments.length === 0) return '';
+  // Cap hard to avoid exploding context
+  const MAX_TOTAL_CHARS = 8000;
+  let used = 0;
+  const lines: string[] = [];
+  lines.push('\n\n[Pièces jointes — références]');
+
+  for (const a of attachments) {
+    const ref = a.ref || a.name;
+    const header = `\n[${ref}] ${a.name} (${a.kind}${typeof a.sizeBytes === 'number' ? `, ${Math.round(a.sizeBytes / 1024)}KB` : ''})`;
+    const excerpt = (a.excerpt || '').trim();
+    const metaStr = a.meta ? `\nInfos: ${JSON.stringify(a.meta)}` : '';
+    const block = `${header}${metaStr}${excerpt ? `\nExtrait:\n${excerpt}` : ''}\n`;
+    if (used + block.length > MAX_TOTAL_CHARS) {
+      lines.push('\n[... autres pièces jointes tronquées ...]');
+      break;
+    }
+    used += block.length;
+    lines.push(block);
+  }
+  lines.push('\n[Fin pièces jointes]');
+  return lines.join('');
+}
 
 /**
  * Chat store state and actions
@@ -18,6 +43,23 @@ interface ChatStore {
   activeConversationId: string | null;
   isGenerating: boolean;
   streamingContent: string;
+  streamingMessageId: string | null;
+  /** Buffer non flushé (throttle) pour limiter les re-renders */
+  streamingBuffer: string;
+  /** Timestamp du dernier flush */
+  lastStreamFlushAt: number;
+  /** Timer de flush (non persisté) */
+  streamFlushTimerId: ReturnType<typeof setTimeout> | null;
+
+  /** Retry réseau (session): relancer une requête échouée quand on revient online */
+  pendingRetry: null | {
+    userMessageId: string;
+    content: string;
+    hasImages: boolean;
+    model: AIModel;
+    attempts: number;
+    lastError?: string;
+  };
 
   // Selectors
   getActiveConversation: () => Conversation | null;
@@ -50,11 +92,20 @@ interface ChatStore {
   /** Append to streaming content (for token-by-token updates) */
   appendStreamingContent: (token: string) => void;
 
+  /** Start a streaming message (bind streamingContent to an existing message id) */
+  startStreamingMessage: (messageId: string) => void;
+
+  /** Flush buffer vers le message (throttled streaming) */
+  flushStreamingBuffer: () => void;
+
   /** Clear streaming content and finalize message */
   finalizeStreamingMessage: () => Message | null;
 
   /** Stop generation and discard streaming content */
   stopGeneration: () => void;
+
+  /** Gérer le retry réseau (session, non persisté) */
+  setPendingRetry: (retry: ChatStore['pendingRetry']) => void;
 
   /** Set generation state */
   setIsGenerating: (isGenerating: boolean) => void;
@@ -100,6 +151,11 @@ export const useChatStore = create<ChatStore>()(
       activeConversationId: null,
       isGenerating: false,
       streamingContent: '',
+      streamingMessageId: null,
+      streamingBuffer: '',
+      lastStreamFlushAt: 0,
+      streamFlushTimerId: null,
+      pendingRetry: null,
 
       // ========================================================================
       // SELECTORS
@@ -154,10 +210,21 @@ export const useChatStore = create<ChatStore>()(
         const conversation = conversations.find((c) => c.id === activeConversationId);
         if (!conversation) return [];
 
-        if (!maxTokens) return [...conversation.messages];
+        // IMPORTANT: on génère une vue "API" qui peut enrichir certains messages (ex: pièces jointes)
+        const apiMessages: Message[] = conversation.messages.map((m) => {
+          if (m.role === 'user' && m.attachments && m.attachments.length > 0) {
+            return {
+              ...m,
+              content: `${m.content}${buildAttachmentsContext(m.attachments)}`,
+            };
+          }
+          return m;
+        });
+
+        if (!maxTokens) return [...apiMessages];
 
         // Find system message if present
-        const systemMessageIndex = conversation.messages.findIndex((m) => m.role === 'system');
+        const systemMessageIndex = apiMessages.findIndex((m) => m.role === 'system');
         const hasSystemMessage = systemMessageIndex === 0;
 
         // Calculate tokens from the end backwards
@@ -165,8 +232,8 @@ export const useChatStore = create<ChatStore>()(
         let currentTokens = 0;
 
         // Start from the last message and work backwards
-        for (let i = conversation.messages.length - 1; i >= 0; i--) {
-          const msg = conversation.messages[i];
+        for (let i = apiMessages.length - 1; i >= 0; i--) {
+          const msg = apiMessages[i];
           const msgTokens = Math.ceil(msg.content.length / 4);
 
           // If adding this message exceeds maxTokens, stop
@@ -180,7 +247,7 @@ export const useChatStore = create<ChatStore>()(
 
         // Always include system message at the front if it existed
         if (hasSystemMessage && selectedMessages[0]?.role !== 'system') {
-          selectedMessages.unshift(conversation.messages[0]);
+          selectedMessages.unshift(apiMessages[0]);
         }
 
         return selectedMessages;
@@ -313,65 +380,234 @@ export const useChatStore = create<ChatStore>()(
        * Replace streaming content (full update)
        */
       updateStreamingContent: (content: string) => {
-        set({ streamingContent: content });
+        set((state) => {
+          const { activeConversationId, streamingMessageId } = state;
+          let conversations = state.conversations;
+          // If a streaming message is bound, also update its content in the conversation
+          if (activeConversationId && streamingMessageId) {
+            conversations = state.conversations.map((c) => {
+              if (c.id !== activeConversationId) return c;
+              return {
+                ...c,
+                messages: c.messages.map((m) =>
+                  m.id === streamingMessageId
+                    ? { ...m, content, isStreaming: true }
+                    : m
+                ),
+                updatedAt: Date.now(),
+              };
+            });
+          }
+          // updateStreamingContent est un "set" direct => on flush le buffer
+          return {
+            streamingContent: content,
+            streamingBuffer: '',
+            lastStreamFlushAt: Date.now(),
+            conversations,
+          };
+        });
       },
 
       /**
        * Append a token to streaming content
        */
       appendStreamingContent: (token: string) => {
-        set((state) => ({
-          streamingContent: state.streamingContent + token,
-        }));
+        const THROTTLE_MS = 50; // ~20fps max, fluide et léger
+        set((state) => {
+          const nextContent = state.streamingContent + token;
+          const nextBuffer = state.streamingBuffer + token;
+          const now = Date.now();
+
+          // On ne touche pas à conversations ici => évite re-render lourd à chaque token
+          // (on flush périodiquement via flushStreamingBuffer)
+          let timerId = state.streamFlushTimerId;
+          const shouldFlushNow = now - state.lastStreamFlushAt >= THROTTLE_MS && nextBuffer.length >= 120;
+
+          if (!timerId && !shouldFlushNow) {
+            timerId = globalThis.setTimeout(() => {
+              try {
+                useChatStore.getState().flushStreamingBuffer();
+              } catch {
+                // ignore
+              }
+            }, THROTTLE_MS);
+          }
+
+          // Si on a déjà assez de buffer et qu'on a dépassé l'intervalle, on flush immédiatement
+          if (shouldFlushNow) {
+            // Flush synchrone (dans un second set) pour garder cette fonction pure
+            globalThis.queueMicrotask(() => {
+              try {
+                useChatStore.getState().flushStreamingBuffer();
+              } catch {
+                // ignore
+              }
+            });
+          }
+
+          return {
+            streamingContent: nextContent,
+            streamingBuffer: nextBuffer,
+            streamFlushTimerId: timerId,
+          };
+        });
+      },
+
+      /**
+       * Bind streaming content to an existing message in the active conversation.
+       * Typically called right after creating a placeholder assistant message.
+       */
+      startStreamingMessage: (messageId: string) => {
+        // Clear any previous timer
+        const prev = get().streamFlushTimerId;
+        if (prev) {
+          try { clearTimeout(prev); } catch { /* ignore */ }
+        }
+        set({
+          isGenerating: true,
+          streamingContent: '',
+          streamingBuffer: '',
+          streamingMessageId: messageId,
+          lastStreamFlushAt: Date.now(),
+          streamFlushTimerId: null,
+        });
+      },
+
+      /**
+       * Flush le buffer vers le message dans la conversation active (throttle)
+       */
+      flushStreamingBuffer: () => {
+        const { activeConversationId, streamingMessageId } = get();
+        if (!activeConversationId || !streamingMessageId) return;
+
+        set((state) => {
+          // Clear timer if any
+          if (state.streamFlushTimerId) {
+            try { clearTimeout(state.streamFlushTimerId); } catch { /* ignore */ }
+          }
+
+          if (!state.streamingBuffer) {
+            return {
+              streamFlushTimerId: null,
+              lastStreamFlushAt: Date.now(),
+            };
+          }
+
+          const content = state.streamingContent; // contenu total accumulé
+          const conversations = state.conversations.map((c) => {
+            if (c.id !== activeConversationId) return c;
+            return {
+              ...c,
+              messages: c.messages.map((m) =>
+                m.id === streamingMessageId ? { ...m, content, isStreaming: true } : m
+              ),
+              updatedAt: Date.now(),
+            };
+          });
+
+          return {
+            conversations,
+            streamingBuffer: '',
+            streamFlushTimerId: null,
+            lastStreamFlushAt: Date.now(),
+          };
+        });
       },
 
       /**
        * Finalize the streaming message and add it to conversation
        */
       finalizeStreamingMessage: () => {
-        const { streamingContent, activeConversationId } = get();
+        // Flush avant finalisation pour garantir que l'UI a le dernier texte
+        get().flushStreamingBuffer();
+        const { streamingContent, activeConversationId, streamingMessageId } = get();
 
         if (!streamingContent.trim() || !activeConversationId) {
           return null;
         }
 
-        const message: Message = {
-          id: generateId(),
-          role: 'assistant',
-          content: streamingContent,
-          timestamp: Date.now(),
-          isStreaming: false,
-        };
-
         set((state) => {
+          if (state.streamFlushTimerId) {
+            try { clearTimeout(state.streamFlushTimerId); } catch { /* ignore */ }
+          }
           const updated = state.conversations.map((c) => {
-            if (c.id === activeConversationId) {
+            if (c.id !== activeConversationId) return c;
+
+            // Preferred: finalize into the bound streaming message if it exists
+            if (streamingMessageId && c.messages.some((m) => m.id === streamingMessageId)) {
               return {
                 ...c,
-                messages: [...c.messages, message],
+                messages: c.messages.map((m) =>
+                  m.id === streamingMessageId
+                    ? { ...m, content: streamingContent, isStreaming: false, timestamp: m.timestamp || Date.now() }
+                    : m
+                ),
                 updatedAt: Date.now(),
               };
             }
-            return c;
+
+            // Fallback: append a new assistant message
+            const message: Message = {
+              id: generateId(),
+              role: 'assistant',
+              content: streamingContent,
+              timestamp: Date.now(),
+              isStreaming: false,
+            };
+            return {
+              ...c,
+              messages: [...c.messages, message],
+              updatedAt: Date.now(),
+            };
           });
 
           return {
             conversations: updated,
             streamingContent: '',
             isGenerating: false,
+            streamingMessageId: null,
+            streamingBuffer: '',
+            streamFlushTimerId: null,
           };
         });
 
-        return message;
+        // Return the bound message if possible (or null if not found)
+        const conv = get().conversations.find((c) => c.id === activeConversationId);
+        if (!conv) return null;
+        if (streamingMessageId) return conv.messages.find((m) => m.id === streamingMessageId) || null;
+        return conv.messages[conv.messages.length - 1] || null;
       },
 
       /**
        * Stop generation and discard streaming content
        */
       stopGeneration: () => {
-        set({
-          isGenerating: false,
-          streamingContent: '',
+        set((state) => {
+          const { activeConversationId, streamingMessageId } = state;
+          let conversations = state.conversations;
+          if (activeConversationId && streamingMessageId) {
+            conversations = state.conversations.map((c) => {
+              if (c.id !== activeConversationId) return c;
+              return {
+                ...c,
+                messages: c.messages.map((m) =>
+                  m.id === streamingMessageId ? { ...m, isStreaming: false } : m
+                ),
+                updatedAt: Date.now(),
+              };
+            });
+          }
+          if (state.streamFlushTimerId) {
+            try { clearTimeout(state.streamFlushTimerId); } catch { /* ignore */ }
+          }
+          return {
+            conversations,
+            isGenerating: false,
+            streamingContent: '',
+            streamingMessageId: null,
+            streamingBuffer: '',
+            streamFlushTimerId: null,
+          };
         });
       },
 
@@ -380,6 +616,13 @@ export const useChatStore = create<ChatStore>()(
        */
       setIsGenerating: (isGenerating: boolean) => {
         set({ isGenerating });
+      },
+
+      /**
+       * Stocker/effacer une requête à réessayer (session uniquement)
+       */
+      setPendingRetry: (retry) => {
+        set({ pendingRetry: retry });
       },
 
       /**
@@ -498,7 +741,19 @@ export const useChatStore = create<ChatStore>()(
       // Only persist conversations, not UI state
       partialize: (state) => ({
         conversations: state.conversations,
+        // Grand public: restaurer la dernière conversation active au relaunch
+        activeConversationId: state.activeConversationId,
       }),
+      // Après rehydrate: si aucune conversation active mais il y a un historique,
+      // activer la plus récente automatiquement (UX grand public).
+      onRehydrateStorage: () => (state, error) => {
+        if (error) return;
+        if (!state) return;
+        if (!state.activeConversationId && state.conversations?.length) {
+          // Important: ici on peut muter l'état réhydraté avant usage (pattern zustand persist).
+          state.activeConversationId = state.conversations[0].id;
+        }
+      },
     }
   )
 );

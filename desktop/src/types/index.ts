@@ -1,6 +1,6 @@
 /**
  * Core type definitions for ANZAR application
- * Multi-provider AI (DeepSeek + Kimi/Moonshot) + Project CRUD
+ * Multi-provider AI (proxy backend) + Project CRUD
  */
 
 // ============================================================================
@@ -31,10 +31,10 @@ export interface ProviderModel {
 
 /** Complete model registry */
 export const AI_MODELS: ProviderModel[] = [
-  // DeepSeek models
+  // Provider A (standard)
   {
     id: 'deepseek-chat',
-    name: 'DeepSeek V3',
+    name: 'ANZAR Rapide',
     provider: 'deepseek',
     mode: 'fast',
     maxContext: 131072,
@@ -48,7 +48,7 @@ export const AI_MODELS: ProviderModel[] = [
   },
   {
     id: 'deepseek-reasoner',
-    name: 'DeepSeek R1',
+    name: 'ANZAR Raisonnement',
     provider: 'deepseek',
     mode: 'thinking',
     maxContext: 131072,
@@ -58,12 +58,12 @@ export const AI_MODELS: ProviderModel[] = [
     supportsJSON: true,
     supportsFIM: false,
     supportsStreaming: true,
-    description: 'Raisonnement en chaîne (CoT), résolution de problèmes complexes',
+    description: 'Raisonnement avancé, résolution de problèmes complexes',
   },
-  // Kimi / Moonshot models
+  // Provider B (vision)
   {
     id: 'kimi-k2.6',
-    name: 'Kimi K2.6',
+    name: 'ANZAR Vision',
     provider: 'kimi',
     mode: 'fast',
     maxContext: 262144,
@@ -73,11 +73,11 @@ export const AI_MODELS: ProviderModel[] = [
     supportsJSON: true,
     supportsFIM: false,
     supportsStreaming: true,
-    description: 'Ultra-long contexte 262K, code avancé et agents',
+    description: 'Contexte ultra-long, code avancé et agents',
   },
   {
     id: 'kimi-k2.5',
-    name: 'Kimi K2.5',
+    name: 'ANZAR Vision (Raisonnement)',
     provider: 'kimi',
     mode: 'thinking',
     maxContext: 131072,
@@ -106,15 +106,17 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
   deepseek: {
     provider: 'deepseek',
     label: 'ANZAR Rapide',
-    baseUrl: 'https://api.deepseek.com',
+    // NOTE: les requêtes passent par le backend ANZAR (proxy). Ne pas exposer de vendor URL ici.
+    baseUrl: 'proxy',
     models: { fast: 'deepseek-chat', thinking: 'deepseek-reasoner' },
     defaultTemperature: { fast: 1.0, thinking: 1.0 },
-    features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'FIM', 'Thinking CoT'],
+    features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'FIM', 'Raisonnement'],
   },
   kimi: {
     provider: 'kimi',
     label: 'ANZAR Vision',
-    baseUrl: 'https://api.moonshot.ai/v1',
+    // NOTE: les requêtes passent par le backend ANZAR (proxy). Ne pas exposer de vendor URL ici.
+    baseUrl: 'proxy',
     models: { fast: 'kimi-k2.6', thinking: 'kimi-k2.5' },
     defaultTemperature: { fast: 0.7, thinking: 0.7 },
     features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'Vision', '262K Context'],
@@ -125,6 +127,35 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
 // MESSAGE & CONVERSATION TYPES
 // ============================================================================
 
+export type ChatAttachmentKind =
+  | 'pdf'
+  | 'docx'
+  | 'xlsx'
+  | 'csv'
+  | 'tsv'
+  | 'text'
+  | 'code'
+  | 'image'
+  | 'binary';
+
+/**
+ * Pièce jointe "chat" (grand public):
+ * - On persiste seulement des métadonnées + un extrait (pour éviter de gonfler le storage).
+ * - Le contenu complet peut être recalculé/relit si nécessaire.
+ */
+export interface ChatAttachment {
+  id: string;
+  name: string;
+  kind: ChatAttachmentKind;
+  sizeBytes?: number;
+  /** Référence courte (A, B, C...) pour que l’IA puisse citer facilement */
+  ref?: string;
+  /** Extrait de texte (tronqué) utilisé pour le contexte IA */
+  excerpt?: string;
+  /** Infos additionnelles (pages, feuilles, lignes, etc.) */
+  meta?: Record<string, any>;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
@@ -132,12 +163,27 @@ export interface Message {
   timestamp: number;
   model?: AIModel;
   provider?: AIProvider;
-  thinking?: string;           // DeepSeek reasoner CoT / Kimi thinking
+  thinking?: string;           // Contenu de raisonnement (si fourni par le modèle)
+  /** Étapes de raisonnement (si fournies par le backend/provider) */
+  reasoning?: string[];
   tokens?: { prompt: number; completion: number };
   isStreaming?: boolean;
+  /** Marqueur UI: message d'erreur (affichage rouge, etc.) */
+  isError?: boolean;
+  /** Lien UI vers la timeline d'activité (cowork-style) */
+  activitySessionId?: string;
+  /** Infos de routage (utile pour debug / transparence) */
+  routingInfo?: {
+    provider: string;
+    taskType: string;
+    wasFallback: boolean;
+    reason: string;
+  };
   codeBlocks?: CodeBlock[];
   toolCalls?: ToolCall[];      // Function calls made by AI
   toolCallId?: string;         // For tool response messages
+  /** Pièces jointes associées au message (surtout côté user) */
+  attachments?: ChatAttachment[];
 }
 
 export interface CodeBlock {
@@ -165,7 +211,7 @@ export interface Conversation {
 export * from './run';
 
 // ============================================================================
-// TOOL CALLING TYPES (OpenAI-compatible, used by both DeepSeek & Kimi)
+// TOOL CALLING TYPES (OpenAI-compatible, used by multiple providers)
 // ============================================================================
 
 export interface ToolDefinition {
@@ -174,7 +220,7 @@ export interface ToolDefinition {
     name: string;
     description: string;
     parameters: Record<string, any>;    // JSON Schema
-    strict?: boolean;                    // DeepSeek strict mode
+    strict?: boolean;                    // Mode strict (si supporté)
   };
 }
 
@@ -424,7 +470,7 @@ export interface ChatOptions {
 export interface APIMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string | null;
-  reasoning_content?: string;     // DeepSeek thinking
+  reasoning_content?: string;     // Raisonnement (si fourni)
   tool_calls?: ToolCall[];
   tool_call_id?: string;
 }
@@ -446,7 +492,7 @@ export interface ChatResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
-    prompt_cache_hit_tokens?: number;   // DeepSeek cache
+    prompt_cache_hit_tokens?: number;   // Cache hit tokens (si fourni)
     prompt_cache_miss_tokens?: number;
   };
 }
