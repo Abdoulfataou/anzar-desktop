@@ -18,6 +18,9 @@ import {
   Mail, FileCheck, Megaphone, ScrollText, Briefcase, Pen,
   FolderOpen,
   WifiOff,
+  // Student assistant new features
+  Quote, BrainCircuit, ClipboardCheck,
+  ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -112,63 +115,439 @@ const STUDENT_OPTIONS = [
   {
     id: 'memoire',
     title: 'Rédiger un mémoire',
-    description: 'Mémoire de fin d\'études : plan, introduction, développement, conclusion, bibliographie.',
+    description: 'Plan complet, rédaction section par section, bibliographie — guidé de A à Z.',
     icon: BookOpen,
     color: 'from-pink-500 to-rose-500',
-    prompt: `Je veux rédiger un mémoire de fin d'études. Pose-moi d'abord les questions essentielles (sujet, niveau, contraintes, nombre de pages, plan existant), puis propose une structure/plan détaillé et les prochaines étapes.`,
+    tag: 'Populaire',
+    prompt: `Tu es un directeur de mémoire expérimenté. Je veux rédiger un mémoire de fin d'études et j'ai besoin d'un accompagnement structuré.
+
+Pose-moi ces 5 questions UNE PAR UNE (attends ma réponse avant la suivante) :
+1. Quel est ton sujet ou ta problématique ?
+2. Quel est ton niveau (Licence, Master, Doctorat) et ta filière ?
+3. Combien de pages sont attendues et y a-t-il des consignes spécifiques ?
+4. As-tu déjà un brouillon, un plan ou des recherches ?
+5. Quelle est ta date de rendu ?
+
+Après mes réponses, génère directement :
+
+**PLAN DÉTAILLÉ DU MÉMOIRE**
+
+Pour chaque partie (Introduction, Chapitre I, II, III..., Conclusion) :
+- Titre et sous-titre
+- Objectif de la section (1 phrase)
+- Contenu attendu (3-5 points clés à développer)
+- Estimation du nombre de pages
+- Sources recommandées (types de sources à chercher)
+
+**PROCHAINES ÉTAPES** : liste numérotée des 5 actions concrètes à faire cette semaine.
+
+Propose-moi ensuite de rédiger la première section (introduction) directement.
+
+Format : titres en ## et ###, listes à puces, pas de tableaux ASCII.`,
   },
   {
     id: 'rapport',
     title: 'Rapport de stage',
-    description: 'Structure, rédaction et mise en forme de ton rapport de stage professionnel.',
+    description: 'De la page de garde à la conclusion — structure pro avec exemples de contenu.',
     icon: PenTool,
     color: 'from-violet-500 to-purple-500',
-    prompt: `Je veux rédiger mon rapport de stage. Commence par me poser les questions clés (entreprise, missions, durée, niveau, consignes, brouillon), puis propose un plan complet (page de garde → conclusion) et un exemple de contenu pour chaque section.`,
+    prompt: `Tu es un tuteur universitaire spécialisé dans les rapports de stage. Accompagne-moi pour rédiger un rapport professionnel.
+
+Pose-moi ces questions UNE PAR UNE :
+1. Dans quelle entreprise/organisation as-tu fait ton stage ? (nom, secteur, taille)
+2. Quelles étaient tes missions principales ?
+3. Quelle était la durée du stage et ton niveau d'études ?
+4. Y a-t-il des consignes spécifiques de ton école ? (nombre de pages, plan imposé, annexes)
+5. As-tu déjà rédigé des parties ou pris des notes ?
+
+Après mes réponses, génère :
+
+**PLAN COMPLET DU RAPPORT**
+
+Structure type avec pour CHAQUE section :
+- Page de garde (éléments requis)
+- Remerciements (modèle de 5-6 lignes)
+- Sommaire
+- Introduction (contexte + problématique + annonce du plan)
+- Partie 1 : Présentation de l'entreprise (historique, organigramme, activités)
+- Partie 2 : Déroulement du stage (missions, outils, méthodologie)
+- Partie 3 : Bilan et analyse (résultats, compétences acquises, difficultés)
+- Conclusion (synthèse + ouverture professionnelle)
+- Bibliographie / Annexes
+
+Pour chaque section : objectif + contenu attendu + estimation pages + un EXEMPLE de paragraphe d'ouverture.
+
+Propose-moi ensuite de rédiger la section de mon choix.
+
+Format : titres en ## et ###, pas de tableaux ASCII.`,
   },
   {
     id: 'correction',
     title: 'Corriger / Reformuler',
-    description: 'Upload ton document (PDF, Word) ou colle ton texte. Correction complète sur mesure.',
+    description: 'Upload ton fichier ou colle ton texte — choisis le type de correction en un clic.',
     icon: ListChecks,
     color: 'from-emerald-500 to-green-500',
-    prompt: `Je veux faire corriger/reformuler un document (mémoire/rapport/etc.).
-
-Commence par m'expliquer comment te l'envoyer (PDF/Word ou texte collé), puis pose 2-3 questions (type de document, niveau, consignes).
-
-Ensuite propose les options sous forme de liste numérotée claire :
-1) Correction complète
-2) Reformulation
-3) Mise en forme académique
-4) Amélioration du contenu
-5) Adaptation du ton
-6) Tout corriger
-
-IMPORTANT : évite les tableaux ASCII, les barres verticales "|", et les séparateurs à base de tirets. Utilise seulement des titres et des listes.`,
+    tag: 'Upload',
+    prompt: '', // Remplacé par subOptions ci-dessous
     opensFileDialog: true,
+    subOptions: [
+      {
+        id: 'correction_langue',
+        label: 'Correction langue',
+        description: 'Orthographe, grammaire, conjugaison, ponctuation',
+        emoji: '✏️',
+        prompt: `Tu es un correcteur professionnel et pédagogue. Corrige ce texte en te concentrant sur la LANGUE : orthographe, grammaire, conjugaison, accords, ponctuation.
+
+Format STRICT pour chaque modification :
+~~texte original~~ → **texte corrigé** (règle : explication courte)
+
+Les passages corrects : reproduis-les tels quels pour que le texte reste complet.
+
+À LA FIN :
+### Bilan de correction
+- Nombre total de modifications
+- Top 3 des erreurs récurrentes
+- Note du texte original : X/20
+- 3 conseils pour s'améliorer en orthographe/grammaire
+
+IMPORTANT : pas de tableau ASCII, pas de barres "|".`,
+      },
+      {
+        id: 'correction_reformulation',
+        label: 'Reformulation',
+        description: 'Style, fluidité, phrases plus claires et élégantes',
+        emoji: '💎',
+        prompt: `Tu es un styliste littéraire. Reformule ce texte pour améliorer le STYLE : fluidité, clarté, élégance, suppression des répétitions, phrases plus percutantes.
+
+Format STRICT pour chaque modification :
+~~phrase originale~~ → **phrase reformulée** (amélioration : raison stylistique)
+
+Les passages déjà bien écrits : reproduis-les tels quels.
+
+À LA FIN :
+### Bilan de reformulation
+- Nombre de passages reformulés
+- Axes d'amélioration principaux (lourdeurs, répétitions, registre)
+- Note de qualité stylistique : X/20
+- 3 conseils pour mieux écrire
+
+IMPORTANT : pas de tableau ASCII, pas de barres "|".`,
+      },
+      {
+        id: 'correction_academique',
+        label: 'Mise en forme académique',
+        description: 'Registre soutenu, transitions, structure universitaire',
+        emoji: '🎓',
+        prompt: `Tu es un relecteur universitaire. Transforme ce texte en document ACADÉMIQUE : registre soutenu, transitions entre paragraphes, structure logique, vocabulaire précis, formulations impersonnelles.
+
+Format STRICT pour chaque modification :
+~~formulation originale~~ → **formulation académique** (registre : explication)
+
+Les passages déjà académiques : reproduis-les tels quels.
+
+Ajoute aussi :
+- Des connecteurs logiques manquants (en outre, néanmoins, par conséquent...)
+- Des transitions entre les parties
+- Des reformulations du "je" en tournures impersonnelles si nécessaire
+
+À LA FIN :
+### Bilan académique
+- Modifications de registre effectuées
+- Niveau académique atteint (L1-L3, Master, Doctorat)
+- Note de rigueur académique : X/20
+- 3 conseils pour un style plus universitaire
+
+IMPORTANT : pas de tableau ASCII, pas de barres "|".`,
+      },
+      {
+        id: 'correction_tout',
+        label: 'Tout corriger',
+        description: 'Langue + style + structure — correction complète (recommandé)',
+        emoji: '🚀',
+        prompt: `Tu es un correcteur professionnel complet. Corrige ce texte sur TOUS les plans : orthographe, grammaire, style, fluidité, registre académique, transitions, structure.
+
+Format STRICT pour chaque modification :
+~~texte original~~ → **texte corrigé** (explication courte : type de correction)
+
+Les passages corrects : reproduis-les tels quels pour que le texte reste complet et lisible.
+
+À LA FIN :
+### Bilan complet
+- Nombre total de modifications (langue / style / structure)
+- Top 3 des problèmes récurrents
+- Note du texte original : X/20
+- 3 conseils prioritaires pour progresser
+
+L'étudiant pourra exporter en "Word propre" (texte corrigé seul) ou "Word annoté" (avec les explications).
+
+IMPORTANT : pas de tableau ASCII, pas de barres "|".`,
+      },
+    ],
   },
   {
     id: 'plan',
     title: 'Plan détaillé',
-    description: 'Génère un plan structuré pour n\'importe quel travail académique.',
+    description: 'Plan structuré avec numérotation académique, objectifs et estimation de pages.',
     icon: Layout,
     color: 'from-blue-500 to-indigo-500',
-    prompt: `Aide-moi à faire un plan détaillé. Demande-moi le sujet/problématique, le type de travail (mémoire/rapport/dissertation/exposé/thèse), le nombre de parties/chapitres et les consignes, puis propose un plan structuré avec sous-parties et objectifs.`,
+    prompt: `Tu es un méthodologue universitaire. Aide-moi à construire un plan détaillé et rigoureux.
+
+Demande-moi :
+1. Sujet ou problématique exacte
+2. Type de travail (mémoire, rapport, dissertation, exposé, thèse, article)
+3. Nombre de pages / durée attendue
+4. Consignes spécifiques (si imposées par le prof)
+
+Puis génère un plan avec la NUMÉROTATION ACADÉMIQUE (I, A, 1, a) :
+
+**PLAN DÉTAILLÉ**
+
+Pour chaque partie et sous-partie :
+I. Titre de la partie
+   - Objectif : (1 phrase — ce que cette partie doit démontrer)
+   - Pages estimées : X-Y pages
+   A. Sous-partie 1
+      - Points à développer : (3-4 éléments)
+      1. Sous-sous-partie (si nécessaire)
+   B. Sous-partie 2
+      - Points à développer
+
+**CONSEIL MÉTHODOLOGIQUE** pour chaque grande partie : quelle approche adopter (analyse, comparaison, étude de cas, revue de littérature…)
+
+**TRANSITIONS** : propose une phrase de transition entre chaque grande partie.
+
+À la fin, propose :
+- "Tu veux que je rédige l'introduction ?"
+- "Tu veux que je développe une section en particulier ?"
+- "Tu veux exporter ce plan en Word ?"
+
+Format : numérotation I.A.1.a, titres en ##, pas de tableaux ASCII.`,
   },
   {
     id: 'resume',
     title: 'Résumé de cours',
-    description: 'Synthétise un cours, un chapitre ou un document en points clés.',
+    description: 'Fiche de révision structurée — définitions, formules, schémas, points clés.',
     icon: BookMarked,
     color: 'from-amber-500 to-yellow-500',
-    prompt: `Je veux résumer un cours/document. Demande-moi le contenu (ou le sujet) et le niveau de détail (résumé court / fiche de révision / mind map), puis fais une synthèse claire avec points clés et définitions importantes.`,
+    tag: 'Upload',
+    prompt: `Tu es un assistant de révision expert. Je veux créer une fiche de révision à partir d'un cours.
+
+Si je n'ai pas encore envoyé de contenu, dis-moi :
+"Envoie-moi ton cours (colle le texte, uploade un PDF/Word, ou dis-moi juste le sujet)."
+
+Puis demande-moi quel format je préfère :
+1. **Fiche express** — 1-2 pages, uniquement l'essentiel à retenir
+2. **Fiche complète** — structurée avec définitions, exemples, formules
+3. **Carte mentale** — en format Mermaid (diagramme visuel)
+4. **Fiche + Quiz** — fiche de révision + 10 questions pour tester
+
+Génère la fiche avec cette structure :
+
+### [Titre du cours/chapitre]
+
+**Concepts clés** (les 5-8 notions essentielles, chacune en 1-2 phrases)
+
+**Définitions à retenir**
+- **Terme** : définition claire et concise
+
+**Formules / Règles** (si applicable)
+- Formule : explication + quand l'utiliser
+
+**Schéma récapitulatif** (si le format carte mentale est choisi : utilise un bloc \`\`\`mermaid avec un mindmap ou flowchart)
+
+**Points pièges** — les erreurs classiques à éviter
+
+**À retenir absolument** — les 3 choses à savoir si tu n'as que 5 minutes avant l'examen
+
+Propose ensuite : "Tu veux que je génère un quiz de révision à partir de cette fiche ?" → si oui, enchaîne directement avec 10 questions.
+
+Format : titres en ### et ####, listes à puces, pas de tableaux ASCII.`,
+    opensFileDialog: true,
   },
   {
     id: 'expose',
     title: 'Préparer un exposé',
-    description: 'Plan, contenu, notes de présentation et support pour ton exposé oral.',
+    description: 'Plan, contenu par slide, notes orales — et export PowerPoint direct.',
     icon: Presentation,
     color: 'from-teal-500 to-cyan-500',
-    prompt: `Aide-moi à préparer un exposé. Demande-moi le sujet, la durée, le public, le type de support attendu (PowerPoint/poster), puis propose un plan, le contenu par partie, et des notes pour l'oral.`,
+    prompt: `Tu es un coach de présentation orale. Aide-moi à préparer un exposé complet.
+
+Demande-moi :
+1. Sujet de l'exposé
+2. Durée (5, 10, 15, 20, 30 minutes)
+3. Public (classe, jury, prof, conférence)
+4. Support attendu (PowerPoint, oral seul, poster)
+
+Puis génère :
+
+**PLAN DE L'EXPOSÉ** (adapté à la durée)
+
+Pour CHAQUE slide/section :
+
+**Slide X : [Titre]** (durée estimée : X min)
+- Contenu visuel : ce qu'il faut mettre sur la slide (bullet points, image, graphique)
+- Ce que tu DIS à l'oral : 3-5 phrases de script naturel (pas du texte lu, du parlé)
+- Transition vers la slide suivante : 1 phrase
+
+**CONSEILS POUR L'ORAL :**
+- Comment commencer (accroche)
+- Comment gérer le stress
+- Comment répondre aux questions
+- Timing : quand accélérer, quand ralentir
+
+**ANTI-SÈCHE** : résumé en 10 bullet points de tout l'exposé (à garder sous les yeux)
+
+À la fin, propose :
+"Tu veux que j'exporte ces slides en PowerPoint ? Clique sur le bouton PPTX dans la barre d'export."
+
+Format : titres en ## et ###, pas de tableaux ASCII.`,
+  },
+  {
+    id: 'citations',
+    title: 'Générer des citations',
+    description: 'Bibliographie APA, MLA, Chicago, Harvard — formatée et prête à copier.',
+    icon: Quote,
+    color: 'from-orange-500 to-red-500',
+    tag: 'Nouveau',
+    prompt: `Tu es un bibliothécaire universitaire expert en normes de citation. Aide-moi à créer ma bibliographie.
+
+Demande-moi :
+1. Style de citation (APA 7e, MLA 9e, Chicago 17e, Harvard, IEEE, Vancouver)
+2. Mes sources (je vais te les donner une par une ou en lot)
+
+Pour chaque source, génère :
+
+**Source : [titre court]**
+- Citation complète (bibliographie) :
+  [citation formatée selon le style choisi]
+- Citation in-text (dans le texte) :
+  [format court à insérer dans une phrase]
+- Exemple dans une phrase :
+  "Selon [citation in-text], les résultats montrent que..."
+
+Exemple concret en APA 7e pour un livre :
+- Bibliographie : Dupont, J.-P. (2023). *Introduction à la méthodologie*. Éditions Universitaires.
+- In-text : (Dupont, 2023, p. 45)
+
+Quand j'ai fini de donner mes sources, compile automatiquement :
+
+### Bibliographie complète
+(toutes les sources triées alphabétiquement, formatées, avec retrait de 2e ligne — prêtes à copier-coller dans Word)
+
+Si je donne juste un titre ou un lien web, cherche les informations manquantes (auteur, éditeur, date, URL, DOI).
+
+IMPORTANT : respecte STRICTEMENT les règles du style choisi (italique, majuscules, ponctuation, alinéa). Pas de tableaux ASCII.`,
+  },
+  {
+    id: 'quiz',
+    title: 'Quiz de révision',
+    description: 'QCM interactif — réponds d\'abord, puis découvre les corrections et explications.',
+    icon: BrainCircuit,
+    color: 'from-fuchsia-500 to-pink-500',
+    tag: 'Nouveau',
+    prompt: `Tu es un professeur qui crée des quiz de révision engageants et pédagogiques.
+
+Si je n'ai pas envoyé de cours, demande-moi :
+"Envoie-moi ton cours (texte, PDF ou Word) ou dis-moi le sujet."
+
+Puis demande :
+1. Combien de questions ? (5, 10, 15, 20)
+2. Difficulté ? (facile / moyen / difficile / progressif)
+
+MODE INTERACTIF — Pose les questions UNE PAR UNE :
+
+**Question 1/X : [Titre court du thème]**
+
+[Énoncé de la question]
+
+a) Option A
+b) Option B
+c) Option C
+d) Option D
+
+"Quelle est ta réponse ? (tape a, b, c ou d)"
+
+Quand je réponds, donne :
+- ✅ **Correct !** ou ❌ **Incorrect — la bonne réponse est X**
+- **Explication** : pourquoi c'est la bonne réponse (2-3 phrases pédagogiques)
+- Passe à la question suivante
+
+À LA FIN du quiz :
+
+### Résultat
+- Score : X/Y (pourcentage)
+- Points forts : les thèmes maîtrisés
+- À revoir : les thèmes à retravailler
+- Conseil : prochaine étape pour progresser
+
+Propose : "Tu veux un nouveau quiz plus difficile sur les thèmes ratés ?"
+
+IMPORTANT : une seule question à la fois, attends ma réponse. Pas de tableaux ASCII.`,
+    opensFileDialog: true,
+  },
+  {
+    id: 'evaluer',
+    title: 'Mode Professeur',
+    description: 'Note /20 détaillée, grille par critère, erreurs critiques et conseils pour progresser.',
+    icon: ClipboardCheck,
+    color: 'from-red-500 to-rose-600',
+    tag: 'Upload',
+    prompt: `Tu es un professeur universitaire exigeant mais bienveillant. Je vais te soumettre un travail à évaluer.
+
+Si je n'ai pas encore envoyé de document, dis-moi :
+"Envoie-moi ton travail (colle le texte ou uploade un fichier PDF/Word avec le bouton 📎)."
+
+Puis demande :
+1. Type de travail (mémoire, rapport, dissertation, exposé, exercice, lettre de motivation)
+2. Niveau (L1, L2, L3, Master 1, Master 2, Doctorat)
+3. Matière / discipline
+
+Utilise la grille adaptée à la discipline. Voici les grilles prédéfinies :
+
+**Pour les sciences humaines / lettres :**
+- Problématique et pertinence : /4
+- Argumentation et logique : /5
+- Maîtrise de la langue : /4
+- Sources et références : /3
+- Originalité et esprit critique : /2
+- Présentation et mise en forme : /2
+
+**Pour les sciences / technique :**
+- Compréhension du sujet : /4
+- Rigueur méthodologique : /5
+- Exactitude des résultats : /4
+- Interprétation et analyse : /3
+- Clarté de la rédaction : /2
+- Présentation (figures, tableaux) : /2
+
+**Pour le droit / économie :**
+- Maîtrise des concepts juridiques/économiques : /5
+- Structure du raisonnement : /4
+- Qualité des références : /4
+- Rédaction et précision du vocabulaire : /3
+- Cas pratiques / exemples : /2
+- Présentation : /2
+
+Génère :
+
+### Évaluation — [Type de travail]
+
+**Note globale : XX/20** [avec appréciation : Insuffisant / Passable / Bien / Très bien / Excellent]
+
+**Grille détaillée :** (chaque critère avec note + justification en 1 phrase)
+
+**Points forts** (cite des passages précis du travail — entre guillemets)
+
+**Points à améliorer** (pour chaque point : le problème + comment le corriger concrètement)
+
+**Erreurs critiques** (s'il y en a : hors-sujet, contresens, incohérence, source manquante)
+
+**Version améliorée** : propose de réécrire les 2-3 passages les plus faibles pour montrer la différence.
+
+**Conseils pour progresser** (3 actions concrètes pour la prochaine fois)
+
+IMPORTANT : sois PRÉCIS, cite le travail. Pas de tableaux ASCII.`,
+    opensFileDialog: true,
   },
 ];
 
@@ -350,6 +729,38 @@ function detectProjectIntent(message: string): boolean {
   }
 
   return score >= 3
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// DÉTECTION D'INTENTION VISUELLE — route vers Kimi pour images/diagrammes
+// ══════════════════════════════════════════════════════════════════════
+function detectVisualIntent(message: string): boolean {
+  const msg = (message || '').trim().toLowerCase();
+  if (msg.length < 8) return false;
+
+  // Mots-clés visuels (FR + EN)
+  const visualKeywords =
+    /\b(image|images|photo|photos|illustration|illustrations|diagramme|diagrammes|schéma|schémas|schema|schemas|graphique|graphiques|graph|graphs|chart|charts|dessin|dessins|dessine|dessiner|illustre|illustrer|visuel|visuels|visualise|visualiser|infographie|infographies|organigramme|organigrammes|flowchart|mind\s?map|carte\s?mentale|arbre|figure|figures|tableau\s?visuel|mermaid|svg|uml|sequence\s?diagram|class\s?diagram|diag)\b/i;
+
+  // Verbes de création visuelle
+  const visualVerbs =
+    /\b(génère|genere|génerer|generer|crée|cree|créer|créée|créées|creer|fais|faire|montre|montrer|trace|tracer|représente|represente|représenter|representer|draw|create|generate|make|show|plot|sketch|render|design)\b/i;
+
+  // Contexte visuel fort (demande explicite d'image/diagramme)
+  const strongVisual =
+    /\b(fais[- ]?moi\s+(un|une|le|la|des)\s+(image|diagramme|schéma|schema|graphique|dessin|illustration|organigramme|infographie|flowchart|figure|svg|mermaid)|dessine[- ]?moi|illustre[- ]?moi|génère[- ]?moi\s+(un|une)\s+(image|diagramme|schéma|schema|graphique)|create\s+(a|an|the)\s+(image|diagram|chart|graph|flowchart|figure))\b/i;
+
+  if (strongVisual.test(msg)) return true;
+
+  // Combinaison verbe + mot-clé visuel
+  if (visualVerbs.test(msg) && visualKeywords.test(msg)) return true;
+
+  // Demande directe de type de diagramme
+  const diagramTypes =
+    /\b(diagramme\s+(de\s+)?(classe|séquence|sequence|flux|activité|activite|état|etat|cas\s+d'utilisation|use\s+case|entité|entite|relation|er)|class\s+diagram|sequence\s+diagram|flowchart|er\s+diagram|state\s+diagram|activity\s+diagram|use\s+case\s+diagram)\b/i;
+  if (diagramTypes.test(msg)) return true;
+
+  return false;
 }
 
 /** Extrait un nom de projet court depuis le message */
@@ -953,13 +1364,18 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     }
 
     // ══════════════════════════════════════════════════════════════
+    // INTENT DETECTION: demande visuelle → routage vers Kimi
+    // ══════════════════════════════════════════════════════════════
+    const isVisualRequest = detectVisualIntent(content);
+
+    // ══════════════════════════════════════════════════════════════
     // DEFAULT: Chat normal avec tool calling
     // ══════════════════════════════════════════════════════════════
 
     // Step 1: Understanding
     const understandStepId = addStep(sessionId, {
       type: 'understanding',
-      label: 'Compréhension de la demande',
+      label: isVisualRequest ? 'Détection de demande visuelle' : 'Compréhension de la demande',
     });
 
       // Build API messages - le routeur injecte le prompt système optimisé pour le cache
@@ -968,11 +1384,28 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       .getMessagesForAPI()
       .filter((m) => m.role === 'user' || m.role === 'assistant' || m.role === 'system');
 
+    const systemPrompt = isVisualRequest
+      ? `Tu es ANZAR, un assistant IA expert en création de contenu visuel. Tu es spécialisé dans la génération d'images, diagrammes, schémas, graphiques et illustrations.
+
+Quand on te demande un diagramme ou schéma :
+- Utilise le format Mermaid (entre des blocs \`\`\`mermaid) pour les diagrammes de flux, séquence, classe, état, ER, Gantt, pie charts, mind maps, etc.
+- Utilise SVG (entre des blocs \`\`\`svg ou \`\`\`html) pour les illustrations personnalisées, infographies ou visuels complexes.
+- Structure le diagramme de manière claire et lisible avec des labels en français.
+
+Quand on te demande une image ou illustration :
+- Décris l'image en détail et génère un SVG si possible.
+- Pour les graphiques de données, utilise Mermaid pie/bar/line charts.
+
+Quand on te demande un organigramme, flowchart ou carte mentale :
+- Utilise Mermaid flowchart (graph TD/LR) ou mindmap.
+
+Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné d'une brève explication. Ne te contente jamais de décrire — génère le visuel.`
+      : "Tu es ANZAR, un assistant IA intelligent. Tu peux chercher des informations sur le web. Si tu proposes des commandes, mets-les dans un bloc ```bash```.";
+
       const rawMessages = [
       {
         role: 'system' as const,
-        content:
-          "Tu es ANZAR, un assistant IA intelligent. Tu peux chercher des informations sur le web. Si tu proposes des commandes, mets-les dans un bloc ```bash```.",
+        content: systemPrompt,
       },
       ...history.map((m) => ({ role: m.role as any, content: m.content })),
     ];
@@ -996,57 +1429,67 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     updateStreamingContent('');
 
     // Routing info captured during stream
-    let routingProvider = 'deepseek';
-    let routingTaskType = 'chat';
-    let routingReason = '';
+    let routingProvider = isVisualRequest ? 'kimi' : 'deepseek';
+    let routingTaskType = isVisualRequest ? 'visual' : 'chat';
+    let routingReason = isVisualRequest ? 'visual-intent-detected' : '';
     let routingWasFallback = false;
 
     try {
       let fullContent = '';
+      let reasoningContent = '';
 
       // Step 2: Routing / Classification
       const routingStepId = addStep(sessionId, {
         type: 'analyzing',
-        label: 'Classification de la tache',
+        label: isVisualRequest ? 'Routage vers Kimi (visuel)' : 'Classification de la tache',
       });
 
-      // Smart chat: backend handles web search (Serper) + tool calling
       completeStep(sessionId, routingStepId);
-      addStep(sessionId, { type: 'planning', label: 'Recherche et redaction' });
+      addStep(sessionId, { type: 'planning', label: isVisualRequest ? 'Génération du contenu visuel' : 'Recherche et redaction' });
 
-      const modelId = aiService.resolveModel('deepseek', selectedModel);
+      // Route: Kimi pour le visuel, DeepSeek smartChat pour le reste
+      if (isVisualRequest) {
+        const resp = await aiService.chat(apiMessages as any, {
+          provider: 'kimi',
+          model: selectedModel,
+          temperature: 0.7,
+        });
+        fullContent = resp?.choices?.[0]?.message?.content || '';
+      } else {
+        const modelId = aiService.resolveModel('deepseek', selectedModel);
 
-      const resp = await aiService.smartChat(apiMessages as any, {
-        model: modelId,
-        temperature: 0.7,
-      });
+        const resp = await aiService.smartChat(apiMessages as any, {
+          model: modelId,
+          temperature: 0.7,
+        });
 
-      fullContent = resp?.choices?.[0]?.message?.content || '';
-      const reasoningContent = resp?.choices?.[0]?.message?.reasoning_content || '';
+        fullContent = resp?.choices?.[0]?.message?.content || '';
+        reasoningContent = resp?.choices?.[0]?.message?.reasoning_content || '';
 
-      // Extract bash commands from response and create command cards
-      const ensureCard = useCommandStore.getState().ensureCard;
-      const bashRegex = /```(?:bash|sh|shell)\n([\s\S]*?)```/g;
-      let cmdMatch: RegExpExecArray | null;
-      let cardIdx = 0;
-      while ((cmdMatch = bashRegex.exec(fullContent)) !== null) {
-        const cmds = cmdMatch[1].trim().split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#'));
-        for (const cmd of cmds) {
-          const cardId = `${aiMessageId}::tool::${cardIdx++}`;
-          ensureCard({
-            id: cardId,
-            messageId: aiMessageId,
-            command: cmd.trim(),
-            title: 'Commande proposee',
-            projectId: selectedProjectId,
-            projectPath: selectedProjectPath,
-          });
-          if (selectedProjectPath) {
-            const auto = shouldAutoRunCommand(cmd.trim(), settings);
-            if (auto.ok) void commandCardService.run(cardId);
+        // Extract bash commands from response and create command cards
+        const ensureCard = useCommandStore.getState().ensureCard;
+        const bashRegex = /```(?:bash|sh|shell)\n([\s\S]*?)```/g;
+        let cmdMatch: RegExpExecArray | null;
+        let cardIdx = 0;
+        while ((cmdMatch = bashRegex.exec(fullContent)) !== null) {
+          const cmds = cmdMatch[1].trim().split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#'));
+          for (const cmd of cmds) {
+            const cardId = `${aiMessageId}::tool::${cardIdx++}`;
+            ensureCard({
+              id: cardId,
+              messageId: aiMessageId,
+              command: cmd.trim(),
+              title: 'Commande proposee',
+              projectId: selectedProjectId,
+              projectPath: selectedProjectPath,
+            });
+            if (selectedProjectPath) {
+              const auto = shouldAutoRunCommand(cmd.trim(), settings);
+              if (auto.ok) void commandCardService.run(cardId);
+            }
           }
         }
-      }
+      } // end else (DeepSeek path)
 
       addStep(sessionId, { type: 'complete', label: `Terminé (${((Date.now() - startTime) / 1000).toFixed(1)}s)` });
       endSession(sessionId, 'done');
@@ -1074,9 +1517,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         activitySessionId: sessionId,
         routingInfo: {
           provider: routingProvider,
-          taskType: 'smart_chat',
+          taskType: routingTaskType,
           wasFallback: routingWasFallback,
-          reason: 'smart-chat-with-search',
+          reason: routingReason || 'smart-chat-with-search',
         },
       };
       if (reasoningContent) {
@@ -1093,7 +1536,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         timestamp: Date.now(),
         provider: routingProvider as any,
         model: selectedModel,
-        taskType: 'smart_chat',
+        taskType: routingTaskType,
         inputTokens,
         outputTokens,
         costUSD: cost.costUSD,
@@ -1505,6 +1948,26 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 }
 
 /* ===== Reusable Feature Menu Modal ===== */
+interface SubOption {
+  id: string;
+  label: string;
+  description: string;
+  emoji: string;
+  prompt: string;
+}
+
+interface FeatureOption {
+  id: string;
+  title: string;
+  description: string;
+  icon: React.ElementType;
+  color: string;
+  prompt: string;
+  opensFileDialog?: boolean;
+  tag?: string;
+  subOptions?: SubOption[];
+}
+
 function FeatureMenuModal({
   title, subtitle, icon: TitleIcon, iconColor, options, onSelect, onClose,
 }: {
@@ -1512,12 +1975,13 @@ function FeatureMenuModal({
   subtitle: string;
   icon: React.ElementType;
   iconColor: string;
-  options: { id: string; title: string; description: string; icon: React.ElementType; color: string; prompt: string; opensFileDialog?: boolean }[];
-  onSelect: (option: typeof options[number]) => void;
+  options: FeatureOption[];
+  onSelect: (option: FeatureOption) => void;
   onClose: () => void;
 }) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
+  const [expandedSub, setExpandedSub] = useState<string | null>(null);
   const idsRef = useRef({
     titleId: `modal_title_${Math.random().toString(16).slice(2)}`,
     descId: `modal_desc_${Math.random().toString(16).slice(2)}`,
@@ -1591,43 +2055,122 @@ function FeatureMenuModal({
           </button>
         </div>
 
-        {/* Options grid */}
-        <div className={cn(
-          'grid gap-3',
-          options.length <= 4 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
-        )}>
-          {options.map((option) => {
-            const Icon = option.icon;
+        {/* Options grid — or sub-options panel when expanded */}
+        {expandedSub ? (
+          (() => {
+            const parent = options.find((o) => o.id === expandedSub);
+            if (!parent?.subOptions) return null;
             return (
-              <button
-                key={option.id}
-                onClick={() => onSelect(option)}
-                className={cn(
-                  'group flex items-start gap-3 p-4 rounded-xl border border-border-subtle',
-                  'bg-surface-default hover:bg-surface-hover',
-                  'transition-all duration-200 text-left',
-                  'hover:border-accent-primary/30 hover:shadow-md',
-                )}
-              >
-                <div className={cn(
-                  'w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0',
-                  'group-hover:scale-110 transition-transform duration-200 shadow-sm',
-                  option.color,
-                )}>
-                  <Icon size={16} className="text-white" />
+              <div className="space-y-3">
+                {/* Back button */}
+                <button
+                  onClick={() => setExpandedSub(null)}
+                  className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mb-1"
+                >
+                  <ChevronLeft size={14} />
+                  Retour aux options
+                </button>
+                <p className="text-sm font-semibold text-text-primary mb-2">
+                  {parent.title} — choisis le type :
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {parent.subOptions.map((sub) => (
+                    <button
+                      key={sub.id}
+                      onClick={() => {
+                        // Build a synthetic FeatureOption from the sub-option
+                        onSelect({
+                          ...parent,
+                          id: sub.id,
+                          title: sub.label,
+                          description: sub.description,
+                          prompt: sub.prompt,
+                          opensFileDialog: true,
+                        });
+                      }}
+                      className={cn(
+                        'group flex items-start gap-3 p-4 rounded-xl border border-border-subtle',
+                        'bg-surface-default hover:bg-surface-hover',
+                        'transition-all duration-200 text-left',
+                        'hover:border-emerald-500/40 hover:shadow-md',
+                      )}
+                    >
+                      <span className="text-2xl flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
+                        {sub.emoji}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-text-primary mb-0.5">
+                          {sub.label}
+                        </p>
+                        <p className="text-[11px] text-text-muted leading-relaxed">
+                          {sub.description}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-text-primary mb-0.5">
-                    {option.title}
-                  </p>
-                  <p className="text-[11px] text-text-muted leading-relaxed">
-                    {option.description}
-                  </p>
-                </div>
-              </button>
+              </div>
             );
-          })}
-        </div>
+          })()
+        ) : (
+          <div className={cn(
+            'grid gap-3',
+            options.length <= 4 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
+          )}>
+            {options.map((option) => {
+              const Icon = option.icon;
+              return (
+                <button
+                  key={option.id}
+                  onClick={() => {
+                    if (option.subOptions && option.subOptions.length > 0) {
+                      setExpandedSub(option.id);
+                    } else {
+                      onSelect(option);
+                    }
+                  }}
+                  className={cn(
+                    'group flex items-start gap-3 p-4 rounded-xl border border-border-subtle',
+                    'bg-surface-default hover:bg-surface-hover',
+                    'transition-all duration-200 text-left',
+                    'hover:border-accent-primary/30 hover:shadow-md',
+                  )}
+                >
+                  <div className={cn(
+                    'w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0',
+                    'group-hover:scale-110 transition-transform duration-200 shadow-sm',
+                    option.color,
+                  )}>
+                    <Icon size={16} className="text-white" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <p className="text-sm font-semibold text-text-primary">
+                        {option.title}
+                      </p>
+                      {option.tag && (
+                        <span className={cn(
+                          'text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full',
+                          option.tag === 'Nouveau' && 'bg-accent-primary/15 text-accent-primary',
+                          option.tag === 'Upload' && 'bg-emerald-500/15 text-emerald-500',
+                          option.tag === 'Populaire' && 'bg-amber-500/15 text-amber-500',
+                        )}>
+                          {option.tag}
+                        </span>
+                      )}
+                      {option.subOptions && (
+                        <ChevronRight size={12} className="text-text-muted ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-text-muted leading-relaxed">
+                      {option.description}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

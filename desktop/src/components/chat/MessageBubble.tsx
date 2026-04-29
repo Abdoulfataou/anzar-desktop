@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Bug, Presentation } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Bug, Presentation, FileCheck } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
@@ -12,7 +12,7 @@ import CommandCard from '@/components/chat/CommandCard';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
-import { exportToDocx, exportToPdf } from '@/services/documentExport';
+import { exportToDocx, exportToPdf, isCorrection, cleanCorrectionForExport } from '@/services/documentExport';
 import { exportToPptx } from '@/services/presentationExport';
 import toast from 'react-hot-toast';
 import type { Message } from '@/types';
@@ -100,11 +100,18 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     }
   };
 
-  const handleExportDocx = async () => {
+  // Detect correction content → export propre par défaut (sans annotations)
+  const contentIsCorrection = useMemo(() => isCorrection(message.content), [message.content]);
+
+  const handleExportDocx = async (annotated = false) => {
     if (exporting) return;
     setExporting('docx');
     try {
-      await exportToDocx(message.content);
+      const content = (!annotated && contentIsCorrection)
+        ? cleanCorrectionForExport(message.content)
+        : message.content;
+      const suffix = (!annotated && contentIsCorrection) ? '_corrige' : '';
+      await exportToDocx(content, `anzar_document${suffix}_${Date.now()}.docx`);
     } catch (err) {
       console.error('Export DOCX failed:', err);
     } finally {
@@ -112,11 +119,15 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     }
   };
 
-  const handleExportPdf = async () => {
+  const handleExportPdf = async (annotated = false) => {
     if (exporting) return;
     setExporting('pdf');
     try {
-      await exportToPdf(message.content);
+      const content = (!annotated && contentIsCorrection)
+        ? cleanCorrectionForExport(message.content)
+        : message.content;
+      const suffix = (!annotated && contentIsCorrection) ? '_corrige' : '';
+      await exportToPdf(content, `anzar_document${suffix}_${Date.now()}.pdf`);
     } catch (err) {
       console.error('Export PDF failed:', err);
     } finally {
@@ -127,25 +138,33 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const handleExportPptx = async () => {
     if (exporting || exportingPptx) return;
     setExportingPptx(true);
-    const t = toast.loading('Génération PowerPoint…');
+    const t = toast.loading('Structuration IA + generation PowerPoint…');
     try {
       await exportToPptx(message.content);
-      toast.success('PowerPoint exporté', { id: t });
-    } catch (err) {
+      toast.success('PowerPoint exporté avec succes', { id: t });
+    } catch (err: any) {
       console.error('Export PPTX failed:', err);
-      toast.error('Export PowerPoint impossible', { id: t });
+      const msg = err?.message?.includes('scope')
+        ? 'Emplacement non autorise — choisis Documents ou Bureau'
+        : 'Export PowerPoint echoue — verifie les permissions';
+      toast.error(msg, { id: t });
     } finally {
       setExportingPptx(false);
     }
   };
 
-  /** Show export buttons for document-like content (student assistant, reports, etc.) */
-  const looksLikeDocument =
-    message.content.length > 200 ||
-    message.content.includes('\n') ||
-    /(^|\n)#{1,3}\s/m.test(message.content) ||
-    /(^|\n)\d+[.)]\s/m.test(message.content) ||
-    /(^|\n)[-*•]\s/m.test(message.content);
+  /** Show export buttons only for substantial document-like content */
+  const looksLikeDocument = (() => {
+    const c = message.content;
+    if (c.length < 500) return false; // Réponses courtes = pas d'export
+    const hasHeadings = /(^|\n)#{1,3}\s/m.test(c);
+    const hasLists = /(^|\n)[-*•]\s/m.test(c) || /(^|\n)\d+[.)]\s/m.test(c);
+    const hasCodeBlocks = /```[\s\S]*?```/m.test(c);
+    const hasMultipleParagraphs = (c.match(/\n\n/g) || []).length >= 2;
+    // Au moins 2 indicateurs de structure documentaire
+    const structureScore = [hasHeadings, hasLists, hasCodeBlocks, hasMultipleParagraphs].filter(Boolean).length;
+    return structureScore >= 2 || c.length > 2000;
+  })();
 
   const showExportButtons = looksLikeDocument && !message.isStreaming && !message.isError;
 
@@ -390,19 +409,53 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
           {showExportButtons && (
             <>
               <div className="w-px h-3 bg-border-subtle mx-1" />
-              <button
-                onClick={handleExportDocx}
-                disabled={exporting !== null}
-                className={cn(
-                  'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
-                  exporting === 'docx'
-                    ? 'text-accent-primary bg-accent-primary/10'
-                    : 'text-text-muted hover:text-accent-primary hover:bg-accent-primary/10'
-                )}
-              >
-                <FileText size={13} />
-                <span>{exporting === 'docx' ? 'Export...' : 'Word'}</span>
-              </button>
+
+              {/* Correction → 2 boutons Word (propre + annoté) */}
+              {contentIsCorrection ? (
+                <>
+                  <button
+                    onClick={() => handleExportDocx(false)}
+                    disabled={exporting !== null}
+                    className={cn(
+                      'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
+                      exporting === 'docx'
+                        ? 'text-accent-primary bg-accent-primary/10'
+                        : 'text-text-muted hover:text-accent-primary hover:bg-accent-primary/10'
+                    )}
+                    title="Exporter le texte corrigé propre (sans annotations)"
+                  >
+                    <FileCheck size={13} />
+                    <span>{exporting === 'docx' ? 'Export...' : 'Word propre'}</span>
+                  </button>
+                  <button
+                    onClick={() => handleExportDocx(true)}
+                    disabled={exporting !== null}
+                    className={cn(
+                      'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
+                      'text-text-muted hover:text-amber-500 hover:bg-amber-500/10'
+                    )}
+                    title="Exporter avec les annotations et explications"
+                  >
+                    <FileText size={13} />
+                    <span>Word annoté</span>
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => handleExportDocx(false)}
+                  disabled={exporting !== null}
+                  className={cn(
+                    'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
+                    exporting === 'docx'
+                      ? 'text-accent-primary bg-accent-primary/10'
+                      : 'text-text-muted hover:text-accent-primary hover:bg-accent-primary/10'
+                  )}
+                >
+                  <FileText size={13} />
+                  <span>{exporting === 'docx' ? 'Export...' : 'Word'}</span>
+                </button>
+              )}
+
               <button
                 onClick={handleExportPptx}
                 disabled={exporting !== null || exportingPptx}
@@ -417,7 +470,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                 <span>{exportingPptx ? 'Export...' : 'PPTX'}</span>
               </button>
               <button
-                onClick={handleExportPdf}
+                onClick={() => handleExportPdf(false)}
                 disabled={exporting !== null}
                 className={cn(
                   'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',

@@ -43,7 +43,10 @@
           "$DOCUMENTS/**",
           "$DESKTOP/**",
           "$DOWNLOAD/**",
-          "$HOME/**"
+          "$DOCUMENTS/ANZAR-Projects/**",
+          "$HOME/Projects/**",
+          "$HOME/projects/**",
+          "$HOME/Developer/**"
         ]
       },
       "dialog": {

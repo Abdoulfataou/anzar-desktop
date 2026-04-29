@@ -7,6 +7,7 @@ import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import { useAccountStore } from '@/stores/accountStore';
 import { authService } from '@/services/auth';
 import { autoCheckOncePerDay } from '@/services/updateService';
@@ -19,8 +20,14 @@ const LoginPage = lazy(() => import('@/pages/LoginPage'));
 
 function LoadingFallback() {
   return (
-    <div className="flex items-center justify-center h-full min-h-[200px]">
-      <Loader2 className="w-6 h-6 text-accent-primary animate-spin" />
+    <div className="flex items-center justify-center h-full min-h-[200px] bg-bg-primary">
+      <div className="text-center space-y-4">
+        <div className="w-12 h-12 mx-auto rounded-2xl gradient-bg flex items-center justify-center shadow-lg animate-pulse">
+          <span className="text-white text-lg font-bold">A</span>
+        </div>
+        <Loader2 className="w-5 h-5 text-accent-primary animate-spin mx-auto" />
+        <p className="text-xs text-text-muted">Chargement...</p>
+      </div>
     </div>
   );
 }
@@ -54,27 +61,29 @@ export default function App() {
   if (booting) return <LoadingFallback />;
 
   return (
-    <Suspense fallback={<LoadingFallback />}>
-      <Routes>
-        {/* Public route */}
-        <Route path="login" element={<LoginPage />} />
+    <ErrorBoundary>
+      <Suspense fallback={<LoadingFallback />}>
+        <Routes>
+          {/* Public route */}
+          <Route path="login" element={<LoginPage />} />
 
-        {/* Protected routes */}
-        <Route element={<RequireAuth />}>
-          <Route element={<AppLayout />}>
-            {/* Vue principale unifiée (chat + accueil) */}
-            <Route index element={<ChatPage />} />
+          {/* Protected routes */}
+          <Route element={<RequireAuth />}>
+            <Route element={<AppLayout />}>
+              {/* Vue principale unifiée (chat + accueil) */}
+              <Route index element={<ChatPage />} />
 
-            {/* Workspace projet (éditeur + chat contextuel) */}
-            <Route path="projects/:id" element={<ProjectWorkspacePage />} />
+              {/* Workspace projet (éditeur + chat contextuel) */}
+              <Route path="projects/:id" element={<ProjectWorkspacePage />} />
 
-            {/* Paramètres */}
-            <Route path="settings" element={<SettingsPage />} />
+              {/* Paramètres */}
+              <Route path="settings" element={<SettingsPage />} />
+            </Route>
           </Route>
-        </Route>
 
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }

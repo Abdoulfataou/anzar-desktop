@@ -415,7 +415,7 @@ class TerminalService {
    */
   async exec(
     command: string,
-    options: { cwd?: string; timeout?: number } = {}
+    options: { cwd?: string; timeout?: number; silent?: boolean } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
 
@@ -450,8 +450,15 @@ class TerminalService {
       let stdout = '';
       let stderr = '';
 
-      cmd.stdout.on('data', (line: string) => { stdout += line + '\n'; });
-      cmd.stderr.on('data', (line: string) => { stderr += line + '\n'; });
+      const execProcId = `exec-${++this.processCounter}-${Date.now()}`;
+      cmd.stdout.on('data', (line: string) => {
+        stdout += line + '\n';
+        if (!options.silent) this.emitOutput(execProcId, 'stdout', line);
+      });
+      cmd.stderr.on('data', (line: string) => {
+        stderr += line + '\n';
+        if (!options.silent) this.emitOutput(execProcId, 'stderr', line);
+      });
 
       const child = await cmd.spawn();
 
@@ -772,7 +779,7 @@ class TerminalService {
    */
   async isCommandAvailable(command: string): Promise<boolean> {
     const checkCmd = this.isWindows ? `where ${command}` : `which ${command}`;
-    const result = await this.exec(checkCmd, { timeout: 5000 });
+    const result = await this.exec(checkCmd, { timeout: 5000, silent: true });
     return result.success;
   }
 
@@ -780,7 +787,7 @@ class TerminalService {
    * Get Node.js version
    */
   async getNodeVersion(): Promise<string | null> {
-    const result = await this.exec('node --version', { timeout: 5000 });
+    const result = await this.exec('node --version', { timeout: 5000, silent: true });
     return result.success ? result.stdout.trim() : null;
   }
 
@@ -788,7 +795,7 @@ class TerminalService {
    * Get npm version
    */
   async getNpmVersion(): Promise<string | null> {
-    const result = await this.exec('npm --version', { timeout: 5000 });
+    const result = await this.exec('npm --version', { timeout: 5000, silent: true });
     return result.success ? result.stdout.trim() : null;
   }
 
@@ -796,7 +803,7 @@ class TerminalService {
    * Get Python version
    */
   async getPythonVersion(): Promise<string | null> {
-    const result = await this.exec('python3 --version', { timeout: 5000 });
+    const result = await this.exec('python3 --version', { timeout: 5000, silent: true });
     return result.success ? result.stdout.trim() : null;
   }
 
@@ -804,7 +811,7 @@ class TerminalService {
    * Get git version
    */
   async getGitVersion(): Promise<string | null> {
-    const result = await this.exec('git --version', { timeout: 5000 });
+    const result = await this.exec('git --version', { timeout: 5000, silent: true });
     return result.success ? result.stdout.trim() : null;
   }
 

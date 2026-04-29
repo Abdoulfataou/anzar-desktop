@@ -85,6 +85,46 @@ function stripInline(text: string): string {
 }
 
 // ============================================================================
+// CORRECTION CLEANING — Export propre (sans annotations pédagogiques)
+// ============================================================================
+
+/** Detect if content is a correction (has ~~strikethrough~~ or → patterns) */
+export function isCorrection(content: string): boolean {
+  const strikeCount = (content.match(/~~.+?~~/g) || []).length;
+  const arrowCount = (content.match(/→/g) || []).length;
+  return strikeCount >= 2 || (strikeCount >= 1 && arrowCount >= 1);
+}
+
+/**
+ * Clean correction content for export:
+ * - Remove ~~old text~~ (strikethrough = deleted)
+ * - Remove (explanations in parentheses after corrections)
+ * - Keep only the corrected text (bold → plain)
+ * - Remove correction summary sections (score, recurring errors)
+ */
+export function cleanCorrectionForExport(content: string): string {
+  let cleaned = content;
+
+  // Remove "~~old text~~ → " patterns entirely (keep what follows)
+  cleaned = cleaned.replace(/~~.+?~~\s*→\s*/g, '');
+
+  // Remove standalone ~~strikethrough~~ (deleted text)
+  cleaned = cleaned.replace(/~~.+?~~/g, '');
+
+  // Remove inline explanations: (explication de la correction)
+  // Only match parentheses that look like correction explanations
+  cleaned = cleaned.replace(/\s*\((?:règle|amélioration|correction|cohérence|style|grammaire|orthographe|syntaxe|accord|conjugaison|ponctuation|registre|clarté|précision|redondance|répétition|formulation|concordance)[^)]{0,120}\)/gi, '');
+
+  // Remove correction summary sections at the end
+  cleaned = cleaned.replace(/\n---[\s\S]*?(corrections?|erreurs?\s+récurrentes|note\s+de\s+qualité|conseils?\s+pour)[\s\S]*$/i, '');
+
+  // Clean up multiple blank lines
+  cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+  return cleaned.trim();
+}
+
+// ============================================================================
 // EXPORT TO DOCX
 // ============================================================================
 
@@ -248,18 +288,29 @@ function buildTextRuns(text: string): any[] {
   const TR = _TextRun;
   if (!TR) return []; // Safety — should never happen
   const runs: any[] = [];
-  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|([^*`]+))/g;
+  // Extended regex: ~~strikethrough~~ for track changes (deleted text),
+  // **bold**, *italic*, `code`, and plain text
+  const regex = /(~~(.+?)~~|\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|([^~*`]+))/g;
   let match;
 
   while ((match = regex.exec(text)) !== null) {
     if (match[2]) {
-      runs.push(new TR({ text: match[2], bold: true, font: 'Calibri', size: 22 }));
+      // Strikethrough = deleted text (red + barré) — track changes style
+      runs.push(new TR({
+        text: match[2],
+        strike: true,
+        color: 'DC2626',
+        font: 'Calibri',
+        size: 22,
+      }));
     } else if (match[3]) {
-      runs.push(new TR({ text: match[3], italics: true, font: 'Calibri', size: 22 }));
+      runs.push(new TR({ text: match[3], bold: true, font: 'Calibri', size: 22 }));
     } else if (match[4]) {
-      runs.push(new TR({ text: match[4], font: 'Consolas', size: 20, color: '6C3AED' }));
+      runs.push(new TR({ text: match[4], italics: true, font: 'Calibri', size: 22 }));
     } else if (match[5]) {
-      runs.push(new TR({ text: match[5], font: 'Calibri', size: 22 }));
+      runs.push(new TR({ text: match[5], font: 'Consolas', size: 20, color: '6C3AED' }));
+    } else if (match[6]) {
+      runs.push(new TR({ text: match[6], font: 'Calibri', size: 22 }));
     }
   }
 
@@ -319,13 +370,24 @@ export async function exportToPdf(content: string, filename?: string): Promise<v
     </div>
   `;
 
-  // Use html2pdf.js to convert
-  const html2pdf = (await import('html2pdf.js')).default;
+  const name = filename || `anzar_document_${Date.now()}.pdf`;
+
+  // Use html2pdf.js to convert — with offline graceful fallback
+  let html2pdf: any;
+  try {
+    html2pdf = (await import('html2pdf.js')).default;
+  } catch {
+    // html2pdf.js not available (offline or bundle issue) — fallback to DOCX export
+    console.warn('html2pdf.js unavailable — falling back to DOCX export');
+    const toast = (await import('react-hot-toast')).default;
+    toast.error('Export PDF indisponible hors ligne — export Word a la place.');
+    await exportToDocx(content, name.replace(/\.pdf$/, '.docx'));
+    return;
+  }
+
   const container = document.createElement('div');
   container.innerHTML = html;
   document.body.appendChild(container);
-
-  const name = filename || `anzar_document_${Date.now()}.pdf`;
 
   try {
     const pdfBlob: Blob = await html2pdf()
@@ -352,9 +414,10 @@ function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;');
 }
 
-/** Convert markdown bold/italic to HTML */
+/** Convert markdown bold/italic/strikethrough to HTML */
 function stripInlineForHtml(text: string): string {
   return text
+    .replace(/~~(.+?)~~/g, '<del style="color:#DC2626;text-decoration:line-through;">$1</del>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/`(.+?)`/g, '<code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;font-size:11px;">$1</code>')

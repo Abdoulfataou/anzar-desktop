@@ -15,6 +15,7 @@ interface AccountStore {
   credits: CreditBalance;
   transactions: Transaction[];
   isLoggedIn: boolean;
+  hasCompletedOnboarding: boolean;
 
   // Actions
   setUser: (user: UserProfile) => void;
@@ -31,6 +32,9 @@ interface AccountStore {
 
   /** Sync credits from server response (source of truth) */
   syncCreditsFromServer: (serverCredits: { balance_fcfa: number; total_recharged: number; total_used: number }) => void;
+
+  /** Mark onboarding as completed */
+  completeOnboarding: () => void;
 
   // Selectors
   /** Vérifie si l'utilisateur a du crédit pour continuer */
@@ -53,8 +57,10 @@ export const useAccountStore = create<AccountStore>()(
       credits: defaultCredits,
       transactions: [],
       isLoggedIn: false,
+      hasCompletedOnboarding: false,
 
       setUser: (user) => set({ user, isLoggedIn: true }),
+      completeOnboarding: () => set({ hasCompletedOnboarding: true }),
 
       logout: () =>
         set({
@@ -142,6 +148,7 @@ export const useAccountStore = create<AccountStore>()(
         credits: state.credits,
         transactions: state.transactions,
         isLoggedIn: state.isLoggedIn,
+        hasCompletedOnboarding: state.hasCompletedOnboarding,
       }),
     }
   )

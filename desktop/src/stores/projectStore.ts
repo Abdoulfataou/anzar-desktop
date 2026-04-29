@@ -46,8 +46,8 @@ interface ProjectStore {
   /** Set the active project */
   setActiveProject: (id: string | null) => void;
 
-  /** Replace all files in a project (for loading from disk) */
-  setProjectFiles: (projectId: string, files: ProjectFile[]) => void;
+  /** Replace all files in a project (for loading from disk). If merge=true, keeps locally modified files. */
+  setProjectFiles: (projectId: string, files: ProjectFile[], merge?: boolean) => void;
 
   /** Add a file to a project */
   addFile: (projectId: string, file: ProjectFile) => void;
@@ -233,11 +233,39 @@ export const useProjectStore = create<ProjectStore>()(
       /**
        * Add a file to a project
        */
-      setProjectFiles: (projectId: string, files: ProjectFile[]) => {
+      setProjectFiles: (projectId: string, files: ProjectFile[], merge = false) => {
         set((state) => ({
-          projects: state.projects.map((p) =>
-            p.id === projectId ? { ...p, files, updatedAt: Date.now() } : p
-          ),
+          projects: state.projects.map((p) => {
+            if (p.id !== projectId) return p;
+
+            if (!merge || p.files.length === 0) {
+              // Full replacement (no existing files or merge disabled)
+              return { ...p, files, updatedAt: Date.now() };
+            }
+
+            // Merge strategy: keep locally modified files, add new ones
+            const existingMap = new Map(p.files.map((f) => [f.path, f]));
+            const merged: ProjectFile[] = [];
+
+            for (const incoming of files) {
+              const existing = existingMap.get(incoming.path);
+              if (existing && existing.updatedAt > (existing.createdAt || 0)) {
+                // File was locally modified — keep the local version
+                merged.push(existing);
+              } else {
+                // New file or unmodified — use incoming
+                merged.push(incoming);
+              }
+              existingMap.delete(incoming.path);
+            }
+
+            // Keep any local-only files not present in incoming set
+            for (const localOnly of existingMap.values()) {
+              merged.push(localOnly);
+            }
+
+            return { ...p, files: merged, updatedAt: Date.now() };
+          }),
         }));
       },
 

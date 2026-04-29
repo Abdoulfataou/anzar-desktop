@@ -34,7 +34,7 @@ from database import (
     get_credits, add_credits, deduct_credits, has_credits,
     record_usage, get_usage_stats, get_usage_history, get_transactions,
     create_project, update_project, get_project, get_user_projects, delete_project,
-    cleanup_rate_limits,
+    cleanup_rate_limits, cleanup_old_projects,
     create_otp, verify_otp, get_recent_otp_count, cleanup_expired_otps,
     get_rate_limit_count, record_rate_limit_hit,
     # Admin
@@ -78,6 +78,8 @@ async def lifespan(app: FastAPI):
             try:
                 await cleanup_expired_otps()
                 await cleanup_rate_limits(max_age_seconds=86400)
+                _cleanup_project_states()
+                await cleanup_old_projects(max_age_days=90)
             except Exception as e:
                 logger.warning(f"Housekeeping error: {e}")
             # every 15 minutes
@@ -346,6 +348,44 @@ async def verify_auth(request: Request):
         raise HTTPException(401, "Invalid or expired token")
 
     return {"valid": True, "user_id": payload.get("sub")}
+
+
+@app.post("/api/auth/refresh")
+async def refresh_token(request: Request):
+    """Issue a new JWT if the current one is still valid (or recently expired within grace window)."""
+    auth = request.headers.get("Authorization", "")
+    if not auth.startswith("Bearer "):
+        raise HTTPException(401, "Missing authorization token")
+
+    raw_token = auth[7:]
+    payload = verify_token(raw_token)
+
+    if not payload:
+        # Check if token expired within the last 7 days (grace period for refresh)
+        import json as _json
+        try:
+            payload_b64 = raw_token.split(".")[0]
+            import base64
+            padded = payload_b64 + "=" * (-len(payload_b64) % 4)
+            decoded = _json.loads(base64.urlsafe_b64decode(padded))
+            exp = decoded.get("exp", 0)
+            grace_seconds = 7 * 24 * 3600  # 7 days
+            if int(time.time()) - exp > grace_seconds:
+                raise HTTPException(401, "Token expired beyond refresh window")
+            # Token is within grace period — re-issue
+            user_id = decoded.get("sub")
+            if not user_id:
+                raise HTTPException(401, "Invalid token payload")
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(401, "Invalid token")
+    else:
+        user_id = payload.get("sub")
+
+    # Issue fresh token
+    new_token = create_token(user_id=user_id)
+    return {"token": new_token, "user_id": user_id}
 
 
 # ============================================================================
@@ -918,9 +958,9 @@ async def deepseek_upload_file(
 
     if resp.status_code >= 400:
         try:
-            return JSONResponse(status_code=resp.status_code, content=resp.json())
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": f"Erreur service IA (HTTP {resp.status_code})"}})
         except Exception:
-            return JSONResponse(status_code=resp.status_code, content={"error": {"message": resp.text[:500]}})
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": f"Erreur service IA (HTTP {resp.status_code})"}})
 
     return JSONResponse(content=resp.json())
 
@@ -951,9 +991,9 @@ async def deepseek_create_batch(body: DeepSeekBatchCreateRequest, user: dict = D
 
     if resp.status_code >= 400:
         try:
-            return JSONResponse(status_code=resp.status_code, content=resp.json())
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": f"Erreur service IA (HTTP {resp.status_code})"}})
         except Exception:
-            return JSONResponse(status_code=resp.status_code, content={"error": {"message": resp.text[:500]}})
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": f"Erreur service IA (HTTP {resp.status_code})"}})
     return JSONResponse(content=resp.json())
 
 
@@ -972,9 +1012,9 @@ async def deepseek_get_batch(batch_id: str, user: dict = Depends(get_current_use
 
     if resp.status_code >= 400:
         try:
-            return JSONResponse(status_code=resp.status_code, content=resp.json())
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": f"Erreur service IA (HTTP {resp.status_code})"}})
         except Exception:
-            return JSONResponse(status_code=resp.status_code, content={"error": {"message": resp.text[:500]}})
+            return JSONResponse(status_code=resp.status_code, content={"error": {"message": f"Erreur service IA (HTTP {resp.status_code})"}})
     return JSONResponse(content=resp.json())
 
 
@@ -993,7 +1033,7 @@ async def deepseek_get_file_content(file_id: str, user: dict = Depends(get_curre
         resp = await client.get(f"{_deepseek_v1_base()}/files/{file_id}/content", headers=headers)
 
     if resp.status_code >= 400:
-        return PlainTextResponse(resp.text, status_code=resp.status_code)
+        return PlainTextResponse(f"Erreur service IA (HTTP {resp.status_code})", status_code=resp.status_code)
 
     text = resp.text or ""
 
@@ -1160,12 +1200,12 @@ async def _proxy_stream_with_billing(
     email: str, provider: str, start_time: float,
 ) -> StreamingResponse:
     """Forward streaming SSE request, then bill at the end."""
-    client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
 
     async def stream_generator():
         input_tokens = 0
         output_tokens = 0
         model_name = body.get("model", "unknown")
+        client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
 
         try:
             async with client.stream("POST", url, headers=headers, json=body) as resp:
@@ -1244,7 +1284,18 @@ async def _proxy_stream_with_billing(
                             output_tokens,
                         )
                 except Exception as e:
-                    logger.error(f"Stream billing error: {e}")
+                    logger.error(f"BILLING_FAILED: user={email} provider={provider} model={model_name} "
+                                 f"tokens_in={input_tokens} tokens_out={output_tokens} "
+                                 f"cost_fcfa={cost_fcfa} error={e}")
+                    # Best-effort: record the failed billing so it can be audited/retried
+                    try:
+                        await record_usage(
+                            email, provider, model_name,
+                            input_tokens, output_tokens, cost_usd, cost_fcfa,
+                            duration_ms, task_type="billing_failed",
+                        )
+                    except Exception:
+                        pass  # Already logged above
 
     return StreamingResponse(
         stream_generator(),
@@ -1437,9 +1488,17 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                     if message:
                         a["message"] = message
 
+        async def persist_agents():
+            """Persist agent states to DB so they survive server restarts."""
+            try:
+                await update_project(project_id, agent_states=json.dumps(state["agents"]))
+            except Exception as pe:
+                logger.warning(f"Could not persist agent states: {pe}")
+
         try:
             # ── Coder ──
             update_agent("coder", "running", 10, "Generation du code...")
+            await persist_agents()
 
             coder = CoderAgent(deepseek_client=_deepseek_client)
             architecture = plan.get("architecture", plan)
@@ -1452,6 +1511,7 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
 
             if coder_result.get("status") == "error":
                 update_agent("coder", "error", 0, coder_result.get("error", "Erreur"))
+                await persist_agents()
                 state["status"] = "error"
                 await update_project(project_id, status="error")
                 return
@@ -1459,10 +1519,12 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             files = coder_result.get("files", {})
             total_tokens += coder_result.get("tokens_used", 0)
             update_agent("coder", "done", 100, f"{len(files)} fichiers generes")
+            await persist_agents()
 
             # ── Tester + Executor EN PARALLELE ──
             update_agent("tester", "running", 10, "Analyse qualite...")
             update_agent("executor", "running", 10, "Ecriture des fichiers...")
+            await persist_agents()
 
             async def run_tester():
                 tester = TesterAgent(deepseek_client=_deepseek_client)
@@ -1493,6 +1555,7 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                 quality = report.get("code_quality", "?")
                 issues = len(report.get("issues", []))
                 update_agent("tester", "done", 100, f"Qualite: {quality}/10 - {issues} issues")
+            await persist_agents()
 
             # Process executor result
             if isinstance(exec_result, Exception):
@@ -1507,6 +1570,7 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                 total_tokens += exec_result.get("tokens_used", 0) if isinstance(exec_result, dict) else 0
                 count = exec_result.get("file_count", 0)
                 update_agent("executor", "done", 100, f"{count} fichiers ecrits")
+                await persist_agents()
                 state["status"] = "completed"
                 await update_project(
                     project_id,
@@ -1524,11 +1588,19 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                         await deduct_credits(email, cost_fcfa, f"Exec: {project_id}", "deepseek", settings.deepseek_model)
                         await update_project(project_id, cost_fcfa=cost_fcfa)
                 except Exception as e:
-                    logger.error(f"Exec billing error: {e}")
+                    logger.error(f"BILLING_FAILED: user={email} project={project_id} "
+                                 f"tokens={total_tokens} cost_fcfa={cost_fcfa} error={e}")
+                    try:
+                        await record_usage(email, "deepseek", settings.deepseek_model,
+                                           total_tokens // 2, total_tokens // 2,
+                                           cost_usd, cost_fcfa, task_type="billing_failed")
+                    except Exception:
+                        pass
 
         except Exception as e:
             logger.error(f"Execute project error: {e}", exc_info=True)
             update_agent("executor", "error", 0, "Erreur lors de la generation.")
+            await persist_agents()
             state["status"] = "error"
             await update_project(project_id, status="error")
 
@@ -1570,18 +1642,28 @@ async def get_project_status(project_id: str, user: dict = Depends(get_current_u
     if state:
         return JSONResponse(content={"status": state.get("status"), "agents": state.get("agents", [])})
 
-    # Fallback: check DB
+    # Fallback: check DB (recover persisted agent states after server restart)
     project = await get_project(project_id)
     if project:
-        return JSONResponse(content={
-            "status": project.get("status", "unknown"),
-            "agents": [
+        # Try to recover persisted agent states
+        persisted_agents = []
+        raw = project.get("agent_states", "")
+        if raw:
+            try:
+                persisted_agents = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if not persisted_agents:
+            persisted_agents = [
                 {"name": "orchestrator", "status": "idle", "progress": 0},
                 {"name": "planner", "status": "idle", "progress": 0},
                 {"name": "coder", "status": "idle", "progress": 0},
                 {"name": "tester", "status": "idle", "progress": 0},
                 {"name": "executor", "status": "idle", "progress": 0},
-            ],
+            ]
+        return JSONResponse(content={
+            "status": project.get("status", "unknown"),
+            "agents": persisted_agents,
         })
 
     return JSONResponse(content={"status": "unknown", "agents": []})

@@ -9,7 +9,7 @@ import {
   Plus, FolderOpen, FolderKanban, Hash, Settings,
   PanelLeftClose, PanelLeft, Sun, Moon, Trash2,
   MessageSquare, ChevronDown, ChevronRight,
-  User,
+  User, Download, Upload,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import AnzarLogo from '@/components/ui/AnzarLogo';
@@ -108,6 +108,58 @@ export default function Sidebar({
     navigate(`/projects/${projectId}`);
   };
 
+  // Export conversations as JSON via Tauri save dialog
+  const handleExportConversations = useCallback(async () => {
+    try {
+      const allConversations = useChatStore.getState().exportConversations();
+      if (allConversations.length === 0) return;
+
+      const payload = JSON.stringify(
+        { version: 1, exportedAt: new Date().toISOString(), conversations: allConversations },
+        null,
+        2
+      );
+
+      const { save } = await import('@tauri-apps/api/dialog');
+      const { writeTextFile } = await import('@tauri-apps/api/fs');
+      const filePath = await save({
+        title: 'Exporter les conversations',
+        defaultPath: `anzar-conversations-${new Date().toISOString().slice(0, 10)}.json`,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+
+      if (filePath) {
+        await writeTextFile(filePath, payload);
+      }
+    } catch (err) {
+      console.error('Export failed:', err);
+    }
+  }, []);
+
+  // Import conversations from JSON file
+  const handleImportConversations = useCallback(async () => {
+    try {
+      const { open } = await import('@tauri-apps/api/dialog');
+      const { readTextFile } = await import('@tauri-apps/api/fs');
+      const filePath = await open({
+        title: 'Importer des conversations',
+        multiple: false,
+        filters: [{ name: 'JSON', extensions: ['json'] }],
+      });
+
+      if (filePath && typeof filePath === 'string') {
+        const raw = await readTextFile(filePath);
+        const data = JSON.parse(raw);
+        const convs = Array.isArray(data) ? data : data?.conversations;
+        if (Array.isArray(convs) && convs.length > 0) {
+          useChatStore.getState().importConversations(convs);
+        }
+      }
+    } catch (err) {
+      console.error('Import failed:', err);
+    }
+  }, []);
+
   // Sorted data
   const recentConversations = [...conversations]
     .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -182,10 +234,19 @@ export default function Sidebar({
           {showProjects && (
             <div className="mt-1 space-y-0.5">
               {sortedProjects.length === 0 ? (
-                <div className="px-3 py-3 text-center">
-                  <FolderOpen size={20} className="mx-auto mb-1.5 text-text-muted/40" />
-                  <p className="text-[11px] text-text-muted">Aucun projet</p>
-                  <p className="text-[10px] text-text-muted/60">Ajoute un dossier pour commencer</p>
+                <div className="px-3 py-4 text-center">
+                  <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-accent-secondary/10 flex items-center justify-center">
+                    <FolderOpen size={18} className="text-accent-secondary" />
+                  </div>
+                  <p className="text-[11px] font-medium text-text-secondary mb-0.5">Aucun projet</p>
+                  <p className="text-[10px] text-text-muted/70 mb-2">Cree un projet via le chat ou importe un dossier</p>
+                  <button
+                    onClick={handleOpenFolder}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-medium bg-accent-secondary/10 text-accent-secondary hover:bg-accent-secondary/20 transition-colors"
+                  >
+                    <Plus size={10} />
+                    Importer un dossier
+                  </button>
                 </div>
               ) : (
                 sortedProjects.map((project) => (
@@ -244,20 +305,44 @@ export default function Sidebar({
       {/* ===== Conversation History ===== */}
       {expanded && (
         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
-          <button
-            onClick={() => setShowHistory(!showHistory)}
-            className="flex items-center gap-2 px-4.5 py-1.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors flex-shrink-0"
-          >
-            {showHistory ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            <MessageSquare size={12} />
-            <span>Historique</span>
-          </button>
+          <div className="flex items-center flex-shrink-0">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="flex-1 flex items-center gap-2 px-4.5 py-1.5 text-[11px] font-semibold text-text-muted uppercase tracking-wider hover:text-text-secondary transition-colors"
+            >
+              {showHistory ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <MessageSquare size={12} />
+              <span>Historique</span>
+            </button>
+            {conversations.length > 0 && (
+              <div className="flex items-center gap-0.5 pr-2.5">
+                <button
+                  onClick={handleExportConversations}
+                  title="Exporter les conversations"
+                  className="p-1 rounded text-text-muted/50 hover:text-accent-primary hover:bg-accent-primary/10 transition-colors"
+                >
+                  <Download size={11} />
+                </button>
+                <button
+                  onClick={handleImportConversations}
+                  title="Importer des conversations"
+                  className="p-1 rounded text-text-muted/50 hover:text-accent-primary hover:bg-accent-primary/10 transition-colors"
+                >
+                  <Upload size={11} />
+                </button>
+              </div>
+            )}
+          </div>
 
           {showHistory && (
             <div className="flex-1 overflow-y-auto px-2.5 pb-2 fade-mask-b">
               {recentConversations.length === 0 ? (
-                <div className="px-3 py-3 text-center">
-                  <p className="text-[11px] text-text-muted">Aucune conversation</p>
+                <div className="px-3 py-4 text-center">
+                  <div className="w-10 h-10 mx-auto mb-2 rounded-xl bg-accent-primary/10 flex items-center justify-center">
+                    <MessageSquare size={18} className="text-accent-primary" />
+                  </div>
+                  <p className="text-[11px] font-medium text-text-secondary mb-0.5">Aucune conversation</p>
+                  <p className="text-[10px] text-text-muted/70">Tes echanges avec ANZAR apparaitront ici</p>
                 </div>
               ) : (
                 <div className="space-y-0.5">

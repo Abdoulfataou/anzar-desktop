@@ -410,7 +410,12 @@ export default function ChatInput({
     const hasText = message.trim().length > 0;
     const hasAttachments = attachments.length > 0;
     if ((hasText || hasAttachments) && !isLoading) {
-      const contentToSend = hasText ? message.trim() : 'Voici mon document. Peux-tu l’analyser et le corriger ?';
+      // Si fichier sans texte, demander à l’utilisateur ce qu’il veut
+      let contentToSend = message.trim();
+      if (!hasText && hasAttachments) {
+        const fileNames = attachments.map((a) => a.name || ‘fichier’).join(‘, ‘);
+        contentToSend = `Voici mon document (${fileNames}). Analyse-le et propose-moi les options suivantes :\n1) Correction complète (orthographe, grammaire, syntaxe)\n2) Reformulation et amélioration du style\n3) Résumé des points clés\n4) Évaluation avec points forts et points faibles\n\nQuelle option souhaites-tu ?`;
+      }
       await onSendMessage(contentToSend, attachments);
       setMessage('');
       setAttachments([]);

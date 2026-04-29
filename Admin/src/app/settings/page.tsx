@@ -381,18 +381,20 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex gap-2 justify-end">
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setChangingPassword(false)
-                      setCurrentPassword('')
-                      setNewPassword('')
-                      setConfirmPassword('')
-                    }}
-                    disabled={changingPasswordLoading}
-                  >
-                    Annuler
-                  </Button>
+                  {!user?.must_change_password && (
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setChangingPassword(false)
+                        setCurrentPassword('')
+                        setNewPassword('')
+                        setConfirmPassword('')
+                      }}
+                      disabled={changingPasswordLoading}
+                    >
+                      Annuler
+                    </Button>
+                  )}
                   <Button
                     onClick={handleChangePassword}
                     isLoading={changingPasswordLoading}

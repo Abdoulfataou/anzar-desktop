@@ -7,6 +7,7 @@
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { secureTokenStore } from '@/services/secureTokenStore';
+import { generationTracker } from '@/services/generationTracker';
 
 // ============================================================================
 // TYPES
@@ -153,9 +154,62 @@ class AuthService {
   }
 
   /**
+   * Refresh the JWT token before it expires.
+   * Returns true if refresh succeeded.
+   */
+  async refreshToken(): Promise<boolean> {
+    const token = useSettingsStore.getState().getAuthToken();
+    if (!token) return false;
+
+    try {
+      const res = await fetch(`${this.getBackendUrl()}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      if (data.token) {
+        useSettingsStore.getState().setAuthToken(data.token);
+        await secureTokenStore.setToken(data.token);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Start a background timer that refreshes the token periodically.
+   * Called once during bootstrapSession.
+   */
+  private _refreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  private startAutoRefresh(): void {
+    // Clear any existing timer
+    if (this._refreshTimer) clearInterval(this._refreshTimer);
+
+    // Refresh every 6 hours (tokens typically expire in 24h)
+    this._refreshTimer = setInterval(async () => {
+      if (!this.isAuthenticated()) {
+        if (this._refreshTimer) clearInterval(this._refreshTimer);
+        return;
+      }
+      await this.refreshToken();
+    }, 6 * 60 * 60 * 1000);
+  }
+
+  /**
    * Logout — clear token and user
    */
   logout(): void {
+    if (this._refreshTimer) {
+      clearInterval(this._refreshTimer);
+      this._refreshTimer = null;
+    }
+    generationTracker.clear();
     useSettingsStore.getState().setAuthToken(null);
     useAccountStore.getState().logout();
     void secureTokenStore.clearToken();
@@ -217,12 +271,19 @@ class AuthService {
       });
 
       if (res.ok) {
-        // Token is valid — session continues
+        // Token is valid — start auto-refresh and continue
+        this.startAutoRefresh();
         return;
       }
 
       if (res.status === 401 || res.status === 403) {
-        // Token is expired or revoked — force re-login
+        // Token expired — try to refresh it (7-day grace window)
+        const refreshed = await this.refreshToken();
+        if (refreshed) {
+          this.startAutoRefresh();
+          return;
+        }
+        // Refresh failed — force re-login
         await secureTokenStore.clearToken();
         useSettingsStore.getState().setAuthToken(null);
         useAccountStore.getState().logout();

@@ -83,8 +83,15 @@ export default function TerminalPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Subscribe to terminal events
+  // Load existing output on mount + subscribe to new events
   useEffect(() => {
+    // Load any output that was emitted before this component mounted
+    const existing = terminalService.getAllOutput();
+    if (existing.length > 0) {
+      setOutputs(existing.slice(-500));
+    }
+    setRunningProcesses(terminalService.getRunningProcesses());
+
     const unsubscribe = terminalService.onEvent((event: TerminalEvent) => {
       switch (event.type) {
         case 'output':

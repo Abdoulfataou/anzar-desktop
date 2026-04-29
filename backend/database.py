@@ -160,6 +160,7 @@ class Project(Base):
     result_json: Mapped[str] = mapped_column(Text, default="{}")
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     cost_fcfa: Mapped[float] = mapped_column(Float, default=0.0)
+    agent_states: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False, index=True)
 
@@ -239,6 +240,9 @@ def get_engine() -> AsyncEngine:
         _engine = create_async_engine(
             settings.effective_database_url,
             pool_pre_ping=True,
+            pool_size=10,
+            max_overflow=20,
+            pool_recycle=3600,
             future=True,
         )
         _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False, autoflush=False)
@@ -561,7 +565,7 @@ async def get_usage_stats(email: str, days: int = 30) -> Dict[str, Any]:
     email = email.lower().strip()
     cutoff = _utcnow() - timedelta(days=int(days or 30))
 
-    start_today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_today = _utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     end_today = start_today + timedelta(days=1)
 
     Session = get_sessionmaker()
@@ -616,7 +620,7 @@ async def create_project(project_id: str, email: str, name: str, description: st
 
 
 async def update_project(project_id: str, **fields) -> bool:
-    allowed = {"status", "plan_json", "result_json", "tokens_used", "cost_fcfa", "name", "description"}
+    allowed = {"status", "plan_json", "result_json", "tokens_used", "cost_fcfa", "name", "description", "agent_states"}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return False
@@ -654,6 +658,26 @@ async def delete_project(project_id: str, email: str) -> bool:
         async with session.begin():
             res = await session.execute(delete(Project).where(Project.id == project_id, Project.user_email == email))
             return (res.rowcount or 0) > 0
+
+
+async def cleanup_old_projects(max_age_days: int = 90) -> int:
+    """Delete projects older than max_age_days that are in terminal state (complete/error/cancelled).
+    Returns number of deleted rows."""
+    cutoff = _utcnow() - timedelta(days=max_age_days)
+    terminal_statuses = ("complete", "error", "cancelled")
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(
+                delete(Project).where(
+                    Project.updated_at < cutoff,
+                    Project.status.in_(terminal_statuses),
+                )
+            )
+            deleted = res.rowcount or 0
+            if deleted > 0:
+                logger.info(f"cleanup_old_projects: removed {deleted} projects older than {max_age_days} days")
+            return deleted
 
 
 # ============================================================================
@@ -1011,7 +1035,7 @@ async def admin_delete_project_any(project_id: str) -> bool:
 
 
 async def admin_get_global_stats() -> Dict[str, Any]:
-    start_today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    start_today = _utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
     end_today = start_today + timedelta(days=1)
     cutoff_30d = _utcnow() - timedelta(days=30)
     cutoff_7d = _utcnow() - timedelta(days=7)

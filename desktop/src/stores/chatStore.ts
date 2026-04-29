@@ -748,12 +748,38 @@ export const useChatStore = create<ChatStore>()(
 
     {
       name: 'anzar-chat-storage',
-      // Only persist conversations, not UI state
-      partialize: (state) => ({
-        conversations: state.conversations,
-        // Grand public: restaurer la dernière conversation active au relaunch
-        activeConversationId: state.activeConversationId,
-      }),
+      // Only persist conversations, not UI state.
+      // Prune to avoid localStorage bloat: keep last 50 conversations,
+      // max 100 messages per conversation.
+      partialize: (state) => {
+        const MAX_CONVERSATIONS = 50;
+        const MAX_MESSAGES_PER_CONV = 100;
+
+        let convs = state.conversations;
+        // Keep only the most recent conversations
+        if (convs.length > MAX_CONVERSATIONS) {
+          convs = [...convs]
+            .sort((a, b) => b.updatedAt - a.updatedAt)
+            .slice(0, MAX_CONVERSATIONS);
+        }
+        // Trim messages within each conversation
+        convs = convs.map((c) => {
+          if (c.messages.length <= MAX_MESSAGES_PER_CONV) return c;
+          // Keep system message(s) at start + last N messages
+          const systemMsgs = c.messages.filter((m, i) => i === 0 && m.role === 'system');
+          const recentMsgs = c.messages.slice(-MAX_MESSAGES_PER_CONV);
+          // Avoid duplicate if system message is already in recent
+          const merged = systemMsgs.length > 0 && recentMsgs[0]?.id !== systemMsgs[0].id
+            ? [...systemMsgs, ...recentMsgs]
+            : recentMsgs;
+          return { ...c, messages: merged };
+        });
+
+        return {
+          conversations: convs,
+          activeConversationId: state.activeConversationId,
+        };
+      },
       // Après rehydrate: si aucune conversation active mais il y a un historique,
       // activer la plus récente automatiquement (UX grand public).
       onRehydrateStorage: () => (state, error) => {

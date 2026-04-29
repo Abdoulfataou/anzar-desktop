@@ -133,16 +133,34 @@ function EditorTab({
 }
 
 /* ===== Empty Editor State ===== */
-function EmptyEditorState({ projectName }: { projectName: string }) {
+function EmptyEditorState({ projectName, hasFiles }: { projectName: string; hasFiles: boolean }) {
   return (
-    <div className="flex flex-col items-center justify-center h-full text-center">
+    <div className="flex flex-col items-center justify-center h-full text-center px-6">
       <div className="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center mb-4 shadow-lg opacity-60">
         <FileCode size={28} className="text-white" />
       </div>
       <h3 className="text-base font-semibold text-text-primary mb-1">{projectName}</h3>
-      <p className="text-sm text-text-muted max-w-[280px]">
-        Sélectionne un fichier dans l'explorateur pour commencer à coder.
-      </p>
+      {hasFiles ? (
+        <p className="text-sm text-text-muted max-w-[280px]">
+          Selectionne un fichier dans l'explorateur pour commencer a coder.
+        </p>
+      ) : (
+        <>
+          <p className="text-sm text-text-muted max-w-[320px] mb-4">
+            Ce projet n'a pas encore de fichiers. Utilise le chat pour generer du code ou cree un fichier manuellement.
+          </p>
+          <div className="flex gap-2">
+            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent-primary/10 text-accent-primary">
+              <FolderOpen size={12} />
+              Chat IA a droite
+            </span>
+            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium bg-accent-secondary/10 text-accent-secondary">
+              <Plus size={12} />
+              Bouton "Fichier" en haut
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -267,7 +285,7 @@ const ProjectWorkspacePage: React.FC = () => {
       try {
         const files = await fileSystemService.readProjectFiles(projectPath);
         if (alive && files.length > 0) {
-          setProjectFiles(id, files);
+          setProjectFiles(id, files, true); // merge=true to preserve local edits
         }
       } catch (err) {
         console.warn('Failed to load project files from disk:', err);
@@ -640,7 +658,7 @@ const ProjectWorkspacePage: React.FC = () => {
                 <p className="text-sm text-text-muted">Chargement des fichiers...</p>
               </div>
             ) : (
-              <EmptyEditorState projectName={project.name} />
+              <EmptyEditorState projectName={project.name} hasFiles={project.files.length > 0} />
             )}
           </div>
 
