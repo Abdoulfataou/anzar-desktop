@@ -249,7 +249,7 @@ export const useProjectStore = create<ProjectStore>()(
 
             for (const incoming of files) {
               const existing = existingMap.get(incoming.path);
-              if (existing && existing.updatedAt > (existing.createdAt || 0)) {
+              if (existing && (existing.updatedAt ?? 0) > (existing.createdAt || 0)) {
                 // File was locally modified — keep the local version
                 merged.push(existing);
               } else {
