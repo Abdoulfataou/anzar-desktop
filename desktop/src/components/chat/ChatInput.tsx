@@ -404,7 +404,7 @@ export default function ChatInput({
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!isOnline) {
-      toast.error(‘Hors ligne — impossible d\’envoyer pour le moment.’);
+      toast.error("Hors ligne - impossible d’envoyer pour le moment.");
       return;
     }
     const hasText = message.trim().length > 0;
@@ -413,7 +413,7 @@ export default function ChatInput({
       // Si fichier sans texte, demander à l’utilisateur ce qu’il veut
       let contentToSend = message.trim();
       if (!hasText && hasAttachments) {
-        const fileNames = attachments.map((a) => a.name || ‘fichier’).join(‘, ‘);
+        const fileNames = attachments.map((a) => a.name || "fichier").join(", ");
         contentToSend = `Voici mon document (${fileNames}). Analyse-le et propose-moi les options suivantes :\n1) Correction complete (orthographe, grammaire, syntaxe)\n2) Reformulation et amelioration du style\n3) Resume des points cles\n4) Evaluation avec points forts et points faibles\n\nQuelle option souhaites-tu ?`;
       }
       await onSendMessage(contentToSend, attachments);
