@@ -1,6 +1,6 @@
 /**
  * Settings Page - Premium ANZAR
- * Mon Compte · IA · Interface · Réseau · À propos
+ * Refonte avec onglets : Profil · Abonnement · Preferences · Avance · A propos
  */
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -11,6 +11,7 @@ import {
   Smartphone,
   Plus, Gift, X, LogOut,
   Mail, Phone, MessageCircle, Send, MapPin, Globe,
+  Settings, Wrench,
 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
@@ -34,33 +35,6 @@ function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean
   );
 }
 
-/* ===== Section wrapper ===== */
-function Section({ icon: Icon, title, description, children, iconColor }: {
-  icon: React.ElementType;
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-  iconColor?: string;
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2.5">
-        <div className={cn(
-          'w-8 h-8 rounded-lg flex items-center justify-center',
-          iconColor || 'bg-accent-primary/10'
-        )}>
-          <Icon size={16} className={iconColor ? 'text-white' : 'text-accent-primary'} />
-        </div>
-        <div>
-          <h2 className="text-sm font-semibold text-text-primary">{title}</h2>
-          {description && <p className="text-xs text-text-muted">{description}</p>}
-        </div>
-      </div>
-      <div className="ml-[42px] space-y-4">{children}</div>
-    </div>
-  );
-}
-
 /* ===== Setting Row ===== */
 function SettingRow({ label, description, children }: {
   label: string;
@@ -68,7 +42,7 @@ function SettingRow({ label, description, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center justify-between gap-4">
+    <div className="flex items-center justify-between gap-4 py-3">
       <div className="flex-1 min-w-0">
         <p className="text-sm text-text-primary">{label}</p>
         {description && <p className="text-xs text-text-muted mt-0.5">{description}</p>}
@@ -78,12 +52,11 @@ function SettingRow({ label, description, children }: {
   );
 }
 
-/* ===== Credit Gauge (Solde prépayé) ===== */
+/* ===== Credit Gauge ===== */
 function CreditGauge({ remaining, totalRecharged }: {
   remaining: number;
   totalRecharged: number;
 }) {
-  // Si l'utilisateur n'a jamais rechargé, afficher 0%
   const remainingPercent = totalRecharged > 0
     ? Math.round((remaining / totalRecharged) * 100)
     : 0;
@@ -109,15 +82,14 @@ function CreditGauge({ remaining, totalRecharged }: {
           </p>
           {remaining === 0 && (
             <p className="text-xs text-accent-error font-medium">
-              Solde épuisé — rechargez pour continuer
+              Solde epuise - rechargez pour continuer
             </p>
           )}
         </div>
         <span className={cn('text-sm font-semibold tabular-nums', statusColor)}>
-          {remaining === 0 ? 'Épuisé' : `${remainingPercent}%`}
+          {remaining === 0 ? 'Epuise' : `${remainingPercent}%`}
         </span>
       </div>
-      {/* Progress bar */}
       <div className="h-2.5 rounded-full bg-bg-tertiary overflow-hidden">
         <div
           className={cn('h-full rounded-full transition-all duration-500', gaugeColor)}
@@ -166,12 +138,10 @@ function TransactionRow({ tx }: { tx: Transaction }) {
 }
 
 /* ===== Recharge Modal ===== */
-
 type PaymentMethod = 'wave' | 'orange_money' | 'airtel_money' | 'flooz' | 'mpesa' | 'nita_transfert' | 'amana_transfert';
 
-/** Packs de recharge avec bonus progressif */
 const RECHARGE_PACKS = [
-  { amount: 500,   bonus: 0,  label: 'Découverte', tag: '' },
+  { amount: 500,   bonus: 0,  label: 'Decouverte', tag: '' },
   { amount: 2000,  bonus: 0,  label: 'Starter',    tag: '' },
   { amount: 5000,  bonus: 15, label: 'Pro',         tag: 'Populaire' },
   { amount: 15000, bonus: 25, label: 'Business',    tag: '+25%' },
@@ -195,8 +165,8 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
     { id: 'airtel_money',      label: 'Airtel Money',      color: 'from-red-500 to-rose-500' },
     { id: 'flooz',             label: 'Flooz (Moov)',      color: 'from-yellow-500 to-lime-500' },
     { id: 'mpesa',             label: 'M-Pesa',            color: 'from-green-600 to-emerald-500' },
-    { id: 'nita_transfert',    label: 'Dépôt Nita',        color: 'from-purple-500 to-violet-500' },
-    { id: 'amana_transfert',   label: 'Dépôt Amana',       color: 'from-teal-500 to-cyan-600' },
+    { id: 'nita_transfert',    label: 'Depot Nita',        color: 'from-purple-500 to-violet-500' },
+    { id: 'amana_transfert',   label: 'Depot Amana',       color: 'from-teal-500 to-cyan-600' },
   ];
 
   const numericAmount = typeof amount === 'number' ? amount : 0;
@@ -210,7 +180,6 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md mx-4 animate-scale-in">
         <div className="rounded-2xl border border-border-medium bg-bg-secondary/95 backdrop-blur-xl shadow-2xl overflow-hidden">
-          {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center">
@@ -224,10 +193,8 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
           </div>
 
           <div className="p-5 space-y-5">
-            {/* Amount input + presets */}
             <div>
               <label className="text-xs font-medium text-text-secondary mb-2 block">Montant (FCFA)</label>
-              {/* Free input */}
               <div className="relative mb-3">
                 <input
                   type="number"
@@ -248,7 +215,6 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                 />
                 <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-text-muted font-medium">FCFA</span>
               </div>
-              {/* Preset packs */}
               <div className="grid grid-cols-3 gap-2">
                 {RECHARGE_PACKS.map((pack) => (
                   <button
@@ -277,7 +243,6 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
 
-              {/* Bonus indicator */}
               {bonusPct > 0 && numericAmount > 0 && (
                 <div className="mt-2 p-2.5 rounded-xl bg-green-500/10 border border-green-500/20">
                   <div className="flex items-center justify-between text-sm">
@@ -287,7 +252,7 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-sm mt-1">
-                    <span className="text-text-secondary">Total crédité</span>
+                    <span className="text-text-secondary">Total credite</span>
                     <span className="font-bold text-text-primary">
                       {totalCredited.toLocaleString('fr-FR')} F
                     </span>
@@ -296,7 +261,6 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
               )}
             </div>
 
-            {/* Payment method */}
             <div>
               <label className="text-xs font-medium text-text-secondary mb-2 block">Moyen de paiement</label>
               <div className="space-y-2">
@@ -323,12 +287,10 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
               </div>
             </div>
 
-            {/* Confirm button */}
             <button
               onClick={async () => {
                 if (!isValid) return;
                 try {
-                  // Appel au backend pour initier le paiement
                   const BACKEND = useSettingsStore.getState().getBackendUrl();
                   const res = await fetch(`${BACKEND}/api/payments/initiate`, {
                     method: 'POST',
@@ -344,27 +306,23 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                   if (res.ok) {
                     const data = await res.json();
                     if (data.paymentUrl) {
-                      // Ouvrir le lien de paiement (Wave/Orange Money redirigent)
                       await openExternalUrl(data.paymentUrl);
                       onClose();
                       return;
                     }
-                    // Beta: paiement manuel → intent créé, admin valide
                     window.alert(
                       data?.message ||
-                        `Demande de recharge de ${numericAmount.toLocaleString('fr-FR')} F enregistrée !\n\nEnvoie le paiement via ${methods.find((m) => m.id === method)?.label || method}, puis ton compte sera crédité${bonusPct > 0 ? ` de ${totalCredited.toLocaleString('fr-FR')} F (bonus +${bonusPct}% inclus)` : ''} après validation.`
+                        `Demande de recharge de ${numericAmount.toLocaleString('fr-FR')} F enregistree !\n\nEnvoie le paiement via ${methods.find((m2) => m2.id === method)?.label || method}, puis ton compte sera credite${bonusPct > 0 ? ` de ${totalCredited.toLocaleString('fr-FR')} F (bonus +${bonusPct}% inclus)` : ''} apres validation.`
                     );
                     onClose();
                     return;
                   }
 
-                  // Erreur backend (pas de fallback local)
                   const text = await res.text().catch(() => '');
                   throw new Error(text || 'Erreur serveur');
                 } catch (e) {
-                  // Pas de fallback local: les crédits doivent rester source-of-truth côté backend.
                   const msg =
-                    e instanceof Error ? e.message : "Paiement indisponible pour le moment. Réessaie plus tard.";
+                    e instanceof Error ? e.message : "Paiement indisponible pour le moment. Reessaie plus tard.";
                   window.alert(msg);
                 }
               }}
@@ -378,7 +336,7 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
             >
               <CreditCard size={16} />
               {isValid
-                ? `Payer ${numericAmount.toLocaleString('fr-FR')} FCFA${bonusPct > 0 ? ` → ${totalCredited.toLocaleString('fr-FR')} F crédités` : ''}`
+                ? `Payer ${numericAmount.toLocaleString('fr-FR')} FCFA${bonusPct > 0 ? ` → ${totalCredited.toLocaleString('fr-FR')} F credites` : ''}`
                 : 'Saisir un montant (min. 500 FCFA)'}
             </button>
           </div>
@@ -389,6 +347,18 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
 }
 
 
+/* ===================================================================
+   TAB DEFINITIONS
+   =================================================================== */
+type TabId = 'profil' | 'abonnement' | 'preferences' | 'avance' | 'apropos';
+
+const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
+  { id: 'profil',      label: 'Profil',       icon: User },
+  { id: 'abonnement',  label: 'Abonnement',   icon: CreditCard },
+  { id: 'preferences', label: 'Preferences',  icon: Palette },
+  { id: 'avance',      label: 'Avance',       icon: Wrench },
+  { id: 'apropos',     label: 'A propos',     icon: Info },
+];
 
 /* ===================================================================
    MAIN SETTINGS PAGE
@@ -405,15 +375,17 @@ export default function SettingsPage() {
   const transactions = useAccountStore((s) => s.transactions);
 
   const handleLogout = () => {
-    if (window.confirm('Se déconnecter ?')) {
+    if (window.confirm('Se deconnecter ?')) {
       authService.logout();
       navigate('/login', { replace: true });
     }
   };
 
+  const [activeTab, setActiveTab] = useState<TabId>('profil');
   const [form, setForm] = useState(settings);
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [showRecharge, setShowRecharge] = useState(false);
+  const [showAllTx, setShowAllTx] = useState(false);
   const [updateState, setUpdateState] = useState<{
     checking: boolean;
     installing: boolean;
@@ -426,12 +398,10 @@ export default function SettingsPage() {
   const appVersion = (typeof __APP_VERSION__ === 'string' && __APP_VERSION__) ? __APP_VERSION__ : '—';
 
   useEffect(() => {
-    // Sync UI state if settings change elsewhere (ex: theme applied via header toggle)
     setForm(settings);
   }, [settings]);
 
   useEffect(() => {
-    // Prime from cache to avoid "empty" state
     const cached = getCachedUpdateResult();
     const lastCheckedMs = getLastUpdateCheckMs();
     if (cached && cached.supported) {
@@ -447,20 +417,16 @@ export default function SettingsPage() {
   }, []);
 
   const lastCheckLabel = useMemo(() => {
-    if (!updateState.lastCheckedMs) return 'Jamais'
+    if (!updateState.lastCheckedMs) return 'Jamais';
     try {
-      return new Date(updateState.lastCheckedMs).toLocaleString('fr-FR')
+      return new Date(updateState.lastCheckedMs).toLocaleString('fr-FR');
     } catch {
-      return '—'
+      return '—';
     }
   }, [updateState.lastCheckedMs]);
-  const [showAllTx, setShowAllTx] = useState(false);
-  // API key UI state removed — keys are now server-side only
 
   const update = <K extends keyof typeof settings>(key: K, value: (typeof settings)[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
-
-    // UX: appliquer le thème immédiatement (pas besoin de cliquer "Sauvegarder")
     if (key === 'theme') {
       setTheme(value as any);
       updateSettings({ theme: value as any });
@@ -479,7 +445,7 @@ export default function SettingsPage() {
   };
 
   const handleReset = () => {
-    if (window.confirm('Réinitialiser tous les paramètres par défaut ?')) {
+    if (window.confirm('Reinitialiser tous les parametres par defaut ?')) {
       resetSettings();
       setForm(useSettingsStore.getState().settings);
       setStatus('saved');
@@ -487,518 +453,601 @@ export default function SettingsPage() {
     }
   };
 
-  // Filtrer les transactions pour l'historique (recharges uniquement dans l'historique)
   const rechargeTx = transactions.filter((tx) => tx.type === 'recharge' || tx.type === 'bonus');
-  const displayedTx = showAllTx ? rechargeTx : rechargeTx.slice(0, 3);
+  const displayedTx = showAllTx ? rechargeTx : rechargeTx.slice(0, 5);
+
+  /* ===== Tab content renderers ===== */
+
+  const renderProfil = () => (
+    <div className="space-y-6">
+      {/* Profile card */}
+      {user && (
+        <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle">
+          <div className="flex items-center gap-4">
+            <div className="w-16 h-16 rounded-2xl gradient-bg flex items-center justify-center flex-shrink-0 shadow-lg">
+              <span className="text-white font-bold text-xl">
+                {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+              </span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="text-lg font-bold text-text-primary truncate">{user.name}</h3>
+              <p className="text-sm text-text-muted truncate">{user.email}</p>
+              <span className="inline-flex items-center gap-1 mt-1.5 px-2.5 py-0.5 rounded-lg text-[11px] font-semibold bg-accent-primary/15 text-accent-primary">
+                <CreditCard size={10} />
+                Compte Prepaye
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick credit summary */}
+      <div className="p-4 rounded-xl bg-surface-default border border-border-subtle">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold text-text-secondary">Solde actuel</span>
+          <button
+            onClick={() => setActiveTab('abonnement')}
+            className="text-xs text-accent-primary hover:text-accent-primary/80 transition-colors flex items-center gap-1"
+          >
+            Voir details
+            <ArrowUpRight size={11} />
+          </button>
+        </div>
+        <p className="text-2xl font-bold text-text-primary tabular-nums">
+          {credits.remaining.toLocaleString('fr-FR')} <span className="text-sm font-normal text-text-muted">FCFA</span>
+        </p>
+      </div>
+
+      {/* Logout */}
+      <button
+        onClick={handleLogout}
+        className={cn(
+          'w-full py-3 rounded-xl text-sm font-medium',
+          'bg-accent-error/10 hover:bg-accent-error/20',
+          'text-accent-error',
+          'transition-all duration-200 flex items-center justify-center gap-2'
+        )}
+      >
+        <LogOut size={15} />
+        Se deconnecter
+      </button>
+    </div>
+  );
+
+  const renderAbonnement = () => (
+    <div className="space-y-6">
+      {/* Credit gauge */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle space-y-4">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center">
+            <CreditCard size={15} className="text-white" />
+          </div>
+          <span className="text-sm font-semibold text-text-primary">Mon solde</span>
+        </div>
+        <CreditGauge
+          remaining={credits.remaining}
+          totalRecharged={credits.totalRecharged}
+        />
+        <button
+          onClick={() => setShowRecharge(true)}
+          className="w-full py-3 rounded-xl gradient-bg text-white text-sm font-medium shadow-md hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+        >
+          <ArrowUpRight size={15} />
+          Recharger mon compte
+        </button>
+      </div>
+
+      {/* Transaction history */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle">
+        <div className="flex items-center gap-2 mb-4">
+          <History size={15} className="text-text-muted" />
+          <span className="text-sm font-semibold text-text-primary">Historique des recharges</span>
+        </div>
+        {rechargeTx.length === 0 ? (
+          <p className="text-sm text-text-muted py-4 text-center">Aucune recharge pour le moment</p>
+        ) : (
+          <>
+            <div className="divide-y divide-border-subtle">
+              {displayedTx.map((tx) => (
+                <TransactionRow key={tx.id} tx={tx} />
+              ))}
+            </div>
+            {rechargeTx.length > 5 && (
+              <button
+                onClick={() => setShowAllTx(!showAllTx)}
+                className="text-xs text-accent-primary hover:text-accent-primary/80 transition-colors mt-3"
+              >
+                {showAllTx ? 'Voir moins' : `Voir tout (${rechargeTx.length})`}
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderPreferences = () => (
+    <div className="space-y-6">
+      {/* Mode IA */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle space-y-1">
+        <div className="flex items-center gap-2 mb-3">
+          <Cpu size={15} className="text-accent-primary" />
+          <span className="text-sm font-semibold text-text-primary">Mode IA</span>
+        </div>
+        <SettingRow label="Mode par defaut" description="Rapide pour les reponses directes, Reflexion pour l'analyse approfondie">
+          <div className="flex gap-1 p-0.5 rounded-xl bg-bg-tertiary/70 border border-border-subtle">
+            <button
+              onClick={() => update('model', 'fast')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                form.model === 'fast'
+                  ? 'bg-accent-primary text-white shadow-sm'
+                  : 'text-text-muted hover:text-text-secondary'
+              )}
+            >
+              <Zap size={12} />
+              Rapide
+            </button>
+            <button
+              onClick={() => update('model', 'thinking')}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                form.model === 'thinking'
+                  ? 'bg-accent-secondary text-white shadow-sm'
+                  : 'text-text-muted hover:text-text-secondary'
+              )}
+            >
+              <Brain size={12} />
+              Reflexion
+            </button>
+          </div>
+        </SettingRow>
+      </div>
+
+      {/* Apparence */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle space-y-1">
+        <div className="flex items-center gap-2 mb-3">
+          <Palette size={15} className="text-purple-500" />
+          <span className="text-sm font-semibold text-text-primary">Apparence</span>
+        </div>
+
+        <SettingRow label="Theme" description="Choisis entre clair, sombre ou automatique">
+          <div className="flex gap-1 p-0.5 rounded-xl bg-bg-tertiary/70 border border-border-subtle">
+            {(['system', 'light', 'dark'] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => update('theme', t)}
+                className={cn(
+                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  form.theme === t
+                    ? 'bg-bg-primary text-text-primary shadow-sm'
+                    : 'text-text-muted hover:text-text-secondary'
+                )}
+              >
+                {t === 'system' ? 'Auto' : t === 'light' ? 'Clair' : 'Sombre'}
+              </button>
+            ))}
+          </div>
+        </SettingRow>
+
+        <div className="py-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-text-primary">Taille du texte</span>
+            <span className="text-sm font-mono text-accent-primary">{form.fontSize}px</span>
+          </div>
+          <input
+            type="range"
+            min="12"
+            max="20"
+            step="1"
+            value={form.fontSize}
+            onChange={(e) => update('fontSize', parseInt(e.target.value))}
+            className="w-full"
+          />
+          <div className="flex justify-between text-[11px] text-text-muted mt-1">
+            <span>Compact</span>
+            <span>Confortable</span>
+          </div>
+        </div>
+
+        <SettingRow label="Langue">
+          <select
+            value={form.language}
+            onChange={(e) => update('language', e.target.value as 'fr' | 'en')}
+            className={cn(
+              'px-3 py-2 rounded-xl text-sm',
+              'bg-bg-secondary border border-border-subtle',
+              'text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-primary'
+            )}
+          >
+            <option value="fr">Francais</option>
+            <option value="en">English</option>
+          </select>
+        </SettingRow>
+
+        <SettingRow label="Mode compact" description="Reduit les espacements">
+          <Toggle checked={form.compactMode} onChange={(v) => update('compactMode', v)} />
+        </SettingRow>
+
+        <SettingRow label="Animations" description="Transitions et effets visuels">
+          <Toggle checked={form.animations} onChange={(v) => update('animations', v)} />
+        </SettingRow>
+      </div>
+
+      {/* Save / Reset */}
+      <div className="flex items-center gap-3 pt-2">
+        <button
+          onClick={handleReset}
+          className={cn(
+            'px-4 py-2.5 rounded-xl text-sm font-medium',
+            'bg-bg-tertiary hover:bg-surface-hover',
+            'text-text-secondary hover:text-text-primary',
+            'transition-all duration-200 flex items-center gap-2'
+          )}
+        >
+          <RotateCcw size={14} />
+          Reinitialiser
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={status === 'saving'}
+          className={cn(
+            'flex-1 py-2.5 rounded-xl text-sm font-medium text-white',
+            'transition-all duration-200 flex items-center justify-center gap-2',
+            status === 'saving'
+              ? 'bg-accent-primary/50 cursor-wait'
+              : status === 'saved'
+                ? 'bg-accent-success'
+                : 'gradient-bg hover:opacity-90 shadow-md active:scale-[0.98]'
+          )}
+        >
+          {status === 'saving' ? (
+            <><Gauge size={14} className="animate-spin" /> Sauvegarde...</>
+          ) : status === 'saved' ? (
+            <><Check size={14} /> Sauvegarde</>
+          ) : (
+            <><Save size={14} /> Sauvegarder</>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderAvance = () => (
+    <div className="space-y-6">
+      {/* Reseau */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle space-y-1">
+        <div className="flex items-center gap-2 mb-3">
+          <Wifi size={15} className="text-blue-500" />
+          <span className="text-sm font-semibold text-text-primary">Reseau</span>
+        </div>
+        <SettingRow label="Sauvegarde automatique" description="Enregistre les conversations automatiquement">
+          <Toggle checked={form.autoSave} onChange={(v) => update('autoSave', v)} />
+        </SettingRow>
+        <SettingRow label="Economie de bande passante" description="Optimise pour les connexions lentes">
+          <Toggle checked={form.bandwidthSaver} onChange={(v) => update('bandwidthSaver', v)} />
+        </SettingRow>
+        <SettingRow label="Mode hors ligne">
+          <Toggle checked={form.offlineMode} onChange={(v) => update('offlineMode', v)} />
+        </SettingRow>
+      </div>
+
+      {/* Developpeur */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle space-y-1">
+        <div className="flex items-center gap-2 mb-3">
+          <Settings size={15} className="text-orange-500" />
+          <span className="text-sm font-semibold text-text-primary">Developpeur</span>
+        </div>
+        <SettingRow
+          label="Mode developpeur"
+          description="Affiche des options avancees (terminal)"
+        >
+          <Toggle checked={form.developerMode} onChange={(v) => update('developerMode', v)} />
+        </SettingRow>
+        <SettingRow
+          label="Execution des commandes"
+          description="Comment les commandes IA sont executees"
+        >
+          <select
+            value={form.commandExecutionMode}
+            onChange={(e) => update('commandExecutionMode', e.target.value as any)}
+            className={cn(
+              'px-3 py-2 rounded-xl text-sm',
+              'bg-bg-secondary border border-border-subtle',
+              'text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-primary'
+            )}
+          >
+            <option value="manual">Manuel (Run requis)</option>
+            <option value="always_ask">Toujours demander</option>
+            <option value="auto_run">Auto-run (sur uniquement)</option>
+          </select>
+        </SettingRow>
+        <SettingRow label="Verifier apres application" description="Lance automatiquement la verification">
+          <Toggle checked={form.autoVerifyAfterApply} onChange={(v) => update('autoVerifyAfterApply', v)} />
+        </SettingRow>
+        <SettingRow label="Nettoyage auto des commandes" description="Supprime les commandes terminees">
+          <Toggle checked={form.autoCleanFinishedCommands} onChange={(v) => update('autoCleanFinishedCommands', v)} />
+        </SettingRow>
+      </div>
+
+      {/* Save */}
+      <div className="flex items-center gap-3 pt-2">
+        <button
+          onClick={handleSave}
+          disabled={status === 'saving'}
+          className={cn(
+            'flex-1 py-2.5 rounded-xl text-sm font-medium text-white',
+            'transition-all duration-200 flex items-center justify-center gap-2',
+            status === 'saving'
+              ? 'bg-accent-primary/50 cursor-wait'
+              : status === 'saved'
+                ? 'bg-accent-success'
+                : 'gradient-bg hover:opacity-90 shadow-md active:scale-[0.98]'
+          )}
+        >
+          {status === 'saving' ? (
+            <><Gauge size={14} className="animate-spin" /> Sauvegarde...</>
+          ) : status === 'saved' ? (
+            <><Check size={14} /> Sauvegarde</>
+          ) : (
+            <><Save size={14} /> Sauvegarder</>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+
+  const renderApropos = () => (
+    <div className="space-y-6">
+      {/* Infos app */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle space-y-3">
+        <div className="flex items-center gap-2 mb-2">
+          <Info size={15} className="text-accent-primary" />
+          <span className="text-sm font-semibold text-text-primary">ANZAR</span>
+        </div>
+        <div className="space-y-2.5">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-secondary">Version</span>
+            <span className="font-mono text-text-primary">{appVersion}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-secondary">Moteur IA</span>
+            <span className="font-mono text-text-primary">ANZAR AI</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-text-secondary">Plateforme</span>
+            <span className="font-mono text-text-primary">Desktop</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Mises a jour */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle space-y-3">
+        <div className="flex items-center justify-between">
+          <span className="text-sm font-semibold text-text-primary">Mises a jour</span>
+          <span className="text-[11px] text-text-muted">Derniere verif : {lastCheckLabel}</span>
+        </div>
+
+        {!isTauri() ? (
+          <p className="text-xs text-text-muted">
+            Disponible uniquement dans l'app desktop installee.
+          </p>
+        ) : (
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              {updateState.error ? (
+                <p className="text-xs text-accent-error truncate">{updateState.error}</p>
+              ) : updateState.available ? (
+                <p className="text-xs text-accent-warning">
+                  Mise a jour disponible{updateState.version ? ` (v${updateState.version})` : ''}.
+                </p>
+              ) : (
+                <p className="text-xs text-text-muted">Aucune mise a jour detectee.</p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                onClick={async () => {
+                  setUpdateState((s) => ({ ...s, checking: true, error: undefined }));
+                  try {
+                    const res = await checkForUpdates();
+                    const checkedMs = getLastUpdateCheckMs();
+                    if (res.supported) {
+                      setUpdateState((s) => ({
+                        ...s,
+                        checking: false,
+                        available: res.shouldUpdate,
+                        version: res.manifest?.version,
+                        lastCheckedMs: checkedMs,
+                      }));
+                    } else {
+                      setUpdateState((s) => ({ ...s, checking: false, error: 'Non supporte.' }));
+                    }
+                  } catch {
+                    setUpdateState((s) => ({
+                      ...s,
+                      checking: false,
+                      error: 'Impossible de verifier. Reessaie plus tard.',
+                    }));
+                  }
+                }}
+                disabled={updateState.checking || updateState.installing}
+                className={cn(
+                  'px-3 py-2 rounded-xl text-xs font-medium transition-all border',
+                  'border-border-subtle bg-bg-tertiary/40 hover:bg-surface-hover',
+                  (updateState.checking || updateState.installing) && 'opacity-60 cursor-not-allowed'
+                )}
+              >
+                {updateState.checking ? 'Verification...' : 'Verifier'}
+              </button>
+
+              {updateState.available && (
+                <button
+                  onClick={async () => {
+                    setUpdateState((s) => ({ ...s, installing: true, error: undefined }));
+                    try {
+                      await installUpdateAndRelaunch();
+                    } catch {
+                      setUpdateState((s) => ({
+                        ...s,
+                        installing: false,
+                        error: "Impossible d'installer la mise a jour.",
+                      }));
+                    }
+                  }}
+                  disabled={updateState.installing || updateState.checking}
+                  className={cn(
+                    'px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all',
+                    'gradient-bg hover:opacity-90',
+                    (updateState.installing || updateState.checking) && 'opacity-60 cursor-not-allowed'
+                  )}
+                >
+                  {updateState.installing ? 'Installation...' : 'Installer'}
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Liens */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle">
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => openExternalUrl('https://anzar.dev/docs')}
+            className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
+          >
+            <ExternalLink size={13} />
+            Documentation
+          </button>
+          <button
+            onClick={() => openExternalUrl('https://anzar.dev/support')}
+            className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
+          >
+            <ExternalLink size={13} />
+            Support
+          </button>
+        </div>
+      </div>
+
+      {/* Contact */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle space-y-3">
+        <div className="flex items-center gap-2 mb-1">
+          <Mail size={15} className="text-text-muted" />
+          <span className="text-sm font-semibold text-text-primary">Contact & Support</span>
+        </div>
+        <div className="grid grid-cols-1 gap-2">
+          <button
+            onClick={() => openExternalUrl('mailto:abdul@issalanhub.com')}
+            className="flex items-center gap-3 p-3 rounded-xl bg-bg-tertiary/50 hover:bg-surface-hover transition-all text-left group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-accent-primary/10 flex items-center justify-center flex-shrink-0">
+              <Mail size={14} className="text-accent-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-text-primary">Email</p>
+              <p className="text-[11px] text-text-muted truncate">abdul@issalanhub.com</p>
+            </div>
+          </button>
+
+          <button
+            onClick={() => openExternalUrl('tel:+17172161490')}
+            className="flex items-center gap-3 p-3 rounded-xl bg-bg-tertiary/50 hover:bg-surface-hover transition-all text-left group"
+          >
+            <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
+              <Phone size={14} className="text-green-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-text-primary">Telephone</p>
+              <p className="text-[11px] text-text-muted">+1 (717) 216-1490</p>
+            </div>
+          </button>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => openExternalUrl('https://wa.me/17172161490')}
+              className="flex-1 flex items-center gap-2 p-3 rounded-xl bg-bg-tertiary/50 hover:bg-surface-hover transition-all group"
+            >
+              <div className="w-7 h-7 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                <MessageCircle size={13} className="text-green-500" />
+              </div>
+              <span className="text-xs font-semibold text-text-primary">WhatsApp</span>
+            </button>
+            <button
+              onClick={() => openExternalUrl('https://t.me/+17172161490')}
+              className="flex-1 flex items-center gap-2 p-3 rounded-xl bg-bg-tertiary/50 hover:bg-surface-hover transition-all group"
+            >
+              <div className="w-7 h-7 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                <Send size={13} className="text-blue-500" />
+              </div>
+              <span className="text-xs font-semibold text-text-primary">Telegram</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Company */}
+        <div className="pt-3 border-t border-border-subtle space-y-2">
+          <div className="flex items-center gap-2">
+            <Globe size={13} className="text-text-muted" />
+            <span className="text-sm font-semibold text-text-primary">IssalanHub</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <MapPin size={13} className="text-text-muted" />
+            <span className="text-xs text-text-muted">USA · Niger</span>
+          </div>
+        </div>
+
+        <div className="pt-3 border-t border-border-subtle">
+          <p className="text-[11px] text-text-muted/70 text-center">
+            {"© "}{new Date().getFullYear()} IssalanHub. Tous droits reserves.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const tabContent: Record<TabId, () => JSX.Element> = {
+    profil: renderProfil,
+    abonnement: renderAbonnement,
+    preferences: renderPreferences,
+    avance: renderAvance,
+    apropos: renderApropos,
+  };
 
   return (
     <div className="h-full flex flex-col overflow-hidden bg-bg-primary">
       {/* Header */}
       <div className="border-b border-border-subtle px-6 py-4 flex-shrink-0">
-        <h1 className="text-xl font-bold text-text-primary">Paramètres</h1>
-        <p className="text-xs text-text-muted mt-1">Ton compte, tes préférences</p>
+        <h1 className="text-xl font-bold text-text-primary">Parametres</h1>
+        <p className="text-xs text-text-muted mt-1">Gere ton profil, ton abonnement et tes preferences</p>
       </div>
 
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        <div className="max-w-2xl mx-auto p-6 space-y-8">
-
-          {/* ===== MON COMPTE ===== */}
-          <Section icon={User} title="Mon compte" description="Profil et solde prépayé" iconColor="gradient-bg">
-            {/* Profile card */}
-            {user && (
-              <div className="flex items-center gap-3 p-3 rounded-xl bg-surface-default border border-border-subtle">
-                <div className="w-10 h-10 rounded-xl gradient-bg flex items-center justify-center flex-shrink-0">
-                  <span className="text-white font-bold text-sm">
-                    {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-text-primary truncate">{user.name}</p>
-                  <p className="text-xs text-text-muted truncate">{user.email}</p>
-                </div>
-                <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-accent-primary/15 text-accent-primary">
-                  Prépayé
-                </span>
-              </div>
-            )}
-
-            {/* Credit gauge */}
-            <div className="p-4 rounded-xl bg-surface-default border border-border-subtle space-y-3">
-              <div className="flex items-center gap-2 mb-1">
-                <CreditCard size={14} className="text-accent-primary" />
-                <span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Crédits</span>
-              </div>
-              <CreditGauge
-                remaining={credits.remaining}
-                totalRecharged={credits.totalRecharged}
-              />
-              <button
-                onClick={() => setShowRecharge(true)}
-                className="w-full py-2.5 rounded-xl gradient-bg text-white text-sm font-medium shadow-md hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2"
-              >
-                <ArrowUpRight size={15} />
-                Recharger
-              </button>
-            </div>
-
-            {/* Transaction history */}
-            {rechargeTx.length > 0 && (
-              <div className="space-y-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <History size={13} className="text-text-muted" />
-                  <span className="text-xs font-semibold text-text-secondary uppercase tracking-wide">Historique des recharges</span>
-                </div>
-                <div className="divide-y divide-border-subtle">
-                  {displayedTx.map((tx) => (
-                    <TransactionRow key={tx.id} tx={tx} />
-                  ))}
-                </div>
-                {rechargeTx.length > 3 && (
-                  <button
-                    onClick={() => setShowAllTx(!showAllTx)}
-                    className="text-xs text-accent-primary hover:text-accent-primary/80 transition-colors mt-1"
-                  >
-                    {showAllTx ? 'Voir moins' : `Voir tout (${rechargeTx.length})`}
-                  </button>
-                )}
-              </div>
-            )}
-          </Section>
-
-          <div className="h-px bg-border-subtle" />
-
-          {/* ===== MODE IA ===== */}
-          <Section icon={Cpu} title="Mode de réponse" description="Choisis comment ANZAR répond à tes questions">
-            {/* Model mode selector */}
-            <SettingRow label="Mode par défaut" description="Rapide pour les réponses directes, Réflexion pour l'analyse approfondie">
-              <div className="flex gap-1 p-0.5 rounded-xl bg-bg-tertiary/70 border border-border-subtle">
-                <button
-                  onClick={() => update('model', 'fast')}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                    form.model === 'fast'
-                      ? 'bg-accent-primary text-white shadow-sm'
-                      : 'text-text-muted hover:text-text-secondary'
-                  )}
-                >
-                  <Zap size={12} />
-                  Rapide
-                </button>
-                <button
-                  onClick={() => update('model', 'thinking')}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                    form.model === 'thinking'
-                      ? 'bg-accent-secondary text-white shadow-sm'
-                      : 'text-text-muted hover:text-text-secondary'
-                  )}
-                >
-                  <Brain size={12} />
-                  Réflexion
-                </button>
-              </div>
-            </SettingRow>
-          </Section>
-
-          <div className="h-px bg-border-subtle" />
-
-          {/* ===== INTERFACE ===== */}
-          <Section icon={Palette} title="Interface" description="Personnalise l'apparence">
-            <SettingRow label="Thème" description="Choisis entre clair, sombre ou automatique">
-              <div className="flex gap-1 p-0.5 rounded-xl bg-bg-tertiary/70 border border-border-subtle">
-                {(['system', 'light', 'dark'] as const).map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => update('theme', t)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                      form.theme === t
-                        ? 'bg-bg-primary text-text-primary shadow-sm'
-                        : 'text-text-muted hover:text-text-secondary'
-                    )}
-                  >
-                    {t === 'system' ? 'Auto' : t === 'light' ? 'Clair' : 'Sombre'}
-                  </button>
-                ))}
-              </div>
-            </SettingRow>
-
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-text-primary">Taille du texte</span>
-                <span className="text-sm font-mono text-accent-primary">{form.fontSize}px</span>
-              </div>
-              <input
-                type="range"
-                min="12"
-                max="20"
-                step="1"
-                value={form.fontSize}
-                onChange={(e) => update('fontSize', parseInt(e.target.value))}
-                className="w-full"
-              />
-              <div className="flex justify-between text-[11px] text-text-muted mt-1">
-                <span>Compact</span>
-                <span>Confortable</span>
-              </div>
-            </div>
-
-            <SettingRow label="Langue" description="Langue de l'interface">
-              <select
-                value={form.language}
-                onChange={(e) => update('language', e.target.value as 'fr' | 'en')}
-                className={cn(
-                  'px-3 py-2 rounded-xl text-sm',
-                  'bg-bg-secondary border border-border-subtle',
-                  'text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-primary'
-                )}
-              >
-                <option value="fr">Français</option>
-                <option value="en">English</option>
-              </select>
-            </SettingRow>
-
-            <SettingRow label="Mode compact" description="Réduit les espacements pour afficher plus de contenu">
-              <Toggle checked={form.compactMode} onChange={(v) => update('compactMode', v)} />
-            </SettingRow>
-
-            <SettingRow label="Animations" description="Active les transitions et effets visuels">
-              <Toggle checked={form.animations} onChange={(v) => update('animations', v)} />
-            </SettingRow>
-          </Section>
-
-          <div className="h-px bg-border-subtle" />
-
-          {/* ===== RÉSEAU ===== */}
-          <Section icon={Wifi} title="Réseau" description="Performance et connectivité">
-            <SettingRow label="Sauvegarde automatique" description="Enregistre les conversations automatiquement">
-              <Toggle checked={form.autoSave} onChange={(v) => update('autoSave', v)} />
-            </SettingRow>
-
-            <SettingRow label="Économie de bande passante" description="Optimise pour les connexions lentes">
-              <Toggle checked={form.bandwidthSaver} onChange={(v) => update('bandwidthSaver', v)} />
-            </SettingRow>
-
-            <SettingRow label="Mode hors ligne" description="Fonctionne sans connexion Internet">
-              <Toggle checked={form.offlineMode} onChange={(v) => update('offlineMode', v)} />
-            </SettingRow>
-
-            <div className="pt-3 border-t border-border-subtle" />
-
-            <SettingRow
-              label="Mode développeur"
-              description="Affiche des options avancées (terminal). Désactivé par défaut pour le grand public."
+      {/* Body: sidebar tabs + content */}
+      <div className="flex-1 flex overflow-hidden">
+        {/* Tab sidebar */}
+        <nav className="w-48 flex-shrink-0 border-r border-border-subtle bg-bg-secondary/30 p-3 space-y-1 overflow-y-auto">
+          {TABS.map(({ id, label, icon: TabIcon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={cn(
+                'w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all text-left',
+                activeTab === id
+                  ? 'bg-accent-primary/10 text-accent-primary'
+                  : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
+              )}
             >
-              <Toggle checked={form.developerMode} onChange={(v) => update('developerMode', v)} />
-            </SettingRow>
+              <TabIcon size={16} />
+              {label}
+            </button>
+          ))}
+        </nav>
 
-            <SettingRow
-              label="Exécution des commandes"
-              description="Contrôle comment les commandes proposées par l'IA sont exécutées."
-            >
-              <select
-                value={form.commandExecutionMode}
-                onChange={(e) => update('commandExecutionMode', e.target.value as any)}
-                className={cn(
-                  'px-3 py-2 rounded-xl text-sm',
-                  'bg-bg-secondary border border-border-subtle',
-                  'text-text-primary focus:outline-none focus:ring-1 focus:ring-accent-primary'
-                )}
-              >
-                <option value="manual">Manual (Run requis)</option>
-                <option value="always_ask">Always ask (confirmation)</option>
-                <option value="auto_run">Auto-run (Sûr uniquement)</option>
-              </select>
-            </SettingRow>
-
-            <SettingRow
-              label="Vérifier après application"
-              description="Apres Preview, lance automatiquement 'Verifier le projet'."
-            >
-              <Toggle checked={form.autoVerifyAfterApply} onChange={(v) => update('autoVerifyAfterApply', v)} />
-            </SettingRow>
-
-            <SettingRow
-              label="Nettoyage auto des commandes"
-              description="Supprime automatiquement les Command Cards terminées au bout d'un moment."
-            >
-              <Toggle checked={form.autoCleanFinishedCommands} onChange={(v) => update('autoCleanFinishedCommands', v)} />
-            </SettingRow>
-          </Section>
-
-          <div className="h-px bg-border-subtle" />
-
-          {/* ===== À PROPOS ===== */}
-          <Section icon={Info} title="À propos" description="Informations sur ANZAR">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-text-secondary">Version</span>
-                <span className="font-mono text-text-primary">{appVersion}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-text-secondary">Moteur IA</span>
-                <span className="font-mono text-text-primary">ANZAR AI</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-text-secondary">Plateforme</span>
-                <span className="font-mono text-text-primary">Desktop (Windows, Mac, Linux)</span>
-              </div>
-
-              {/* Updates (Tauri only) */}
-              <div className="pt-3 border-t border-border-subtle space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-text-secondary">Mises à jour</span>
-                  <span className="text-xs text-text-muted">Dernière vérif : {lastCheckLabel}</span>
-                </div>
-
-                {!isTauri() ? (
-                  <p className="text-xs text-text-muted">
-                    Les mises à jour automatiques sont disponibles uniquement dans l'app desktop installée.
-                  </p>
-                ) : (
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      {updateState.error ? (
-                        <p className="text-xs text-accent-error truncate">{updateState.error}</p>
-                      ) : updateState.available ? (
-                        <p className="text-xs text-accent-warning">
-                          Mise à jour disponible{updateState.version ? ` (v${updateState.version})` : ''}.
-                        </p>
-                      ) : (
-                        <p className="text-xs text-text-muted">Aucune mise à jour détectée.</p>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <button
-                        onClick={async () => {
-                          setUpdateState((s) => ({ ...s, checking: true, error: undefined }));
-                          try {
-                            const res = await checkForUpdates();
-                            const lastCheckedMs = getLastUpdateCheckMs();
-                            if (res.supported) {
-                              setUpdateState((s) => ({
-                                ...s,
-                                checking: false,
-                                available: res.shouldUpdate,
-                                version: res.manifest?.version,
-                                lastCheckedMs,
-                              }));
-                            } else {
-                              setUpdateState((s) => ({ ...s, checking: false, error: 'Non supporté.' }));
-                            }
-                          } catch (e: any) {
-                            setUpdateState((s) => ({
-                              ...s,
-                              checking: false,
-                              error: 'Impossible de vérifier. Réessaie plus tard.',
-                            }));
-                          }
-                        }}
-                        disabled={updateState.checking || updateState.installing}
-                        className={cn(
-                          'px-3 py-2 rounded-xl text-xs font-medium transition-all border',
-                          'border-border-subtle bg-bg-tertiary/40 hover:bg-surface-hover',
-                          (updateState.checking || updateState.installing) && 'opacity-60 cursor-not-allowed'
-                        )}
-                        title="Vérifier les mises à jour"
-                      >
-                        {updateState.checking ? 'Vérification...' : 'Vérifier'}
-                      </button>
-
-                      {updateState.available && (
-                        <button
-                          onClick={async () => {
-                            setUpdateState((s) => ({ ...s, installing: true, error: undefined }));
-                            try {
-                              await installUpdateAndRelaunch();
-                            } catch {
-                              setUpdateState((s) => ({
-                                ...s,
-                                installing: false,
-                                error: "Impossible d'installer la mise a jour.",
-                              }));
-                            }
-                          }}
-                          disabled={updateState.installing || updateState.checking}
-                          className={cn(
-                            'px-3 py-2 rounded-xl text-xs font-semibold text-white transition-all',
-                            'gradient-bg hover:opacity-90',
-                            (updateState.installing || updateState.checking) && 'opacity-60 cursor-not-allowed'
-                          )}
-                        >
-                          {updateState.installing ? 'Installation...' : 'Installer'}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="pt-3 border-t border-border-subtle flex items-center gap-4">
-                <button
-                  onClick={async () => {
-                    const url = 'https://anzar.dev/docs';
-                    await openExternalUrl(url);
-                  }}
-                  className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
-                >
-                  <ExternalLink size={13} />
-                  Documentation
-                </button>
-                <button
-                  onClick={async () => {
-                    const url = 'https://anzar.dev/support';
-                    await openExternalUrl(url);
-                  }}
-                  className="text-accent-primary hover:text-accent-primary/80 transition-colors text-sm flex items-center gap-1.5"
-                >
-                  <ExternalLink size={13} />
-                  Support
-                </button>
-              </div>
-            </div>
-          </Section>
-
-          <div className="h-px bg-border-subtle" />
-
-          {/* ===== CONTACT & SUPPORT ===== */}
-          <Section icon={Mail} title="Contact & Support" description="IssalanHub — Nous sommes là pour vous">
-            <div className="space-y-3">
-              {/* Contact cards */}
-              <div className="grid grid-cols-1 gap-2.5">
-                <button
-                  onClick={() => openExternalUrl('mailto:abdul@issalanhub.com')}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all text-left group"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-accent-primary/10 flex items-center justify-center flex-shrink-0 group-hover:bg-accent-primary/20 transition-colors">
-                    <Mail size={15} className="text-accent-primary" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-text-primary">Email</p>
-                    <p className="text-[11px] text-text-muted truncate">abdul@issalanhub.com</p>
-                  </div>
-                  <ExternalLink size={12} className="text-text-muted/40 group-hover:text-accent-primary transition-colors flex-shrink-0" />
-                </button>
-
-                <button
-                  onClick={() => openExternalUrl('tel:+17172161490')}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all text-left group"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-green-500/20 transition-colors">
-                    <Phone size={15} className="text-green-500" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs font-semibold text-text-primary">Téléphone</p>
-                    <p className="text-[11px] text-text-muted">+1 (717) 216-1490</p>
-                  </div>
-                  <ExternalLink size={12} className="text-text-muted/40 group-hover:text-green-500 transition-colors flex-shrink-0" />
-                </button>
-
-                <div className="flex gap-2.5">
-                  <button
-                    onClick={() => openExternalUrl('https://wa.me/17172161490')}
-                    className="flex-1 flex items-center gap-2.5 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all group"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-green-500/20 transition-colors">
-                      <MessageCircle size={14} className="text-green-500" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-text-primary">WhatsApp</p>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => openExternalUrl('https://t.me/+17172161490')}
-                    className="flex-1 flex items-center gap-2.5 p-3 rounded-xl bg-surface-default border border-border-subtle hover:bg-surface-hover transition-all group"
-                  >
-                    <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-500/20 transition-colors">
-                      <Send size={14} className="text-blue-500" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-text-primary">Telegram</p>
-                    </div>
-                  </button>
-                </div>
-              </div>
-
-              {/* Company info */}
-              <div className="pt-3 border-t border-border-subtle space-y-2.5">
-                <div className="flex items-center gap-2.5">
-                  <Globe size={13} className="text-text-muted flex-shrink-0" />
-                  <span className="text-sm font-semibold text-text-primary">IssalanHub</span>
-                </div>
-                <div className="flex items-start gap-2.5">
-                  <MapPin size={13} className="text-text-muted flex-shrink-0 mt-0.5" />
-                  <div className="text-xs text-text-muted leading-relaxed">
-                    <p>USA · Niger</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Copyright */}
-              <div className="pt-3 border-t border-border-subtle">
-                <p className="text-[11px] text-text-muted/70 text-center leading-relaxed">
-                  {"© "}{new Date().getFullYear()} IssalanHub. Tous droits reserves.
-                  <br />
-                  ANZAR est un produit de IssalanHub.
-                </p>
-              </div>
-            </div>
-          </Section>
-        </div>
-      </div>
-
-      {/* Footer - Logout / Save / Reset */}
-      <div className="border-t border-border-subtle px-6 py-3 flex-shrink-0 bg-bg-secondary/50 backdrop-blur-sm">
-        <div className="flex items-center gap-3 justify-between max-w-2xl mx-auto">
-          <button
-            onClick={handleLogout}
-            className={cn(
-              'px-4 py-2 rounded-xl text-sm font-medium',
-              'bg-accent-error/10 hover:bg-accent-error/20',
-              'text-accent-error',
-              'transition-all duration-200 flex items-center gap-2'
-            )}
-          >
-            <LogOut size={14} />
-            Déconnexion
-          </button>
-          <div className="flex items-center gap-3">
-          <button
-            onClick={handleReset}
-            className={cn(
-              'px-4 py-2 rounded-xl text-sm font-medium',
-              'bg-bg-tertiary hover:bg-surface-hover',
-              'text-text-secondary hover:text-text-primary',
-              'transition-all duration-200 flex items-center gap-2'
-            )}
-          >
-            <RotateCcw size={14} />
-            Réinitialiser
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={status === 'saving'}
-            className={cn(
-              'px-5 py-2 rounded-xl text-sm font-medium text-white',
-              'transition-all duration-200 flex items-center gap-2',
-              status === 'saving'
-                ? 'bg-accent-primary/50 cursor-wait'
-                : status === 'saved'
-                  ? 'bg-accent-success'
-                  : 'gradient-bg hover:opacity-90 shadow-md active:scale-[0.98]'
-            )}
-          >
-            {status === 'saving' ? (
-              <><Gauge size={14} className="animate-spin" /> Sauvegarde...</>
-            ) : status === 'saved' ? (
-              <><Check size={14} /> Sauvegardé</>
-            ) : (
-              <><Save size={14} /> Sauvegarder</>
-            )}
-          </button>
+        {/* Tab content */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-xl mx-auto p-6">
+            {tabContent[activeTab]()}
           </div>
         </div>
       </div>
