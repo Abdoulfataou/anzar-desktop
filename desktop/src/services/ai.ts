@@ -196,7 +196,7 @@ class AIService {
    * Returns an async generator of deltas with network resilience
    *
    * Features:
-   * - 30s timeout on initial fetch
+   * - 45s timeout on initial fetch (90s for large payloads with attachments)
    * - 45s chunk-level timeout (if no data for 45s, throw)
    * - Mid-stream error parsing and proper error handling
    * - Partial content preservation on error
@@ -242,9 +242,12 @@ class AIService {
       body.stream_options = { include_usage: true };
     }
 
-    // Set up fetch timeout controller (30s for initial connection)
+    // Set up fetch timeout controller
+    // Use a longer timeout when messages contain attachments/large content
+    const totalContentLength = messages.reduce((sum, m) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0);
+    const fetchTimeout = totalContentLength > 10000 ? 90000 : 45000; // 90s for large payloads, 45s otherwise
     const fetchTimeoutController = new AbortController();
-    const fetchTimeoutId = setTimeout(() => fetchTimeoutController.abort(), 30000);
+    const fetchTimeoutId = setTimeout(() => fetchTimeoutController.abort(), fetchTimeout);
 
     // Retry only if nothing has been yielded yet (avoid duplicate content)
     let yielded = false;

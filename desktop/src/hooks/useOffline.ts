@@ -34,7 +34,7 @@ export interface UseOfflineReturn {
  * Threshold for considering connection "slow"
  * Used for bandwidth saver mode optimization
  */
-const SLOW_CONNECTION_THRESHOLD = 2; // Mbps
+const SLOW_CONNECTION_THRESHOLD = 0.5; // Mbps — only flag truly slow connections
 
 /**
  * useOffline Hook
@@ -92,11 +92,12 @@ export function useOffline(): UseOfflineReturn {
       // Consider connection slow if:
       // 1. Effective type is 2g, 3g, or slow-2g, OR
       // 2. Downlink is below threshold
+      // Only flag truly slow connections — '3g' in Tauri WebView is often
+      // a false positive on desktop, so we only check 'slow-2g' / '2g' or very low downlink
       isSlowConnection =
         effectiveType === 'slow-2g' ||
         effectiveType === '2g' ||
-        effectiveType === '3g' ||
-        (downlink !== undefined && downlink < SLOW_CONNECTION_THRESHOLD);
+        (downlink !== undefined && downlink > 0 && downlink < SLOW_CONNECTION_THRESHOLD);
     } else {
       // Fallback: use online status as indicator
       isSlowConnection = false;
