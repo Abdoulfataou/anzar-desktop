@@ -1559,12 +1559,19 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
       });
       endSession(sessionId, 'error');
 
-      const isCreditErr = /solde|insuffisant|credit|402|epuis/i.test(error.message || '');
+      const errMsg = error.message || '';
+      const isCreditErr = /solde|insuffisant|credit|402|epuis/i.test(errMsg);
+      const isTimeoutErr = /timeout|trop de temps/i.test(errMsg);
+      const isNetworkErr = /hors ligne|pas de connexion|failed to fetch|network/i.test(errMsg);
       const errorContent = error.name === 'AbortError'
         ? "Generation annulee."
         : isCreditErr
           ? "Credits insuffisants. Recharge ton compte pour continuer."
-          : "Une erreur est survenue. Verifie ta connexion et reessaie.";
+          : isTimeoutErr
+            ? "Le serveur met trop de temps a repondre. Clique 'Reessayer' ci-dessous."
+            : isNetworkErr
+              ? "Probleme de connexion. Verifie ton internet et clique 'Reessayer'."
+              : `Erreur: ${errMsg.slice(0, 120) || 'Probleme inattendu'}. Clique 'Reessayer'.`;
 
       // Stop any pending UI streaming
       useChatStore.getState().stopGeneration();
@@ -1586,7 +1593,7 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
       if (looksNetwork) {
         const prev = useChatStore.getState().pendingRetry;
         const prevAttempts = prev?.userMessageId === userMessageId ? prev.attempts : 0;
-        if (prevAttempts < 2) {
+        if (prevAttempts < 3) {
           setPendingRetry({
             userMessageId,
             content,
@@ -1658,7 +1665,7 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
     if (!isEffectivelyOnline) return;
     if (!pendingRetry) return;
     if (isLoading) return;
-    if (pendingRetry.attempts >= 2) return;
+    if (pendingRetry.attempts >= 3) return;
     if (autoRetryInFlightRef.current) return;
 
     autoRetryInFlightRef.current = true;

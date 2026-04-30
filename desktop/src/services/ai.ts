@@ -142,29 +142,43 @@ class AIService {
       body.response_format = options.responseFormat;
     }
 
-    const maxAttempts = 2;
+    // Timeout for non-streaming requests (60s default, 120s for large payloads)
+    const contentLen = messages.reduce((s, m) => s + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0);
+    const chatTimeout = contentLen > 10000 ? 120000 : 60000;
+
+    const maxAttempts = 3;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const timeoutCtrl = new AbortController();
+      const timeoutId = setTimeout(() => timeoutCtrl.abort(), chatTimeout);
+
+      // Merge user signal + timeout signal
+      const mergedSignal = options.signal
+        ? (AbortSignal as any).any
+          ? (AbortSignal as any).any([options.signal, timeoutCtrl.signal])
+          : timeoutCtrl.signal // fallback: at least timeout works
+        : timeoutCtrl.signal;
+
       try {
         const response = await fetch(this.getEndpoint(provider), {
           method: 'POST',
           headers: this.getAuthHeaders(),
           body: JSON.stringify(body),
-          signal: options.signal,
+          signal: mergedSignal,
         });
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const status = response.status;
           const error = await response.json().catch(() => ({ error: { message: response.statusText } }));
           const msg = error.error?.message || `Erreur du service IA (${status})`;
 
-          // Retry only for transient statuses and only if user is online
           if (
             attempt < maxAttempts - 1 &&
             this.shouldRetryStatus(status) &&
             !options.signal?.aborted &&
             this.isOnline()
           ) {
-            await this.sleep(status === 429 ? 1200 : 600);
+            await this.sleep(status === 429 ? 2000 : 800);
             continue;
           }
           throw new Error(msg);
@@ -172,23 +186,26 @@ class AIService {
 
         return response.json();
       } catch (err: any) {
+        clearTimeout(timeoutId);
         if (
           attempt < maxAttempts - 1 &&
           !options.signal?.aborted &&
           this.isOnline() &&
-          this.isTransientFetchError(err)
+          (this.isTransientFetchError(err) || /abort/i.test(String(err?.message || '')))
         ) {
-          await this.sleep(700);
+          await this.sleep(1000 * (attempt + 1)); // Backoff: 1s, 2s
           continue;
         }
         if (!this.isOnline()) {
-          throw new Error('Hors ligne — vérifie ta connexion internet.');
+          throw new Error('Pas de connexion internet. Verifie ton reseau.');
+        }
+        if (/abort/i.test(String(err?.message || '')) && !options.signal?.aborted) {
+          throw new Error('Le serveur met trop de temps a repondre. Reessaie.');
         }
         throw err;
       }
     }
-    // Should never reach
-    throw new Error('Erreur réseau');
+    throw new Error('Impossible de joindre le serveur apres plusieurs tentatives.');
   }
 
   /**
@@ -251,7 +268,7 @@ class AIService {
 
     // Retry only if nothing has been yielded yet (avoid duplicate content)
     let yielded = false;
-    const maxAttempts = 2;
+    const maxAttempts = 3;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
         const response = await Promise.race([
@@ -263,7 +280,7 @@ class AIService {
           }),
           new Promise<Response>((_, reject) =>
             fetchTimeoutController.signal.addEventListener('abort', () => {
-              reject(new Error('Timeout d\'initialisation du streaming (30s)'));
+              reject(new Error(`Timeout d'initialisation du streaming (${fetchTimeout / 1000}s)`));
             })
           ),
         ]);
@@ -367,13 +384,13 @@ class AIService {
           !yielded &&
           this.isOnline() &&
           !controller.signal.aborted &&
-          (this.isTransientFetchError(err) || /timeout/i.test(String(err?.message || '')))
+          (this.isTransientFetchError(err) || /timeout|abort/i.test(String(err?.message || '')))
         ) {
-          await this.sleep(800);
+          await this.sleep(1000 * (attempt + 1)); // Backoff: 1s, 2s
           continue;
         }
         if (!this.isOnline()) {
-          throw new Error('Hors ligne — vérifie ta connexion internet.');
+          throw new Error('Pas de connexion internet. Verifie ton reseau.');
         }
         throw err;
       } finally {
@@ -554,15 +571,28 @@ class AIService {
       max_tokens: options.maxTokens || 4096,
     };
 
-    const maxAttempts = 2;
+    // smartChat may involve web search on backend — allow longer timeout (90s)
+    const smartTimeout = 90000;
+    const maxAttempts = 3;
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const timeoutCtrl = new AbortController();
+      const timeoutId = setTimeout(() => timeoutCtrl.abort(), smartTimeout);
+
+      const mergedSignal = options.signal
+        ? (AbortSignal as any).any
+          ? (AbortSignal as any).any([options.signal, timeoutCtrl.signal])
+          : timeoutCtrl.signal
+        : timeoutCtrl.signal;
+
       try {
         const response = await fetch(`${getBackendUrl()}/api/chat/smart`, {
           method: 'POST',
           headers: this.getAuthHeaders(),
           body: JSON.stringify(body),
-          signal: options.signal,
+          signal: mergedSignal,
         });
+        clearTimeout(timeoutId);
 
         if (!response.ok) {
           const status = response.status;
@@ -575,7 +605,7 @@ class AIService {
             !options.signal?.aborted &&
             this.isOnline()
           ) {
-            await this.sleep(status === 429 ? 1200 : 600);
+            await this.sleep(status === 429 ? 2000 : 800);
             continue;
           }
           throw new Error(msg);
@@ -583,22 +613,26 @@ class AIService {
 
         return response.json();
       } catch (err: any) {
+        clearTimeout(timeoutId);
         if (
           attempt < maxAttempts - 1 &&
           !options.signal?.aborted &&
           this.isOnline() &&
-          this.isTransientFetchError(err)
+          (this.isTransientFetchError(err) || /abort/i.test(String(err?.message || '')))
         ) {
-          await this.sleep(700);
+          await this.sleep(1000 * (attempt + 1));
           continue;
         }
         if (!this.isOnline()) {
-          throw new Error('Hors ligne — vérifie ta connexion internet.');
+          throw new Error('Pas de connexion internet. Verifie ton reseau.');
+        }
+        if (/abort/i.test(String(err?.message || '')) && !options.signal?.aborted) {
+          throw new Error('Le serveur met trop de temps a repondre. Reessaie.');
         }
         throw err;
       }
     }
-    throw new Error('Erreur réseau');
+    throw new Error('Impossible de joindre le serveur apres plusieurs tentatives.');
   }
 
   // ========================================================================
