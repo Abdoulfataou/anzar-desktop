@@ -61,6 +61,9 @@ from services.student_flashcards import FlashcardService
 from services.student_translator import AcademicTranslatorService
 from services.student_exercises import ExerciseGeneratorService
 
+# Global HTTPBearer dependency used by admin & student endpoints
+security = HTTPBearer()
+
 # ============================================================================
 # SETUP
 # ============================================================================
