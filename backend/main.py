@@ -34,6 +34,7 @@ from database import (
     get_credits, add_credits, deduct_credits, has_credits,
     record_usage, get_usage_stats, get_usage_history, get_transactions,
     create_project, update_project, get_project, get_user_projects, delete_project,
+    create_student_project, get_student_project, get_user_student_projects, update_student_project, delete_student_project,
     cleanup_rate_limits, cleanup_old_projects,
     create_otp, verify_otp, get_recent_otp_count, cleanup_expired_otps,
     get_rate_limit_count, record_rate_limit_hit,
@@ -49,9 +50,16 @@ from database import (
     create_payment_intent, admin_list_payment_intents, admin_mark_payment_intent_paid,
 )
 from agents import OrchestratorAgent, PlannerAgent, CoderAgent, TesterAgent, ExecutorAgent, EnricherAgent
+from agents.student_writer import StudentWriterAgent
+from agents.student_corrector import StudentCorrectorAgent
+from agents.student_researcher import StudentResearcherAgent
 from services.deepseek_client import DeepSeekClient
 from services.email import send_otp_email
 from services.web_search import search_web, format_search_results, WEB_SEARCH_TOOL
+from services.student_plagiarism import PlagiarismService
+from services.student_flashcards import FlashcardService
+from services.student_translator import AcademicTranslatorService
+from services.student_exercises import ExerciseGeneratorService
 
 # ============================================================================
 # SETUP
@@ -835,16 +843,26 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
             tools = [WEB_SEARCH_TOOL] if settings.serper_api_key else []
 
             if tools:
-                response_text = await client.chat_with_tools(
-                    messages=messages,
-                    tools=tools,
-                    tool_executor=tool_executor,
-                    model=model,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
+                try:
+                    response_text = await client.chat_with_tools(
+                        messages=messages,
+                        tools=tools,
+                        tool_executor=tool_executor,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
+                except Exception as tool_err:
+                    # Fallback: retry without tools (plain chat) if tool-calling fails
+                    logger.warning(f"chat_with_tools failed ({tool_err}), falling back to plain chat")
+                    response_text = await client.chat(
+                        messages=messages,
+                        model=model,
+                        temperature=temperature,
+                        max_tokens=max_tokens,
+                    )
             else:
-                # No search configured — fallback to normal chat
+                # No search configured — normal chat
                 response_text = await client.chat(
                     messages=messages,
                     model=model,
@@ -854,9 +872,9 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
 
         duration_ms = int((time.time() - start_time) * 1000)
 
-        # Approximate token counting for billing
-        input_tokens = sum(len(m.get("content", "")) for m in messages) // 4
-        output_tokens = len(response_text) // 4
+        # Approximate token counting for billing (guard against None content)
+        input_tokens = sum(len(m.get("content") or "") for m in messages) // 4
+        output_tokens = len(response_text or "") // 4
 
         _cost_usd, cost_fcfa = calculate_cost_fcfa(
             "deepseek", input_tokens, output_tokens
@@ -872,7 +890,7 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
 
         message_payload = {
             "role": "assistant",
-            "content": response_text,
+            "content": response_text or "",
         }
         if reasoning_content:
             message_payload["reasoning_content"] = reasoning_content
@@ -890,9 +908,27 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
             "duration_ms": duration_ms,
         })
 
+    except HTTPException:
+        raise  # Re-raise auth/credit errors as-is
     except Exception as e:
-        logger.error(f"Smart chat error: {e}")
-        raise HTTPException(500, "Erreur interne. Réessaie plus tard.")
+        logger.error(f"Smart chat error: {type(e).__name__}: {e}", exc_info=True)
+        # Sanitize: never leak API keys or internal URLs
+        err_str = str(e)
+        if "api_key" in err_str.lower() or "bearer" in err_str.lower():
+            err_str = "Erreur de configuration du service IA"
+        elif "timeout" in err_str.lower():
+            err_str = "Le service IA met trop de temps a repondre"
+        elif "connection" in err_str.lower() or "connect" in err_str.lower():
+            err_str = "Impossible de joindre le service IA"
+        elif "400" in err_str:
+            err_str = "Requete invalide — le message est peut-etre trop long"
+        elif "401" in err_str or "403" in err_str:
+            err_str = "Erreur d'authentification avec le service IA"
+        elif "429" in err_str:
+            err_str = "Trop de requetes — reessaie dans quelques secondes"
+        else:
+            err_str = "Erreur interne du service IA"
+        raise HTTPException(500, err_str)
 
 
 @app.post("/api/{provider}/beta/completions")
@@ -2075,6 +2111,328 @@ async def admin_payment_mark_paid(
 async def admin_list_all(admin: dict = Depends(require_admin_role("owner"))):
     """List all admin accounts. Owner only."""
     return {"admins": await list_admins()}
+
+
+# ============================================================================
+# STUDENT ASSISTANT — Agents & Skills for academic workflows
+# ============================================================================
+
+class StudentWriteRequest(BaseModel):
+    document_type: str = Field(..., description="memoire|rapport|expose|plan")
+    user_prompt: str = Field(..., min_length=1)
+    project_id: Optional[str] = None
+    context: Optional[dict] = None
+    messages: Optional[list] = None
+
+class StudentCorrectRequest(BaseModel):
+    text: str = Field(..., min_length=10)
+    correction_type: str = Field(default="tout", description="langue|reformulation|academique|tout")
+    level: Optional[str] = None
+
+class StudentResearchRequest(BaseModel):
+    query: str = Field(..., min_length=5)
+    depth: str = Field(default="detailed", description="basic|detailed|exhaustive")
+    citation_style: str = Field(default="apa", description="apa|mla|chicago|harvard")
+    language: str = Field(default="fr")
+
+class StudentPlagiarismRequest(BaseModel):
+    text: str = Field(..., min_length=50)
+    sensitivity: str = Field(default="medium", description="low|medium|high")
+
+class StudentFlashcardsRequest(BaseModel):
+    content: Optional[str] = None
+    topic: Optional[str] = None
+    level: str = Field(default="university")
+    count: int = Field(default=20, ge=5, le=50)
+    difficulty: str = Field(default="medium")
+
+class StudentTranslateRequest(BaseModel):
+    text: str = Field(..., min_length=10)
+    source_lang: str = Field(default="fr", description="fr|en|ar")
+    target_lang: str = Field(default="en", description="fr|en|ar")
+    domain: str = Field(default="general")
+
+class StudentExercisesRequest(BaseModel):
+    subject: Optional[str] = None
+    content: Optional[str] = None
+    level: str = Field(default="L3")
+    exercise_types: list = Field(default=["qcm", "vrai_faux", "reponse_courte"])
+    count: int = Field(default=10, ge=3, le=30)
+    difficulty: str = Field(default="medium")
+
+# --- Student Projects CRUD ---
+
+@app.get("/api/student/projects")
+async def list_student_projects(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    projects = await get_user_student_projects(user["email"])
+    return {"projects": projects}
+
+@app.get("/api/student/projects/{project_id}")
+async def get_student_project_detail(
+    project_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    project = await get_student_project(project_id)
+    if not project or project["user_email"] != user["email"]:
+        raise HTTPException(404, "Projet non trouve")
+    return project
+
+@app.delete("/api/student/projects/{project_id}")
+async def delete_student_project_route(
+    project_id: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    project = await get_student_project(project_id)
+    if not project or project["user_email"] != user["email"]:
+        raise HTTPException(404, "Projet non trouve")
+    await delete_student_project(project_id)
+    return {"ok": True}
+
+# --- Agent: Academic Writer ---
+
+@app.post("/api/student/write")
+async def student_write(
+    body: StudentWriteRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    email = user["email"]
+    client_ip = get_client_ip(request)
+    await rate_limiter(client_ip, "student_write", 20, 60)
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Credits insuffisants")
+
+    agent = StudentWriterAgent()
+
+    # Create or resume project
+    project_id = body.project_id or uuid.uuid4().hex
+    existing = await get_student_project(project_id)
+    if not existing:
+        await create_student_project(
+            user_email=email,
+            project_id=project_id,
+            project_type=body.document_type,
+            title=body.user_prompt[:200],
+        )
+
+    context = body.context or {}
+    if existing:
+        context.setdefault("subject", existing.get("subject", ""))
+        context.setdefault("outline", json.dumps(existing.get("outline", {})))
+        context.setdefault("sections_done", existing.get("sections", []))
+
+    result = await agent.execute({
+        "user_prompt": body.user_prompt,
+        "document_type": body.document_type,
+        "context": context,
+        "messages": body.messages or [],
+    })
+
+    # Update project in DB
+    await update_student_project(
+        project_id,
+        content=result.get("content", ""),
+        outline=result.get("outline", {}),
+        sections=result.get("sections", []),
+        tokens_used=(existing or {}).get("tokens_used", 0) + result.get("tokens_used", 0),
+        status="in_progress",
+        subject=result.get("metadata", {}).get("subject", ""),
+        level=result.get("metadata", {}).get("level", ""),
+    )
+
+    # Bill
+    tokens = result.get("tokens_used", 500)
+    cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", tokens, tokens // 2)
+    await deduct_credits(email, cost_fcfa, "Student: redaction", "deepseek", settings.deepseek_model)
+    await record_usage(email, "deepseek", settings.deepseek_model, tokens, tokens // 2, cost_usd, cost_fcfa, 0, "student_write")
+
+    result["project_id"] = project_id
+    return result
+
+# --- Agent: Smart Corrector ---
+
+@app.post("/api/student/correct")
+async def student_correct(
+    body: StudentCorrectRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    email = user["email"]
+    client_ip = get_client_ip(request)
+    await rate_limiter(client_ip, "student_correct", 20, 60)
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Credits insuffisants")
+
+    agent = StudentCorrectorAgent()
+    result = await agent.execute({
+        "text": body.text,
+        "correction_type": body.correction_type,
+        "level": body.level or "",
+        "messages": [],
+    })
+
+    tokens = result.get("tokens_used", 300)
+    cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", tokens, tokens // 2)
+    await deduct_credits(email, cost_fcfa, "Student: correction", "deepseek", settings.deepseek_model)
+    await record_usage(email, "deepseek", settings.deepseek_model, tokens, tokens // 2, cost_usd, cost_fcfa, 0, "student_correct")
+
+    return result
+
+# --- Agent: Documentary Researcher ---
+
+@app.post("/api/student/research")
+async def student_research(
+    body: StudentResearchRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    email = user["email"]
+    client_ip = get_client_ip(request)
+    await rate_limiter(client_ip, "student_research", 15, 60)
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Credits insuffisants")
+
+    agent = StudentResearcherAgent()
+    result = await agent.execute({
+        "query": body.query,
+        "depth": body.depth,
+        "citation_style": body.citation_style,
+        "language": body.language,
+        "messages": [],
+    })
+
+    tokens = result.get("tokens_used", 500)
+    cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", tokens, tokens // 2)
+    await deduct_credits(email, cost_fcfa, "Student: recherche", "deepseek", settings.deepseek_model)
+    await record_usage(email, "deepseek", settings.deepseek_model, tokens, tokens // 2, cost_usd, cost_fcfa, 0, "student_research")
+
+    return result
+
+# --- Skill: Anti-Plagiarism ---
+
+@app.post("/api/student/plagiarism")
+async def student_plagiarism(
+    body: StudentPlagiarismRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    email = user["email"]
+    client_ip = get_client_ip(request)
+    await rate_limiter(client_ip, "student_plagiarism", 10, 60)
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Credits insuffisants")
+
+    service = PlagiarismService()
+    result = await service.analyze(body.text, body.sensitivity)
+
+    in_tok, out_tok = len(body.text) // 4, 500
+    cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", in_tok, out_tok)
+    await deduct_credits(email, cost_fcfa, "Student: anti-plagiat", "deepseek", settings.deepseek_model)
+    await record_usage(email, "deepseek", settings.deepseek_model, in_tok, out_tok, cost_usd, cost_fcfa, 0, "student_plagiarism")
+
+    return result
+
+# --- Skill: Flashcards ---
+
+@app.post("/api/student/flashcards")
+async def student_flashcards(
+    body: StudentFlashcardsRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    email = user["email"]
+    client_ip = get_client_ip(request)
+    await rate_limiter(client_ip, "student_flashcards", 15, 60)
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Credits insuffisants")
+
+    service = FlashcardService()
+    if body.content:
+        result = await service.generate(body.content, body.count, body.difficulty)
+    elif body.topic:
+        result = await service.generate_from_topic(body.topic, body.level, body.count)
+    else:
+        raise HTTPException(400, "Fournis 'content' ou 'topic'")
+
+    cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", 500, 1000)
+    await deduct_credits(email, cost_fcfa, "Student: flashcards", "deepseek", settings.deepseek_model)
+    await record_usage(email, "deepseek", settings.deepseek_model, 500, 1000, cost_usd, cost_fcfa, 0, "student_flashcards")
+
+    return result
+
+# --- Skill: Academic Translator ---
+
+@app.post("/api/student/translate")
+async def student_translate(
+    body: StudentTranslateRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    email = user["email"]
+    client_ip = get_client_ip(request)
+    await rate_limiter(client_ip, "student_translate", 20, 60)
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Credits insuffisants")
+
+    if body.source_lang == body.target_lang:
+        raise HTTPException(400, "Langues source et cible identiques")
+
+    service = AcademicTranslatorService()
+    result = await service.translate(body.text, body.source_lang, body.target_lang, body.domain)
+
+    in_tok, out_tok = len(body.text) // 4, len(body.text) // 3
+    cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", in_tok, out_tok)
+    await deduct_credits(email, cost_fcfa, "Student: traduction", "deepseek", settings.deepseek_model)
+    await record_usage(email, "deepseek", settings.deepseek_model, in_tok, out_tok, cost_usd, cost_fcfa, 0, "student_translate")
+
+    return result
+
+# --- Skill: Exercise Generator ---
+
+@app.post("/api/student/exercises")
+async def student_exercises(
+    body: StudentExercisesRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    user = await get_current_user(credentials)
+    email = user["email"]
+    client_ip = get_client_ip(request)
+    await rate_limiter(client_ip, "student_exercises", 15, 60)
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Credits insuffisants")
+
+    service = ExerciseGeneratorService()
+    if body.content:
+        result = await service.generate_from_content(body.content, body.exercise_types, body.count)
+    elif body.subject:
+        result = await service.generate(body.subject, body.level, body.exercise_types, body.count, body.difficulty)
+    else:
+        raise HTTPException(400, "Fournis 'subject' ou 'content'")
+
+    cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", 500, 1500)
+    await deduct_credits(email, cost_fcfa, "Student: exercices", "deepseek", settings.deepseek_model)
+    await record_usage(email, "deepseek", settings.deepseek_model, 500, 1500, cost_usd, cost_fcfa, 0, "student_exercises")
+
+    return result
 
 
 # ============================================================================

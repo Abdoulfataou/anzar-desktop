@@ -11,8 +11,8 @@ import { generateId } from '@/lib/utils';
 
 function buildAttachmentsContext(attachments: Message['attachments']): string {
   if (!attachments || attachments.length === 0) return '';
-  // Cap hard to avoid exploding context
-  const MAX_TOTAL_CHARS = 8000;
+  // Cap: DeepSeek V3 gère 64K tokens (~200K chars). On réserve ~10K tokens pour prompt+réponse.
+  const MAX_TOTAL_CHARS = 192000;
   let used = 0;
   const lines: string[] = [];
   lines.push('\n\n[Pièces jointes — références]');

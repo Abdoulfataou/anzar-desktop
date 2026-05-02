@@ -261,8 +261,11 @@ def validate_messages(messages: list) -> list:
         if role not in ("system", "user", "assistant", "tool"):
             continue
 
-        content = msg.get("content", "")
-        if isinstance(content, str) and len(content) > 200_000:
+        content = msg.get("content")
+        # Ensure content is always a string (guard against None from tool-call messages)
+        if content is None:
+            msg = {**msg, "content": ""}
+        elif isinstance(content, str) and len(content) > 200_000:
             raise HTTPException(400, "Message trop long (max 200K caractères)")
 
         sanitized.append(msg)

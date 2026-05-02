@@ -568,11 +568,11 @@ class AIService {
       messages,
       model: options.model || this.resolveModel('deepseek', 'fast'),
       temperature: options.temperature ?? 0.7,
-      max_tokens: options.maxTokens || 4096,
+      max_tokens: options.maxTokens || 8192,
     };
 
-    // smartChat may involve web search on backend — allow longer timeout (90s)
-    const smartTimeout = 90000;
+    // smartChat may involve web search + long corrections — allow longer timeout
+    const smartTimeout = 180_000;
     const maxAttempts = 3;
 
     for (let attempt = 0; attempt < maxAttempts; attempt++) {

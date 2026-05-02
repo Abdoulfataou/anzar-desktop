@@ -20,6 +20,7 @@ import {
   WifiOff,
   // Student assistant new features
   Quote, BrainCircuit, ClipboardCheck,
+  Shield, Languages, Layers, Dumbbell,
   ChevronLeft, ChevronRight,
 } from 'lucide-react';
 import MessageList from './MessageList';
@@ -47,6 +48,7 @@ import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedPr
 import { generationTracker } from '@/services/generationTracker';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
+import { STUDENT_PROMPTS, AGENT_PROMPTS, SKILL_PROMPTS } from '@/services/studentPrompts';
 
 interface ChatViewProps {
   onlineStatus?: boolean;
@@ -110,443 +112,177 @@ const QUICK_STARTS = [
   'Prépare un exposé sur les énergies renouvelables en Afrique',
 ];
 
-/* ===== Assistant Étudiant - Menu interactif ===== */
+/* ===== Assistant Etudiant - Menu interactif avec categories ===== */
+const STUDENT_CATEGORIES: { id: string; label: string; emoji: string }[] = [
+  { id: 'all', label: 'Tout', emoji: '' },
+  { id: 'redaction', label: 'Redaction', emoji: '' },
+  { id: 'correction', label: 'Correction', emoji: '' },
+  { id: 'revision', label: 'Revision', emoji: '' },
+  { id: 'outils', label: 'Outils', emoji: '' },
+];
+
 const STUDENT_OPTIONS = [
+  // --- Redaction ---
   {
     id: 'memoire',
-    title: 'Rédiger un mémoire',
-    description: 'Plan complet, rédaction section par section, bibliographie — guidé de A à Z.',
+    title: 'Memoire',
+    description: 'Plan, redaction chapitre par chapitre, biblio',
     icon: BookOpen,
     color: 'from-pink-500 to-rose-500',
     tag: 'Populaire',
-    prompt: `Tu es un directeur de mémoire expérimenté. Je veux rédiger un mémoire de fin d'études et j'ai besoin d'un accompagnement structuré.
-
-Pose-moi ces 5 questions UNE PAR UNE (attends ma réponse avant la suivante) :
-1. Quel est ton sujet ou ta problématique ?
-2. Quel est ton niveau (Licence, Master, Doctorat) et ta filière ?
-3. Combien de pages sont attendues et y a-t-il des consignes spécifiques ?
-4. As-tu déjà un brouillon, un plan ou des recherches ?
-5. Quelle est ta date de rendu ?
-
-Après mes réponses, génère directement :
-
-**PLAN DÉTAILLÉ DU MÉMOIRE**
-
-Pour chaque partie (Introduction, Chapitre I, II, III..., Conclusion) :
-- Titre et sous-titre
-- Objectif de la section (1 phrase)
-- Contenu attendu (3-5 points clés à développer)
-- Estimation du nombre de pages
-- Sources recommandées (types de sources à chercher)
-
-**PROCHAINES ÉTAPES** : liste numérotée des 5 actions concrètes à faire cette semaine.
-
-Propose-moi ensuite de rédiger la première section (introduction) directement.
-
-Format : titres en ## et ###, listes à puces, pas de tableaux ASCII.`,
+    category: 'redaction',
+    prompt: STUDENT_PROMPTS.memoire,
   },
   {
     id: 'rapport',
     title: 'Rapport de stage',
-    description: 'De la page de garde à la conclusion — structure pro avec exemples de contenu.',
+    description: 'Page de garde, structure pro, conclusion',
     icon: PenTool,
     color: 'from-violet-500 to-purple-500',
-    prompt: `Tu es un tuteur universitaire spécialisé dans les rapports de stage. Accompagne-moi pour rédiger un rapport professionnel.
-
-Pose-moi ces questions UNE PAR UNE :
-1. Dans quelle entreprise/organisation as-tu fait ton stage ? (nom, secteur, taille)
-2. Quelles étaient tes missions principales ?
-3. Quelle était la durée du stage et ton niveau d'études ?
-4. Y a-t-il des consignes spécifiques de ton école ? (nombre de pages, plan imposé, annexes)
-5. As-tu déjà rédigé des parties ou pris des notes ?
-
-Après mes réponses, génère :
-
-**PLAN COMPLET DU RAPPORT**
-
-Structure type avec pour CHAQUE section :
-- Page de garde (éléments requis)
-- Remerciements (modèle de 5-6 lignes)
-- Sommaire
-- Introduction (contexte + problématique + annonce du plan)
-- Partie 1 : Présentation de l'entreprise (historique, organigramme, activités)
-- Partie 2 : Déroulement du stage (missions, outils, méthodologie)
-- Partie 3 : Bilan et analyse (résultats, compétences acquises, difficultés)
-- Conclusion (synthèse + ouverture professionnelle)
-- Bibliographie / Annexes
-
-Pour chaque section : objectif + contenu attendu + estimation pages + un EXEMPLE de paragraphe d'ouverture.
-
-Propose-moi ensuite de rédiger la section de mon choix.
-
-Format : titres en ## et ###, pas de tableaux ASCII.`,
+    category: 'redaction',
+    prompt: STUDENT_PROMPTS.rapport,
   },
+  {
+    id: 'plan',
+    title: 'Plan detaille',
+    description: 'Numerotation academique, objectifs, pages',
+    icon: Layout,
+    color: 'from-blue-500 to-indigo-500',
+    category: 'redaction',
+    prompt: STUDENT_PROMPTS.plan,
+  },
+  {
+    id: 'expose',
+    title: 'Expose / Oral',
+    description: 'Slides, notes orales, export PowerPoint',
+    icon: Presentation,
+    color: 'from-teal-500 to-cyan-500',
+    category: 'redaction',
+    prompt: STUDENT_PROMPTS.expose,
+  },
+  // --- Correction ---
   {
     id: 'correction',
     title: 'Corriger / Reformuler',
-    description: 'Upload ton fichier ou colle ton texte — choisis le type de correction en un clic.',
+    description: 'Langue, style ou correction complete',
     icon: ListChecks,
     color: 'from-emerald-500 to-green-500',
     tag: 'Upload',
-    prompt: '', // Remplacé par subOptions ci-dessous
+    category: 'correction',
+    prompt: '',
     opensFileDialog: true,
     subOptions: [
       {
         id: 'correction_langue',
         label: 'Correction langue',
-        description: 'Orthographe, grammaire, conjugaison, ponctuation',
-        emoji: '✏️',
-        prompt: `Tu es un correcteur professionnel et pédagogue. Corrige ce texte en te concentrant sur la LANGUE : orthographe, grammaire, conjugaison, accords, ponctuation.
-
-Format STRICT pour chaque modification :
-~~texte original~~ → **texte corrigé** (règle : explication courte)
-
-Les passages corrects : reproduis-les tels quels pour que le texte reste complet.
-
-À LA FIN :
-### Bilan de correction
-- Nombre total de modifications
-- Top 3 des erreurs récurrentes
-- Note du texte original : X/20
-- 3 conseils pour s'améliorer en orthographe/grammaire
-
-IMPORTANT : pas de tableau ASCII, pas de barres "|".`,
+        description: 'Orthographe, grammaire, ponctuation',
+        emoji: '',
+        prompt: STUDENT_PROMPTS.correction_langue,
       },
       {
         id: 'correction_reformulation',
         label: 'Reformulation',
-        description: 'Style, fluidité, phrases plus claires et élégantes',
-        emoji: '💎',
-        prompt: `Tu es un styliste littéraire. Reformule ce texte pour améliorer le STYLE : fluidité, clarté, élégance, suppression des répétitions, phrases plus percutantes.
-
-Format STRICT pour chaque modification :
-~~phrase originale~~ → **phrase reformulée** (amélioration : raison stylistique)
-
-Les passages déjà bien écrits : reproduis-les tels quels.
-
-À LA FIN :
-### Bilan de reformulation
-- Nombre de passages reformulés
-- Axes d'amélioration principaux (lourdeurs, répétitions, registre)
-- Note de qualité stylistique : X/20
-- 3 conseils pour mieux écrire
-
-IMPORTANT : pas de tableau ASCII, pas de barres "|".`,
+        description: 'Style, fluidite, phrases elegantes',
+        emoji: '',
+        prompt: STUDENT_PROMPTS.correction_reformulation,
       },
       {
         id: 'correction_academique',
-        label: 'Mise en forme académique',
-        description: 'Registre soutenu, transitions, structure universitaire',
-        emoji: '🎓',
-        prompt: `Tu es un relecteur universitaire. Transforme ce texte en document ACADÉMIQUE : registre soutenu, transitions entre paragraphes, structure logique, vocabulaire précis, formulations impersonnelles.
-
-Format STRICT pour chaque modification :
-~~formulation originale~~ → **formulation académique** (registre : explication)
-
-Les passages déjà académiques : reproduis-les tels quels.
-
-Ajoute aussi :
-- Des connecteurs logiques manquants (en outre, néanmoins, par conséquent...)
-- Des transitions entre les parties
-- Des reformulations du "je" en tournures impersonnelles si nécessaire
-
-À LA FIN :
-### Bilan académique
-- Modifications de registre effectuées
-- Niveau académique atteint (L1-L3, Master, Doctorat)
-- Note de rigueur académique : X/20
-- 3 conseils pour un style plus universitaire
-
-IMPORTANT : pas de tableau ASCII, pas de barres "|".`,
+        label: 'Forme academique',
+        description: 'Registre soutenu, transitions',
+        emoji: '',
+        prompt: STUDENT_PROMPTS.correction_academique,
       },
       {
         id: 'correction_tout',
         label: 'Tout corriger',
-        description: 'Langue + style + structure — correction complète (recommandé)',
-        emoji: '🚀',
-        prompt: `Tu es un correcteur professionnel complet. Corrige ce texte sur TOUS les plans : orthographe, grammaire, style, fluidité, registre académique, transitions, structure.
-
-Format STRICT pour chaque modification :
-~~texte original~~ → **texte corrigé** (explication courte : type de correction)
-
-Les passages corrects : reproduis-les tels quels pour que le texte reste complet et lisible.
-
-À LA FIN :
-### Bilan complet
-- Nombre total de modifications (langue / style / structure)
-- Top 3 des problèmes récurrents
-- Note du texte original : X/20
-- 3 conseils prioritaires pour progresser
-
-L'étudiant pourra exporter en "Word propre" (texte corrigé seul) ou "Word annoté" (avec les explications).
-
-IMPORTANT : pas de tableau ASCII, pas de barres "|".`,
+        description: 'Langue + style + structure (recommande)',
+        emoji: '',
+        prompt: STUDENT_PROMPTS.correction_tout,
       },
     ],
   },
   {
-    id: 'plan',
-    title: 'Plan détaillé',
-    description: 'Plan structuré avec numérotation académique, objectifs et estimation de pages.',
-    icon: Layout,
-    color: 'from-blue-500 to-indigo-500',
-    prompt: `Tu es un méthodologue universitaire. Aide-moi à construire un plan détaillé et rigoureux.
-
-Demande-moi :
-1. Sujet ou problématique exacte
-2. Type de travail (mémoire, rapport, dissertation, exposé, thèse, article)
-3. Nombre de pages / durée attendue
-4. Consignes spécifiques (si imposées par le prof)
-
-Puis génère un plan avec la NUMÉROTATION ACADÉMIQUE (I, A, 1, a) :
-
-**PLAN DÉTAILLÉ**
-
-Pour chaque partie et sous-partie :
-I. Titre de la partie
-   - Objectif : (1 phrase — ce que cette partie doit démontrer)
-   - Pages estimées : X-Y pages
-   A. Sous-partie 1
-      - Points à développer : (3-4 éléments)
-      1. Sous-sous-partie (si nécessaire)
-   B. Sous-partie 2
-      - Points à développer
-
-**CONSEIL MÉTHODOLOGIQUE** pour chaque grande partie : quelle approche adopter (analyse, comparaison, étude de cas, revue de littérature…)
-
-**TRANSITIONS** : propose une phrase de transition entre chaque grande partie.
-
-À la fin, propose :
-- "Tu veux que je rédige l'introduction ?"
-- "Tu veux que je développe une section en particulier ?"
-- "Tu veux exporter ce plan en Word ?"
-
-Format : numérotation I.A.1.a, titres en ##, pas de tableaux ASCII.`,
-  },
-  {
-    id: 'resume',
-    title: 'Résumé de cours',
-    description: 'Fiche de révision structurée — définitions, formules, schémas, points clés.',
-    icon: BookMarked,
-    color: 'from-amber-500 to-yellow-500',
-    tag: 'Upload',
-    prompt: `Tu es un assistant de révision expert. Je veux créer une fiche de révision à partir d'un cours.
-
-Si je n'ai pas encore envoyé de contenu, dis-moi :
-"Envoie-moi ton cours (colle le texte, uploade un PDF/Word, ou dis-moi juste le sujet)."
-
-Puis demande-moi quel format je préfère :
-1. **Fiche express** — 1-2 pages, uniquement l'essentiel à retenir
-2. **Fiche complète** — structurée avec définitions, exemples, formules
-3. **Carte mentale** — en format Mermaid (diagramme visuel)
-4. **Fiche + Quiz** — fiche de révision + 10 questions pour tester
-
-Génère la fiche avec cette structure :
-
-### [Titre du cours/chapitre]
-
-**Concepts clés** (les 5-8 notions essentielles, chacune en 1-2 phrases)
-
-**Définitions à retenir**
-- **Terme** : définition claire et concise
-
-**Formules / Règles** (si applicable)
-- Formule : explication + quand l'utiliser
-
-**Schéma récapitulatif** (si le format carte mentale est choisi : utilise un bloc \`\`\`mermaid avec un mindmap ou flowchart)
-
-**Points pièges** — les erreurs classiques à éviter
-
-**À retenir absolument** — les 3 choses à savoir si tu n'as que 5 minutes avant l'examen
-
-Propose ensuite : "Tu veux que je génère un quiz de révision à partir de cette fiche ?" → si oui, enchaîne directement avec 10 questions.
-
-Format : titres en ### et ####, listes à puces, pas de tableaux ASCII.`,
-    opensFileDialog: true,
-  },
-  {
-    id: 'expose',
-    title: 'Préparer un exposé',
-    description: 'Plan, contenu par slide, notes orales — et export PowerPoint direct.',
-    icon: Presentation,
-    color: 'from-teal-500 to-cyan-500',
-    prompt: `Tu es un coach de présentation orale. Aide-moi à préparer un exposé complet.
-
-Demande-moi :
-1. Sujet de l'exposé
-2. Durée (5, 10, 15, 20, 30 minutes)
-3. Public (classe, jury, prof, conférence)
-4. Support attendu (PowerPoint, oral seul, poster)
-
-Puis génère :
-
-**PLAN DE L'EXPOSÉ** (adapté à la durée)
-
-Pour CHAQUE slide/section :
-
-**Slide X : [Titre]** (durée estimée : X min)
-- Contenu visuel : ce qu'il faut mettre sur la slide (bullet points, image, graphique)
-- Ce que tu DIS à l'oral : 3-5 phrases de script naturel (pas du texte lu, du parlé)
-- Transition vers la slide suivante : 1 phrase
-
-**CONSEILS POUR L'ORAL :**
-- Comment commencer (accroche)
-- Comment gérer le stress
-- Comment répondre aux questions
-- Timing : quand accélérer, quand ralentir
-
-**ANTI-SÈCHE** : résumé en 10 bullet points de tout l'exposé (à garder sous les yeux)
-
-À la fin, propose :
-"Tu veux que j'exporte ces slides en PowerPoint ? Clique sur le bouton PPTX dans la barre d'export."
-
-Format : titres en ## et ###, pas de tableaux ASCII.`,
-  },
-  {
-    id: 'citations',
-    title: 'Générer des citations',
-    description: 'Bibliographie APA, MLA, Chicago, Harvard — formatée et prête à copier.',
-    icon: Quote,
-    color: 'from-orange-500 to-red-500',
-    tag: 'Nouveau',
-    prompt: `Tu es un bibliothécaire universitaire expert en normes de citation. Aide-moi à créer ma bibliographie.
-
-Demande-moi :
-1. Style de citation (APA 7e, MLA 9e, Chicago 17e, Harvard, IEEE, Vancouver)
-2. Mes sources (je vais te les donner une par une ou en lot)
-
-Pour chaque source, génère :
-
-**Source : [titre court]**
-- Citation complète (bibliographie) :
-  [citation formatée selon le style choisi]
-- Citation in-text (dans le texte) :
-  [format court à insérer dans une phrase]
-- Exemple dans une phrase :
-  "Selon [citation in-text], les résultats montrent que..."
-
-Exemple concret en APA 7e pour un livre :
-- Bibliographie : Dupont, J.-P. (2023). *Introduction à la méthodologie*. Éditions Universitaires.
-- In-text : (Dupont, 2023, p. 45)
-
-Quand j'ai fini de donner mes sources, compile automatiquement :
-
-### Bibliographie complète
-(toutes les sources triées alphabétiquement, formatées, avec retrait de 2e ligne — prêtes à copier-coller dans Word)
-
-Si je donne juste un titre ou un lien web, cherche les informations manquantes (auteur, éditeur, date, URL, DOI).
-
-IMPORTANT : respecte STRICTEMENT les règles du style choisi (italique, majuscules, ponctuation, alinéa). Pas de tableaux ASCII.`,
-  },
-  {
-    id: 'quiz',
-    title: 'Quiz de révision',
-    description: 'QCM interactif — réponds d\'abord, puis découvre les corrections et explications.',
-    icon: BrainCircuit,
-    color: 'from-fuchsia-500 to-pink-500',
-    tag: 'Nouveau',
-    prompt: `Tu es un professeur qui crée des quiz de révision engageants et pédagogiques.
-
-Si je n'ai pas envoyé de cours, demande-moi :
-"Envoie-moi ton cours (texte, PDF ou Word) ou dis-moi le sujet."
-
-Puis demande :
-1. Combien de questions ? (5, 10, 15, 20)
-2. Difficulté ? (facile / moyen / difficile / progressif)
-
-MODE INTERACTIF — Pose les questions UNE PAR UNE :
-
-**Question 1/X : [Titre court du thème]**
-
-[Énoncé de la question]
-
-a) Option A
-b) Option B
-c) Option C
-d) Option D
-
-"Quelle est ta réponse ? (tape a, b, c ou d)"
-
-Quand je réponds, donne :
-- ✅ **Correct !** ou ❌ **Incorrect — la bonne réponse est X**
-- **Explication** : pourquoi c'est la bonne réponse (2-3 phrases pédagogiques)
-- Passe à la question suivante
-
-À LA FIN du quiz :
-
-### Résultat
-- Score : X/Y (pourcentage)
-- Points forts : les thèmes maîtrisés
-- À revoir : les thèmes à retravailler
-- Conseil : prochaine étape pour progresser
-
-Propose : "Tu veux un nouveau quiz plus difficile sur les thèmes ratés ?"
-
-IMPORTANT : une seule question à la fois, attends ma réponse. Pas de tableaux ASCII.`,
-    opensFileDialog: true,
-  },
-  {
     id: 'evaluer',
     title: 'Mode Professeur',
-    description: 'Note /20 détaillée, grille par critère, erreurs critiques et conseils pour progresser.',
+    description: 'Note /20, grille, conseils',
     icon: ClipboardCheck,
     color: 'from-red-500 to-rose-600',
     tag: 'Upload',
-    prompt: `Tu es un professeur universitaire exigeant mais bienveillant. Je vais te soumettre un travail à évaluer.
-
-Si je n'ai pas encore envoyé de document, dis-moi :
-"Envoie-moi ton travail (colle le texte ou uploade un fichier PDF/Word avec le bouton 📎)."
-
-Puis demande :
-1. Type de travail (mémoire, rapport, dissertation, exposé, exercice, lettre de motivation)
-2. Niveau (L1, L2, L3, Master 1, Master 2, Doctorat)
-3. Matière / discipline
-
-Utilise la grille adaptée à la discipline. Voici les grilles prédéfinies :
-
-**Pour les sciences humaines / lettres :**
-- Problématique et pertinence : /4
-- Argumentation et logique : /5
-- Maîtrise de la langue : /4
-- Sources et références : /3
-- Originalité et esprit critique : /2
-- Présentation et mise en forme : /2
-
-**Pour les sciences / technique :**
-- Compréhension du sujet : /4
-- Rigueur méthodologique : /5
-- Exactitude des résultats : /4
-- Interprétation et analyse : /3
-- Clarté de la rédaction : /2
-- Présentation (figures, tableaux) : /2
-
-**Pour le droit / économie :**
-- Maîtrise des concepts juridiques/économiques : /5
-- Structure du raisonnement : /4
-- Qualité des références : /4
-- Rédaction et précision du vocabulaire : /3
-- Cas pratiques / exemples : /2
-- Présentation : /2
-
-Génère :
-
-### Évaluation — [Type de travail]
-
-**Note globale : XX/20** [avec appréciation : Insuffisant / Passable / Bien / Très bien / Excellent]
-
-**Grille détaillée :** (chaque critère avec note + justification en 1 phrase)
-
-**Points forts** (cite des passages précis du travail — entre guillemets)
-
-**Points à améliorer** (pour chaque point : le problème + comment le corriger concrètement)
-
-**Erreurs critiques** (s'il y en a : hors-sujet, contresens, incohérence, source manquante)
-
-**Version améliorée** : propose de réécrire les 2-3 passages les plus faibles pour montrer la différence.
-
-**Conseils pour progresser** (3 actions concrètes pour la prochaine fois)
-
-IMPORTANT : sois PRÉCIS, cite le travail. Pas de tableaux ASCII.`,
+    category: 'correction',
+    prompt: STUDENT_PROMPTS.evaluer,
+    opensFileDialog: true,
+  },
+  {
+    id: 'anti_plagiat',
+    title: 'Anti-Plagiat',
+    description: 'Detection + reformulation auto',
+    icon: Shield,
+    color: 'from-red-500 to-orange-500',
+    category: 'correction',
+    prompt: SKILL_PROMPTS.anti_plagiat,
+    opensFileDialog: true,
+  },
+  // --- Revision ---
+  {
+    id: 'resume',
+    title: 'Resume de cours',
+    description: 'Fiche de revision, definitions, formules',
+    icon: BookMarked,
+    color: 'from-amber-500 to-yellow-500',
+    tag: 'Upload',
+    category: 'revision',
+    prompt: STUDENT_PROMPTS.resume,
+    opensFileDialog: true,
+  },
+  {
+    id: 'quiz',
+    title: 'Quiz de revision',
+    description: 'QCM interactif avec corrections',
+    icon: BrainCircuit,
+    color: 'from-fuchsia-500 to-pink-500',
+    category: 'revision',
+    prompt: STUDENT_PROMPTS.quiz,
+    opensFileDialog: true,
+  },
+  {
+    id: 'flashcards',
+    title: 'Flashcards',
+    description: 'Cartes recto-verso, mode Anki',
+    icon: Layers,
+    color: 'from-cyan-500 to-blue-500',
+    category: 'revision',
+    prompt: SKILL_PROMPTS.flashcards,
+    opensFileDialog: true,
+  },
+  {
+    id: 'exercices',
+    title: 'Exercices',
+    description: 'QCM, vrai/faux, cas pratiques',
+    icon: Dumbbell,
+    color: 'from-purple-500 to-fuchsia-500',
+    category: 'revision',
+    prompt: SKILL_PROMPTS.generateur_exercices,
+    opensFileDialog: true,
+  },
+  // --- Outils ---
+  {
+    id: 'citations',
+    title: 'Citations / Biblio',
+    description: 'APA, MLA, Chicago, Harvard, IEEE',
+    icon: Quote,
+    color: 'from-orange-500 to-red-500',
+    category: 'outils',
+    prompt: STUDENT_PROMPTS.citations,
+  },
+  {
+    id: 'traducteur',
+    title: 'Traducteur',
+    description: 'FR, EN, AR -- registre academique',
+    icon: Languages,
+    color: 'from-green-500 to-teal-500',
+    category: 'outils',
+    prompt: SKILL_PROMPTS.traducteur_academique,
     opensFileDialog: true,
   },
 ];
@@ -698,6 +434,13 @@ function detectProjectIntent(message: string): boolean {
   if (msg.includes('```')) return false // souvent un extrait de code / logs
   if (/\b(stack trace|traceback|exception)\b/i.test(msg)) return false
 
+  // Prompts de l'assistant étudiant — JAMAIS un projet à générer
+  // Couvre : correcteur, reformulation, résumé, quiz, flashcards, exercices, plagiat, traduction, citations, évaluation, plan, mémoire, rapport, exposé
+  const isStudentPrompt =
+    /^Tu es un[e]?\s+(super-)?(correct|expert|profess|traducteur|assistant)/i.test(msg) &&
+    /\b(correction|reformulat|orthographe|grammaire|academique|pedagogique|exercice|flashcard|quiz|bareme|evaluat|plagiat|bibliograph|citation|revision|memoire|rapport|expose|redaction|traduction|fiche)/i.test(msg)
+  if (isStudentPrompt) return false
+
   const questionLike = /(\bcomment\b|\bpourquoi\b|\bexplique\b|\bexpliquer\b|\bwhat\b|\bwhy\b|\bhow\b)\b/i.test(msg)
   const asksToCreate = /\b(cr[ée]{1,2}[es]?\b|cr[ée]{1,2}[- ]?moi|g[ée]n[eè]re|développe|construis|build|create|generate|make|develop)\b/i.test(msg)
   if (questionLike && !asksToCreate) return false
@@ -715,8 +458,7 @@ function detectProjectIntent(message: string): boolean {
 
   // Si ça ressemble à une demande de debug/correction, on ne déclenche pas le builder
   const looksLikeFix =
-    /\b(corrige|corriger|fix|débug|debug|bug|erreur|errors?|refactor|optimise|lint|tests?|build)\b/i.test(msg) &&
-    !asksToCreate
+    /\b(corrige[rs]?|corriger|correcteur|corrections?|reformul|fix|débug|debug|bug|erreur|errors?|refactor|optimise|lint|tests?)\b/i.test(msg)
   if (looksLikeFix) return false
 
   // Appui du classifieur local (0 coût, heuristique)
@@ -1560,9 +1302,11 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
       endSession(sessionId, 'error');
 
       const errMsg = error.message || '';
-      const isCreditErr = /solde|insuffisant|credit|402|epuis/i.test(errMsg);
+      const isCreditErr = /solde|insuffisant|credit|402|epuis|recharg/i.test(errMsg);
       const isTimeoutErr = /timeout|trop de temps/i.test(errMsg);
-      const isNetworkErr = /hors ligne|pas de connexion|failed to fetch|network/i.test(errMsg);
+      const isNetworkErr = /hors ligne|pas de connexion|failed to fetch|network|impossible de joindre/i.test(errMsg);
+      const isAuthErr = /authentification|401|token.*invalide|token.*expir/i.test(errMsg);
+      const isConfigErr = /configuration|service IA/i.test(errMsg);
       const errorContent = error.name === 'AbortError'
         ? "Generation annulee."
         : isCreditErr
@@ -1571,7 +1315,11 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
             ? "Le serveur met trop de temps a repondre. Clique 'Reessayer' ci-dessous."
             : isNetworkErr
               ? "Probleme de connexion. Verifie ton internet et clique 'Reessayer'."
-              : `Erreur: ${errMsg.slice(0, 120) || 'Probleme inattendu'}. Clique 'Reessayer'.`;
+              : isAuthErr
+                ? "Session expiree. Reconnecte-toi et reessaie."
+                : isConfigErr
+                  ? "Probleme temporaire du service. Reessaie dans quelques instants."
+                  : `${errMsg.slice(0, 150) || 'Probleme inattendu'}. Clique \'Reessayer\'.`;
 
       // Stop any pending UI streaming
       useChatStore.getState().stopGeneration();
@@ -1843,11 +1591,12 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
       {/* ===== STUDENT ASSISTANT MENU (modal overlay) ===== */}
       {showStudentMenu && (
         <FeatureMenuModal
-          title="Assistant Étudiant"
+          title="Assistant Etudiant"
           subtitle="Choisis ce dont tu as besoin"
           icon={GraduationCap}
           iconColor="from-pink-500 to-rose-500"
           options={STUDENT_OPTIONS}
+          categories={STUDENT_CATEGORIES}
           onSelect={(opt) => {
             setShowStudentMenu(false);
             // Pour "Corriger / Reformuler": on évite d'envoyer un message séparé
@@ -1972,11 +1721,13 @@ interface FeatureOption {
   prompt: string;
   opensFileDialog?: boolean;
   tag?: string;
+  category?: string;
   subOptions?: SubOption[];
 }
 
 function FeatureMenuModal({
   title, subtitle, icon: TitleIcon, iconColor, options, onSelect, onClose,
+  categories,
 }: {
   title: string;
   subtitle: string;
@@ -1985,16 +1736,22 @@ function FeatureMenuModal({
   options: FeatureOption[];
   onSelect: (option: FeatureOption) => void;
   onClose: () => void;
+  categories?: { id: string; label: string; emoji: string }[];
 }) {
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<string>('all');
   const idsRef = useRef({
     titleId: `modal_title_${Math.random().toString(16).slice(2)}`,
     descId: `modal_desc_${Math.random().toString(16).slice(2)}`,
   });
 
-  // UX grand public: Escape ferme le modal + focus initial sur "fermer" + focus trap Tab
+  const hasCats = categories && categories.length > 0;
+  const filteredOptions = hasCats && activeCategory !== 'all'
+    ? options.filter((o) => (o as any).category === activeCategory)
+    : options;
+
   useEffect(() => {
     closeButtonRef.current?.focus();
     const onKeyDown = (e: KeyboardEvent) => {
@@ -2035,149 +1792,174 @@ function FeatureMenuModal({
     >
       <div
         ref={modalRef}
-        className="bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl w-full max-w-2xl mx-4 p-6 animate-in fade-in zoom-in-95 duration-200"
+        className="bg-bg-primary border border-border-subtle rounded-2xl shadow-2xl w-full max-w-xl mx-4 p-5 animate-in fade-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={idsRef.current.titleId}
         aria-describedby={idsRef.current.descId}
       >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <div className={cn('w-10 h-10 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-md', iconColor)}>
-              <TitleIcon size={20} className="text-white" />
+        {/* Header — compact */}
+        <div className="flex items-center justify-between mb-4 flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className={cn('w-9 h-9 rounded-xl bg-gradient-to-br flex items-center justify-center shadow-md', iconColor)}>
+              <TitleIcon size={18} className="text-white" />
             </div>
             <div>
-              <h2 id={idsRef.current.titleId} className="text-lg font-bold text-text-primary">{title}</h2>
-              <p id={idsRef.current.descId} className="text-xs text-text-muted">{subtitle}</p>
+              <h2 id={idsRef.current.titleId} className="text-base font-bold text-text-primary">{title}</h2>
+              <p id={idsRef.current.descId} className="text-[11px] text-text-muted">{subtitle}</p>
             </div>
           </div>
           <button
             onClick={onClose}
             ref={closeButtonRef}
-            className="p-2 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
+            className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted hover:text-text-primary transition-colors"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 
-        {/* Options grid — or sub-options panel when expanded */}
-        {expandedSub ? (
-          (() => {
-            const parent = options.find((o) => o.id === expandedSub);
-            if (!parent?.subOptions) return null;
-            return (
-              <div className="space-y-3">
-                {/* Back button */}
-                <button
-                  onClick={() => setExpandedSub(null)}
-                  className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mb-1"
-                >
-                  <ChevronLeft size={14} />
-                  Retour aux options
-                </button>
-                <p className="text-sm font-semibold text-text-primary mb-2">
-                  {parent.title} — choisis le type :
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {parent.subOptions.map((sub) => (
-                    <button
-                      key={sub.id}
-                      onClick={() => {
-                        // Build a synthetic FeatureOption from the sub-option
-                        onSelect({
-                          ...parent,
-                          id: sub.id,
-                          title: sub.label,
-                          description: sub.description,
-                          prompt: sub.prompt,
-                          opensFileDialog: true,
-                        });
-                      }}
-                      className={cn(
-                        'group flex items-start gap-3 p-4 rounded-xl border border-border-subtle',
-                        'bg-surface-default hover:bg-surface-hover',
-                        'transition-all duration-200 text-left',
-                        'hover:border-emerald-500/40 hover:shadow-md',
-                      )}
-                    >
-                      <span className="text-2xl flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
-                        {sub.emoji}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-sm font-semibold text-text-primary mb-0.5">
-                          {sub.label}
-                        </p>
-                        <p className="text-[11px] text-text-muted leading-relaxed">
-                          {sub.description}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })()
-        ) : (
-          <div className={cn(
-            'grid gap-3',
-            options.length <= 4 ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3',
-          )}>
-            {options.map((option) => {
-              const Icon = option.icon;
+        {/* Category tabs */}
+        {hasCats && !expandedSub && (
+          <div className="flex gap-1.5 mb-4 flex-shrink-0 overflow-x-auto pb-1 -mx-1 px-1">
+            {categories.map((cat) => {
+              const count = cat.id === 'all'
+                ? options.length
+                : options.filter((o) => (o as any).category === cat.id).length;
               return (
                 <button
-                  key={option.id}
-                  onClick={() => {
-                    if (option.subOptions && option.subOptions.length > 0) {
-                      setExpandedSub(option.id);
-                    } else {
-                      onSelect(option);
-                    }
-                  }}
+                  key={cat.id}
+                  onClick={() => setActiveCategory(cat.id)}
                   className={cn(
-                    'group flex items-start gap-3 p-4 rounded-xl border border-border-subtle',
-                    'bg-surface-default hover:bg-surface-hover',
-                    'transition-all duration-200 text-left',
-                    'hover:border-accent-primary/30 hover:shadow-md',
+                    'px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150',
+                    activeCategory === cat.id
+                      ? 'bg-accent-primary text-white shadow-sm'
+                      : 'bg-surface-default text-text-muted hover:bg-surface-hover hover:text-text-primary',
                   )}
                 >
-                  <div className={cn(
-                    'w-9 h-9 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0',
-                    'group-hover:scale-110 transition-transform duration-200 shadow-sm',
-                    option.color,
+                  {cat.label}
+                  <span className={cn(
+                    'ml-1.5 text-[10px]',
+                    activeCategory === cat.id ? 'text-white/70' : 'text-text-muted/60',
                   )}>
-                    <Icon size={16} className="text-white" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <p className="text-sm font-semibold text-text-primary">
-                        {option.title}
-                      </p>
-                      {option.tag && (
-                        <span className={cn(
-                          'text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full',
-                          option.tag === 'Nouveau' && 'bg-accent-primary/15 text-accent-primary',
-                          option.tag === 'Upload' && 'bg-emerald-500/15 text-emerald-500',
-                          option.tag === 'Populaire' && 'bg-amber-500/15 text-amber-500',
-                        )}>
-                          {option.tag}
-                        </span>
-                      )}
-                      {option.subOptions && (
-                        <ChevronRight size={12} className="text-text-muted ml-auto opacity-0 group-hover:opacity-100 transition-opacity" />
-                      )}
-                    </div>
-                    <p className="text-[11px] text-text-muted leading-relaxed">
-                      {option.description}
-                    </p>
-                  </div>
+                    {count}
+                  </span>
                 </button>
               );
             })}
           </div>
         )}
+
+        {/* Scrollable content */}
+        <div className="overflow-y-auto flex-1 min-h-0 -mx-1 px-1">
+          {expandedSub ? (
+            (() => {
+              const parent = options.find((o) => o.id === expandedSub);
+              if (!parent?.subOptions) return null;
+              return (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => setExpandedSub(null)}
+                    className="flex items-center gap-1.5 text-xs text-text-muted hover:text-text-primary transition-colors mb-2"
+                  >
+                    <ChevronLeft size={14} />
+                    Retour
+                  </button>
+                  <p className="text-sm font-semibold text-text-primary mb-2">
+                    {parent.title} :
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {parent.subOptions.map((sub) => (
+                      <button
+                        key={sub.id}
+                        onClick={() => {
+                          onSelect({
+                            ...parent,
+                            id: sub.id,
+                            title: sub.label,
+                            description: sub.description,
+                            prompt: sub.prompt,
+                            opensFileDialog: true,
+                          });
+                        }}
+                        className={cn(
+                          'group flex items-center gap-2.5 p-3 rounded-xl border border-border-subtle',
+                          'bg-surface-default hover:bg-surface-hover',
+                          'transition-all duration-150 text-left',
+                          'hover:border-emerald-500/40 hover:shadow-sm',
+                        )}
+                      >
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-semibold text-text-primary">
+                            {sub.label}
+                          </p>
+                          <p className="text-[11px] text-text-muted leading-snug">
+                            {sub.description}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {filteredOptions.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <button
+                    key={option.id}
+                    onClick={() => {
+                      if (option.subOptions && option.subOptions.length > 0) {
+                        setExpandedSub(option.id);
+                      } else {
+                        onSelect(option);
+                      }
+                    }}
+                    className={cn(
+                      'group flex items-center gap-2.5 p-3 rounded-xl border border-border-subtle',
+                      'bg-surface-default hover:bg-surface-hover',
+                      'transition-all duration-150 text-left',
+                      'hover:border-accent-primary/30 hover:shadow-sm',
+                    )}
+                  >
+                    <div className={cn(
+                      'w-8 h-8 rounded-lg bg-gradient-to-br flex items-center justify-center flex-shrink-0',
+                      'group-hover:scale-105 transition-transform duration-150 shadow-sm',
+                      option.color,
+                    )}>
+                      <Icon size={14} className="text-white" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-[13px] font-semibold text-text-primary truncate">
+                          {option.title}
+                        </p>
+                        {option.tag && (
+                          <span className={cn(
+                            'text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full flex-shrink-0',
+                            option.tag === 'Nouveau' && 'bg-accent-primary/15 text-accent-primary',
+                            option.tag === 'Upload' && 'bg-emerald-500/15 text-emerald-500',
+                            option.tag === 'Populaire' && 'bg-amber-500/15 text-amber-500',
+                          )}>
+                            {option.tag}
+                          </span>
+                        )}
+                        {option.subOptions && (
+                          <ChevronRight size={11} className="text-text-muted ml-auto opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                        )}
+                      </div>
+                      <p className="text-[11px] text-text-muted leading-snug truncate">
+                        {option.description}
+                      </p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

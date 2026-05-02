@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import secrets
 import time
@@ -213,6 +214,36 @@ class PaymentIntent(Base):
     )
 
 
+class StudentProject(Base):
+    __tablename__ = "student_projects"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # uuid4 hex
+    user_email: Mapped[str] = mapped_column(String(255), ForeignKey("users.email", ondelete="CASCADE"), index=True)
+    project_type: Mapped[str] = mapped_column(String(30), nullable=False)  # memoire, rapport, expose, plan, correction, research
+    title: Mapped[str] = mapped_column(String(500), default="")
+    subject: Mapped[str] = mapped_column(Text, default="")
+    level: Mapped[str] = mapped_column(String(50), default="")  # L1, L2, L3, M1, M2, Doctorat
+    status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False, index=True)
+    outline_json: Mapped[str] = mapped_column(Text, default="{}")  # Plan/outline as JSON
+    sections_json: Mapped[str] = mapped_column(Text, default="[]")  # Written sections as JSON array
+    content: Mapped[str] = mapped_column(Text, default="")  # Full accumulated content
+    metadata_json: Mapped[str] = mapped_column(Text, default="{}")  # Extra metadata (language, citation_style, etc.)
+    tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False, index=True)
+
+    __table_args__ = (
+        CheckConstraint(
+            "project_type IN ('memoire', 'rapport', 'expose', 'plan', 'correction', 'research', 'quiz', 'flashcards')",
+            name="ck_student_projects_type",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'in_progress', 'review', 'completed', 'archived')",
+            name="ck_student_projects_status",
+        ),
+    )
+
+
 class RateLimit(Base):
     __tablename__ = "rate_limits"
 
@@ -237,13 +268,24 @@ def _utcnow() -> datetime:
 def get_engine() -> AsyncEngine:
     global _engine, _sessionmaker
     if _engine is None:
+        db_url = settings.effective_database_url
+        is_postgres = "postgresql" in db_url or "asyncpg" in db_url
+
+        # asyncpg keeps a per-connection prepared-statement cache.
+        # After schema changes (new tables via create_all) stale cached
+        # statements cause ProgrammingError.  Disable the cache to fix.
+        extra_kwargs: Dict[str, Any] = {}
+        if is_postgres:
+            extra_kwargs["connect_args"] = {"statement_cache_size": 0}
+
         _engine = create_async_engine(
-            settings.effective_database_url,
+            db_url,
             pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
+            pool_size=10 if is_postgres else 5,
+            max_overflow=20 if is_postgres else 0,
             pool_recycle=3600,
             future=True,
+            **extra_kwargs,
         )
         _sessionmaker = async_sessionmaker(_engine, expire_on_commit=False, autoflush=False)
     return _engine
@@ -1207,6 +1249,133 @@ async def admin_mark_payment_intent_paid(
     async with Session() as session:
         intent = await session.scalar(select(PaymentIntent).where(PaymentIntent.id == intent_id))
         return _model_to_dict(intent) if intent else {}
+
+
+# ============================================================================
+# STUDENT PROJECTS
+# ============================================================================
+
+async def create_student_project(
+    user_email: str,
+    project_id: str,
+    project_type: str,
+    title: str = "",
+    subject: str = "",
+    level: str = "",
+) -> dict:
+    """Create a new student project."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            proj = StudentProject(
+                id=project_id,
+                user_email=user_email,
+                project_type=project_type,
+                title=title,
+                subject=subject,
+                level=level,
+                status="draft",
+            )
+            session.add(proj)
+        return {
+            "id": proj.id,
+            "project_type": proj.project_type,
+            "title": proj.title,
+            "status": proj.status,
+        }
+
+
+async def get_student_project(project_id: str) -> Optional[dict]:
+    """Get a student project by ID."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        proj = await session.scalar(select(StudentProject).where(StudentProject.id == project_id))
+        if not proj:
+            return None
+        return {
+            "id": proj.id,
+            "user_email": proj.user_email,
+            "project_type": proj.project_type,
+            "title": proj.title,
+            "subject": proj.subject,
+            "level": proj.level,
+            "status": proj.status,
+            "outline": json.loads(proj.outline_json) if proj.outline_json else {},
+            "sections": json.loads(proj.sections_json) if proj.sections_json else [],
+            "content": proj.content,
+            "metadata": json.loads(proj.metadata_json) if proj.metadata_json else {},
+            "tokens_used": proj.tokens_used,
+            "created_at": proj.created_at.isoformat() if proj.created_at else None,
+            "updated_at": proj.updated_at.isoformat() if proj.updated_at else None,
+        }
+
+
+async def get_user_student_projects(user_email: str, limit: int = 50) -> list:
+    """Get all student projects for a user, ordered by most recent."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        rows = (
+            await session.scalars(
+                select(StudentProject)
+                .where(StudentProject.user_email == user_email)
+                .order_by(StudentProject.updated_at.desc())
+                .limit(limit)
+            )
+        ).all()
+        return [
+            {
+                "id": p.id,
+                "project_type": p.project_type,
+                "title": p.title,
+                "subject": p.subject,
+                "level": p.level,
+                "status": p.status,
+                "tokens_used": p.tokens_used,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+                "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+            }
+            for p in rows
+        ]
+
+
+async def update_student_project(
+    project_id: str,
+    **kwargs,
+) -> bool:
+    """Update a student project. Accepts any column as kwarg.
+    Special handling for outline, sections, metadata (auto JSON serialize)."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            proj = await session.scalar(
+                select(StudentProject).where(StudentProject.id == project_id)
+            )
+            if not proj:
+                return False
+
+            for key, value in kwargs.items():
+                if key == "outline" and isinstance(value, (dict, list)):
+                    proj.outline_json = json.dumps(value, ensure_ascii=False)
+                elif key == "sections" and isinstance(value, (dict, list)):
+                    proj.sections_json = json.dumps(value, ensure_ascii=False)
+                elif key == "metadata" and isinstance(value, (dict, list)):
+                    proj.metadata_json = json.dumps(value, ensure_ascii=False)
+                elif hasattr(proj, key):
+                    setattr(proj, key, value)
+
+            proj.updated_at = _utcnow()
+        return True
+
+
+async def delete_student_project(project_id: str) -> bool:
+    """Delete a student project."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(
+                delete(StudentProject).where(StudentProject.id == project_id)
+            )
+            return (res.rowcount or 0) > 0
 
 
 # ============================================================================

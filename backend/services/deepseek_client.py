@@ -1,4 +1,5 @@
 """Async DeepSeek API client with streaming support and tool calling."""
+import asyncio
 import json
 import logging
 from typing import AsyncGenerator, Callable, Optional
@@ -160,6 +161,47 @@ class DeepSeekClient:
             
             return reasoning, content
 
+    async def _post_chat(
+        self,
+        payload: dict,
+        headers: dict,
+        *,
+        max_retries: int = 3,
+    ) -> dict:
+        """POST to chat/completions with retry on transient errors."""
+        last_exc: Exception | None = None
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        json=payload,
+                        headers=headers,
+                    )
+                if response.status_code == 200:
+                    return response.json()
+                # Transient errors — retry
+                if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries - 1:
+                    wait = (2 ** attempt) + 1
+                    logger.warning(f"API {response.status_code} on attempt {attempt+1}, retrying in {wait}s")
+                    await asyncio.sleep(wait)
+                    continue
+                raise Exception(f"API error {response.status_code}: {response.text[:500]}")
+            except httpx.TimeoutException as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    logger.warning(f"Timeout on attempt {attempt+1}, retrying...")
+                    await asyncio.sleep(2)
+                    continue
+                raise Exception(f"API timeout after {max_retries} attempts") from e
+            except httpx.ConnectError as e:
+                last_exc = e
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2)
+                    continue
+                raise Exception(f"Connection error after {max_retries} attempts") from e
+        raise last_exc or Exception("Request failed after retries")
+
     async def chat_with_tools(
         self,
         messages: list[dict],
@@ -208,17 +250,7 @@ class DeepSeekClient:
                 "tool_choice": "auto",
             }
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
-                    f"{self.base_url}/chat/completions",
-                    json=payload,
-                    headers=headers,
-                )
-
-            if response.status_code != 200:
-                raise Exception(f"API error {response.status_code}: {response.text[:500]}")
-
-            data = response.json()
+            data = await self._post_chat(payload, headers)
             choice = data.get("choices", [{}])[0]
             message = choice.get("message", {})
             finish_reason = choice.get("finish_reason", "")

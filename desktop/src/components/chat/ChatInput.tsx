@@ -464,7 +464,7 @@ export default function ChatInput({
   const MAX_BYTES_PDF = 12 * 1024 * 1024;   // 12MB
   const MAX_BYTES_DOCX = 10 * 1024 * 1024;  // 10MB
   const MAX_BYTES_XLSX = 8 * 1024 * 1024;   // 8MB
-  const MAX_ATTACH_TEXT = 15000;
+  const MAX_ATTACH_TEXT = 180000;            // ~45K tokens — assez pour un mémoire entier (jusqu'à ~90 pages)
 
   return (
     <div className="relative z-40 bg-bg-primary">
