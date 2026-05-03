@@ -781,6 +781,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     let localPath: string | undefined;
     try {
       const docsDir = await documentDir();
+      console.log('[ANZAR] documentDir() =', JSON.stringify(docsDir));
       const base = projectBaseDirOverrideRef.current || `${docsDir}ANZAR/Projects`;
       // Ensure base dir exists
       try {

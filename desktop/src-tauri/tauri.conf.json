@@ -41,9 +41,17 @@
         "exists": true,
         "scope": [
           "$DOCUMENTS/**",
+          "$DOCUMENTS/*",
           "$DESKTOP/**",
+          "$DESKTOP/*",
           "$DOWNLOAD/**",
-          "$DOCUMENTS/ANZAR-Projects/**",
+          "$DOWNLOAD/*",
+          "$HOME/Documents/**",
+          "$HOME/Documents/*",
+          "$HOME/Documents/ANZAR/**",
+          "$HOME/Documents/ANZAR/Projects/**",
+          "$HOME/Desktop/**",
+          "$HOME/Downloads/**",
           "$HOME/Projects/**",
           "$HOME/projects/**",
           "$HOME/Developer/**"
