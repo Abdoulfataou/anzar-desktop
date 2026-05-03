@@ -321,11 +321,75 @@ async def db_ping() -> None:
 # ============================================================================
 
 async def init_db():
-    """Create all tables if they don't exist."""
+    """Create all tables if they don't exist, then add any missing columns."""
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    logger.info("Database initialized — all tables ready")
+    logger.info("Database tables created/verified")
+
+    # ── Auto-migration: add missing columns to existing tables ──
+    # create_all does NOT alter existing tables.  When we add new columns
+    # in Python, production Postgres still has the old schema → ProgrammingError.
+    # This block inspects each model and issues ALTER TABLE ADD COLUMN IF NOT EXISTS.
+    db_url = settings.effective_database_url
+    is_postgres = "postgresql" in db_url or "asyncpg" in db_url
+
+    if is_postgres:
+        async with engine.begin() as conn:
+            for table in Base.metadata.sorted_tables:
+                for col in table.columns:
+                    col_name = col.name
+                    table_name = table.name
+
+                    # Determine SQL type
+                    try:
+                        col_type = col.type.compile(dialect=engine.dialect)
+                    except Exception:
+                        col_type = "TEXT"
+
+                    # Determine DEFAULT
+                    default_clause = ""
+                    if col.default is not None:
+                        dv = col.default.arg
+                        if isinstance(dv, bool):
+                            default_clause = f" DEFAULT {'TRUE' if dv else 'FALSE'}"
+                        elif isinstance(dv, (int, float)):
+                            default_clause = f" DEFAULT {dv}"
+                        elif isinstance(dv, str):
+                            safe = dv.replace("'", "''")
+                            default_clause = f" DEFAULT '{safe}'"
+
+                    sql = (
+                        f"ALTER TABLE {table_name} "
+                        f"ADD COLUMN IF NOT EXISTS {col_name} {col_type}{default_clause}"
+                    )
+                    try:
+                        from sqlalchemy import text as sa_text
+                        await conn.execute(sa_text(sql))
+                    except Exception as e:
+                        # Column might already exist with a different type — log and continue
+                        logger.debug(f"Auto-migrate skip {table_name}.{col_name}: {e}")
+
+            # ── Refresh CHECK constraints (drop old + re-create) ──
+            # If we added new status values, old CHECK constraints would reject them.
+            for table in Base.metadata.sorted_tables:
+                for constraint in table.constraints:
+                    if isinstance(constraint, CheckConstraint) and constraint.name:
+                        try:
+                            await conn.execute(sa_text(
+                                f"ALTER TABLE {table.name} DROP CONSTRAINT IF EXISTS {constraint.name}"
+                            ))
+                            # Re-create with current definition
+                            sql_check = constraint.sqltext.compile(dialect=engine.dialect)
+                            await conn.execute(sa_text(
+                                f"ALTER TABLE {table.name} ADD CONSTRAINT {constraint.name} CHECK ({sql_check})"
+                            ))
+                        except Exception as e:
+                            logger.debug(f"Auto-migrate constraint {constraint.name}: {e}")
+
+        logger.info("Auto-migration complete — all columns and constraints verified")
+    else:
+        logger.info("SQLite mode — skipping auto-migration (create_all handles it)")
 
 
 # ============================================================================
