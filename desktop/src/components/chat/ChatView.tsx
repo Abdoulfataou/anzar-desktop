@@ -835,8 +835,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         {
           onPhaseChange: (phase, message) => {
             if (phase === 'planning') {
-              addStep(sessionId, { type: 'understanding', label: 'Analyse de ta demande' });
-              updateConversationMessage(aiMessageId, { content: `**${projectName}**\n\nAnalyse et enrichissement de ta demande...` });
+              addStep(sessionId, { type: 'planning', label: 'Planification de l\'architecture' });
+              updateConversationMessage(aiMessageId, { content: `**${projectName}**\n\nPlanification de l'architecture...` });
             } else if (phase === 'planned') {
               updateConversationMessage(aiMessageId, { content: `**${projectName}**\n\n${message || 'Plan pret.'}` });
             } else if (phase === 'executing') {

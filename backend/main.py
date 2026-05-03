@@ -1398,67 +1398,126 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
 
     try:
-        # Step 0: Enrichir la description utilisateur
-        enricher = EnricherAgent(deepseek_client=_deepseek_client)
-        enrich_result = await enricher.execute({
-            "description": body.description,
-            "project_name": body.project_name,
-            "project_type": body.project_type,
-            "tech_stack": body.tech_stack,
-        })
-        enriched_desc = enrich_result.get("enriched_description", body.description)
-        enrich_tokens = enrich_result.get("tokens_used", 0)
-        logger.info(f"Enrichment done: {len(enriched_desc)} chars, {enrich_tokens} tokens")
+        # ── SINGLE-CALL PLANNING: Enricher + Orchestrator + Planner in ONE DeepSeek call ──
+        # This replaces 3 sequential API calls (~60-90s) with 1 call (~15-25s)
 
-        # Step 1: Orchestrator (avec description enrichie)
-        orchestrator = OrchestratorAgent(deepseek_client=_deepseek_client)
-        orch_result = await orchestrator.execute({
-            "description": enriched_desc,
-            "project_name": body.project_name,
-            "tech_stack": body.tech_stack,
-            "requirements": body.requirements,
-        })
+        type_hints = {
+            "web_app": "Site web: pages principales, composants, responsive, SEO",
+            "api_backend": "API: endpoints REST, DB schema, auth JWT, middleware",
+            "mobile": "Mobile: ecrans, navigation, stockage local, notifications",
+            "fullstack": "Full-stack: frontend pages + backend API + DB + deploy",
+            "ecommerce": "E-commerce: catalogue, panier, checkout, paiement, comptes",
+            "script": "Script: arguments CLI, flow execution, I/O fichiers",
+            "data": "Data/IA: pipeline ETL, visualisation, modeles ML",
+            "game": "Jeu: gameplay, ecrans, assets, score, controles",
+        }
+        type_hint = type_hints.get(body.project_type or "", "")
 
-        if orch_result.get("status") == "error":
-            err_detail = orch_result.get("error", "Unknown orchestration error")
-            logger.error("Orchestration failed: %s", err_detail)
-            raise HTTPException(500, f"Erreur orchestration: {err_detail}")
+        combined_system = """Tu es un architecte logiciel expert. En UNE SEULE reponse, tu dois:
+1. ENRICHIR la description vague en specification detaillee (pages, features, design, contenu)
+2. PLANIFIER le projet (taches, phases)
+3. DEFINIR l'architecture complete (structure fichiers, dependencies)
 
-        plan = orch_result.get("plan", {})
-        if not plan:
-            logger.error("Orchestrator returned empty plan")
-            raise HTTPException(500, "L'orchestrateur n'a pas pu générer de plan. Réessaie.")
+REGLES:
+- Garde l'intention originale de l'utilisateur
+- Sois CONCRET: pas de "une belle page" mais "hero section avec image, titre, CTA gradient"
+- Adapte au contexte geographique/culturel mentionne (langue, devise, design)
+- Genere 15-30 fichiers pour un projet web, 5-10 pour un script
+- Le code sera genere DIRECTEMENT a partir de ta spec — sois precis
+- Inclus TOUJOURS: fichiers principaux + config + styles + scripts + README
 
-        # Step 2: Planner
-        planner = PlannerAgent(deepseek_client=_deepseek_client)
-        plan_result = await planner.execute({
-            "plan": plan,
-            "project_name": body.project_name,
-        })
+Reponds en JSON:
+{
+    "project_name": "nom_du_projet",
+    "description": "description enrichie et detaillee du projet",
+    "tasks": [
+        {"task": "description de la tache", "priority": "high|medium|low"}
+    ],
+    "architecture": {
+        "frontend": {"framework": "...", "pages": ["..."]},
+        "design": {"style": "...", "colors": {"primary": "#hex", "secondary": "#hex"}, "fonts": "..."}
+    },
+    "structure": {
+        "directories": ["src/", "styles/", ...],
+        "files": [
+            {"path": "index.html", "description": "Page d'accueil avec hero, produits, temoignages", "type": "html"}
+        ]
+    },
+    "dependencies": {"core": [], "dev": []},
+    "setup_steps": ["Step 1", "Step 2"]
+}"""
 
-        if plan_result.get("status") == "error":
-            err_detail = plan_result.get("error", "Unknown planner error")
-            logger.error("Planning failed: %s", err_detail)
-            raise HTTPException(500, f"Erreur planification: {err_detail}")
+        tech_str = ', '.join(body.tech_stack) if body.tech_stack else 'A determiner'
+        req_str = ', '.join(body.requirements) if body.requirements else 'Aucune'
 
-        architecture = plan_result.get("architecture", {})
+        combined_user = f"""Projet: {body.project_name}
+Type: {body.project_type or 'other'}{f' ({type_hint})' if type_hint else ''}
+Description: {body.description}
+Technologies: {tech_str}
+Exigences: {req_str}
+
+Genere le plan complet avec architecture et structure de fichiers."""
+
+        messages = [
+            {"role": "system", "content": combined_system},
+            {"role": "user", "content": combined_user},
+        ]
+
+        # Single API call instead of 3 sequential ones
+        raw_text = await _deepseek_client.chat(
+            messages=messages,
+            temperature=0.7,
+            max_tokens=4000,
+            response_format={"type": "json_object"},
+        )
+
+        # Parse JSON response
+        try:
+            combined = json.loads(raw_text)
+        except json.JSONDecodeError:
+            # Try extracting JSON block from markdown
+            import re as _re
+            json_match = _re.search(r'```(?:json)?\s*([\s\S]*?)```', raw_text)
+            if json_match:
+                combined = json.loads(json_match.group(1))
+            else:
+                # Last resort: find first { to last }
+                start = raw_text.find('{')
+                end = raw_text.rfind('}')
+                if start >= 0 and end > start:
+                    combined = json.loads(raw_text[start:end + 1])
+                else:
+                    raise ValueError("Could not parse planning response as JSON")
+
+        # Estimate tokens (~4 chars per token)
+        total_tokens = (len(combined_user) + len(raw_text)) // 4
+        logger.info(f"Combined planning done in 1 call: ~{total_tokens} tokens, {len(raw_text)} chars")
+
+        # Extract files from combined response (structure.files or files)
+        files_list = combined.get("structure", {}).get("files", [])
+        if not files_list:
+            files_list = combined.get("files", [])
 
         # Build response matching frontend ProjectPlan type
         result = {
-            "title": plan.get("project_name", body.project_name),
-            "overview": plan.get("description", body.description),
+            "title": combined.get("project_name", body.project_name),
+            "overview": combined.get("description", body.description),
             "files": [
                 {"path": f.get("path", ""), "description": f.get("description", ""), "type": f.get("type", "")}
-                for f in architecture.get("structure", {}).get("files", [])
+                for f in files_list
             ],
             "phases": [
                 {"name": t.get("task", ""), "description": t.get("task", ""), "duration": "", "tasks": [t.get("task", "")]}
-                for t in plan.get("tasks", [])
+                for t in combined.get("tasks", [])
             ],
             "complexity": "medium",
             "notes": "",
-            "architecture": architecture,
-            "tokens_used": enrich_tokens + orch_result.get("tokens_used", 0) + plan_result.get("tokens_used", 0),
+            "architecture": {
+                "structure": combined.get("structure", {"files": files_list}),
+                "architecture": combined.get("architecture", {}),
+                "dependencies": combined.get("dependencies", {}),
+            },
+            "tokens_used": total_tokens,
         }
 
         # Save project to DB
