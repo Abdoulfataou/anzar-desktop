@@ -44,6 +44,22 @@ export interface AgentStep {
   durationMs?: number;
 }
 
+/** Todo item for the generation checklist (TRAE-style) */
+export interface TodoItem {
+  id: string;
+  label: string;
+  status: 'pending' | 'active' | 'done' | 'error';
+  startedAt?: number;
+  completedAt?: number;
+}
+
+/** Context file being processed */
+export interface ContextFile {
+  path: string;
+  type: 'skill' | 'file' | 'other';
+  status: 'reading' | 'writing' | 'done';
+}
+
 /** Session d'activité (une conversation/tâche) */
 export interface ActivitySession {
   id: string;
@@ -53,6 +69,14 @@ export interface ActivitySession {
   startedAt: number;
   completedAt?: number;
   totalDurationMs?: number;
+
+  // TRAE-style additions
+  todos: TodoItem[];
+  contextFiles: ContextFile[];
+  contextPercent: number;     // 0-100
+  filesCreated: number;
+  filesModified: number;
+  commandsRun: number;
 }
 
 // ============================================================================
@@ -70,6 +94,14 @@ interface ActivityStore {
   addStep: (sessionId: string, step: Omit<AgentStep, 'id' | 'startedAt' | 'status'>) => string;
   completeStep: (sessionId: string, stepId: string, status?: 'done' | 'error') => void;
   updateStepLabel: (sessionId: string, stepId: string, label: string) => void;
+
+  // TRAE-style Todo & Context actions
+  setTodos: (sessionId: string, todos: Omit<TodoItem, 'id'>[]) => void;
+  updateTodo: (sessionId: string, todoId: string, status: TodoItem['status']) => void;
+  addContextFile: (sessionId: string, file: ContextFile) => void;
+  removeContextFile: (sessionId: string, path: string) => void;
+  setContextPercent: (sessionId: string, percent: number) => void;
+  incrementStat: (sessionId: string, stat: 'filesCreated' | 'filesModified' | 'commandsRun', by?: number) => void;
 
   // Getters
   getActiveSession: () => ActivitySession | null;
@@ -91,6 +123,12 @@ export const useActivityStore = create<ActivityStore>()((set, get) => ({
         steps: [],
         status: 'active',
         startedAt: Date.now(),
+        todos: [],
+        contextFiles: [],
+        contextPercent: 0,
+        filesCreated: 0,
+        filesModified: 0,
+        commandsRun: 0,
       });
       return { sessions, activeSessionId: id };
     });
@@ -198,6 +236,95 @@ export const useActivityStore = create<ActivityStore>()((set, get) => ({
           s.id === stepId ? { ...s, label } : s
         );
         sessions.set(sessionId, { ...session, steps });
+      }
+      return { sessions };
+    });
+  },
+
+  // ── TRAE-style Todo & Context ──
+
+  setTodos: (sessionId, todos) => {
+    set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(sessionId);
+      if (session) {
+        sessions.set(sessionId, {
+          ...session,
+          todos: todos.map((t, i) => ({ ...t, id: `todo-${i}` })),
+        });
+      }
+      return { sessions };
+    });
+  },
+
+  updateTodo: (sessionId, todoId, status) => {
+    set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(sessionId);
+      if (session) {
+        const now = Date.now();
+        const todos = session.todos.map((t) =>
+          t.id === todoId
+            ? {
+                ...t,
+                status,
+                startedAt: status === 'active' ? now : t.startedAt,
+                completedAt: status === 'done' || status === 'error' ? now : undefined,
+              }
+            : t,
+        );
+        sessions.set(sessionId, { ...session, todos });
+      }
+      return { sessions };
+    });
+  },
+
+  addContextFile: (sessionId, file) => {
+    set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(sessionId);
+      if (session) {
+        const exists = session.contextFiles.some((f) => f.path === file.path);
+        const contextFiles = exists
+          ? session.contextFiles.map((f) => (f.path === file.path ? file : f))
+          : [...session.contextFiles, file];
+        sessions.set(sessionId, { ...session, contextFiles });
+      }
+      return { sessions };
+    });
+  },
+
+  removeContextFile: (sessionId, path) => {
+    set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(sessionId);
+      if (session) {
+        sessions.set(sessionId, {
+          ...session,
+          contextFiles: session.contextFiles.filter((f) => f.path !== path),
+        });
+      }
+      return { sessions };
+    });
+  },
+
+  setContextPercent: (sessionId, percent) => {
+    set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(sessionId);
+      if (session) {
+        sessions.set(sessionId, { ...session, contextPercent: Math.min(100, Math.max(0, percent)) });
+      }
+      return { sessions };
+    });
+  },
+
+  incrementStat: (sessionId, stat, by = 1) => {
+    set((state) => {
+      const sessions = new Map(state.sessions);
+      const session = sessions.get(sessionId);
+      if (session) {
+        sessions.set(sessionId, { ...session, [stat]: (session[stat] || 0) + by });
       }
       return { sessions };
     });

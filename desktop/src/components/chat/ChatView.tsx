@@ -43,6 +43,7 @@ import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 import VerifyFixNotice from './VerifyFixNotice';
 import ProjectWizardModal from './ProjectWizardModal';
+import GenerationPanel from './GenerationPanel';
 import { runService } from '@/services/runService';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 import { generationTracker } from '@/services/generationTracker';
@@ -565,6 +566,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const [showSearchMenu, setShowSearchMenu] = useState(false);
   const [showDocumentMenu, setShowDocumentMenu] = useState(false);
   const [showProjectWizard, setShowProjectWizard] = useState(false);
+  const [generationPanelSessionId, setGenerationPanelSessionId] = useState<string | null>(null);
   const forceProjectGenerationOnceRef = useRef(false);
   const wizardMetaRef = useRef<{ projectType: string; techs: string[] } | null>(null);
   const projectBaseDirOverrideRef = useRef<string | null>(null);
@@ -749,6 +751,11 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const endSession = useActivityStore((s) => s.endSession);
   const addStep = useActivityStore((s) => s.addStep);
   const completeStep = useActivityStore((s) => s.completeStep);
+  const setTodos = useActivityStore((s) => s.setTodos);
+  const updateTodo = useActivityStore((s) => s.updateTodo);
+  const addContextFile = useActivityStore((s) => s.addContextFile);
+  const setContextPercent = useActivityStore((s) => s.setContextPercent);
+  const incrementStat = useActivityStore((s) => s.incrementStat);
 
   // ========================================================================
   // PROJECT GENERATION HANDLER
@@ -761,6 +768,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   ) => {
     setIsGenerating(true);
     const projectName = extractProjectName(content);
+
+    // Open the TRAE-style generation panel
+    setGenerationPanelSessionId(sessionId);
 
     // Create project in store
     const project = createProject(projectName, content, selectedModel);
@@ -848,6 +858,33 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             // Register background tracker so generation survives navigation
             generationTracker.track(projectId, p.project_id, p.title || projectName);
 
+            // ── Populate TRAE-style Todos from plan phases ──
+            const todoItems: { label: string; status: 'pending' | 'active' | 'done' }[] = [
+              { label: 'Analyser la demande', status: 'done' },
+              { label: 'Planifier l\'architecture', status: 'done' },
+              { label: 'Generer le code (' + p.files.length + ' fichiers)', status: 'active' },
+            ];
+            if (p.phases && p.phases.length > 0) {
+              for (const phase of p.phases) {
+                todoItems.push({ label: phase.name, status: 'pending' });
+              }
+            }
+            todoItems.push(
+              { label: 'Tester et valider', status: 'pending' },
+              { label: 'Ecrire les fichiers sur le PC', status: 'pending' },
+            );
+            setTodos(sessionId, todoItems);
+
+            // ── Populate Context files from plan ──
+            setContextPercent(sessionId, 25);
+            for (const f of p.files) {
+              addContextFile(sessionId, {
+                path: f.path,
+                type: 'file',
+                status: 'reading',
+              });
+            }
+
             addStep(sessionId, { type: 'complete', label: 'Architecture: ' + p.files.length + ' fichiers planifies' });
             addStep(sessionId, { type: 'writing', label: 'Generation du code' });
 
@@ -884,6 +921,24 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                 });
               }
 
+              // ── Update context panel with file info ──
+              if (step.file) {
+                if (step.action === 'writing' || step.action === 'creating') {
+                  addContextFile(sessionId, { path: step.file, type: 'file', status: 'writing' });
+                  incrementStat(sessionId, 'filesCreated');
+                } else if (step.action === 'reading') {
+                  addContextFile(sessionId, { path: step.file, type: 'file', status: 'reading' });
+                }
+              }
+              if (step.action === 'testing') {
+                updateTodo(sessionId, 'todo-' + (lastPlan ? lastPlan.phases.length + 2 : 4), 'active');
+              }
+
+              // Update context percent based on progress
+              const totalFiles = lastPlan?.files.length || 10;
+              const writtenCount = [...addedSteps].filter((k) => k.startsWith('step:writing:') || k.startsWith('step:creating:')).length;
+              setContextPercent(sessionId, Math.min(90, 25 + Math.round((writtenCount / totalFiles) * 65)));
+
               // Update chat message with the latest step label
               if (step.action !== 'complete') {
                 const nextContent =
@@ -902,6 +957,15 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                 progress: agent.progress,
                 message: agent.message || '',
               });
+
+              // ── Update todos based on agent completion ──
+              if (agent.name === 'coder' && agent.status === 'done') {
+                updateTodo(sessionId, 'todo-2', 'done'); // "Generer le code"
+              }
+              if (agent.name === 'tester' && agent.status === 'done') {
+                const testTodoIdx = lastPlan ? lastPlan.phases.length + 2 : 4;
+                updateTodo(sessionId, 'todo-' + testTodoIdx, 'done');
+              }
             }
 
             const totalProgress = agentsEvent.agents.reduce((sum, a) => sum + a.progress, 0);
@@ -926,6 +990,10 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             // SSE stream completed — stop background tracker
             generationTracker.untrack(projectId);
 
+            // Mark "write files to PC" todo as active
+            const writeTodoIdx = lastPlan ? lastPlan.phases.length + 3 : 5;
+            updateTodo(sessionId, 'todo-' + writeTodoIdx, 'active');
+
             // ── Download files from backend and write to local disk ──
             if (localPath && backendProjectId) {
               try {
@@ -943,7 +1011,12 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   // Write file
                   await fileSystemService.writeFile(fullPath, content);
                   addStep(sessionId, { type: 'creating', label: `Ecriture de ${filepath}`, filePath: filepath });
+                  addContextFile(sessionId, { path: filepath, type: 'file', status: 'done' });
                 }
+
+                // Mark write todo as done + context 100%
+                updateTodo(sessionId, 'todo-' + writeTodoIdx, 'done');
+                setContextPercent(sessionId, 100);
 
                 addStep(sessionId, { type: 'complete', label: `${fileEntries.length} fichiers ecrits sur le PC` });
 
@@ -1056,6 +1129,11 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     addStep,
     completeStep,
     endSession,
+    setTodos,
+    updateTodo,
+    addContextFile,
+    setContextPercent,
+    incrementStat,
     ensureActiveConversation,
     addConversationMessage,
     updateConversationMessage,
@@ -1495,7 +1573,9 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
 
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-bg-primary">
+    <div className="h-full min-h-0 flex bg-bg-primary">
+      {/* Main chat column */}
+      <div className="flex-1 min-h-0 flex flex-col bg-bg-primary">
       {/* Chat area */}
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {!isEffectivelyOnline && (
@@ -1741,6 +1821,14 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
           onClose={() => setShowDocumentMenu(false)}
         />
       )}
+    </div>
+    {/* ── Generation Panel (right sidebar, TRAE-style) ── */}
+    {generationPanelSessionId && (
+      <GenerationPanel
+        sessionId={generationPanelSessionId}
+        onClose={() => setGenerationPanelSessionId(null)}
+      />
+    )}
     </div>
   );
 }
