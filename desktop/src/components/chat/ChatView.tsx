@@ -1037,8 +1037,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                 let writeSuccess = 0;
                 let writeErrors = 0;
                 for (const [filePath, content] of filesToWrite) {
+                  const fullPath = `${localPath}/${filePath}`;
                   try {
-                    const fullPath = `${localPath}/${filePath}`;
                     const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
                     await fileSystemService.createDirectory(parentDir).catch(() => {});
                     await fileSystemService.writeFile(fullPath, content);
@@ -1075,8 +1075,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   // non-blocking
                 }
               } catch (syncErr: any) {
-                console.warn('Could not sync project files:', syncErr);
-                addStep(sessionId, { type: 'error', label: `Erreur sync: ${syncErr?.message?.slice(0, 80) || 'erreur inconnue'}` });
+                const syncMsg = typeof syncErr === 'string' ? syncErr : (syncErr?.message || String(syncErr));
+                console.warn('[ANZAR] Could not sync project files:', syncErr);
+                addStep(sessionId, { type: 'error', label: `Erreur sync: ${syncMsg.slice(0, 80)}` });
               }
             }
           },
