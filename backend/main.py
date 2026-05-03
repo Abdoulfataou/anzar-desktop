@@ -1571,6 +1571,9 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             files = coder_result.get("files", {})
             total_tokens += coder_result.get("tokens_used", 0)
 
+            # Store generated files in state for frontend download
+            state["generated_files"] = files
+
             # Push file-by-file writing steps
             for filepath in sorted(files.keys()):
                 state["steps_queue"].append({
@@ -1768,6 +1771,21 @@ async def get_project_status(project_id: str, user: dict = Depends(get_current_u
         })
 
     return JSONResponse(content={"status": "unknown", "agents": []})
+
+
+@app.get("/api/projects/{project_id}/download-files")
+async def download_project_files(project_id: str, user: dict = Depends(get_current_user)):
+    """Return generated files content for frontend to write locally via Tauri FS.
+    This is the bridge between server-side generation and desktop file creation."""
+    state = _project_states.get(project_id)
+    if not state:
+        raise HTTPException(404, "Projet non trouvé ou expiré")
+
+    files = state.get("generated_files", {})
+    if not files:
+        raise HTTPException(404, "Aucun fichier généré")
+
+    return JSONResponse(content={"files": files, "file_count": len(files)})
 
 
 @app.post("/api/projects/{project_id}/cancel")

@@ -922,25 +922,36 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             updateConversationMessage(aiMessageId, { content: nextContent });
           },
 
-          onComplete: async () => {
-            // SSE stream completed — stop background tracker (no longer needed)
+          onComplete: async (backendProjectId: string) => {
+            // SSE stream completed — stop background tracker
             generationTracker.untrack(projectId);
 
-            // Sync generated files into the store
-            if (localPath) {
+            // ── Download files from backend and write to local disk ──
+            if (localPath && backendProjectId) {
               try {
+                addStep(sessionId, { type: 'reading', label: 'Telechargement des fichiers depuis le serveur' });
+                const files = await projectGeneration.downloadFiles(backendProjectId);
+                const fileEntries = Object.entries(files);
+
+                for (const [filepath, content] of fileEntries) {
+                  const fullPath = `${localPath}/${filepath}`;
+                  // Ensure parent directory exists
+                  const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+                  try {
+                    await fileSystemService.createDirectory(parentDir);
+                  } catch { /* dir may already exist */ }
+                  // Write file
+                  await fileSystemService.writeFile(fullPath, content);
+                  addStep(sessionId, { type: 'creating', label: `Ecriture de ${filepath}`, filePath: filepath });
+                }
+
+                addStep(sessionId, { type: 'complete', label: `${fileEntries.length} fichiers ecrits sur le PC` });
+
+                // Sync into project store
                 await loadProjectFromDisk(projectId);
               } catch (syncErr) {
-                console.warn('Could not sync project files from disk:', syncErr);
-              }
-            }
-
-            // Auto-verify after generation
-            if (localPath) {
-              try {
-                await runService.executeVerifyPipeline({ projectId, projectPath: localPath });
-              } catch (verifyErr) {
-                console.warn('Auto verify failed to start:', verifyErr);
+                console.warn('Could not download/write project files:', syncErr);
+                addStep(sessionId, { type: 'error', label: 'Erreur lors du telechargement des fichiers' });
               }
             }
           },

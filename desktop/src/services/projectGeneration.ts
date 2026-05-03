@@ -251,6 +251,25 @@ class ProjectGenerationService {
   }
 
   /**
+   * Download generated files from backend.
+   * Returns a dict of filepath → content to write locally via Tauri FS.
+   */
+  async downloadFiles(backendProjectId: string): Promise<Record<string, string>> {
+    const url = `${getBackendUrl()}/api/projects/${backendProjectId}/download-files`;
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Erreur téléchargement fichiers (HTTP ${response.status})`);
+    }
+
+    const data = await response.json();
+    return data.files || {};
+  }
+
+  /**
    * Pipeline complet : plan + execute avec AbortController intégré.
    * Retourne le plan si succès, null sinon.
    * Appelé depuis ChatView.handleProjectGeneration.
