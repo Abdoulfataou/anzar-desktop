@@ -225,6 +225,17 @@ const STUDENT_OPTIONS = [
   },
   // --- Revision ---
   {
+    id: 'explique_document',
+    title: 'Explique-moi ce document',
+    description: 'PDF, Word, PowerPoint, livre, memoire — je t\'explique tout',
+    icon: GraduationCap,
+    color: 'from-indigo-500 to-violet-500',
+    tag: 'Upload',
+    category: 'revision',
+    prompt: STUDENT_PROMPTS.explique_document,
+    opensFileDialog: true,
+  },
+  {
     id: 'resume',
     title: 'Resume de cours',
     description: 'Fiche de revision, definitions, formules',
@@ -435,10 +446,10 @@ function detectProjectIntent(message: string): boolean {
   if (/\b(stack trace|traceback|exception)\b/i.test(msg)) return false
 
   // Prompts de l'assistant étudiant — JAMAIS un projet à générer
-  // Couvre : correcteur, reformulation, résumé, quiz, flashcards, exercices, plagiat, traduction, citations, évaluation, plan, mémoire, rapport, exposé
+  // Couvre : correcteur, reformulation, résumé, quiz, flashcards, exercices, plagiat, traduction, citations, évaluation, plan, mémoire, rapport, exposé, tuteur
   const isStudentPrompt =
-    /^Tu es un[e]?\s+(super-)?(correct|expert|profess|traducteur|assistant)/i.test(msg) &&
-    /\b(correction|reformulat|orthographe|grammaire|academique|pedagogique|exercice|flashcard|quiz|bareme|evaluat|plagiat|bibliograph|citation|revision|memoire|rapport|expose|redaction|traduction|fiche)/i.test(msg)
+    /^Tu es un[e]?\s+(super-)?(correct|expert|profess|traducteur|assistant|tuteur)/i.test(msg) &&
+    /\b(correction|reformulat|orthographe|grammaire|academique|pedagogique|exercice|flashcard|quiz|bareme|evaluat|plagiat|bibliograph|citation|revision|memoire|rapport|expose|redaction|traduction|fiche|tuteur|enseign|expliqu)/i.test(msg)
   if (isStudentPrompt) return false
 
   const questionLike = /(\bcomment\b|\bpourquoi\b|\bexplique\b|\bexpliquer\b|\bwhat\b|\bwhy\b|\bhow\b)\b/i.test(msg)
@@ -479,6 +490,13 @@ function detectProjectIntent(message: string): boolean {
 function detectVisualIntent(message: string): boolean {
   const msg = (message || '').trim().toLowerCase();
   if (msg.length < 8) return false;
+
+  // Prompts de l'assistant étudiant — JAMAIS un routage visuel
+  // (ces prompts contiennent des mots comme "illustrer", "schema", "montre" dans le cadre pédagogique)
+  const isStudentPrompt =
+    /^tu es un[e]?\s+(super-)?(correct|expert|profess|traducteur|assistant|tuteur)/i.test(msg) &&
+    /\b(correction|reformulat|orthographe|grammaire|academique|pedagogique|exercice|flashcard|quiz|bareme|evaluat|plagiat|bibliograph|citation|revision|memoire|rapport|expose|redaction|traduction|fiche|tuteur|enseign|expliqu)/i.test(msg);
+  if (isStudentPrompt) return false;
 
   // Mots-clés visuels (FR + EN)
   const visualKeywords =
