@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 import { AIModel, type Message, type ChatAttachment } from '@/types';
 import { aiRouter } from '@/services/router';
 import { aiService } from '@/services/ai';
-import { projectGeneration, type PlanResult, type ExecutionEvent } from '@/services/projectGeneration';
+import { projectGeneration, type PlanResult, type ExecutionEvent, type StepEvent, type AgentsEvent } from '@/services/projectGeneration';
 import { fileSystemService } from '@/services/fileSystem';
 import { useUsageStore } from '@/stores/usageStore';
 import { useActivityStore } from '@/stores/activityStore';
@@ -861,51 +861,64 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           },
 
           onAgentUpdate: (event: ExecutionEvent) => {
-            for (const agent of event.agents) {
+            // ── Handle granular step events (TRAE-style) ──
+            if (event.type === 'step') {
+              const step = event as StepEvent;
+              const actionMap: Record<string, string> = {
+                reading: 'reading',
+                thinking: 'thinking',
+                writing: 'writing',
+                creating: 'creating',
+                testing: 'testing',
+                complete: 'complete',
+                error: 'error',
+              };
+              const stepType = actionMap[step.action] || 'thinking';
+              const stepKey = 'step:' + step.action + ':' + step.label;
+              if (!addedSteps.has(stepKey)) {
+                addedSteps.add(stepKey);
+                addStep(sessionId, {
+                  type: stepType as any,
+                  label: step.label,
+                  filePath: step.file || undefined,
+                });
+              }
+
+              // Update chat message with the latest step label
+              if (step.action !== 'complete') {
+                const nextContent =
+                  '**' + (lastPlan?.title || projectName) + '**\n\n' +
+                  step.label;
+                updateConversationMessage(aiMessageId, { content: nextContent });
+              }
+              return;
+            }
+
+            // ── Handle agent status events (progress tracking) ──
+            const agentsEvent = event as AgentsEvent;
+            for (const agent of agentsEvent.agents) {
               updateAgentStatus(projectId, agent.name, {
                 status: agent.status === 'done' ? 'done' : agent.status === 'error' ? 'error' : agent.status === 'running' ? 'working' : 'idle',
                 progress: agent.progress,
                 message: agent.message || '',
               });
-
-              // Add granular timeline steps (deduplicated)
-              const stepKey = agent.name + ':' + agent.status;
-              if (!addedSteps.has(stepKey)) {
-                addedSteps.add(stepKey);
-                if (agent.status === 'running' && agent.name === 'tester') {
-                  addStep(sessionId, { type: 'testing', label: 'Tests qualite du code' });
-                } else if (agent.status === 'running' && agent.name === 'executor') {
-                  addStep(sessionId, { type: 'creating', label: 'Ecriture des fichiers sur disque' });
-                } else if (agent.status === 'done' && agent.name === 'coder') {
-                  addStep(sessionId, { type: 'complete', label: 'Code genere' });
-                } else if (agent.status === 'done' && agent.name === 'executor') {
-                  addStep(sessionId, { type: 'complete', label: 'Fichiers ecrits' });
-                } else if (agent.status === 'done' && agent.name === 'tester') {
-                  addStep(sessionId, { type: 'complete', label: 'Tests valides' });
-                }
-              }
             }
 
-            const totalProgress = event.agents.reduce((sum, a) => sum + a.progress, 0);
-            const overallProgress = Math.round(30 + (totalProgress / event.agents.length) * 0.7);
+            const totalProgress = agentsEvent.agents.reduce((sum, a) => sum + a.progress, 0);
+            const overallProgress = Math.round(30 + (totalProgress / agentsEvent.agents.length) * 0.7);
             setProjectProgress(projectId, overallProgress);
 
-            const doneAgents = event.agents.filter((a) => a.status === 'done');
-            const runningAgent = event.agents.find((a) => a.status === 'running');
-            const total = event.agents.length;
-            const pct = total > 0 ? Math.round((doneAgents.length / total) * 100) : 0;
+            const doneAgents = agentsEvent.agents.filter((a) => a.status === 'done');
+            const runningAgent = agentsEvent.agents.find((a) => a.status === 'running');
+            const total = agentsEvent.agents.length;
 
             const statusLine = runningAgent
-              ? (runningAgent.name === 'coder' ? 'Generation du code...'
-                : runningAgent.name === 'tester' ? 'Tests qualite...'
-                : runningAgent.name === 'executor' ? 'Ecriture des fichiers...'
-                : runningAgent.message || runningAgent.name)
+              ? (runningAgent.message || runningAgent.name)
               : doneAgents.length === total ? 'Finalisation...' : 'En cours...';
 
             const nextContent =
               '**' + (lastPlan?.title || projectName) + '**\n\n' +
-              statusLine + ' ' + pct + '%\n\n' +
-              doneAgents.length + '/' + total + ' etapes terminees';
+              statusLine;
             updateConversationMessage(aiMessageId, { content: nextContent });
           },
 

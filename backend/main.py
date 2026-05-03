@@ -1512,6 +1512,7 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             {"name": "tester", "status": "pending", "progress": 0},
             {"name": "executor", "status": "pending", "progress": 0},
         ],
+        "steps_queue": [],  # Granular file-level events
     }
 
     # ── Background task: runs independently of SSE connection ──
@@ -1539,6 +1540,18 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             update_agent("coder", "running", 10, "Generation du code...")
             await persist_agents()
 
+            # Push initial thinking steps
+            state["steps_queue"].append({
+                "action": "reading",
+                "label": "Lecture du plan d'architecture",
+                "file": None
+            })
+            state["steps_queue"].append({
+                "action": "thinking",
+                "label": "Reflexion sur la structure du projet",
+                "file": None
+            })
+
             coder = CoderAgent(deepseek_client=_deepseek_client)
             architecture = plan.get("architecture", plan)
 
@@ -1557,10 +1570,33 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
 
             files = coder_result.get("files", {})
             total_tokens += coder_result.get("tokens_used", 0)
+
+            # Push file-by-file writing steps
+            for filepath in sorted(files.keys()):
+                state["steps_queue"].append({
+                    "action": "writing",
+                    "label": f"Generation de {filepath}",
+                    "file": filepath
+                })
+
+            # Push completion step for coder
+            state["steps_queue"].append({
+                "action": "complete",
+                "label": f"{len(files)} fichiers generes",
+                "file": None
+            })
+
             update_agent("coder", "done", 100, f"{len(files)} fichiers generes")
             await persist_agents()
 
             # ── Tester + Executor EN PARALLELE ──
+            # Push testing step
+            state["steps_queue"].append({
+                "action": "testing",
+                "label": "Analyse qualite du code",
+                "file": None
+            })
+
             update_agent("tester", "running", 10, "Analyse qualite...")
             update_agent("executor", "running", 10, "Ecriture des fichiers...")
             await persist_agents()
@@ -1594,6 +1630,12 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                 quality = report.get("code_quality", "?")
                 issues = len(report.get("issues", []))
                 update_agent("tester", "done", 100, f"Qualite: {quality}/10 - {issues} issues")
+                # Push testing completion
+                state["steps_queue"].append({
+                    "action": "complete",
+                    "label": f"Qualite: {quality}/10 - {issues} issues",
+                    "file": None
+                })
             await persist_agents()
 
             # Process executor result
@@ -1608,13 +1650,30 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             else:
                 total_tokens += exec_result.get("tokens_used", 0) if isinstance(exec_result, dict) else 0
                 count = exec_result.get("file_count", 0)
+
+                # Push file creation steps
+                files_created = exec_result.get("files_created", [])
+                for filepath in files_created:
+                    state["steps_queue"].append({
+                        "action": "creating",
+                        "label": f"Ecriture de {filepath}",
+                        "file": filepath
+                    })
+
+                # Push final completion step
+                state["steps_queue"].append({
+                    "action": "complete",
+                    "label": f"{count} fichiers ecrits sur disque",
+                    "file": None
+                })
+
                 update_agent("executor", "done", 100, f"{count} fichiers ecrits")
                 await persist_agents()
                 state["status"] = "completed"
                 await update_project(
                     project_id,
                     status="complete",
-                    result_json=json.dumps({"files_created": exec_result.get("files_created", [])}),
+                    result_json=json.dumps({"files_created": files_created}),
                     tokens_used=total_tokens,
                 )
 
@@ -1646,25 +1705,28 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
     # Launch generation as a fire-and-forget background task
     asyncio.create_task(_run_generation())
 
-    # ── SSE observer stream: emits state every 3s, survives independently ──
+    # ── SSE observer stream: emits state every 0.5s, survives independently ──
     async def _observe_stream():
         """Observe _project_states and emit updates. Client disconnect does NOT stop generation."""
-        last_snapshot = ""
         while True:
             state = _project_states.get(project_id)
             if not state:
                 break
 
-            snapshot = json.dumps({"agents": state["agents"]})
-            # Always emit (acts as keepalive + progress update)
-            yield snapshot + "\n"
-            last_snapshot = snapshot
+            # Emit agent status events
+            yield json.dumps({"type": "agents", "agents": state["agents"]}) + "\n"
+
+            # Emit granular step events (consume from queue)
+            steps_queue = state.get("steps_queue", [])
+            while steps_queue:
+                step = steps_queue.pop(0)
+                yield json.dumps({"type": "step", **step}) + "\n"
 
             # Stop streaming if generation is done
             if state.get("status") in ("completed", "error"):
                 break
 
-            await asyncio.sleep(3)
+            await asyncio.sleep(0.5)
 
     return StreamingResponse(
         _observe_stream(),

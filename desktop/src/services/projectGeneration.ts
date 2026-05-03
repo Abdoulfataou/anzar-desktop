@@ -40,10 +40,23 @@ export interface AgentUpdate {
   message?: string;
 }
 
-export interface ExecutionEvent {
+/** Granular file-level step event (TRAE-style) */
+export interface StepEvent {
+  type: 'step';
+  action: string;   // reading, thinking, writing, creating, testing, complete, error
+  label: string;
+  file: string | null;
+}
+
+export interface AgentsEvent {
+  type: 'agents';
   agents: AgentUpdate[];
 }
 
+/** Union of all SSE event types */
+export type ExecutionEvent = AgentsEvent | StepEvent;
+
+/** Legacy compatibility */
 export type OnAgentUpdate = (event: ExecutionEvent) => void;
 
 // ============================================================================
@@ -81,8 +94,16 @@ function parseSSELine(line: string): ExecutionEvent | null {
 
   try {
     const parsed = JSON.parse(jsonStr);
-    if (parsed && Array.isArray(parsed.agents)) {
-      return parsed as ExecutionEvent;
+    // New format: typed events
+    if (parsed && parsed.type === 'step') {
+      return parsed as StepEvent;
+    }
+    if (parsed && parsed.type === 'agents' && Array.isArray(parsed.agents)) {
+      return parsed as AgentsEvent;
+    }
+    // Legacy format: plain agents array (backward compat)
+    if (parsed && Array.isArray(parsed.agents) && !parsed.type) {
+      return { type: 'agents', agents: parsed.agents } as AgentsEvent;
     }
   } catch {
     // Not valid JSON — skip keepalive, comments, etc.

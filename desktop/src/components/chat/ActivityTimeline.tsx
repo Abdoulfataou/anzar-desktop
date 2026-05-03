@@ -179,7 +179,7 @@ interface ActivityTimelineProps {
 
 export default function ActivityTimeline({
   sessionId,
-  maxSteps = 20,
+  maxSteps = 50,
   compact = false,
   className,
 }: ActivityTimelineProps) {
@@ -275,7 +275,7 @@ export default function ActivityTimeline({
       {!isCollapsed && (
         <div
           ref={scrollRef}
-          className="px-3 pb-2 max-h-[200px] overflow-y-auto"
+          className="px-3 pb-2 max-h-[400px] overflow-y-auto"
         >
           {visibleSteps.map((step, idx) => (
             <StepRow
@@ -308,7 +308,7 @@ export function InlineActivity({ sessionId }: { sessionId: string }) {
       {/* Done steps — collapsed */}
       {doneSteps.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {doneSteps.slice(-6).map((step) => {
+          {doneSteps.slice(-12).map((step) => {
             const config = ACTION_CONFIG[step.type];
             const Icon = config.icon;
             return (
