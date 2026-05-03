@@ -566,7 +566,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const [showSearchMenu, setShowSearchMenu] = useState(false);
   const [showDocumentMenu, setShowDocumentMenu] = useState(false);
   const [showProjectWizard, setShowProjectWizard] = useState(false);
-  const [generationPanelSessionId, setGenerationPanelSessionId] = useState<string | null>(null);
+  const generationPanelSessionId = useActivityStore((s) => s.generationPanelSessionId);
+  const setGenerationPanelSessionId = useActivityStore((s) => s.setGenerationPanelSessionId);
   const forceProjectGenerationOnceRef = useRef(false);
   const wizardMetaRef = useRef<{ projectType: string; techs: string[] } | null>(null);
   const projectBaseDirOverrideRef = useRef<string | null>(null);
@@ -788,12 +789,14 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         // ignore
       }
       localPath = `${base}/${projectName}`;
+      console.log('[ANZAR] Creating project dir:', localPath);
       await fileSystemService.createDirectory(localPath);
       // Persist localPath in project metadata
       updateProject(projectId, { metadata: { ...project.metadata, localPath } });
+      console.log('[ANZAR] Project dir created OK:', localPath);
     } catch (fsErr) {
       // Non-blocking: project can still be generated in-memory
-      console.warn('Could not create local project directory:', fsErr);
+      console.warn('[ANZAR] Could not create local project directory:', fsErr, 'localPath was:', localPath);
     }
 
     // AI placeholder message for generation progress
@@ -1009,6 +1012,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
               try {
                 // ── BATCH WRITE: write all files received via SSE to disk ──
                 updateTodo(sessionId, 'todo-' + writeTodoIdx, 'active');
+                console.log(`[ANZAR] Batch write: ${receivedFiles.size} files, localPath=${localPath}`);
                 addStep(sessionId, { type: 'writing', label: `Ecriture de ${receivedFiles.size} fichier(s) recu(s) via SSE...` });
 
                 // Source 1: files received via SSE streaming
@@ -1024,7 +1028,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                     }
                     addStep(sessionId, { type: 'complete', label: `${filesToWrite.size} fichier(s) telecharge(s)` });
                   } catch (dlErr: any) {
-                    addStep(sessionId, { type: 'error', label: `Echec telechargement: ${dlErr?.message?.slice(0, 80) || 'erreur'}` });
+                    const dlMsg = typeof dlErr === 'string' ? dlErr : (dlErr?.message || String(dlErr));
+                    addStep(sessionId, { type: 'error', label: `Echec telechargement: ${dlMsg.slice(0, 80)}` });
                   }
                 }
 
@@ -1042,7 +1047,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                     addContextFile(sessionId, { path: filePath, type: 'file', status: 'done' });
                   } catch (writeErr: any) {
                     writeErrors++;
-                    addStep(sessionId, { type: 'error', label: `Erreur ecriture ${filePath}: ${writeErr?.message?.slice(0, 60) || 'erreur'}` });
+                    const errMsg = typeof writeErr === 'string' ? writeErr : (writeErr?.message || JSON.stringify(writeErr));
+                    console.error(`[ANZAR] File write FAILED: ${fullPath}`, writeErr);
+                    addStep(sessionId, { type: 'error', label: `Erreur ecriture ${filePath}: ${String(errMsg).slice(0, 80)}` });
                   }
                 }
 

@@ -255,7 +255,12 @@ class FileSystemService {
       await this.createDirectory(dirPath);
     }
 
-    await writeTextFile(filePath, content);
+    try {
+      await writeTextFile(filePath, content);
+    } catch (e) {
+      console.error('[ANZAR] writeTextFile FAILED:', filePath, 'error:', e, 'type:', typeof e);
+      throw e;
+    }
   }
 
   /**
@@ -266,8 +271,9 @@ class FileSystemService {
     await this.assertAllowedPath(dirPath);
     try {
       await createDir(dirPath, { recursive: true });
-    } catch {
-      // Directory might already exist
+    } catch (e) {
+      // Directory might already exist — log but don't throw
+      console.warn('[ANZAR] createDir warning:', dirPath, e);
     }
   }
 

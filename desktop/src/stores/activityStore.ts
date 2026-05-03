@@ -87,10 +87,13 @@ interface ActivityStore {
   // State
   sessions: Map<string, ActivitySession>;
   activeSessionId: string | null;
+  /** ID of the session whose GenerationPanel should be visible (persists across navigation) */
+  generationPanelSessionId: string | null;
 
   // Actions
   startSession: (id: string, label: string) => void;
   endSession: (id: string, status?: 'done' | 'error') => void;
+  setGenerationPanelSessionId: (id: string | null) => void;
   addStep: (sessionId: string, step: Omit<AgentStep, 'id' | 'startedAt' | 'status'>) => string;
   completeStep: (sessionId: string, stepId: string, status?: 'done' | 'error') => void;
   updateStepLabel: (sessionId: string, stepId: string, label: string) => void;
@@ -113,6 +116,7 @@ interface ActivityStore {
 export const useActivityStore = create<ActivityStore>()((set, get) => ({
   sessions: new Map(),
   activeSessionId: null,
+  generationPanelSessionId: null,
 
   startSession: (id, label) => {
     set((state) => {
@@ -132,6 +136,10 @@ export const useActivityStore = create<ActivityStore>()((set, get) => ({
       });
       return { sessions, activeSessionId: id };
     });
+  },
+
+  setGenerationPanelSessionId: (id) => {
+    set({ generationPanelSessionId: id });
   },
 
   endSession: (id, status = 'done') => {
@@ -347,6 +355,6 @@ export const useActivityStore = create<ActivityStore>()((set, get) => ({
   },
 
   clearSessions: () => {
-    set({ sessions: new Map(), activeSessionId: null });
+    set({ sessions: new Map(), activeSessionId: null, generationPanelSessionId: null });
   },
 }));

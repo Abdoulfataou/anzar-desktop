@@ -45,6 +45,7 @@ function detectAttachmentKind(filename: string): ChatAttachmentKind {
   const ext = filename.split('.').pop()?.toLowerCase() || '';
   if (ext === 'pdf') return 'pdf';
   if (ext === 'docx' || ext === 'doc') return 'docx';
+  if (ext === 'pptx' || ext === 'ppt') return 'pptx';
   if (ext === 'xlsx' || ext === 'xls') return 'xlsx';
   if (ext === 'csv') return 'csv';
   if (ext === 'tsv') return 'tsv';
@@ -159,6 +160,74 @@ async function extractExcelText(bytes: Uint8Array): Promise<string> {
     return `${blocks.join('\n\n---\n\n')}${suffix}`;
   } catch {
     return '[Erreur lors de la lecture du fichier Excel — essayez de l\'exporter en CSV]';
+  }
+}
+
+/** Extract text from a PowerPoint (.pptx) file (ZIP containing XML slide files) */
+async function extractPptxText(bytes: Uint8Array): Promise<string> {
+  try {
+    const { default: JSZip } = await import('jszip');
+    const zip = await JSZip.loadAsync(bytes);
+
+    // Find all slide XML files (ppt/slides/slide1.xml, slide2.xml, ...)
+    const slideFiles = Object.keys(zip.files)
+      .filter((p) => /ppt\/slides\/slide\d+\.xml$/i.test(p))
+      .sort((a, b) => {
+        const na = Number(a.match(/slide(\d+)\.xml/i)?.[1] || 0);
+        const nb = Number(b.match(/slide(\d+)\.xml/i)?.[1] || 0);
+        return na - nb;
+      });
+
+    if (slideFiles.length === 0) return '[Impossible de lire le fichier PowerPoint]';
+
+    const slideTexts: string[] = [];
+    const maxSlides = Math.min(slideFiles.length, 80);
+
+    for (let i = 0; i < maxSlides; i++) {
+      const slideXml = await zip.file(slideFiles[i])?.async('string');
+      if (!slideXml) continue;
+      // Extract text content from XML: <a:t>text</a:t> tags
+      const texts: string[] = [];
+      const regex = /<a:t[^>]*>([^<]*)<\/a:t>/gi;
+      let match;
+      while ((match = regex.exec(slideXml)) !== null) {
+        if (match[1].trim()) texts.push(match[1]);
+      }
+      if (texts.length > 0) {
+        slideTexts.push(`--- Slide ${i + 1} ---\n${texts.join(' ')}`);
+      }
+    }
+
+    if (slideFiles.length > maxSlides) {
+      slideTexts.push(`\n[... ${slideFiles.length - maxSlides} slides supplementaires non incluses ...]`);
+    }
+
+    // Also try to extract notes (ppt/notesSlides/)
+    const notesFiles = Object.keys(zip.files)
+      .filter((p) => /ppt\/notesSlides\/notesSlide\d+\.xml$/i.test(p))
+      .sort();
+
+    if (notesFiles.length > 0) {
+      const noteTexts: string[] = [];
+      for (const nf of notesFiles.slice(0, 30)) {
+        const noteXml = await zip.file(nf)?.async('string');
+        if (!noteXml) continue;
+        const texts: string[] = [];
+        const regex2 = /<a:t[^>]*>([^<]*)<\/a:t>/gi;
+        let m;
+        while ((m = regex2.exec(noteXml)) !== null) {
+          if (m[1].trim() && !/^\d+$/.test(m[1].trim())) texts.push(m[1]);
+        }
+        if (texts.length > 0) noteTexts.push(texts.join(' '));
+      }
+      if (noteTexts.length > 0) {
+        slideTexts.push(`\n--- Notes de l'orateur ---\n${noteTexts.join('\n')}`);
+      }
+    }
+
+    return slideTexts.join('\n\n') || '[Presentation PowerPoint vide]';
+  } catch {
+    return '[Erreur lors de la lecture du fichier PowerPoint]';
   }
 }
 
@@ -553,7 +622,7 @@ export default function ChatInput({
                         multiple: true,
                         title: 'Joindre des fichiers',
                         filters: [
-                          { name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'txt', 'md', 'rtf'] },
+                          { name: 'Documents', extensions: ['pdf', 'docx', 'doc', 'pptx', 'ppt', 'txt', 'md', 'rtf'] },
                           { name: 'Données', extensions: ['csv', 'tsv', 'xlsx', 'xls', 'json', 'xml'] },
                           { name: 'Code', extensions: ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'html', 'css', 'yaml', 'sql'] },
                           { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
@@ -586,6 +655,16 @@ export default function ChatInput({
                                 continue;
                               }
                               const text = await extractDocxText(bytes);
+                              newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
+                              added++;
+                            } else if (kind === 'pptx') {
+                              const bytes = await readBinaryFile(filePath);
+                              if (bytes.byteLength > MAX_BYTES_DOCX) {
+                                newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' });
+                                added++;
+                                continue;
+                              }
+                              const text = await extractPptxText(bytes);
                               newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
                               added++;
                             } else if (kind === 'xlsx') {
@@ -635,7 +714,7 @@ export default function ChatInput({
                       const input = document.createElement('input');
                       input.type = 'file';
                       input.multiple = true;
-                      input.accept = '.pdf,.docx,.doc,.txt,.md,.rtf,.csv,.tsv,.xlsx,.xls,.json,.xml,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.html,.css,.png,.jpg,.jpeg,.svg';
+                      input.accept = '.pdf,.docx,.doc,.pptx,.ppt,.txt,.md,.rtf,.csv,.tsv,.xlsx,.xls,.json,.xml,.ts,.tsx,.js,.jsx,.py,.rs,.go,.java,.html,.css,.png,.jpg,.jpeg,.svg';
                       input.onchange = async () => {
                         if (input.files) {
                           const loadingToast = toast.loading('Lecture des fichiers…');
@@ -662,6 +741,16 @@ export default function ChatInput({
                                 }
                                 const buffer = await file.arrayBuffer();
                                 const text = await extractDocxText(new Uint8Array(buffer));
+                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
+                                added++;
+                              } else if (kind === 'pptx') {
+                                if (file.size > MAX_BYTES_DOCX) {
+                                  webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' });
+                                  added++;
+                                  continue;
+                                }
+                                const buffer = await file.arrayBuffer();
+                                const text = await extractPptxText(new Uint8Array(buffer));
                                 webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
                                 added++;
                               } else if (kind === 'xlsx') {

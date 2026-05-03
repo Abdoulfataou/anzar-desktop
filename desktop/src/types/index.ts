@@ -130,6 +130,7 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
 export type ChatAttachmentKind =
   | 'pdf'
   | 'docx'
+  | 'pptx'
   | 'xlsx'
   | 'csv'
   | 'tsv'
