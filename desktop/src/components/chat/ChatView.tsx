@@ -29,7 +29,7 @@ import { cn } from '@/lib/utils';
 import { AIModel, type Message, type ChatAttachment } from '@/types';
 import { aiRouter } from '@/services/router';
 import { aiService } from '@/services/ai';
-import { projectGeneration, type PlanResult, type ExecutionEvent, type StepEvent, type AgentsEvent } from '@/services/projectGeneration';
+import { projectGeneration, type PlanResult, type ExecutionEvent, type StepEvent, type AgentsEvent, type FileEvent } from '@/services/projectGeneration';
 import { fileSystemService } from '@/services/fileSystem';
 import { useUsageStore } from '@/stores/usageStore';
 import { useActivityStore } from '@/stores/activityStore';
@@ -820,6 +820,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       let lastPlan: PlanResult | null = null;
       const addedSteps = new Set<string>();
+      const writtenFiles = new Set<string>(); // Track files already written to disk (for resume)
 
       const wizardMeta = wizardMetaRef.current;
       wizardMetaRef.current = null;
@@ -898,6 +899,40 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           },
 
           onAgentUpdate: (event: ExecutionEvent) => {
+            // ── Handle file content events — write to disk immediately ──
+            if (event.type === 'file') {
+              const fileEvt = event as FileEvent;
+              if (localPath && !writtenFiles.has(fileEvt.path)) {
+                const fullPath = `${localPath}/${fileEvt.path}`;
+                const tmpPath = `${fullPath}.tmp`;
+                const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+
+                // Atomic write: .tmp → rename (async, fire-and-forget in SSE handler)
+                (async () => {
+                  try {
+                    await fileSystemService.createDirectory(parentDir).catch(() => {});
+                    await fileSystemService.writeFile(tmpPath, fileEvt.content);
+                    // Rename .tmp → final (atomic)
+                    try {
+                      await fileSystemService.renameFile(tmpPath, fullPath);
+                    } catch {
+                      // renameFile may not exist — fallback: write directly
+                      await fileSystemService.writeFile(fullPath, fileEvt.content);
+                      await fileSystemService.deleteFile(tmpPath).catch(() => {});
+                    }
+                    writtenFiles.add(fileEvt.path);
+                    incrementStat(sessionId, 'filesCreated');
+                    addContextFile(sessionId, { path: fileEvt.path, type: 'file', status: 'done' });
+                    addStep(sessionId, { type: 'creating', label: `Ecrit ${fileEvt.path}`, filePath: fileEvt.path });
+                  } catch (err) {
+                    console.warn('Failed to write file:', fileEvt.path, err);
+                    addStep(sessionId, { type: 'error', label: `Erreur ecriture ${fileEvt.path}` });
+                  }
+                })();
+              }
+              return;
+            }
+
             // ── Handle granular step events (TRAE-style) ──
             if (event.type === 'step') {
               const step = event as StepEvent;
@@ -990,41 +1025,46 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             // SSE stream completed — stop background tracker
             generationTracker.untrack(projectId);
 
-            // Mark "write files to PC" todo as active
             const writeTodoIdx = lastPlan ? lastPlan.phases.length + 3 : 5;
-            updateTodo(sessionId, 'todo-' + writeTodoIdx, 'active');
 
-            // ── Download files from backend and write to local disk ──
+            // ── Reprise sur coupure: download only MISSING files ──
             if (localPath && backendProjectId) {
               try {
-                addStep(sessionId, { type: 'reading', label: 'Telechargement des fichiers depuis le serveur' });
-                const files = await projectGeneration.downloadFiles(backendProjectId);
-                const fileEntries = Object.entries(files);
+                // Check if all files were already written via SSE streaming
+                const expectedFiles = lastPlan?.files.map((f) => f.path) || [];
+                const missingFiles = expectedFiles.filter((p) => !writtenFiles.has(p));
 
-                for (const [filepath, content] of fileEntries) {
-                  const fullPath = `${localPath}/${filepath}`;
-                  // Ensure parent directory exists
-                  const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
-                  try {
-                    await fileSystemService.createDirectory(parentDir);
-                  } catch { /* dir may already exist */ }
-                  // Write file
-                  await fileSystemService.writeFile(fullPath, content);
-                  addStep(sessionId, { type: 'creating', label: `Ecriture de ${filepath}`, filePath: filepath });
-                  addContextFile(sessionId, { path: filepath, type: 'file', status: 'done' });
+                if (missingFiles.length > 0) {
+                  // Some files missed during SSE — fallback to /download-files
+                  updateTodo(sessionId, 'todo-' + writeTodoIdx, 'active');
+                  addStep(sessionId, { type: 'reading', label: `Recuperation de ${missingFiles.length} fichier(s) manquant(s)` });
+
+                  const allFiles = await projectGeneration.downloadFiles(backendProjectId);
+
+                  for (const missingPath of missingFiles) {
+                    const content = allFiles[missingPath];
+                    if (!content) continue;
+
+                    const fullPath = `${localPath}/${missingPath}`;
+                    const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
+                    await fileSystemService.createDirectory(parentDir).catch(() => {});
+                    await fileSystemService.writeFile(fullPath, content);
+                    writtenFiles.add(missingPath);
+                    addStep(sessionId, { type: 'creating', label: `Ecrit ${missingPath}`, filePath: missingPath });
+                  }
                 }
 
-                // Mark write todo as done + context 100%
+                // Mark todo as done + context 100%
                 updateTodo(sessionId, 'todo-' + writeTodoIdx, 'done');
                 setContextPercent(sessionId, 100);
 
-                addStep(sessionId, { type: 'complete', label: `${fileEntries.length} fichiers ecrits sur le PC` });
+                addStep(sessionId, { type: 'complete', label: `${writtenFiles.size} fichiers ecrits sur le PC` });
 
                 // Sync into project store
                 await loadProjectFromDisk(projectId);
               } catch (syncErr) {
-                console.warn('Could not download/write project files:', syncErr);
-                addStep(sessionId, { type: 'error', label: 'Erreur lors du telechargement des fichiers' });
+                console.warn('Could not sync project files:', syncErr);
+                addStep(sessionId, { type: 'error', label: 'Erreur lors de la synchronisation des fichiers' });
               }
             }
           },

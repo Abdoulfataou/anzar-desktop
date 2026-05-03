@@ -1571,15 +1571,23 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             files = coder_result.get("files", {})
             total_tokens += coder_result.get("tokens_used", 0)
 
-            # Store generated files in state for frontend download
+            # Store generated files in state for fallback download
             state["generated_files"] = files
 
-            # Push file-by-file writing steps
+            # Stream each file's content directly via SSE + step event
             for filepath in sorted(files.keys()):
+                content = files[filepath]
+                # Push step event (UI feedback)
                 state["steps_queue"].append({
                     "action": "writing",
                     "label": f"Generation de {filepath}",
                     "file": filepath
+                })
+                # Push file content event (frontend writes to disk immediately)
+                state["steps_queue"].append({
+                    "type": "file",
+                    "path": filepath,
+                    "content": content,
                 })
 
             # Push completion step for coder
@@ -1719,11 +1727,15 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             # Emit agent status events
             yield json.dumps({"type": "agents", "agents": state["agents"]}) + "\n"
 
-            # Emit granular step events (consume from queue)
+            # Emit granular step + file events (consume from queue)
             steps_queue = state.get("steps_queue", [])
             while steps_queue:
-                step = steps_queue.pop(0)
-                yield json.dumps({"type": "step", **step}) + "\n"
+                event = steps_queue.pop(0)
+                # File content events already have their own "type":"file"
+                if event.get("type") == "file":
+                    yield json.dumps(event) + "\n"
+                else:
+                    yield json.dumps({"type": "step", **event}) + "\n"
 
             # Stop streaming if generation is done
             if state.get("status") in ("completed", "error"):

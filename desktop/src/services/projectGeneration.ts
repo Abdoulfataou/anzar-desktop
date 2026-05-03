@@ -53,8 +53,15 @@ export interface AgentsEvent {
   agents: AgentUpdate[];
 }
 
+/** File content streamed directly via SSE (Option 2 — write as received) */
+export interface FileEvent {
+  type: 'file';
+  path: string;
+  content: string;
+}
+
 /** Union of all SSE event types */
-export type ExecutionEvent = AgentsEvent | StepEvent;
+export type ExecutionEvent = AgentsEvent | StepEvent | FileEvent;
 
 /** Legacy compatibility */
 export type OnAgentUpdate = (event: ExecutionEvent) => void;
@@ -95,6 +102,9 @@ function parseSSELine(line: string): ExecutionEvent | null {
   try {
     const parsed = JSON.parse(jsonStr);
     // New format: typed events
+    if (parsed && parsed.type === 'file' && parsed.path && typeof parsed.content === 'string') {
+      return parsed as FileEvent;
+    }
     if (parsed && parsed.type === 'step') {
       return parsed as StepEvent;
     }
