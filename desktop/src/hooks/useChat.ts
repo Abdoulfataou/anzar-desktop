@@ -220,14 +220,6 @@ export function useChat(): UseChatReturn {
 
         addMessage(userMessage);
 
-        // Prepare messages for API
-        const apiMessages: APIMessage[] = conversation.messages.map((msg) => ({
-          role: msg.role as 'user' | 'assistant' | 'system',
-          content: msg.content,
-        }));
-
-        apiMessages.push({ role: 'user', content });
-
         // Vérification solde prépayé — blocage dur si solde = 0
         const { useAccountStore } = await import('@/stores/accountStore');
         const accountState = useAccountStore.getState();
@@ -236,40 +228,83 @@ export function useChat(): UseChatReturn {
           return;
         }
 
-        // Check context length and auto-compact if necessary
-        const contextTokens = Math.ceil(apiMessages.reduce((sum, m) => sum + (typeof m.content === 'string' ? m.content.length : 0), 0) / 4);
-        if (contextTokens > 100000 && conversation.messages.length > 10) {
-          // Auto-compact: summarize first 80% of messages
-          const messagesToCompact = Math.floor(conversation.messages.length * 0.8);
-          const messagesToSummarize = conversation.messages.slice(0, messagesToCompact);
+        // ── Auto-compaction du contexte ──
+        // Seuil: 30K tokens (~120K chars). Au-delà, on résume les vieux messages
+        // pour économiser les tokens et rester dans un budget raisonnable.
+        // DeepSeek V4 supporte 1M tokens en entrée, mais envoyer 200K tokens
+        // à chaque message coûte cher et ralentit la réponse.
+        const COMPACT_THRESHOLD_TOKENS = 30000;
+        const MIN_MESSAGES_TO_COMPACT = 10;
 
+        const allMessages = conversation.messages;
+        const estimatedTokens = Math.ceil(
+          allMessages.reduce((sum, m) => sum + m.content.length, 0) / 4
+        );
+
+        if (estimatedTokens > COMPACT_THRESHOLD_TOKENS && allMessages.length > MIN_MESSAGES_TO_COMPACT) {
           try {
-            // Use aiService to summarize
-            const { aiService } = await import('@/services');
-            const summaryMessages: APIMessage[] = [
-              {
-                role: 'system',
-                content: 'Résume cette conversation en gardant les informations clés, les décisions prises, et le contexte technique. Sois concis (max 500 tokens).',
-              },
-              {
-                role: 'user',
-                content: messagesToSummarize.map((m) => `${m.role}: ${m.content}`).join('\n'),
-              },
-            ];
+            // Garder les 6 derniers messages intacts, résumer le reste
+            const keepLast = 6;
+            const messagesToSummarize = allMessages.slice(
+              allMessages[0]?.role === 'system' ? 1 : 0,
+              -keepLast
+            );
 
-            const summaryResponse = await aiService.chat(summaryMessages, { provider: 'deepseek', model: 'fast' });
-            const summary = summaryResponse.choices?.[0]?.message?.content || '';
+            if (messagesToSummarize.length > 2) {
+              const { aiService } = await import('@/services');
+              const summaryPrompt: APIMessage[] = [
+                {
+                  role: 'system',
+                  content: `Tu es un assistant de résumé. Résume la conversation suivante en un résumé structuré et concis (max 800 tokens).
+Garde:
+- Le sujet principal et l'objectif de l'utilisateur
+- Les décisions clés prises
+- Le contexte technique important (noms de fichiers, technologies, erreurs résolues)
+- Les instructions ou préférences exprimées par l'utilisateur
+Ignore: les formules de politesse, les répétitions, les détails mineurs.
+Réponds UNIQUEMENT avec le résumé, sans introduction.`,
+                },
+                {
+                  role: 'user',
+                  content: messagesToSummarize
+                    .map((m) => `[${m.role}]: ${m.content.slice(0, 2000)}`)
+                    .join('\n\n'),
+                },
+              ];
 
-            if (summary) {
-              const { compactConversation } = useChatStore.getState();
-              compactConversation(summary);
+              const summaryResponse = await aiService.chat(summaryPrompt, {
+                provider: 'deepseek',
+                model: 'fast',
+              });
+              const summary = summaryResponse.choices?.[0]?.message?.content || '';
+
+              if (summary && summary.length > 50) {
+                const { compactConversation } = useChatStore.getState();
+                compactConversation(summary);
+                console.info(
+                  `[useChat] Compaction: ${allMessages.length} msgs (${estimatedTokens} tokens) → ${keepLast + 2} msgs`
+                );
+              }
             }
           } catch (err) {
-            // Fallback: just trim old messages
+            // Fallback: trim brutalement les anciens messages
             const { trimOldMessages } = useChatStore.getState();
             trimOldMessages(20);
             console.warn('[useChat] Auto-compact failed, falling back to trim:', err);
           }
+        }
+
+        // Prepare messages for API — APRÈS compaction pour utiliser l'historique à jour
+        const currentConv = useChatStore.getState().getActiveConversation();
+        const apiMessages: APIMessage[] = (currentConv?.messages || conversation.messages).map(
+          (msg) => ({
+            role: msg.role as 'user' | 'assistant' | 'system',
+            content: msg.content,
+          })
+        );
+        // Ajouter le message courant s'il n'est pas déjà dans la conversation
+        if (!apiMessages.some((m) => m.role === 'user' && m.content === content)) {
+          apiMessages.push({ role: 'user', content });
         }
 
         // Start generation
@@ -386,7 +421,6 @@ export function useChat(): UseChatReturn {
       setErrorWithClear,
       clearError,
       isOnline,
-      streamingContent,
     ]
   );
 
