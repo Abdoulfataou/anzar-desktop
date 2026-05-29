@@ -161,7 +161,7 @@ class PlannerAgent(BaseAgent):
             raw_text = await self.call_deepseek(
                 messages=messages,
                 temperature=0.7,
-                max_tokens=8000,
+                max_tokens=16000,  # V4: plans détaillés pour projets complexes
                 response_format={"type": "json_object"},
             )
 

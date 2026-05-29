@@ -18,7 +18,8 @@ class DeepSeekClient:
         base = (settings.deepseek_base_url or "").rstrip("/")
         # DeepSeek est compatible OpenAI: /v1/chat/completions
         self.base_url = base if base.endswith("/v1") else f"{base}/v1"
-        self.timeout = httpx.Timeout(180.0, connect=15.0)
+        # V4: 384K max output possible, long generations need generous timeout
+        self.timeout = httpx.Timeout(300.0, connect=15.0)
     
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def stream_chat(
@@ -47,7 +48,7 @@ class DeepSeekClient:
             "messages": messages,
             "stream": True,
             "temperature": min(max(temperature, 0), 2),
-            "max_tokens": min(max_tokens, 16384),
+            "max_tokens": min(max_tokens, 65536),
         }
         if response_format:
             payload["response_format"] = response_format
@@ -245,7 +246,7 @@ class DeepSeekClient:
                 "model": model,
                 "messages": conversation,
                 "temperature": min(max(temperature, 0), 2),
-                "max_tokens": min(max_tokens, 16384),
+                "max_tokens": min(max_tokens, 65536),
                 "tools": tools,
                 "tool_choice": "auto",
             }

@@ -253,20 +253,24 @@ class CoderAgent(BaseAgent):
         "test": 0.4,       # Un peu de créativité pour les edge cases
     }
 
-    # Max tokens par mode
+    # Max tokens par mode — V4 supporte 384K output, on utilise 32-64K pour qualité/coût
     MODE_MAX_TOKENS = {
-        "code": 16000,
-        "refactor": 14000,
-        "debug": 4000,
-        "review": 3000,
-        "test": 6000,
+        "code": 32000,       # ~800-1000 lignes de code par batch
+        "code_complex": 48000,  # Pour fichiers complexes (API, DB, auth)
+        "refactor": 32000,   # Refactoring avec contexte complet
+        "debug": 8000,
+        "review": 4000,
+        "test": 12000,
     }
 
-    # Nombre de fichiers par batch en mode code
-    CODE_BATCH_SIZE = 10
+    # Nombre de fichiers par batch — moins = plus de détail par fichier
+    CODE_BATCH_SIZE = 6
 
     # Nombre de batches à exécuter en parallèle (après le 1er batch séquentiel)
     MAX_PARALLEL_BATCHES = 3
+
+    # Seuil pour considérer un fichier comme tronqué (se termine sans fermer les blocs)
+    TRUNCATION_MARKERS = ["// ...", "/* ...", "# ...", "...", "// TODO", "// rest"]
 
     def __init__(self, deepseek_client=None):
         super().__init__(
@@ -372,7 +376,7 @@ class CoderAgent(BaseAgent):
         arch_summary = str(architecture)[:2000]
         desc_summary = str(plan.get("description", ""))[:1000]
 
-        # ── Batch 1 : séquentiel (crée le contexte de base) ──
+        # ── Batch 1 : séquentiel (crée le contexte de base — fichiers fondation) ──
         first_batch = batches[0]
         first_result = await self._generate_batch(
             batch=first_batch,
@@ -382,15 +386,17 @@ class CoderAgent(BaseAgent):
             design_context=design_context,
             arch_summary=arch_summary,
             desc_summary=desc_summary,
-            existing_files_list="",
+            existing_files_context="",
         )
         all_files.update(first_result)
         logger.info(f"[{self.name}] Batch 1/{len(batches)}: {len(first_result)} fichiers")
 
-        # ── Batches 2+ : parallèle par groupes de MAX_PARALLEL_BATCHES ──
+        # ── Batches 2+ : parallèle, avec contenu réel du batch 1 en contexte ──
         remaining = batches[1:]
         if remaining:
-            existing_files_list = ", ".join(sorted(all_files.keys()))
+            # Build real context from generated files (not just names)
+            existing_context = self._build_files_context(all_files, max_chars=30000)
+
             parallel_groups = [
                 remaining[i : i + self.MAX_PARALLEL_BATCHES]
                 for i in range(0, len(remaining), self.MAX_PARALLEL_BATCHES)
@@ -406,7 +412,7 @@ class CoderAgent(BaseAgent):
                         design_context=design_context,
                         arch_summary=arch_summary,
                         desc_summary=desc_summary,
-                        existing_files_list=existing_files_list,
+                        existing_files_context=existing_context,
                     )
                     for batch in group
                 ]
@@ -421,8 +427,8 @@ class CoderAgent(BaseAgent):
                         f"[{self.name}] Batch parallèle: {len(result)} fichiers"
                     )
 
-                # Mettre à jour la liste pour le groupe suivant
-                existing_files_list = ", ".join(sorted(all_files.keys()))
+                # Update context with newly generated files for next group
+                existing_context = self._build_files_context(all_files, max_chars=30000)
 
         if not all_files:
             return {
@@ -431,6 +437,32 @@ class CoderAgent(BaseAgent):
                 "files": {},
                 "tokens_used": self.tokens_used,
             }
+
+        # ── Détection et correction des fichiers tronqués ──
+        truncated = self._detect_truncated_files(all_files)
+        if truncated:
+            logger.warning(f"[{self.name}] {len(truncated)} fichier(s) tronqué(s) détecté(s), relance...")
+            for path in truncated:
+                try:
+                    retry_result = await self._regenerate_single_file(
+                        path=path,
+                        description=next(
+                            (f.get("description", "") for f in files_to_generate if f.get("path") == path),
+                            ""
+                        ),
+                        project_name=project_name,
+                        design_context=design_context,
+                        arch_summary=arch_summary,
+                        existing_files_context=self._build_files_context(
+                            {k: v for k, v in all_files.items() if k != path},
+                            max_chars=20000,
+                        ),
+                    )
+                    if retry_result:
+                        all_files[path] = retry_result
+                        logger.info(f"[{self.name}] Fichier {path} régénéré avec succès")
+                except Exception as e:
+                    logger.error(f"[{self.name}] Échec retry pour {path}: {e}")
 
         return {
             "status": "success",
@@ -448,7 +480,7 @@ class CoderAgent(BaseAgent):
         design_context: str,
         arch_summary: str,
         desc_summary: str,
-        existing_files_list: str,
+        existing_files_context: str,
     ) -> Dict[str, str]:
         """Génère un seul batch de fichiers. Retourne {path: content}."""
         files_str = "\n".join(
@@ -456,11 +488,22 @@ class CoderAgent(BaseAgent):
             for f in batch
         )
 
-        existing_context = ""
-        if existing_files_list:
-            existing_context = (
-                f"\nFichiers déjà générés: {existing_files_list}\n"
-                "Assure la cohérence avec ces fichiers existants."
+        # Determine complexity — more files or backend = use higher token budget
+        has_complex = any(
+            f.get("type") in ("py", "ts", "tsx", "js", "jsx") and
+            any(kw in (f.get("description") or "").lower() for kw in ["api", "auth", "database", "model", "route", "service", "middleware"])
+            for f in batch
+        )
+        max_tokens = self.MODE_MAX_TOKENS["code_complex"] if has_complex else self.MODE_MAX_TOKENS["code"]
+
+        context_section = ""
+        if existing_files_context:
+            context_section = (
+                f"\n\n═══ FICHIERS DÉJÀ GÉNÉRÉS (référence pour cohérence) ═══\n"
+                f"{existing_files_context}\n"
+                f"═══ FIN DU CONTEXTE ═══\n\n"
+                "IMPORTANT: Tes fichiers DOIVENT être cohérents avec le code ci-dessus. "
+                "Utilise les mêmes noms de variables, fonctions, classes, routes, et styles."
             )
 
         user_message = (
@@ -469,14 +512,15 @@ class CoderAgent(BaseAgent):
             f"{files_str}\n{design_context}\n"
             f"Architecture globale: {arch_summary}\n\n"
             f"Description du projet: {desc_summary}\n"
-            f"{existing_context}\n\n"
-            "IMPORTANT:\n"
-            "- Chaque fichier doit être COMPLET et FONCTIONNEL\n"
+            f"{context_section}\n\n"
+            "RÈGLES CRITIQUES:\n"
+            "- Chaque fichier doit être 100% COMPLET et FONCTIONNEL — JAMAIS de '...', '// TODO', '// rest of code'\n"
+            "- Si un fichier est long, ÉCRIS-LE ENTIÈREMENT. Ne raccourcis JAMAIS.\n"
             "- Le design doit être MODERNE et PROFESSIONNEL\n"
             "- Utilise du contenu RÉALISTE (pas de Lorem ipsum)\n"
-            "- Les liens entre pages doivent être cohérents\n\n"
+            "- Les imports/liens entre fichiers doivent être EXACTS et cohérents\n\n"
             "Format chaque fichier comme:\n"
-            "```language\n// Chemin: filepath\n// Code complet ici\n```"
+            "```language\n// Chemin: filepath\n[code complet ici — AUCUNE coupure]\n```"
         )
 
         messages = [
@@ -487,7 +531,7 @@ class CoderAgent(BaseAgent):
         response = await self.call_deepseek(
             messages=messages,
             temperature=self.MODE_TEMPERATURES["code"],
-            max_tokens=self.MODE_MAX_TOKENS["code"],
+            max_tokens=max_tokens,
         )
         return self._extract_code_blocks(response)
 
@@ -662,6 +706,7 @@ class CoderAgent(BaseAgent):
 
         if not files:
             # Last resort: try to split by file-like markers in the response
+            # (fallback logic below)
             # Look for lines that look like file paths between code blocks
             blocks = re.findall(r"```\w*\n(.*?)```", response, re.DOTALL)
             if len(blocks) == 1:
@@ -681,3 +726,155 @@ class CoderAgent(BaseAgent):
                 files["generated_code.txt"] = response
 
         return files
+
+    # ────────────────── Context & Truncation helpers ──────────────────────────
+
+    @staticmethod
+    def _build_files_context(files: Dict[str, str], max_chars: int = 30000) -> str:
+        """Build a context string from generated files for cross-batch coherence.
+
+        Priority: config/shared files first (they define types, routes, styles),
+        then other files. Each file is included in full if budget allows,
+        otherwise as a signature (first 10 lines).
+        """
+        if not files:
+            return ""
+
+        # Priority: config, types, models, styles, then everything else
+        priority_keywords = ["config", "types", "model", "schema", "style", "css",
+                             "utils", "helpers", "constants", "shared", "common",
+                             "package.json", "index", "app", "main", "server"]
+
+        def sort_key(path: str) -> int:
+            lower = path.lower()
+            for i, kw in enumerate(priority_keywords):
+                if kw in lower:
+                    return i
+            return 100
+
+        sorted_paths = sorted(files.keys(), key=sort_key)
+
+        parts = []
+        used = 0
+
+        for path in sorted_paths:
+            content = files[path]
+            entry_full = f"\n--- {path} ---\n{content}\n"
+
+            if used + len(entry_full) < max_chars:
+                parts.append(entry_full)
+                used += len(entry_full)
+            else:
+                # Signature only (first 10 lines)
+                sig = "\n".join(content.split("\n")[:10])
+                entry_sig = f"\n--- {path} (extrait) ---\n{sig}\n...\n"
+                if used + len(entry_sig) < max_chars:
+                    parts.append(entry_sig)
+                    used += len(entry_sig)
+
+        return "".join(parts)
+
+    def _detect_truncated_files(self, files: Dict[str, str]) -> List[str]:
+        """Detect files that appear to be truncated (incomplete code).
+
+        Checks for:
+        - Ends with a truncation marker (// ..., # ..., TODO)
+        - Unmatched braces/brackets (more opens than closes)
+        - Suspiciously short for its type
+        """
+        truncated = []
+
+        for path, content in files.items():
+            if not content or len(content.strip()) < 20:
+                continue
+
+            lines = content.strip().split("\n")
+            last_line = lines[-1].strip().lower() if lines else ""
+
+            # Check truncation markers
+            is_truncated = False
+            for marker in self.TRUNCATION_MARKERS:
+                if last_line.endswith(marker.lower()) or last_line == marker.lower():
+                    is_truncated = True
+                    break
+
+            # Check unmatched braces (common in JS/TS/CSS/JSON)
+            ext = path.rsplit(".", 1)[-1] if "." in path else ""
+            if ext in ("js", "ts", "tsx", "jsx", "css", "json", "java", "go", "rs"):
+                opens = content.count("{") + content.count("[")
+                closes = content.count("}") + content.count("]")
+                if opens > closes + 2:  # tolerance of 2
+                    is_truncated = True
+
+            # Check HTML/XML unclosed tags
+            if ext in ("html", "xml", "ejs", "vue", "svelte"):
+                opens = content.count("<") - content.count("</") - content.count("/>")
+                if opens > 5:
+                    is_truncated = True
+
+            if is_truncated:
+                truncated.append(path)
+
+        return truncated
+
+    async def _regenerate_single_file(
+        self,
+        path: str,
+        description: str,
+        project_name: str,
+        design_context: str,
+        arch_summary: str,
+        existing_files_context: str,
+    ) -> Optional[str]:
+        """Regenerate a single file with a dedicated high token budget.
+
+        Used for:
+        - Files detected as truncated
+        - Complex files that need individual attention
+        """
+        ext = path.rsplit(".", 1)[-1] if "." in path else ""
+        lang_hint = ext if ext else "plaintext"
+
+        user_message = (
+            f"Génère le fichier COMPLET suivant pour le projet '{project_name}':\n\n"
+            f"Fichier: {path}\n"
+            f"Description: {description}\n"
+            f"Type: {lang_hint}\n"
+            f"{design_context}\n\n"
+            f"Architecture: {arch_summary}\n\n"
+        )
+
+        if existing_files_context:
+            user_message += (
+                f"═══ CONTEXTE DU PROJET (fichiers existants) ═══\n"
+                f"{existing_files_context}\n"
+                f"═══ FIN CONTEXTE ═══\n\n"
+            )
+
+        user_message += (
+            "RÈGLES:\n"
+            "- Le fichier doit être 100% COMPLET. AUCUNE coupure, AUCUN placeholder.\n"
+            "- Écris TOUT le code du début à la fin sans raccourci.\n"
+            "- Les imports et références aux autres fichiers doivent être exacts.\n\n"
+            f"Réponds UNIQUEMENT avec le code du fichier, dans un bloc:\n"
+            f"```{lang_hint}\n// Chemin: {path}\n[code complet]\n```"
+        )
+
+        messages = [
+            {"role": "system", "content": self.MODES["code"]},
+            {"role": "user", "content": user_message},
+        ]
+
+        response = await self.call_deepseek(
+            messages=messages,
+            temperature=0.5,  # Lower temp for precision on retry
+            max_tokens=self.MODE_MAX_TOKENS["code_complex"],
+        )
+
+        extracted = self._extract_code_blocks(response)
+        # Return the content of the target file (or any extracted file)
+        if path in extracted:
+            return extracted[path]
+        if extracted:
+            return next(iter(extracted.values()))
+        return None

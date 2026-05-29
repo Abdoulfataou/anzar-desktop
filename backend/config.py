@@ -76,8 +76,10 @@ class Settings(BaseSettings):
         return f"sqlite+aiosqlite:///{path}"
 
     # ─── Models (defaults) ───
-    deepseek_model: str = "deepseek-chat"
-    deepseek_reasoner: str = "deepseek-reasoner"
+    # DeepSeek V4: 1M context, 384K max output, thinking mode intégré
+    deepseek_model: str = "deepseek-v4-flash"
+    deepseek_pro_model: str = "deepseek-v4-pro"  # Pour projets complexes (optionnel)
+    deepseek_reasoner: str = "deepseek-v4-flash"  # thinking mode via API param
     kimi_model: str = "moonshot-v1-8k"
 
     # ─── Pricing — PRIX DE VENTE (FCFA par 1M tokens, facturés aux utilisateurs) ───
