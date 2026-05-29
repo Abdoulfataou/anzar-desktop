@@ -9,9 +9,14 @@ import re
 from typing import List, Dict, Any, Optional
 from abc import ABC, abstractmethod
 
+from config import settings
 from services.deepseek_client import DeepSeekClient
 
 logger = logging.getLogger(__name__)
+
+# ── Model tier constants ──
+MODEL_FLASH = "flash"
+MODEL_PRO = "pro"
 
 
 class BaseAgent(ABC):
@@ -38,7 +43,22 @@ class BaseAgent(ABC):
         self.description = description
         self.deepseek_client = deepseek_client or DeepSeekClient()
         self.tokens_used = 0
+        self.model_used: str = ""  # Track which model was actually used
         logger.info(f"✓ Agent initialisé: {name} ({role})")
+
+    @staticmethod
+    def resolve_model(tier: str = MODEL_FLASH) -> str:
+        """Resolve a model tier (flash/pro) to an actual model name from config.
+
+        Args:
+            tier: MODEL_FLASH or MODEL_PRO
+
+        Returns:
+            Model name string (e.g. 'deepseek-v4-flash' or 'deepseek-v4-pro')
+        """
+        if tier == MODEL_PRO:
+            return settings.deepseek_pro_model or settings.deepseek_model
+        return settings.deepseek_model
 
     @abstractmethod
     async def execute(self, request: Dict[str, Any]) -> Dict[str, Any]:
@@ -76,7 +96,9 @@ class BaseAgent(ABC):
             Réponse texte de DeepSeek
         """
         try:
-            logger.debug(f"[{self.name}] Appel DeepSeek (tokens max: {max_tokens})")
+            resolved_model = model or settings.deepseek_model
+            self.model_used = resolved_model
+            logger.debug(f"[{self.name}] Appel DeepSeek model={resolved_model} (tokens max: {max_tokens})")
 
             # Estimate input tokens from message content (~4 chars/token)
             input_chars = sum(len(m.get("content") or "") for m in messages)

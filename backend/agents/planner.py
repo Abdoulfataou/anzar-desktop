@@ -13,7 +13,7 @@ import logging
 import json
 from typing import Dict, Any, List, Optional
 
-from .base import BaseAgent
+from .base import BaseAgent, MODEL_PRO
 
 logger = logging.getLogger(__name__)
 
@@ -160,6 +160,7 @@ class PlannerAgent(BaseAgent):
         try:
             raw_text = await self.call_deepseek(
                 messages=messages,
+                model=self.resolve_model(MODEL_PRO),
                 temperature=0.7,
                 max_tokens=16000,  # V4: plans détaillés pour projets complexes
                 response_format={"type": "json_object"},

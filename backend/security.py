@@ -304,19 +304,23 @@ def sanitize_error(error: Exception) -> str:
 # COST CALCULATION
 # ============================================================================
 
-def calculate_cost_fcfa(provider: str, input_tokens: int, output_tokens: int) -> tuple[float, float]:
+def calculate_cost_fcfa(provider: str, input_tokens: int, output_tokens: int, model: str = "") -> tuple[float, float]:
     """
     Calculate the cost of an API call in USD and FCFA.
     Returns (cost_usd, cost_fcfa).
+    Uses Pro pricing when the model contains 'pro'.
     """
     if provider == "deepseek":
+        is_pro = "pro" in (model or "").lower()
+        input_cost = settings.deepseek_pro_input_cost_per_million if is_pro else settings.deepseek_input_cost_per_million
+        output_cost = settings.deepseek_pro_output_cost_per_million if is_pro else settings.deepseek_output_cost_per_million
         cost_usd = (
-            (input_tokens / 1_000_000) * (settings.deepseek_input_cost_per_million / settings.usd_to_fcfa)
-            + (output_tokens / 1_000_000) * (settings.deepseek_output_cost_per_million / settings.usd_to_fcfa)
+            (input_tokens / 1_000_000) * (input_cost / settings.usd_to_fcfa)
+            + (output_tokens / 1_000_000) * (output_cost / settings.usd_to_fcfa)
         )
         cost_fcfa = (
-            (input_tokens / 1_000_000) * settings.deepseek_input_cost_per_million
-            + (output_tokens / 1_000_000) * settings.deepseek_output_cost_per_million
+            (input_tokens / 1_000_000) * input_cost
+            + (output_tokens / 1_000_000) * output_cost
         )
     elif provider == "kimi":
         cost_usd = (

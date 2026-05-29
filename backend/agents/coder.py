@@ -14,7 +14,7 @@ import logging
 import re
 from typing import Dict, Any, List, Optional
 
-from .base import BaseAgent
+from .base import BaseAgent, MODEL_PRO, MODEL_FLASH
 
 logger = logging.getLogger(__name__)
 
@@ -293,6 +293,16 @@ class CoderAgent(BaseAgent):
         "test": 12000,
     }
 
+    # Model tier par mode — Pro pour la qualité, Flash pour la vitesse
+    MODE_MODEL_TIER = {
+        "code": MODEL_PRO,       # Génération de projet: qualité maximale
+        "refactor": MODEL_FLASH, # Refactoring: rapide et économique
+        "iterate": MODEL_FLASH,  # Itérations: rapidité prioritaire (interactif)
+        "debug": MODEL_PRO,      # Debug: précision critique
+        "review": MODEL_PRO,     # Review: évaluation approfondie
+        "test": MODEL_FLASH,     # Tests: patterns répétitifs, Flash suffit
+    }
+
     # Nombre de fichiers par batch — moins = plus de détail par fichier
     CODE_BATCH_SIZE = 6
 
@@ -561,6 +571,7 @@ class CoderAgent(BaseAgent):
 
         response = await self.call_deepseek(
             messages=messages,
+            model=self.resolve_model(self.MODE_MODEL_TIER["code"]),
             temperature=self.MODE_TEMPERATURES["code"],
             max_tokens=max_tokens,
         )
@@ -601,8 +612,10 @@ class CoderAgent(BaseAgent):
         ]
 
         try:
+            model_tier = self.MODE_MODEL_TIER.get(mode, MODEL_FLASH)
             response = await self.call_deepseek(
                 messages=messages,
+                model=self.resolve_model(model_tier),
                 temperature=self.MODE_TEMPERATURES[mode],
                 max_tokens=self.MODE_MAX_TOKENS[mode],
             )
@@ -610,6 +623,7 @@ class CoderAgent(BaseAgent):
             return {
                 "status": "success",
                 "mode": mode,
+                "model": self.model_used,
                 "result": response,
                 "tokens_used": self.tokens_used,
             }
@@ -657,6 +671,7 @@ class CoderAgent(BaseAgent):
         try:
             response = await self.call_deepseek(
                 messages=messages,
+                model=self.resolve_model(self.MODE_MODEL_TIER["review"]),
                 temperature=self.MODE_TEMPERATURES["review"],
                 max_tokens=self.MODE_MAX_TOKENS["review"],
                 response_format={"type": "json_object"},
@@ -898,6 +913,7 @@ class CoderAgent(BaseAgent):
 
         response = await self.call_deepseek(
             messages=messages,
+            model=self.resolve_model(MODEL_PRO),
             temperature=0.5,  # Lower temp for precision on retry
             max_tokens=self.MODE_MAX_TOKENS["code_complex"],
         )

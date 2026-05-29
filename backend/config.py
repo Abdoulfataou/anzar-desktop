@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     # DeepSeek V4-Flash: coût réel $0.14/$0.28 → 78/157 F. Vente: marge x3.2
     deepseek_input_cost_per_million: float = 250.0
     deepseek_output_cost_per_million: float = 500.0
+    # DeepSeek V4-Pro: coût réel ~$2/$8 → 1120/4480 F. Vente: marge x2.5
+    deepseek_pro_input_cost_per_million: float = 2800.0
+    deepseek_pro_output_cost_per_million: float = 11200.0
     # Kimi K2.5: coût réel $0.60/$2.50 → 336/1400 F. Vente: marge x3
     kimi_input_cost_per_million: float = 1000.0
     kimi_output_cost_per_million: float = 4000.0

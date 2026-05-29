@@ -100,11 +100,12 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         # Billing
         total_tokens = result["tokens_used"]
         if total_tokens > 0:
-            cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", total_tokens // 2, total_tokens // 2)
+            plan_model = planner.model_used or settings.deepseek_pro_model
+            cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", total_tokens // 2, total_tokens // 2, model=plan_model)
             try:
-                await record_usage(email, "deepseek", settings.deepseek_model, total_tokens // 2, total_tokens // 2, cost_usd, cost_fcfa, task_type="plan")
+                await record_usage(email, "deepseek", plan_model, total_tokens // 2, total_tokens // 2, cost_usd, cost_fcfa, task_type="plan")
                 if cost_fcfa > 0:
-                    await deduct_credits(email, cost_fcfa, f"Plan: {body.project_name}", "deepseek", settings.deepseek_model)
+                    await deduct_credits(email, cost_fcfa, f"Plan: {body.project_name}", "deepseek", plan_model)
             except Exception as e:
                 logger.error(f"Plan billing error: {e}")
 
@@ -335,11 +336,12 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             if total_tokens > 0:
                 input_est = int(total_tokens * 0.6)
                 output_est = total_tokens - input_est
-                cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", input_est, output_est)
+                exec_model = coder.model_used or settings.deepseek_pro_model
+                cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", input_est, output_est, model=exec_model)
                 try:
-                    await record_usage(email, "deepseek", settings.deepseek_model, input_est, output_est, cost_usd, cost_fcfa, task_type="project_exec")
+                    await record_usage(email, "deepseek", exec_model, input_est, output_est, cost_usd, cost_fcfa, task_type="project_exec")
                     if cost_fcfa > 0:
-                        await deduct_credits(email, cost_fcfa, f"Exec: {project_id}", "deepseek", settings.deepseek_model)
+                        await deduct_credits(email, cost_fcfa, f"Exec: {project_id}", "deepseek", exec_model)
                         await update_project(project_id, cost_fcfa=cost_fcfa)
                 except Exception as e:
                     logger.error(f"BILLING_FAILED: user={email} project={project_id} "
@@ -682,11 +684,12 @@ async def iterate_project(project_id: str, body: IterateRequest, user: dict = De
                 # Input is typically ~75% of total for iterate (large context in)
                 input_est = int(total_tokens * 0.75)
                 output_est = total_tokens - input_est
-                cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", input_est, output_est)
+                iter_model = coder.model_used or settings.deepseek_model
+                cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", input_est, output_est, model=iter_model)
                 try:
-                    await record_usage(email, "deepseek", settings.deepseek_model, input_est, output_est, cost_usd, cost_fcfa, task_type="iterate")
+                    await record_usage(email, "deepseek", iter_model, input_est, output_est, cost_usd, cost_fcfa, task_type="iterate")
                     if cost_fcfa > 0:
-                        await deduct_credits(email, cost_fcfa, f"Iterate: {project_id}", "deepseek", settings.deepseek_model)
+                        await deduct_credits(email, cost_fcfa, f"Iterate: {project_id}", "deepseek", iter_model)
                 except Exception as e:
                     logger.error(f"Iterate billing error: {e}")
 
