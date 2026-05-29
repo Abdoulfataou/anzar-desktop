@@ -47,6 +47,8 @@ export interface VibeCodingStudioState {
   isIterating: boolean;
   /** Résultat de la dernière itération (pour le chat) */
   lastIterationResult: IterationResult | null;
+  /** Chemin local du projet */
+  projectPath: string | undefined;
 }
 
 /** Résultat d'une itération renvoyé au StudioChat */
@@ -539,6 +541,7 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
     errorMessage,
     isIterating,
     lastIterationResult,
+    projectPath: localPathRef.current,
   };
 
   const actions: VibeCodingStudioActions = {

@@ -16,7 +16,7 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   X, Maximize2, Minimize2, Play, Square,
   Loader2, CheckCircle2, AlertCircle,
-  FolderOpen, Sparkles, ChevronDown,
+  FolderOpen, Sparkles, ChevronDown, Package, Terminal,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectFile } from '@/types';
@@ -26,6 +26,7 @@ import StudioFileTree from './StudioFileTree';
 import StudioEditor from './StudioEditor';
 import StudioChat from './StudioChat';
 import PlanReview from './PlanReview';
+import { terminalService } from '@/services/terminal';
 
 // ============================================================================
 // TYPES
@@ -77,6 +78,8 @@ export interface VibeCodingStudioProps {
   activeGeneratingFile?: string;
   /** Message d'erreur */
   errorMessage?: string;
+  /** Chemin local du projet (pour Install/Run) */
+  projectPath?: string;
 }
 
 // ============================================================================
@@ -101,12 +104,38 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
   errorMessage,
   isIterating: isIteratingProp,
   lastIterationResult,
+  projectPath,
 }) => {
   // ── State local ──
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const [showFileTree, setShowFileTree] = useState(true);
   const [showChat, setShowChat] = useState(true);
+  const [installStatus, setInstallStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+
+  // ── Install / Run handlers ──
+  const handleInstall = useCallback(async () => {
+    if (!projectPath || installStatus === 'running') return;
+    setInstallStatus('running');
+    try {
+      await terminalService.installDependencies(projectPath);
+      setInstallStatus('done');
+    } catch {
+      setInstallStatus('error');
+    }
+  }, [projectPath, installStatus]);
+
+  const handleRun = useCallback(async () => {
+    if (!projectPath || runStatus === 'running') return;
+    setRunStatus('running');
+    try {
+      await terminalService.runDevServer(projectPath);
+      setRunStatus('done');
+    } catch {
+      setRunStatus('error');
+    }
+  }, [projectPath, runStatus]);
 
   // ── Fichiers triés pour le file tree ──
   const filesList = useMemo(() => {
@@ -234,6 +263,39 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
               <Square size={12} />
               Arrêter
             </button>
+          )}
+          {phase === 'iterating' && projectPath && (
+            <>
+              <button
+                onClick={handleInstall}
+                disabled={installStatus === 'running'}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors',
+                  installStatus === 'running' && 'text-amber-400 bg-amber-500/10',
+                  installStatus === 'done' && 'text-emerald-400 bg-emerald-500/10',
+                  installStatus === 'error' && 'text-red-400 bg-red-500/10',
+                  installStatus === 'idle' && 'text-text-secondary hover:bg-surface-hover',
+                )}
+                title="Installer les dépendances"
+              >
+                {installStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Package size={12} />}
+                Install
+              </button>
+              <button
+                onClick={handleRun}
+                disabled={runStatus === 'running'}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs transition-colors',
+                  runStatus === 'running' && 'text-emerald-400 bg-emerald-500/10',
+                  runStatus === 'idle' && 'text-text-secondary hover:bg-surface-hover',
+                  runStatus === 'error' && 'text-red-400 bg-red-500/10',
+                )}
+                title="Lancer le serveur de développement"
+              >
+                {runStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
+                Run
+              </button>
+            </>
           )}
           <button
             onClick={() => setShowFileTree(!showFileTree)}

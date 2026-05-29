@@ -4,9 +4,9 @@
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Terminal as TerminalIcon, X, Trash2, Square, Play,
+  Terminal as TerminalIcon, X, Trash2, Square,
   ChevronUp, ChevronDown, Maximize2, Minimize2,
-  Package, GitBranch, Zap, AlertTriangle, CheckCircle2,
+  GitBranch, Zap, AlertTriangle, CheckCircle2,
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -180,14 +180,6 @@ export default function TerminalPanel({
 
   // Quick actions
   const quickActions = [
-    {
-      icon: Package, label: 'Install', color: 'text-accent-primary',
-      action: () => projectPath && terminalService.installDependencies(projectPath),
-    },
-    {
-      icon: Play, label: 'Run', color: 'text-accent-success',
-      action: () => projectPath && terminalService.runDevServer(projectPath),
-    },
     {
       icon: Zap, label: 'Build', color: 'text-accent-warning',
       action: () => projectPath && terminalService.buildProject(projectPath),

@@ -1704,6 +1704,7 @@ ${fileContents.join('\n')}
             errorMessage={studioState.errorMessage}
             isIterating={studioState.isIterating}
             lastIterationResult={studioState.lastIterationResult}
+            projectPath={studioState.projectPath}
           />
         </div>
       )}
