@@ -1212,10 +1212,46 @@ Quand on te demande un organigramme, flowchart ou carte mentale :
 Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné d'une brève explication. Ne te contente jamais de décrire — génère le visuel.`
       : "Tu es ANZAR, un assistant IA intelligent. Tu peux chercher des informations sur le web. Si tu proposes des commandes, mets-les dans un bloc ```bash```.";
 
+    // ── Injection du contexte projet dans le chat normal ──
+    // Quand un projet est sélectionné, on injecte ses fichiers dans le prompt système
+    // pour que l'IA puisse lire, corriger et modifier le projet directement depuis le chat.
+    let projectContextPrompt = '';
+    if (selectedProjectId) {
+      const project = useProjectStore.getState().projects.find((p) => p.id === selectedProjectId);
+      if (project && project.files && project.files.length > 0) {
+        const MAX_PROJECT_CONTEXT_CHARS = 100_000;
+        let usedChars = 0;
+        const fileContents: string[] = [];
+
+        // Priorité: fichiers avec contenu, triés par taille (petits d'abord)
+        const sortedFiles = [...project.files]
+          .filter((f) => f.content && f.content.trim().length > 0)
+          .sort((a, b) => (a.content?.length || 0) - (b.content?.length || 0));
+
+        for (const file of sortedFiles) {
+          const entry = `\n--- ${file.path} ---\n${file.content}`;
+          if (usedChars + entry.length > MAX_PROJECT_CONTEXT_CHARS) break;
+          fileContents.push(entry);
+          usedChars += entry.length;
+        }
+
+        if (fileContents.length > 0) {
+          projectContextPrompt = `\n\n═══ PROJET OUVERT: ${project.name} ═══
+Tu as accès aux fichiers du projet ci-dessous. L'utilisateur peut te demander de les lire, expliquer, corriger ou modifier.
+Quand tu proposes des modifications, montre le code complet du fichier modifié dans un bloc avec le chemin du fichier.
+NE DEMANDE JAMAIS à l'utilisateur de coller du code — tu as déjà tous les fichiers.
+
+${fileContents.join('\n')}
+
+═══ FIN DES FICHIERS DU PROJET ═══`;
+        }
+      }
+    }
+
       const rawMessages = [
       {
         role: 'system' as const,
-        content: systemPrompt,
+        content: systemPrompt + projectContextPrompt,
       },
       ...history.map((m) => ({ role: m.role as any, content: m.content })),
     ];

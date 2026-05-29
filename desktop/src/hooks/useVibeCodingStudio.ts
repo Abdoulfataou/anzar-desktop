@@ -338,6 +338,7 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
   // ══════════════════════════════════════════════════════════════════════════
 
   const iterateAbortRef = useRef<AbortController | null>(null);
+  const iterationHistoryRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
 
   const iterate = useCallback(async (message: string, fileFocus?: string) => {
     const bpId = backendProjectIdRef.current;
@@ -365,6 +366,9 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
     const modifiedPaths: string[] = [];
     let encounteredError = false;
     let errorMsg = '';
+
+    // Record user message in history
+    iterationHistoryRef.current.push({ role: 'user', content: message });
 
     try {
       await projectGeneration.iterate(
@@ -415,7 +419,16 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
         },
         fileFocus,
         abortController.signal,
+        iterationHistoryRef.current.slice(0, -1), // Send history WITHOUT current message
       );
+
+      // Record assistant response summary in history
+      if (modifiedPaths.length > 0) {
+        iterationHistoryRef.current.push({
+          role: 'assistant',
+          content: `Fichiers modifiés: ${modifiedPaths.join(', ')}`,
+        });
+      }
 
       if (encounteredError) {
         setLastIterationResult({ success: false, modifiedFiles: modifiedPaths, error: errorMsg });

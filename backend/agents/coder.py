@@ -187,6 +187,33 @@ FORMAT DE SORTIE — JSON strict:
 
 Grading: A (90-100) = Excellent, B (75-89) = Bon, C (60-74) = Acceptable, D (40-59) = Insuffisant, F (<40) = Rejet"""
 
+PROMPT_ITERATE = """Tu es un développeur senior qui travaille sur un projet existant.
+L'utilisateur te demande de MODIFIER son projet. Tu as DÉJÀ accès à tous les fichiers du projet —
+ils sont fournis ci-dessous. Tu n'as PAS besoin de demander le code à l'utilisateur.
+
+TON RÔLE:
+- Tu LIS les fichiers du projet fournis dans le contexte
+- Tu COMPRENDS la demande de modification de l'utilisateur
+- Tu MODIFIES les fichiers concernés selon sa demande
+- Tu retournes les fichiers modifiés EN ENTIER (pas juste le diff)
+
+RÈGLES ABSOLUES:
+1. NE DEMANDE JAMAIS à l'utilisateur de coller du code — tu l'as déjà
+2. Retourne UNIQUEMENT les fichiers que tu as modifiés (pas les fichiers inchangés)
+3. Chaque fichier modifié doit être COMPLET (tout le code, pas de "..." ou "// reste du code")
+4. Préserve tout le code existant non concerné par la modification
+5. Respecte le style, les conventions et le design system du projet existant
+6. Si la modification touche le style (couleurs, layout, etc.), modifie le CSS/style correspondant
+7. Si la modification implique une nouvelle fonctionnalité, ajoute le HTML + CSS + JS nécessaire
+
+FORMAT DE SORTIE — pour chaque fichier modifié:
+```language
+// Chemin: filepath
+[code complet du fichier modifié]
+```
+
+Ne retourne que les blocs de code des fichiers modifiés. Pas d'explication avant ou après, sauf si l'utilisateur pose une question."""
+
 PROMPT_TEST = """Tu es un ingénieur QA expert en testing automatisé.
 Tu écris des tests qui PROUVENT que le code fonctionne — pas des tests qui passent toujours.
 
@@ -239,6 +266,7 @@ class CoderAgent(BaseAgent):
     MODES = {
         "code": PROMPT_CODE,
         "refactor": PROMPT_REFACTOR,
+        "iterate": PROMPT_ITERATE,
         "debug": PROMPT_DEBUG,
         "review": PROMPT_REVIEW,
         "test": PROMPT_TEST,
@@ -248,6 +276,7 @@ class CoderAgent(BaseAgent):
     MODE_TEMPERATURES = {
         "code": 0.5,       # Créatif mais déterministe
         "refactor": 0.3,   # Très déterministe — on ne veut pas de surprises
+        "iterate": 0.4,    # Équilibre entre respect du contexte et créativité
         "debug": 0.3,      # Analytique et précis
         "review": 0.2,     # Évaluation objective
         "test": 0.4,       # Un peu de créativité pour les edge cases
@@ -258,6 +287,7 @@ class CoderAgent(BaseAgent):
         "code": 32000,       # ~800-1000 lignes de code par batch
         "code_complex": 48000,  # Pour fichiers complexes (API, DB, auth)
         "refactor": 32000,   # Refactoring avec contexte complet
+        "iterate": 32000,   # Itérations sur projet existant
         "debug": 8000,
         "review": 4000,
         "test": 12000,
@@ -315,6 +345,7 @@ class CoderAgent(BaseAgent):
         dispatch = {
             "code": self._execute_code,
             "refactor": self._execute_single,
+            "iterate": self._execute_single,
             "debug": self._execute_single,
             "review": self._execute_review,
             "test": self._execute_single,

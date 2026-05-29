@@ -279,6 +279,7 @@ class ProjectGenerationService {
     onUpdate: OnAgentUpdate,
     fileFocus?: string,
     signal?: AbortSignal,
+    history?: Array<{ role: 'user' | 'assistant'; content: string }>,
   ): Promise<void> {
     const url = `${getBackendUrl()}/api/projects/${projectId}/iterate`;
     const response = await fetch(url, {
@@ -289,6 +290,7 @@ class ProjectGenerationService {
         message,
         files,
         file_focus: fileFocus || null,
+        history: history || [],
       }),
     });
 

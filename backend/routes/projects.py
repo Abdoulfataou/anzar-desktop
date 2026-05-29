@@ -44,11 +44,16 @@ class ExecuteRequest(BaseModel):
     base_dir: Optional[str] = None
 
 
+class IterateHistoryMessage(BaseModel):
+    role: str = Field(..., pattern="^(user|assistant)$")
+    content: str = Field(..., max_length=5000)
+
 class IterateRequest(BaseModel):
     """Request to modify existing project files via chat iteration."""
     message: str = Field(..., min_length=1, max_length=10000)
     files: Dict[str, str] = Field(default_factory=dict, description="Current files: {path: content}")
     file_focus: Optional[str] = Field(None, description="Specific file to modify")
+    history: list[IterateHistoryMessage] = Field(default_factory=list, description="Previous iteration messages for context continuity")
 
 
 # ── Routes ──
@@ -536,15 +541,21 @@ def _build_smart_context(
                 parts.append(entry)
                 used_chars += len(entry)
 
-    # Signature for remaining files
+    # Remaining files — full content if budget allows, signature otherwise
     remaining = [p for p in all_paths if p not in priority_full and p not in related]
     for path in remaining:
         content = files.get(path, "")
-        sig = "\n".join(content.split("\n")[:5])
-        entry = f"\n--- {path} (résumé) ---\n{sig}\n...\n"
-        if used_chars + len(entry) < max_context_chars:
-            parts.append(entry)
-            used_chars += len(entry)
+        full_entry = f"\n=== {path} ===\n{content}\n"
+        if used_chars + len(full_entry) < max_context_chars:
+            parts.append(full_entry)
+            used_chars += len(full_entry)
+        else:
+            # Budget tight — use signature
+            sig = "\n".join(content.split("\n")[:8])
+            entry = f"\n--- {path} (résumé) ---\n{sig}\n...\n"
+            if used_chars + len(entry) < max_context_chars:
+                parts.append(entry)
+                used_chars += len(entry)
 
     return "".join(parts)
 
@@ -564,12 +575,12 @@ async def iterate_project(project_id: str, body: IterateRequest, user: dict = De
     if not body.files:
         raise HTTPException(400, "Aucun fichier fourni pour l'itération")
 
-    # Build smart context (no brutal truncation)
+    # Build smart context — V4 supporte 1M tokens, on peut être généreux
     files_context = _build_smart_context(
         files=body.files,
         message=body.message,
         file_focus=body.file_focus,
-        max_context_chars=48000,
+        max_context_chars=150000,
     )
 
     focus_hint = ""
@@ -581,6 +592,23 @@ async def iterate_project(project_id: str, body: IterateRequest, user: dict = De
         f"  {p}" for p in sorted(body.files.keys())
     )
 
+    # Build iteration history context (previous user↔assistant exchanges)
+    history_context = ""
+    if body.history:
+        # Keep last 10 messages max to avoid context explosion
+        recent_history = body.history[-10:]
+        history_lines = []
+        for msg in recent_history:
+            prefix = "Utilisateur" if msg.role == "user" else "Assistant"
+            # Truncate long assistant responses (they contain full files)
+            content = msg.content[:500] if msg.role == "assistant" else msg.content
+            history_lines.append(f"[{prefix}]: {content}")
+        history_context = (
+            "\n\n═══ HISTORIQUE DES ITÉRATIONS PRÉCÉDENTES ═══\n"
+            + "\n".join(history_lines)
+            + "\n═══ FIN HISTORIQUE ═══\n"
+        )
+
     coder = CoderAgent(deepseek_client=_deepseek_client)
 
     async def _iterate_stream():
@@ -588,29 +616,26 @@ async def iterate_project(project_id: str, body: IterateRequest, user: dict = De
             yield json.dumps({
                 "type": "step",
                 "action": "thinking",
-                "label": "Analyse de la modification demandée",
+                "label": "Lecture du projet et analyse de la modification",
                 "file": None,
             }) + "\n"
 
             result = await asyncio.wait_for(
                 coder.execute({
-                    "mode": "refactor",
+                    "mode": "iterate",
                     "code": files_context,
                     "language": "",
                     "context": (
                         f"{structure_overview}\n\n"
-                        f"L'utilisateur veut modifier son projet. Voici sa demande:\n"
+                        f"{history_context}"
+                        f"Voici la NOUVELLE demande de l'utilisateur:\n"
                         f'"{body.message}"\n'
                         f"{focus_hint}\n"
-                        f"RÈGLES:\n"
-                        f"- Retourne le fichier modifié EN ENTIER (pas juste le diff)\n"
-                        f"- Retourne UNIQUEMENT les fichiers modifiés\n"
-                        f"- Préserve tout le code existant non concerné par la modification\n"
-                        f"- Format pour chaque fichier:\n"
-                        f"```language\n// Chemin: filepath\n[code complet modifié]\n```\n"
+                        f"RAPPEL: Tu as DÉJÀ tous les fichiers du projet ci-dessus. "
+                        f"Ne demande JAMAIS à l'utilisateur de coller du code.\n"
                     ),
                 }),
-                timeout=120.0,  # 2 min max
+                timeout=180.0,  # 3 min max (contexte plus large)
             )
 
             if result.get("status") == "error":
