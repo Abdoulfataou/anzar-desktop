@@ -61,8 +61,6 @@ function NewProjectModal({ onClose }: { onClose: () => void }) {
           // Map agent status to activity steps
           const stepType = lastStatus.name === 'planner' ? 'planning'
             : lastStatus.name === 'coder' ? 'writing'
-            : lastStatus.name === 'tester' ? 'testing'
-            : lastStatus.name === 'executor' ? 'building'
             : 'running';
 
           addStep(project.id, {

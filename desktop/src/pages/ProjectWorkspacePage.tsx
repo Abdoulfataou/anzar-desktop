@@ -23,11 +23,8 @@ import AgentProgress from '@/components/projects/AgentProgress';
 import TerminalPanel from '@/components/terminal/Terminal';
 import { terminalService } from '@/services/terminal';
 import { diagnosticService, DiagnosticReport, DiagnosticSolution } from '@/services/diagnostic';
-import RunPanel from '@/components/runs/RunPanel';
-import { runService } from '@/services/runService';
 import { fileSystemService } from '@/services/fileSystem';
 import { useChangeStore } from '@/stores/changeStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 
 /* ===== Convert ProjectFile[] to FileNode[] tree ===== */
 function buildFileTree(files: ProjectFile[]): FileNode[] {
@@ -242,7 +239,6 @@ const ProjectWorkspacePage: React.FC = () => {
   const updateFile = useProjectStore((s) => s.updateFile);
   const addFile = useProjectStore((s) => s.addFile);
   const updateProject = useProjectStore((s) => s.updateProject);
-  const developerMode = useSettingsStore((s) => s.settings.developerMode);
 
   const project = useMemo(
     () => projects.find((p) => p.id === id) || null,
@@ -267,6 +263,14 @@ const ProjectWorkspacePage: React.FC = () => {
 
   // Project path (from metadata for imported projects)
   const projectPath = project?.metadata?.localPath as string | undefined;
+
+  // Register project path for terminal execution on mount
+  // (allowedProjectPaths is in-memory and resets on app restart)
+  useEffect(() => {
+    if (projectPath) {
+      terminalService.registerProjectPath(projectPath);
+    }
+  }, [projectPath]);
 
   // Auto-load files from disk when project has localPath but no files in store
   const setProjectFiles = useProjectStore((s) => s.setProjectFiles);
@@ -316,18 +320,18 @@ const ProjectWorkspacePage: React.FC = () => {
     return unsub;
   }, []);
 
-  // Quick actions for toolbar
+  // Quick actions for toolbar — use terminalService directly (simple, visible output)
   const handleRunProject = useCallback(async () => {
-    if (!project || !projectPath) return;
+    if (!projectPath) return;
     setShowTerminal(true);
-    await runService.executeAction({ projectId: project.id, projectPath, actionId: 'dev' });
-  }, [project, projectPath]);
+    await terminalService.runDevServer(projectPath);
+  }, [projectPath]);
 
   const handleInstallDeps = useCallback(async () => {
-    if (!project || !projectPath) return;
+    if (!projectPath) return;
     setShowTerminal(true);
-    await runService.executeAction({ projectId: project.id, projectPath, actionId: 'install' });
-  }, [project, projectPath]);
+    await terminalService.installDependencies(projectPath);
+  }, [projectPath]);
 
   const handleDiagnose = useCallback(async () => {
     setIsAnalyzing(true);
@@ -552,8 +556,8 @@ const ProjectWorkspacePage: React.FC = () => {
             </>
           )}
 
-          {/* Terminal toggle (mode dev uniquement) */}
-          {developerMode && (
+          {/* Terminal toggle */}
+          {projectPath && (
             <button
               onClick={() => setShowTerminal(!showTerminal)}
               className={cn(
@@ -597,14 +601,7 @@ const ProjectWorkspacePage: React.FC = () => {
         </div>
       )}
 
-      {/* Runs panel — developer mode only */}
-      {developerMode && (
-        <RunPanel
-          projectId={project.id}
-          projectPath={projectPath}
-          onOpenTerminal={() => setShowTerminal(true)}
-        />
-      )}
+      {/* RunPanel removed — toolbar buttons now open the terminal directly */}
 
       {/* Main content area */}
       <div className="flex flex-1 overflow-hidden">
@@ -705,8 +702,8 @@ const ProjectWorkspacePage: React.FC = () => {
             </div>
           )}
 
-          {/* Terminal panel (mode dev uniquement) */}
-          {developerMode && showTerminal && (
+          {/* Terminal panel — visible when toggled (Run/Install/Fix open it) */}
+          {showTerminal && projectPath && (
             <TerminalPanel
               projectPath={projectPath}
               onClose={() => setShowTerminal(false)}

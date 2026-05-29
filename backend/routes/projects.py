@@ -1,0 +1,720 @@
+"""
+PROJECTS routes — /api/projects/*
+Plan, execute, status, download-files, CRUD, cancel.
+"""
+import json
+import uuid
+import asyncio
+import logging
+
+from typing import Dict, Any, Optional
+
+from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse, JSONResponse
+from pydantic import BaseModel, Field
+
+from config import settings
+from security import get_current_user, calculate_cost_fcfa
+from database import (
+    has_credits, deduct_credits, record_usage,
+    create_project, update_project, get_project, get_user_projects, delete_project,
+)
+from agents import PlannerAgent, CoderAgent
+from routes._state import (
+    _project_states, _cleanup_project_states, _deepseek_client,
+)
+
+logger = logging.getLogger("anzar")
+
+router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+# ── Models ──
+
+class PlanRequest(BaseModel):
+    description: str = Field(..., min_length=1, max_length=10000)
+    project_name: str = Field(default="my_project", max_length=128)
+    project_type: str = Field(default="other", max_length=50)
+    tech_stack: list[str] = Field(default_factory=list)
+    requirements: list[str] = Field(default_factory=list)
+
+
+class ExecuteRequest(BaseModel):
+    plan: Dict[str, Any] = Field(...)
+    base_dir: Optional[str] = None
+
+
+class IterateRequest(BaseModel):
+    """Request to modify existing project files via chat iteration."""
+    message: str = Field(..., min_length=1, max_length=10000)
+    files: Dict[str, str] = Field(default_factory=dict, description="Current files: {path: content}")
+    file_focus: Optional[str] = Field(None, description="Specific file to modify")
+
+
+# ── Routes ──
+
+@router.post("/plan")
+async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)):
+    """Plan a project using PlannerAgent."""
+    email = user["sub"]
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+
+    try:
+        planner = PlannerAgent(deepseek_client=_deepseek_client)
+        planner_result = await planner.execute({
+            "project_name": body.project_name,
+            "description": body.description,
+            "project_type": body.project_type or "other",
+            "tech_stack": body.tech_stack or [],
+            "requirements": body.requirements or [],
+        })
+
+        if planner_result.get("status") == "error":
+            raise HTTPException(500, planner_result.get("error", "Erreur de planification"))
+
+        # Create project in DB
+        project_id = f"proj_{uuid.uuid4().hex[:12]}"
+        await create_project(project_id, email, body.project_name, body.description)
+        await update_project(project_id, status="planning", plan_json=json.dumps(planner_result))
+
+        # Build response (compatible with frontend PlanResult type)
+        result = {
+            "project_id": project_id,
+            "title": planner_result.get("title", body.project_name),
+            "overview": planner_result.get("overview", body.description),
+            "files": planner_result.get("files", []),
+            "phases": planner_result.get("phases", []),
+            "complexity": planner_result.get("complexity", "medium"),
+            "notes": planner_result.get("notes", ""),
+            "architecture": planner_result.get("architecture", {}),
+            "tokens_used": planner_result.get("tokens_used", 0),
+        }
+
+        # Billing
+        total_tokens = result["tokens_used"]
+        if total_tokens > 0:
+            cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", total_tokens // 2, total_tokens // 2)
+            try:
+                await record_usage(email, "deepseek", settings.deepseek_model, total_tokens // 2, total_tokens // 2, cost_usd, cost_fcfa, task_type="plan")
+                if cost_fcfa > 0:
+                    await deduct_credits(email, cost_fcfa, f"Plan: {body.project_name}", "deepseek", settings.deepseek_model)
+            except Exception as e:
+                logger.error(f"Plan billing error: {e}")
+
+        return JSONResponse(content=result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Plan project error: {e}", exc_info=True)
+        raise HTTPException(500, f"Erreur lors de la planification: {str(e)[:200]}")
+
+
+@router.post("/{project_id}/execute")
+async def execute_project(project_id: str, body: ExecuteRequest, user: dict = Depends(get_current_user)):
+    """Execute a project plan. Runs generation as a background task, returns SSE observer stream."""
+    email = user["sub"]
+    plan = body.plan
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+
+    # ── Validate plan has files to generate ──
+    architecture = plan.get("architecture", plan)
+    files_spec = architecture.get("structure", {}).get("files", [])
+    if not files_spec:
+        files_spec = plan.get("files", [])
+    if not files_spec:
+        raise HTTPException(400, "Plan invalide: aucun fichier à générer. Relancez la planification.")
+
+    await update_project(project_id, status="generating")
+    _cleanup_project_states()
+
+    _project_states[project_id] = {
+        "status": "running",
+        "agents": [
+            {"name": "planner", "status": "done", "progress": 100, "message": "Plan pret"},
+            {"name": "coder", "status": "pending", "progress": 0},
+        ],
+        "steps_queue": [],
+    }
+
+    async def _run_generation():
+        """Generate code batch by batch, streaming each file as soon as its batch completes.
+
+        Key improvements over previous version:
+        - Files appear in the SSE stream as each batch finishes (not all at once at the end)
+        - Partial recovery: if batch N fails, files from batches 1..N-1 are kept
+        - Progress updates are granular (per-batch percentage)
+        """
+        state = _project_states[project_id]
+        total_tokens = 0
+
+        def update_agent(name: str, s: str, progress: int, message: str = ""):
+            for a in state["agents"]:
+                if a["name"] == name:
+                    a["status"] = s
+                    a["progress"] = progress
+                    if message:
+                        a["message"] = message
+
+        async def persist_agents():
+            try:
+                await update_project(project_id, agent_states=json.dumps(state["agents"]))
+            except Exception as pe:
+                logger.warning(f"Could not persist agent states: {pe}")
+
+        try:
+            update_agent("coder", "running", 10, "Generation du code...")
+            await persist_agents()
+
+            state["steps_queue"].append({
+                "action": "reading",
+                "label": "Lecture du plan d'architecture",
+                "file": None
+            })
+
+            coder = CoderAgent(deepseek_client=_deepseek_client)
+            architecture = plan.get("architecture", plan)
+
+            # ── Extract file specs and batch them ──
+            files_to_generate = architecture.get("structure", {}).get("files", [])
+            if not files_to_generate:
+                files_to_generate = plan.get("files", [])
+
+            total_files = len(files_to_generate)
+            batch_size = coder.CODE_BATCH_SIZE
+            batches = [
+                files_to_generate[i:i + batch_size]
+                for i in range(0, total_files, batch_size)
+            ]
+
+            # Design info for context
+            design_info = plan.get("architecture", {}).get("design", {})
+            design_context = ""
+            if design_info:
+                colors = design_info.get("colors", {})
+                design_context = (
+                    f"\nDesign System:\n"
+                    f"- Style: {design_info.get('style', 'moderne et professionnel')}\n"
+                    f"- Couleur primaire: {colors.get('primary', '#3B82F6')}\n"
+                    f"- Couleur secondaire: {colors.get('secondary', '#8B5CF6')}\n"
+                    f"- Couleur accent: {colors.get('accent', '#F59E0B')}\n"
+                    f"- Typographie: {design_info.get('fonts', 'Inter, system-ui, sans-serif')}\n"
+                )
+
+            arch_summary = str(architecture)[:2000]
+            desc_summary = str(plan.get("description", ""))[:1000]
+            project_name = plan.get("title", project_id)
+
+            all_files: Dict[str, str] = {}
+            state["generated_files"] = all_files
+
+            state["steps_queue"].append({
+                "action": "thinking",
+                "label": f"Generation de {total_files} fichiers en {len(batches)} batch(es)",
+                "file": None
+            })
+
+            # ── Batch 1: sequential (establishes base context) ──
+            try:
+                batch_files = await coder._generate_batch(
+                    batch=batches[0],
+                    batch_idx=0,
+                    total_batches=len(batches),
+                    project_name=project_name,
+                    design_context=design_context,
+                    arch_summary=arch_summary,
+                    desc_summary=desc_summary,
+                    existing_files_list="",
+                )
+                all_files.update(batch_files)
+                total_tokens = coder.tokens_used
+
+                # Stream files immediately
+                for filepath in sorted(batch_files.keys()):
+                    state["steps_queue"].append({
+                        "action": "writing",
+                        "label": f"Generation de {filepath}",
+                        "file": filepath
+                    })
+                    state["steps_queue"].append({
+                        "type": "file",
+                        "path": filepath,
+                        "content": batch_files[filepath],
+                    })
+
+                progress = int(20 + (len(all_files) / total_files) * 80)
+                update_agent("coder", "running", progress, f"{len(all_files)}/{total_files} fichiers")
+
+            except Exception as e:
+                logger.error(f"Batch 1 failed: {e}")
+                update_agent("coder", "error", 0, f"Erreur batch 1: {str(e)[:100]}")
+                await persist_agents()
+                state["status"] = "error"
+                await update_project(project_id, status="error")
+                return
+
+            # ── Remaining batches: parallel groups ──
+            remaining = batches[1:]
+            for group_idx, batch in enumerate(remaining):
+                existing_files_list = ", ".join(sorted(all_files.keys()))
+                try:
+                    batch_files = await coder._generate_batch(
+                        batch=batch,
+                        batch_idx=group_idx + 1,
+                        total_batches=len(batches),
+                        project_name=project_name,
+                        design_context=design_context,
+                        arch_summary=arch_summary,
+                        desc_summary=desc_summary,
+                        existing_files_list=existing_files_list,
+                    )
+                    all_files.update(batch_files)
+                    total_tokens = coder.tokens_used
+
+                    # Stream these files immediately too
+                    for filepath in sorted(batch_files.keys()):
+                        state["steps_queue"].append({
+                            "action": "writing",
+                            "label": f"Generation de {filepath}",
+                            "file": filepath
+                        })
+                        state["steps_queue"].append({
+                            "type": "file",
+                            "path": filepath,
+                            "content": batch_files[filepath],
+                        })
+
+                    progress = int(20 + (len(all_files) / total_files) * 80)
+                    update_agent("coder", "running", progress, f"{len(all_files)}/{total_files} fichiers")
+
+                except Exception as e:
+                    # Partial recovery: keep files from successful batches
+                    logger.error(f"Batch {group_idx + 2} failed: {e}. Keeping {len(all_files)} files from previous batches.")
+                    state["steps_queue"].append({
+                        "action": "error",
+                        "label": f"Batch {group_idx + 2} echoue — {len(all_files)} fichiers conserves",
+                        "file": None
+                    })
+                    # Don't abort — continue with remaining batches
+
+            # ── Finalize ──
+            if not all_files:
+                update_agent("coder", "error", 0, "Aucun fichier genere")
+                await persist_agents()
+                state["status"] = "error"
+                await update_project(project_id, status="error")
+                return
+
+            state["steps_queue"].append({
+                "action": "complete",
+                "label": f"{len(all_files)} fichiers generes",
+                "file": None
+            })
+
+            update_agent("coder", "done", 100, f"{len(all_files)} fichiers generes")
+            await persist_agents()
+
+            state["status"] = "completed"
+            file_names = sorted(all_files.keys())
+            await update_project(
+                project_id,
+                status="complete",
+                result_json=json.dumps({"files_created": file_names}),
+                tokens_used=total_tokens,
+            )
+
+            if total_tokens > 0:
+                input_est = int(total_tokens * 0.6)
+                output_est = total_tokens - input_est
+                cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", input_est, output_est)
+                try:
+                    await record_usage(email, "deepseek", settings.deepseek_model, input_est, output_est, cost_usd, cost_fcfa, task_type="project_exec")
+                    if cost_fcfa > 0:
+                        await deduct_credits(email, cost_fcfa, f"Exec: {project_id}", "deepseek", settings.deepseek_model)
+                        await update_project(project_id, cost_fcfa=cost_fcfa)
+                except Exception as e:
+                    logger.error(f"BILLING_FAILED: user={email} project={project_id} "
+                                 f"tokens={total_tokens} cost_fcfa={cost_fcfa} error={e}")
+
+        except Exception as e:
+            logger.error(f"Execute project error: {e}", exc_info=True)
+            # Partial recovery: if we have some files, mark as complete with warning
+            if all_files:
+                state["steps_queue"].append({
+                    "action": "complete",
+                    "label": f"Erreur partielle — {len(all_files)} fichiers conserves",
+                    "file": None
+                })
+                update_agent("coder", "done", 80, f"{len(all_files)} fichiers (partiel)")
+                state["status"] = "completed"
+                await update_project(project_id, status="complete")
+            else:
+                update_agent("coder", "error", 0, "Erreur lors de la generation.")
+                state["status"] = "error"
+                await update_project(project_id, status="error")
+            await persist_agents()
+
+    asyncio.create_task(_run_generation())
+
+    async def _observe_stream():
+        while True:
+            state = _project_states.get(project_id)
+            if not state:
+                break
+
+            yield json.dumps({"type": "agents", "agents": state["agents"]}) + "\n"
+
+            steps_queue = state.get("steps_queue", [])
+            while steps_queue:
+                event = steps_queue.pop(0)
+                if event.get("type") == "file":
+                    yield json.dumps(event) + "\n"
+                else:
+                    yield json.dumps({"type": "step", **event}) + "\n"
+
+            if state.get("status") in ("completed", "error"):
+                break
+
+            await asyncio.sleep(0.15)  # 150ms poll — much snappier UX than 500ms
+
+    return StreamingResponse(
+        _observe_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/{project_id}/status")
+async def get_project_status(project_id: str, user: dict = Depends(get_current_user)):
+    """Get agent status for a project (in-memory state or DB fallback)."""
+    state = _project_states.get(project_id)
+
+    if state:
+        return JSONResponse(content={"status": state.get("status"), "agents": state.get("agents", [])})
+
+    project = await get_project(project_id)
+    if project:
+        persisted_agents = []
+        raw = project.get("agent_states", "")
+        if raw:
+            try:
+                persisted_agents = json.loads(raw)
+            except (json.JSONDecodeError, TypeError):
+                pass
+        if not persisted_agents:
+            persisted_agents = [
+                {"name": "planner", "status": "idle", "progress": 0},
+                {"name": "coder", "status": "idle", "progress": 0},
+            ]
+        return JSONResponse(content={
+            "status": project.get("status", "unknown"),
+            "agents": persisted_agents,
+        })
+
+    return JSONResponse(content={"status": "unknown", "agents": []})
+
+
+@router.get("/{project_id}/download-files")
+async def download_project_files(project_id: str, user: dict = Depends(get_current_user)):
+    """Return generated files content for frontend to write locally via Tauri FS."""
+    state = _project_states.get(project_id)
+    if not state:
+        raise HTTPException(404, "Projet non trouvé ou expiré")
+
+    files = state.get("generated_files", {})
+    if not files:
+        raise HTTPException(404, "Aucun fichier généré")
+
+    return JSONResponse(content={"files": files, "file_count": len(files)})
+
+
+@router.post("/{project_id}/cancel")
+async def cancel_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Cancel a running project execution."""
+    state = _project_states.get(project_id)
+    if state:
+        state["status"] = "cancelled"
+        for agent in state.get("agents", []):
+            if agent["status"] == "running":
+                agent["status"] = "cancelled"
+                agent["message"] = "Annulé par l'utilisateur"
+    await update_project(project_id, status="cancelled")
+    return JSONResponse(content={"status": "cancelled"})
+
+
+def _build_smart_context(
+    files: Dict[str, str],
+    message: str,
+    file_focus: Optional[str] = None,
+    max_context_chars: int = 48000,
+) -> str:
+    """Build intelligent file context for iteration.
+
+    Strategy:
+    1. Focused file(s) → full content (no truncation)
+    2. Related files (imported/referenced by focused files) → full content
+    3. Remaining files → signature only (first 5 lines + path)
+
+    This ensures the CoderAgent sees complete files it needs to modify,
+    while staying within context limits.
+    """
+    msg_lower = message.lower()
+    all_paths = sorted(files.keys())
+
+    # ── Identify priority files ──
+    # Priority 1: explicitly focused file
+    priority_full: list[str] = []
+    if file_focus and file_focus in files:
+        priority_full.append(file_focus)
+
+    # Priority 2: files mentioned by name in the user message
+    for path in all_paths:
+        filename = path.split("/")[-1].lower()
+        basename = filename.rsplit(".", 1)[0] if "." in filename else filename
+        if basename and len(basename) > 2 and basename in msg_lower and path not in priority_full:
+            priority_full.append(path)
+
+    # Priority 3: files related by imports (referenced in priority files)
+    related: list[str] = []
+    for ppath in list(priority_full):
+        content = files.get(ppath, "")
+        for other_path in all_paths:
+            if other_path in priority_full or other_path in related:
+                continue
+            other_name = other_path.split("/")[-1].rsplit(".", 1)[0]
+            # Check if this file is imported/referenced
+            if other_name and len(other_name) > 2 and other_name in content:
+                related.append(other_path)
+
+    # If no focus found, use heuristic: files most likely to match the request
+    if not priority_full:
+        # Score each file by keyword relevance to the message
+        scored = []
+        keywords = [w for w in msg_lower.split() if len(w) > 3]
+        for path in all_paths:
+            content_lower = files[path][:500].lower()
+            score = sum(1 for kw in keywords if kw in path.lower() or kw in content_lower)
+            scored.append((score, path))
+        scored.sort(key=lambda x: -x[0])
+        # Take top 3 most relevant as priority
+        for score, path in scored[:3]:
+            if score > 0:
+                priority_full.append(path)
+
+    # If still nothing, take all files (small project)
+    if not priority_full and len(all_paths) <= 8:
+        priority_full = list(all_paths)
+
+    # ── Build context string ──
+    parts: list[str] = []
+    used_chars = 0
+
+    # Full content for priority files
+    for path in priority_full:
+        content = files.get(path, "")
+        entry = f"\n=== {path} (COMPLET) ===\n{content}\n"
+        if used_chars + len(entry) < max_context_chars:
+            parts.append(entry)
+            used_chars += len(entry)
+
+    # Full content for related files (if budget allows)
+    for path in related:
+        content = files.get(path, "")
+        entry = f"\n=== {path} (lié) ===\n{content}\n"
+        if used_chars + len(entry) < max_context_chars:
+            parts.append(entry)
+            used_chars += len(entry)
+        else:
+            # Fallback: signature only
+            sig = "\n".join(content.split("\n")[:8])
+            entry = f"\n--- {path} (résumé) ---\n{sig}\n...\n"
+            if used_chars + len(entry) < max_context_chars:
+                parts.append(entry)
+                used_chars += len(entry)
+
+    # Signature for remaining files
+    remaining = [p for p in all_paths if p not in priority_full and p not in related]
+    for path in remaining:
+        content = files.get(path, "")
+        sig = "\n".join(content.split("\n")[:5])
+        entry = f"\n--- {path} (résumé) ---\n{sig}\n...\n"
+        if used_chars + len(entry) < max_context_chars:
+            parts.append(entry)
+            used_chars += len(entry)
+
+    return "".join(parts)
+
+
+@router.post("/{project_id}/iterate")
+async def iterate_project(project_id: str, body: IterateRequest, user: dict = Depends(get_current_user)):
+    """Iterate on an existing project: apply a modification described in natural language.
+
+    Uses smart context: focused files get full content, related files get full content,
+    remaining files get signatures only. No truncation of important files.
+    """
+    email = user["sub"]
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+
+    if not body.files:
+        raise HTTPException(400, "Aucun fichier fourni pour l'itération")
+
+    # Build smart context (no brutal truncation)
+    files_context = _build_smart_context(
+        files=body.files,
+        message=body.message,
+        file_focus=body.file_focus,
+        max_context_chars=48000,
+    )
+
+    focus_hint = ""
+    if body.file_focus:
+        focus_hint = f"\nFichier principal à modifier: {body.file_focus}\n"
+
+    # Project structure overview for coherence
+    structure_overview = "Structure du projet:\n" + "\n".join(
+        f"  {p}" for p in sorted(body.files.keys())
+    )
+
+    coder = CoderAgent(deepseek_client=_deepseek_client)
+
+    async def _iterate_stream():
+        try:
+            yield json.dumps({
+                "type": "step",
+                "action": "thinking",
+                "label": "Analyse de la modification demandée",
+                "file": None,
+            }) + "\n"
+
+            result = await asyncio.wait_for(
+                coder.execute({
+                    "mode": "refactor",
+                    "code": files_context,
+                    "language": "",
+                    "context": (
+                        f"{structure_overview}\n\n"
+                        f"L'utilisateur veut modifier son projet. Voici sa demande:\n"
+                        f'"{body.message}"\n'
+                        f"{focus_hint}\n"
+                        f"RÈGLES:\n"
+                        f"- Retourne le fichier modifié EN ENTIER (pas juste le diff)\n"
+                        f"- Retourne UNIQUEMENT les fichiers modifiés\n"
+                        f"- Préserve tout le code existant non concerné par la modification\n"
+                        f"- Format pour chaque fichier:\n"
+                        f"```language\n// Chemin: filepath\n[code complet modifié]\n```\n"
+                    ),
+                }),
+                timeout=120.0,  # 2 min max
+            )
+
+            if result.get("status") == "error":
+                yield json.dumps({
+                    "type": "step",
+                    "action": "error",
+                    "label": result.get("error", "Erreur de modification"),
+                    "file": None,
+                }) + "\n"
+                return
+
+            response_text = result.get("result", "")
+            modified_files = coder._extract_code_blocks(response_text)
+
+            actual_count = 0
+            for filepath, content in modified_files.items():
+                if filepath == "generated_code.txt":
+                    continue
+
+                actual_count += 1
+                yield json.dumps({
+                    "type": "step",
+                    "action": "writing",
+                    "label": f"Modification de {filepath}",
+                    "file": filepath,
+                }) + "\n"
+
+                yield json.dumps({
+                    "type": "file",
+                    "path": filepath,
+                    "content": content,
+                }) + "\n"
+
+            yield json.dumps({
+                "type": "step",
+                "action": "complete",
+                "label": f"{actual_count} fichier(s) modifié(s)",
+                "file": None,
+            }) + "\n"
+
+            # Billing — estimate input/output ratio more accurately
+            total_tokens = result.get("tokens_used", 0)
+            if total_tokens > 0:
+                # Input is typically ~75% of total for iterate (large context in)
+                input_est = int(total_tokens * 0.75)
+                output_est = total_tokens - input_est
+                cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", input_est, output_est)
+                try:
+                    await record_usage(email, "deepseek", settings.deepseek_model, input_est, output_est, cost_usd, cost_fcfa, task_type="iterate")
+                    if cost_fcfa > 0:
+                        await deduct_credits(email, cost_fcfa, f"Iterate: {project_id}", "deepseek", settings.deepseek_model)
+                except Exception as e:
+                    logger.error(f"Iterate billing error: {e}")
+
+        except asyncio.TimeoutError:
+            logger.error(f"Iterate timeout for project {project_id}")
+            yield json.dumps({
+                "type": "step",
+                "action": "error",
+                "label": "Timeout: la modification prend trop de temps. Essaie une demande plus ciblée.",
+                "file": None,
+            }) + "\n"
+
+        except Exception as e:
+            logger.error(f"Iterate project error: {e}", exc_info=True)
+            yield json.dumps({
+                "type": "step",
+                "action": "error",
+                "label": f"Erreur: {str(e)[:200]}",
+                "file": None,
+            }) + "\n"
+
+    return StreamingResponse(
+        _iterate_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── CRUD ──
+
+@router.get("")
+async def list_projects(user: dict = Depends(get_current_user), limit: int = 50):
+    """List all projects for the current user."""
+    projects = await get_user_projects(user["sub"], limit=min(limit, 200))
+    return {"projects": projects, "count": len(projects)}
+
+
+@router.get("/{project_id}")
+async def get_single_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Get a single project by ID."""
+    project = await get_project(project_id)
+    if not project:
+        raise HTTPException(404, "Projet non trouvé")
+    if project.get("user_email") != user["sub"]:
+        raise HTTPException(403, "Accès non autorisé")
+    return project
+
+
+@router.delete("/{project_id}")
+async def remove_project(project_id: str, user: dict = Depends(get_current_user)):
+    """Delete a project."""
+    deleted = await delete_project(project_id, user["sub"])
+    if not deleted:
+        raise HTTPException(404, "Projet non trouvé ou accès non autorisé")
+    _project_states.pop(project_id, None)
+    return {"status": "deleted"}

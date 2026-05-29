@@ -10,7 +10,7 @@
  */
 
 import { exists, readTextFile } from '@tauri-apps/api/fs'
-import { Command } from '@tauri-apps/api/shell'
+import { Command, open as shellOpen } from '@tauri-apps/api/shell'
 
 // ============================================================================
 // TYPES
@@ -583,6 +583,42 @@ class TerminalService {
   // ─── Project Execution ───
 
   /**
+   * Watch stdout for localhost URLs and auto-open the first one in the browser.
+   */
+  private watchForUrl(processId: string): void {
+    let opened = false;
+    const urlPattern = /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+/;
+
+    const unsub = this.eventBus.on((event) => {
+      if (opened) { unsub(); return; }
+      if (event.type !== 'output' || event.processId !== processId) return;
+
+      const match = urlPattern.exec(event.data.content);
+      if (match) {
+        opened = true;
+        unsub();
+        const url = match[0].replace('0.0.0.0', 'localhost');
+        this.emitOutput(processId, 'success', `Ouverture dans le navigateur: ${url}`);
+        shellOpen(url).catch(() => { /* ignore if open fails */ });
+      }
+    });
+
+    // Stop watching after 30s if no URL found
+    setTimeout(() => { if (!opened) unsub(); }, 30_000);
+  }
+
+  /**
+   * Open a file or URL in the default browser / app
+   */
+  async openInBrowser(target: string): Promise<void> {
+    try {
+      await shellOpen(target);
+    } catch (e) {
+      console.error('[ANZAR] shellOpen failed:', e);
+    }
+  }
+
+  /**
    * Run a project's dev server
    */
   async runDevServer(
@@ -591,17 +627,64 @@ class TerminalService {
   ): Promise<string> {
     // Auto-detect run command
     if (customCommand) {
-      return this.runCommand(customCommand, { cwd: projectPath });
+      const pid = await this.runCommand(customCommand, { cwd: projectPath });
+      this.watchForUrl(pid);
+      return pid;
     }
 
-    // Check for common dev scripts
+    // Check for common dev scripts in package.json
     try {
       const hasPackageJson = await exists(`${projectPath}/package.json`);
       if (hasPackageJson) {
         const pkg = JSON.parse(await readTextFile(`${projectPath}/package.json`));
-        if (pkg.scripts?.dev) return this.runCommand('npm run dev', { cwd: projectPath });
-        if (pkg.scripts?.start) return this.runCommand('npm start', { cwd: projectPath });
-        if (pkg.scripts?.serve) return this.runCommand('npm run serve', { cwd: projectPath });
+
+        if (pkg.scripts?.dev) {
+          const pid = await this.runCommand('npm run dev', { cwd: projectPath });
+          this.watchForUrl(pid);
+          return pid;
+        }
+        if (pkg.scripts?.start) {
+          const pid = await this.runCommand('npm start', { cwd: projectPath });
+          this.watchForUrl(pid);
+          return pid;
+        }
+        if (pkg.scripts?.serve) {
+          const pid = await this.runCommand('npm run serve', { cwd: projectPath });
+          this.watchForUrl(pid);
+          return pid;
+        }
+
+        // Check if it's React Native before falling back to static serve
+        const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+        if (deps['react-native']) {
+          const processId = `proc-${++this.processCounter}-${Date.now()}`;
+          this.emitOutput(processId, 'system', 'Projet React Native détecté.');
+          this.emitOutput(processId, 'system', 'Pour lancer l\'app, ouvre un terminal et exécute :');
+          this.emitOutput(processId, 'system', `  cd "${projectPath}"`);
+          this.emitOutput(processId, 'system', '  npx react-native start        (Metro bundler)');
+          this.emitOutput(processId, 'system', '  npx react-native run-android   (Android)');
+          this.emitOutput(processId, 'system', '  npx react-native run-ios       (iOS / macOS)');
+          return processId;
+        }
+
+        // package.json exists but no dev/start/serve script → static site, use npx serve
+        this.emitOutput('system', 'system', 'Aucun script dev/start trouvé — lancement de npx serve...');
+        const pid = await this.runCommand('npx serve', { cwd: projectPath });
+        this.watchForUrl(pid);
+        return pid;
+      }
+    } catch { /* ignore */ }
+
+    // Flutter project
+    try {
+      const hasPubspec = await exists(`${projectPath}/pubspec.yaml`);
+      if (hasPubspec) {
+        const processId = `proc-${++this.processCounter}-${Date.now()}`;
+        this.emitOutput(processId, 'system', 'Projet Flutter détecté.');
+        this.emitOutput(processId, 'system', 'Pour lancer l\'app, ouvre un terminal et exécute :');
+        this.emitOutput(processId, 'system', `  cd "${projectPath}" && flutter run`);
+        this.emitOutput(processId, 'system', 'Assure-toi qu\'un émulateur ou device est connecté (flutter devices).');
+        return processId;
       }
     } catch { /* ignore */ }
 
@@ -612,12 +695,28 @@ class TerminalService {
 
     try {
       const hasManagePy = await exists(`${projectPath}/manage.py`);
-      if (hasManagePy) return this.runCommand('python3 manage.py runserver', { cwd: projectPath });
+      if (hasManagePy) {
+        const pid = await this.runCommand('python3 manage.py runserver', { cwd: projectPath });
+        this.watchForUrl(pid);
+        return pid;
+      }
     } catch { /* ignore */ }
 
     try {
       const hasMainPy = await exists(`${projectPath}/main.py`);
       if (hasMainPy) return this.runCommand('python3 main.py', { cwd: projectPath });
+    } catch { /* ignore */ }
+
+    // Last resort: check for index.html → open it directly in the browser
+    try {
+      const hasIndex = await exists(`${projectPath}/index.html`);
+      if (hasIndex) {
+        const processId = `proc-${++this.processCounter}-${Date.now()}`;
+        this.emitOutput(processId, 'system', 'Site statique détecté — ouverture de index.html dans le navigateur...');
+        await shellOpen(`${projectPath}/index.html`);
+        this.emitOutput(processId, 'success', 'index.html ouvert dans le navigateur');
+        return processId;
+      }
     } catch { /* ignore */ }
 
     const processId = `proc-${++this.processCounter}-${Date.now()}`;
@@ -634,16 +733,21 @@ class TerminalService {
       if (hasPackageJson) {
         const pkg = JSON.parse(await readTextFile(`${projectPath}/package.json`));
         if (pkg.scripts?.build) return this.runCommand('npm run build', { cwd: projectPath });
+
+        // No build script → nothing to build for a static site
+        const processId = `proc-${++this.processCounter}-${Date.now()}`;
+        this.emitOutput(processId, 'system', 'Aucun script "build" dans package.json — ce projet n\'a pas besoin de build (site statique).');
+        return processId;
       }
     } catch { /* ignore */ }
 
     try {
       const hasCargo = await exists(`${projectPath}/Cargo.toml`);
-      if (hasCargo) return this.runCommand('cargo build --release', { cwd: projectPath });
+      if (hasCargo) return this.runCommand('cargo build', { cwd: projectPath });
     } catch { /* ignore */ }
 
     const processId = `proc-${++this.processCounter}-${Date.now()}`;
-    this.emitOutput(processId, 'error', 'Aucun script de build trouvé.');
+    this.emitOutput(processId, 'system', 'Aucun script de build trouvé — ce projet est probablement un site statique.');
     return processId;
   }
 

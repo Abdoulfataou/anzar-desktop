@@ -2,8 +2,6 @@ import { terminalService, type TerminalEvent } from '@/services/terminal'
 import { useCommandStore } from '@/stores/commandStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 import { assessCommandRisk } from '@/services/commandRisk'
-import { runService } from '@/services/runService'
-import { useRunStore } from '@/stores/runStore'
 
 /**
  * Service central pour synchroniser les CommandCards avec TerminalService.
@@ -13,40 +11,9 @@ import { useRunStore } from '@/stores/runStore'
 class CommandCardService {
   private unsub: (() => void) | null = null
   private processToCard = new Map<string, string>() // processId -> cardId
-  private verifyTimers = new Map<string, any>() // projectId -> timeoutId
 
   constructor() {
     this.ensureSubscribed()
-  }
-
-  private shouldAutoVerifyAfterCard(cardId: string): boolean {
-    const card = useCommandStore.getState().cards[cardId]
-    if (!card) return false
-    // Only for "Fix: ..." cards (produced by diagnostic loop)
-    return typeof card.title === 'string' && card.title.trim().toLowerCase().startsWith('fix:')
-  }
-
-  private scheduleVerify(projectId: string, projectPath: string, sourceCardId: string) {
-    // Debounce: if multiple fix commands finish, verify once.
-    const prev = this.verifyTimers.get(projectId)
-    if (prev) clearTimeout(prev)
-
-    const t = setTimeout(async () => {
-      try {
-        // Anti-spam: if a verify is already running/queued, skip.
-        const existing = useRunStore
-          .getState()
-          .runs.find((r) => r.projectId === projectId && r.title === 'Vérifier le projet' && (r.status === 'queued' || r.status === 'running'))
-        if (existing) return
-
-        useCommandStore.getState().appendLog(sourceCardId, { type: 'system', content: '✅ Fix appliqué — vérification en cours…' })
-        await runService.executeVerifyPipeline({ projectId, projectPath })
-      } catch (err: any) {
-        useCommandStore.getState().appendLog(sourceCardId, { type: 'error', content: `Auto-verify échoué: ${err?.message || String(err)}` })
-      }
-    }, 1200)
-
-    this.verifyTimers.set(projectId, t)
   }
 
   private ensureSubscribed() {
@@ -72,14 +39,6 @@ class CommandCardService {
         endedAt: Date.now(),
       })
       this.processToCard.delete(e.processId)
-
-      // Auto-verify after successful Fix command
-      if (ok && this.shouldAutoVerifyAfterCard(cardId)) {
-        const card = useCommandStore.getState().cards[cardId]
-        if (card?.projectId && card.projectPath) {
-          this.scheduleVerify(card.projectId, card.projectPath, cardId)
-        }
-      }
       return
     }
 

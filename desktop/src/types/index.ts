@@ -185,6 +185,8 @@ export interface Message {
   toolCallId?: string;         // For tool response messages
   /** Pièces jointes associées au message (surtout côté user) */
   attachments?: ChatAttachment[];
+  /** If set, show an "Open & Run" action button for this project */
+  actionProjectId?: string;
 }
 
 export interface CodeBlock {
@@ -208,9 +210,7 @@ export interface Conversation {
 // ============================================================================
 // RUNS (execution timeline)
 // ============================================================================
-
-export * from './run';
-
+// (run.ts removed — Runs system was deleted in Phase 1 cleanup)
 // ============================================================================
 // TOOL CALLING TYPES (OpenAI-compatible, used by multiple providers)
 // ============================================================================
@@ -377,7 +377,7 @@ export type FileOperation =
 // AGENT TYPES
 // ============================================================================
 
-export type AgentType = 'orchestrator' | 'planner' | 'coder' | 'tester' | 'executor';
+export type AgentType = 'planner' | 'coder';
 
 export interface AgentStatus {
   name: AgentType;

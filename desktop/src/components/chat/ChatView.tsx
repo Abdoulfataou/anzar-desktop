@@ -30,6 +30,7 @@ import { AIModel, type Message, type ChatAttachment } from '@/types';
 import { aiRouter } from '@/services/router';
 import { aiService } from '@/services/ai';
 import { projectGeneration, type PlanResult, type ExecutionEvent, type StepEvent, type AgentsEvent, type FileEvent } from '@/services/projectGeneration';
+import { detectProjectIntent, detectVisualIntent, extractProjectName } from '@/services/intentDetection';
 import { fileSystemService } from '@/services/fileSystem';
 import { useUsageStore } from '@/stores/usageStore';
 import { useActivityStore } from '@/stores/activityStore';
@@ -41,15 +42,15 @@ import { useCommandStore } from '@/stores/commandStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { commandCardService } from '@/services/commandCardService';
 import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
-import VerifyFixNotice from './VerifyFixNotice';
 import ProjectWizardModal from './ProjectWizardModal';
 import GenerationPanel from './GenerationPanel';
-import { runService } from '@/services/runService';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 import { generationTracker } from '@/services/generationTracker';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { STUDENT_PROMPTS, AGENT_PROMPTS, SKILL_PROMPTS } from '@/services/studentPrompts';
+import { VibeCodingStudio } from '@/components/vibecoding';
+import { useVibeCodingStudio } from '@/hooks/useVibeCodingStudio';
 
 interface ChatViewProps {
   onlineStatus?: boolean;
@@ -438,109 +439,7 @@ Rédige un document professionnel avec les clauses standards. ATTENTION : préci
 // INTENT DETECTION - Détecte si le message demande une génération de projet
 // ============================================================================
 
-function detectProjectIntent(message: string): boolean {
-  const msg = (message || '').trim()
-  if (msg.length < 18) return false
-
-  // Heuristiques "anti-faux-positifs"
-  if (msg.includes('```')) return false // souvent un extrait de code / logs
-  if (/\b(stack trace|traceback|exception)\b/i.test(msg)) return false
-
-  // Prompts de l'assistant étudiant — JAMAIS un projet à générer
-  // Couvre : correcteur, reformulation, résumé, quiz, flashcards, exercices, plagiat, traduction, citations, évaluation, plan, mémoire, rapport, exposé, tuteur
-  const isStudentPrompt =
-    /^Tu es un[e]?\s+(super-)?(correct|expert|profess|traducteur|assistant|tuteur)/i.test(msg) &&
-    /\b(correction|reformulat|orthographe|grammaire|academique|pedagogique|exercice|flashcard|quiz|bareme|evaluat|plagiat|bibliograph|citation|revision|memoire|rapport|expose|redaction|traduction|fiche|tuteur|enseign|expliqu)/i.test(msg)
-  if (isStudentPrompt) return false
-
-  const questionLike = /(\bcomment\b|\bpourquoi\b|\bexplique\b|\bexpliquer\b|\bwhat\b|\bwhy\b|\bhow\b)\b/i.test(msg)
-  const asksToCreate = /\b(cr[ée]{1,2}[es]?\b|cr[ée]{1,2}[- ]?moi|g[ée]n[eè]re|développe|construis|build|create|generate|make|develop)\b/i.test(msg)
-  if (questionLike && !asksToCreate) return false
-
-  const verb = /\b(cr[ée]{1,2}[es]?\b|cr[ée]{1,2}[- ]?moi|g[ée]n[eè]re|développe|construis|fais|monte|build|create|generate|make|develop)\b/i
-  const obj = /\b(app|application|projet|site|api|dashboard|plateforme|système|logiciel|outil|saas|mvp|prototype|backend|frontend|page web|landing|project|website|platform)\b/i
-  const scope = /\b(complet|from scratch|de zéro|entier|full\s*stack|crud|auth|authentification|base de données|database)\b/i
-  const domain = /\b(stock|inventaire|crm|facturation|billing|e-?commerce|boutique|restaurant|réservation|booking|gestion)\b/i
-
-  let score = 0
-  if (verb.test(msg)) score += 1
-  if (obj.test(msg)) score += 1
-  if (scope.test(msg)) score += 1
-  if (domain.test(msg)) score += 1
-
-  // Si ça ressemble à une demande de debug/correction, on ne déclenche pas le builder
-  const looksLikeFix =
-    /\b(corrige[rs]?|corriger|correcteur|corrections?|reformul|fix|débug|debug|bug|erreur|errors?|refactor|optimise|lint|tests?)\b/i.test(msg)
-  if (looksLikeFix) return false
-
-  // Appui du classifieur local (0 coût, heuristique)
-  try {
-    const cls = aiRouter.classifyTask([{ role: 'user', content: msg } as any], { hasImages: false })
-    if (cls.type === 'planning' || cls.type === 'code_gen') score += 1
-    if (cls.type === 'code_review' || cls.type === 'debug_visual') score -= 1
-  } catch {
-    // ignore
-  }
-
-  return score >= 3
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// DÉTECTION D'INTENTION VISUELLE — route vers Kimi pour images/diagrammes
-// ══════════════════════════════════════════════════════════════════════
-function detectVisualIntent(message: string): boolean {
-  const msg = (message || '').trim().toLowerCase();
-  if (msg.length < 8) return false;
-
-  // Prompts de l'assistant étudiant — JAMAIS un routage visuel
-  // (ces prompts contiennent des mots comme "illustrer", "schema", "montre" dans le cadre pédagogique)
-  const isStudentPrompt =
-    /^tu es un[e]?\s+(super-)?(correct|expert|profess|traducteur|assistant|tuteur)/i.test(msg) &&
-    /\b(correction|reformulat|orthographe|grammaire|academique|pedagogique|exercice|flashcard|quiz|bareme|evaluat|plagiat|bibliograph|citation|revision|memoire|rapport|expose|redaction|traduction|fiche|tuteur|enseign|expliqu)/i.test(msg);
-  if (isStudentPrompt) return false;
-
-  // Mots-clés visuels (FR + EN)
-  const visualKeywords =
-    /\b(image|images|photo|photos|illustration|illustrations|diagramme|diagrammes|schéma|schémas|schema|schemas|graphique|graphiques|graph|graphs|chart|charts|dessin|dessins|dessine|dessiner|illustre|illustrer|visuel|visuels|visualise|visualiser|infographie|infographies|organigramme|organigrammes|flowchart|mind\s?map|carte\s?mentale|arbre|figure|figures|tableau\s?visuel|mermaid|svg|uml|sequence\s?diagram|class\s?diagram|diag)\b/i;
-
-  // Verbes de création visuelle
-  const visualVerbs =
-    /\b(génère|genere|génerer|generer|crée|cree|créer|créée|créées|creer|fais|faire|montre|montrer|trace|tracer|représente|represente|représenter|representer|draw|create|generate|make|show|plot|sketch|render|design)\b/i;
-
-  // Contexte visuel fort (demande explicite d'image/diagramme)
-  const strongVisual =
-    /\b(fais[- ]?moi\s+(un|une|le|la|des)\s+(image|diagramme|schéma|schema|graphique|dessin|illustration|organigramme|infographie|flowchart|figure|svg|mermaid)|dessine[- ]?moi|illustre[- ]?moi|génère[- ]?moi\s+(un|une)\s+(image|diagramme|schéma|schema|graphique)|create\s+(a|an|the)\s+(image|diagram|chart|graph|flowchart|figure))\b/i;
-
-  if (strongVisual.test(msg)) return true;
-
-  // Combinaison verbe + mot-clé visuel
-  if (visualVerbs.test(msg) && visualKeywords.test(msg)) return true;
-
-  // Demande directe de type de diagramme
-  const diagramTypes =
-    /\b(diagramme\s+(de\s+)?(classe|séquence|sequence|flux|activité|activite|état|etat|cas\s+d'utilisation|use\s+case|entité|entite|relation|er)|class\s+diagram|sequence\s+diagram|flowchart|er\s+diagram|state\s+diagram|activity\s+diagram|use\s+case\s+diagram)\b/i;
-  if (diagramTypes.test(msg)) return true;
-
-  return false;
-}
-
-/** Extrait un nom de projet court depuis le message */
-function extractProjectName(message: string): string {
-  // Essayer d'extraire après "de gestion de", "pour", etc.
-  const match = message.match(
-    /(?:de gestion de|pour|d'|de)\s+([a-zàâéèêëïîôùûüæœç\s]{2,30})/i
-  );
-  if (match) {
-    return match[1].trim().replace(/\s+/g, '_').slice(0, 30);
-  }
-  // Fallback: premiers mots significatifs
-  const words = message
-    .replace(/[^\w\sàâéèêëïîôùûüæœç]/gi, '')
-    .split(/\s+/)
-    .filter((w) => w.length > 3)
-    .slice(0, 3);
-  return words.join('_').slice(0, 30) || 'mon_projet';
-}
+// detectProjectIntent, detectVisualIntent, extractProjectName → imported from '@/services/intentDetection'
 
 // ============================================================================
 // COMPONENT
@@ -566,6 +465,10 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const [showSearchMenu, setShowSearchMenu] = useState(false);
   const [showDocumentMenu, setShowDocumentMenu] = useState(false);
   const [showProjectWizard, setShowProjectWizard] = useState(false);
+
+  // ── VibeCoding Studio hook ──
+  const [studioState, studioActions] = useVibeCodingStudio();
+
   const generationPanelSessionId = useActivityStore((s) => s.generationPanelSessionId);
   const setGenerationPanelSessionId = useActivityStore((s) => s.setGenerationPanelSessionId);
   const forceProjectGenerationOnceRef = useRef(false);
@@ -852,7 +755,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           onPlanReady: (p) => {
             lastPlan = p;
             completeStep(sessionId, planStepId);
-            updateAgentStatus(projectId, 'orchestrator', { status: 'done', progress: 100, message: 'Architecture definie' });
             updateAgentStatus(projectId, 'planner', { status: 'done', progress: 100, message: p.files.length + ' fichiers planifies' });
             setProjectProgress(projectId, 30);
 
@@ -978,10 +880,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
               if (agent.name === 'coder' && agent.status === 'done') {
                 updateTodo(sessionId, 'todo-2', 'done'); // "Generer le code"
               }
-              if (agent.name === 'tester' && agent.status === 'done') {
-                const testTodoIdx = lastPlan ? lastPlan.phases.length + 2 : 4;
-                updateTodo(sessionId, 'todo-' + testTodoIdx, 'done');
-              }
+              // tester agent removed — only planner + coder remain
             }
 
             const totalProgress = agentsEvent.agents.reduce((sum, a) => sum + a.progress, 0);
@@ -1106,12 +1005,13 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       endSession(sessionId, 'done');
 
       const nextContent =
-        `**${plan.title || projectName}** - Projet pret !\n\n` +
+        `**${plan.title || projectName}** — Projet pret !\n\n` +
         `${plan.files.length} fichiers crees en ${elapsed}s.\n\n` +
-        `Tu peux ouvrir le projet depuis la barre laterale pour explorer les fichiers et le code.`;
+        `Clique sur le bouton ci-dessous pour ouvrir le workspace et lancer le projet.`;
       updateConversationMessage(aiMessageId, {
         content: nextContent,
         isStreaming: false,
+        actionProjectId: projectId,
         activitySessionId: sessionId,
         routingInfo: {
           provider: 'deepseek',
@@ -1123,21 +1023,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       useProjectStore.getState().setActiveProject(projectId);
       setSelectedProjectId(projectId);
-
-      // UX pro: proposer d'ouvrir le workspace seulement si l'utilisateur a cliqué sur "Générer un projet"
-      if (lastProjectGenerationWasUserActionRef.current) {
-        lastProjectGenerationWasUserActionRef.current = false;
-        try {
-          const { confirm } = await import('@tauri-apps/api/dialog');
-          const ok = await confirm(
-            `Projet généré : ${plan.title || projectName}\n\nOuvrir le workspace maintenant ?`,
-            { title: 'Projet prêt', type: 'info' as any }
-          );
-          if (ok) navigate(`/projects/${projectId}`);
-        } catch {
-          // ignore
-        }
-      }
+      lastProjectGenerationWasUserActionRef.current = false;
 
     } catch (error: any) {
       const isAbort = error?.name === 'AbortError';
@@ -1274,7 +1160,15 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       });
       completeStep(sessionId, detectStepId);
 
-      // Route vers le pipeline multi-agents
+      // Route vers le VibeCoding Studio
+      const wizardMeta = wizardMetaRef.current;
+      wizardMetaRef.current = null;
+      studioActions.startGeneration(content, {
+        projectType: wizardMeta?.projectType,
+        techs: wizardMeta?.techs,
+      });
+
+      // Also run the legacy pipeline for disk writes + activity tracking
       await handleProjectGeneration(content, userMessageId, sessionId);
       return true;
     }
@@ -1383,12 +1277,17 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
         reasoningContent = resp?.choices?.[0]?.message?.reasoning_content || '';
 
         // Extract bash commands from response and create command cards
+        // Filter out useless commands (cd, mkdir, echo, comments)
+        const SKIP_CMD_PATTERNS = /^\s*(cd\s|mkdir\s|echo\s|#|\/\/|ls\s|pwd|cat\s|touch\s)/i;
         const ensureCard = useCommandStore.getState().ensureCard;
         const bashRegex = /```(?:bash|sh|shell)\n([\s\S]*?)```/g;
         let cmdMatch: RegExpExecArray | null;
         let cardIdx = 0;
         while ((cmdMatch = bashRegex.exec(fullContent)) !== null) {
-          const cmds = cmdMatch[1].trim().split('\n').filter((l: string) => l.trim() && !l.trim().startsWith('#'));
+          const cmds = cmdMatch[1].trim().split('\n').filter((l: string) => {
+            const t = l.trim();
+            return t && !t.startsWith('#') && !SKIP_CMD_PATTERNS.test(t);
+          });
           for (const cmd of cmds) {
             const cardId = `${aiMessageId}::tool::${cardIdx++}`;
             ensureCard({
@@ -1631,6 +1530,7 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
       {/* Main chat column */}
       <div className="flex-1 min-h-0 flex flex-col bg-bg-primary">
       {/* Chat area */}
+      {!studioState.isOpen && (
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {!isEffectivelyOnline && (
           <div className="px-4 pt-3">
@@ -1745,10 +1645,36 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
           />
         )}
       </div>
+      )}
 
-      {/* ===== INPUT BAR ===== */}
+      {/* ===== VIBECODING STUDIO (replaces main content during generation) ===== */}
+      {studioState.isOpen && (
+        <div className="flex-1 min-h-0">
+          <VibeCodingStudio
+            projectId={studioState.projectId}
+            projectName={studioState.projectName}
+            phase={studioState.phase}
+            plan={studioState.plan}
+            files={studioState.files}
+            agents={studioState.agents}
+            currentStep={studioState.currentStep}
+            onExecutePlan={studioActions.executePlan}
+            onIterate={studioActions.iterate}
+            onFileChange={studioActions.updateFile}
+            onFileRevert={studioActions.revertFile}
+            onCancel={studioActions.cancel}
+            onClose={studioActions.close}
+            activeGeneratingFile={studioState.activeGeneratingFile}
+            errorMessage={studioState.errorMessage}
+            isIterating={studioState.isIterating}
+            lastIterationResult={studioState.lastIterationResult}
+          />
+        </div>
+      )}
+
+      {/* ===== INPUT BAR (hidden when studio is open — studio has its own chat) ===== */}
+      {!studioState.isOpen && (
       <div className="flex-shrink-0">
-        <VerifyFixNotice />
         <ChatInput
           onSendMessage={async (msg, attachments) => { await handleSendMessage(msg, false, { attachments }); }}
           onStopGeneration={handleStopGeneration}
@@ -1761,6 +1687,7 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
           placeholder="Décris ta tâche, ANZAR s'en occupe..."
         />
       </div>
+      )}
 
       <BackgroundTasksDock />
 
@@ -1877,7 +1804,7 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
       )}
     </div>
     {/* ── Generation Panel (right sidebar, TRAE-style) ── */}
-    {generationPanelSessionId && (
+    {generationPanelSessionId && !studioState.isOpen && (
       <GenerationPanel
         sessionId={generationPanelSessionId}
         onClose={() => setGenerationPanelSessionId(null)}

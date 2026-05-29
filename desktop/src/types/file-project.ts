@@ -75,7 +75,7 @@ export type Message = FileProjectMessage;
 export type NewConversation = Omit<FileProjectConversation, 'id' | 'createdAt' | 'updatedAt'>;
 
 // Agent types
-export type AgentType = 'orchestrator' | 'planner' | 'coder' | 'tester' | 'executor';
+export type AgentType = 'planner' | 'coder';
 
 export interface AgentStatus {
   agent: AgentType;

@@ -1,206 +1,683 @@
 """
-Agent Codeur - Genere le code source base sur l'architecture.
-Genere par batch pour supporter des projets de 15-25+ fichiers.
+Agent Codeur Multi-Mode — Le couteau suisse du développement dans ANZAR.
+
+5 modes distincts, chacun avec un system prompt expert:
+  - code     : Génération de code complet (projets, composants, scripts)
+  - refactor : Refactoring intelligent avec préservation du comportement
+  - debug    : Diagnostic et correction de bugs
+  - review   : Revue de code avec scoring et suggestions
+  - test     : Génération de tests unitaires/intégration
 """
 
+import asyncio
 import logging
 import re
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from .base import BaseAgent
 
 logger = logging.getLogger(__name__)
 
+# ────────────────────────────────────────────────────────────────────────────
+# SYSTEM PROMPTS — un par mode, blindé et complet
+# ────────────────────────────────────────────────────────────────────────────
+
+PROMPT_CODE = """Tu es un développeur full-stack senior avec 15 ans d'expérience.
+Tu écris du code de PRODUCTION — pas de prototypes, pas de démos.
+
+PRINCIPES ABSOLUS:
+1. COMPLET: Chaque fichier est 100% fonctionnel. JAMAIS de "// TODO", "// à compléter",
+   "...", "// rest of code", ou placeholder vide. Si tu commences un fichier, tu le finis.
+2. MODERNE: ES2024+, Python 3.12+, dernières best practices. Pas de patterns obsolètes.
+3. ROBUSTE: Validation des entrées, gestion d'erreurs exhaustive, edge cases couverts.
+4. LISIBLE: Noms descriptifs, fonctions courtes (<30 lignes), commentaires sur le "pourquoi" pas le "quoi".
+5. SÉCURISÉ: Pas d'injection SQL, pas de XSS, sanitization systématique, pas de secrets en dur.
+
+POUR LE FRONTEND (HTML/CSS/JS/React):
+- Design MODERNE et PROFESSIONNEL — gradients, ombres, animations CSS, transitions
+- RESPONSIVE obligatoire — mobile-first, flexbox/grid
+- Variables CSS pour couleurs/tailles (design tokens)
+- Contenu RÉALISTE — pas de "Lorem ipsum", du vrai texte contextuel
+- Images: https://placehold.co/WxH/hex/hex ou SVG inline
+- Typographie: Google Fonts (Inter, Poppins, Playfair Display)
+- Hover/focus states sur TOUS les éléments interactifs
+- Accessibility: aria-labels, rôles ARIA, contraste WCAG AA
+
+POUR LE BACKEND (Python/Node/API):
+- Types complets (TypedDict, Pydantic, TypeScript strict)
+- Logging structuré à chaque étape critique
+- Retry logic sur les appels réseau
+- Rate limiting et validation des payloads
+- Docstrings complètes (Args, Returns, Raises)
+
+FORMAT DE SORTIE — chaque fichier comme:
+```language
+// Chemin: filepath
+[code complet]
+```"""
+
+PROMPT_REFACTOR = """Tu es un architecte logiciel expert en refactoring.
+Ta mission: transformer du code existant en code propre SANS changer le comportement.
+
+PRINCIPES DE REFACTORING:
+1. PRÉSERVER LE COMPORTEMENT: Le code refactoré doit produire exactement les mêmes résultats.
+   Aucune fonctionnalité ne doit être ajoutée, retirée, ou modifiée.
+2. AMÉLIORER LA STRUCTURE:
+   - Extraire les fonctions longues (>30 lignes) en sous-fonctions nommées
+   - Éliminer la duplication (DRY) — identifier les patterns répétés
+   - Appliquer le Single Responsibility Principle
+   - Réduire la complexité cyclomatique (max 10 par fonction)
+3. MODERNISER:
+   - Remplacer les patterns obsolètes par des équivalents modernes
+   - Utiliser les fonctionnalités du langage (destructuring, optional chaining, etc.)
+   - Types stricts partout
+4. NOMMER CORRECTEMENT:
+   - Variables: ce qu'elles contiennent, pas comment elles sont utilisées
+   - Fonctions: verbe + objet (calculateTotal, validateEmail, formatDate)
+   - Constantes: UPPER_SNAKE_CASE
+5. DOCUMENTER LES CHANGEMENTS:
+   - Liste chaque modification avec le "pourquoi"
+   - Identifie les risques potentiels
+
+FORMAT DE SORTIE:
+```language
+// Chemin: filepath
+[code refactoré complet]
+```
+
+Suivi d'un résumé:
+## Changements effectués
+- [Changement 1]: [Raison]
+- [Changement 2]: [Raison]
+
+## Risques identifiés
+- [Risque éventuel]"""
+
+PROMPT_DEBUG = """Tu es un expert en debugging avec une approche méthodique et scientifique.
+Tu diagnostiques les bugs comme un médecin diagnostique une maladie: symptômes → hypothèses → tests → diagnostic → traitement.
+
+MÉTHODOLOGIE DE DIAGNOSTIC:
+1. COMPRENDRE LE SYMPTÔME:
+   - Qu'est-ce qui se passe exactement? (message d'erreur, comportement inattendu)
+   - Quand ça se produit? (toujours, aléatoire, conditions spécifiques)
+   - Depuis quand? (après quel changement)
+
+2. ANALYSER LE CONTEXTE:
+   - Lire le code impliqué ligne par ligne
+   - Tracer le flux de données (d'où vient chaque variable)
+   - Identifier les dépendances (imports, APIs, BDD)
+
+3. FORMULER DES HYPOTHÈSES:
+   - Lister les 3-5 causes possibles par ordre de probabilité
+   - Pour chaque hypothèse, expliquer pourquoi elle pourrait causer le symptôme
+
+4. DIAGNOSTIQUER:
+   - Identifier LA cause racine (pas le symptôme)
+   - Expliquer la chaîne causale complète
+
+5. CORRIGER:
+   - Fournir le fix exact avec le code corrigé
+   - Expliquer pourquoi ce fix résout le problème
+   - Mentionner les effets de bord possibles
+
+FORMAT DE SORTIE:
+## Diagnostic
+**Symptôme**: [description]
+**Cause racine**: [explication]
+**Chaîne causale**: [A → B → C → bug]
+
+## Correction
+```language
+// Chemin: filepath
+[code corrigé]
+```
+
+## Prévention
+- [Comment éviter ce type de bug à l'avenir]"""
+
+PROMPT_REVIEW = """Tu es un tech lead exigeant qui fait des code reviews de niveau FAANG.
+Tu évalues le code sur 6 axes avec un scoring /100.
+
+AXES D'ÉVALUATION:
+1. CORRECTION (0-20): Le code fait-il ce qu'il est censé faire?
+   - Bugs logiques, edge cases manqués, off-by-one errors
+   - Gestion d'erreurs incomplète
+
+2. SÉCURITÉ (0-20): Le code est-il sûr?
+   - Injections (SQL, XSS, command), sanitization
+   - Secrets en dur, permissions trop larges
+   - Validation des entrées utilisateur
+
+3. PERFORMANCE (0-15): Le code est-il performant?
+   - Complexité algorithmique (O(n²) évitable?)
+   - Requêtes N+1, boucles inutiles
+   - Fuites mémoire, goroutines/promesses non gérées
+
+4. MAINTENABILITÉ (0-15): Le code est-il maintenable?
+   - Lisibilité, nommage, complexité cyclomatique
+   - DRY, Single Responsibility
+   - Tests associés
+
+5. ARCHITECTURE (0-15): L'architecture est-elle bonne?
+   - Séparation des responsabilités
+   - Couplage/cohésion
+   - Extensibilité
+
+6. STYLE (0-15): Le code suit-il les conventions?
+   - Formatting, indentation, conventions du langage
+   - Commentaires utiles (pas de noise)
+   - Cohérence avec le reste du projet
+
+FORMAT DE SORTIE — JSON strict:
+{
+    "score": 75,
+    "grade": "B",
+    "axes": {
+        "correction": {"score": 18, "max": 20, "issues": ["..."]},
+        "securite": {"score": 12, "max": 20, "issues": ["..."]},
+        "performance": {"score": 13, "max": 15, "issues": ["..."]},
+        "maintenabilite": {"score": 10, "max": 15, "issues": ["..."]},
+        "architecture": {"score": 12, "max": 15, "issues": ["..."]},
+        "style": {"score": 10, "max": 15, "issues": ["..."]}
+    },
+    "critical_issues": ["Issues bloquantes à corriger impérativement"],
+    "suggestions": ["Améliorations recommandées"],
+    "verdict": "Résumé en 2 phrases: qualité globale + action recommandée"
+}
+
+Grading: A (90-100) = Excellent, B (75-89) = Bon, C (60-74) = Acceptable, D (40-59) = Insuffisant, F (<40) = Rejet"""
+
+PROMPT_TEST = """Tu es un ingénieur QA expert en testing automatisé.
+Tu écris des tests qui PROUVENT que le code fonctionne — pas des tests qui passent toujours.
+
+PRINCIPES DE TESTING:
+1. COUVERTURE COMPLÈTE:
+   - Happy path (cas normal)
+   - Edge cases (limites, valeurs vides, nulls, listes vides)
+   - Error cases (exceptions, erreurs réseau, données invalides)
+   - Boundary values (min, max, zéro, négatif)
+
+2. STRUCTURE AAA:
+   - Arrange: préparer les données et mocks
+   - Act: exécuter l'action testée
+   - Assert: vérifier le résultat
+
+3. TESTS INDÉPENDANTS:
+   - Chaque test s'exécute seul, sans dépendance d'ordre
+   - Setup/teardown pour chaque test
+   - Pas d'état partagé mutable entre tests
+
+4. NOMMAGE DESCRIPTIF:
+   - test_[fonction]_[scénario]_[résultat_attendu]
+   - Exemple: test_calculate_total_empty_cart_returns_zero
+
+5. MOCKING INTELLIGENT:
+   - Mock uniquement les dépendances externes (BDD, API, filesystem)
+   - Ne jamais mocker la logique testée
+   - Vérifier les appels aux mocks (called_with, call_count)
+
+FRAMEWORKS PAR LANGAGE:
+- Python: pytest + pytest-asyncio + pytest-mock
+- JavaScript/TypeScript: vitest ou jest + @testing-library
+- React: @testing-library/react + vitest
+
+FORMAT DE SORTIE:
+```language
+// Chemin: tests/test_[module].py (ou .test.ts)
+[tests complets]
+```"""
+
+
+# ────────────────────────────────────────────────────────────────────────────
+# AGENT
+# ────────────────────────────────────────────────────────────────────────────
 
 class CoderAgent(BaseAgent):
-    """Agent qui genere le code source pour chaque fichier."""
+    """Agent codeur multi-mode: code, refactor, debug, review, test."""
+
+    # Registry des modes et leurs prompts
+    MODES = {
+        "code": PROMPT_CODE,
+        "refactor": PROMPT_REFACTOR,
+        "debug": PROMPT_DEBUG,
+        "review": PROMPT_REVIEW,
+        "test": PROMPT_TEST,
+    }
+
+    # Températures optimales par mode
+    MODE_TEMPERATURES = {
+        "code": 0.5,       # Créatif mais déterministe
+        "refactor": 0.3,   # Très déterministe — on ne veut pas de surprises
+        "debug": 0.3,      # Analytique et précis
+        "review": 0.2,     # Évaluation objective
+        "test": 0.4,       # Un peu de créativité pour les edge cases
+    }
+
+    # Max tokens par mode
+    MODE_MAX_TOKENS = {
+        "code": 16000,
+        "refactor": 14000,
+        "debug": 4000,
+        "review": 3000,
+        "test": 6000,
+    }
+
+    # Nombre de fichiers par batch en mode code
+    CODE_BATCH_SIZE = 10
+
+    # Nombre de batches à exécuter en parallèle (après le 1er batch séquentiel)
+    MAX_PARALLEL_BATCHES = 3
 
     def __init__(self, deepseek_client=None):
         super().__init__(
             name="coder",
-            role="Developpeur Senior",
-            description="Genere du code source complet, moderne et bien designe",
-            deepseek_client=deepseek_client
+            role="Développeur Senior Multi-Mode",
+            description="Génère, refactorise, débugge, review et teste du code",
+            deepseek_client=deepseek_client,
         )
-
-        self.system_prompt = """Tu es un developpeur full-stack senior expert en UI/UX.
-
-Ton role: Ecrire du code COMPLET, FONCTIONNEL et BEAU pour chaque fichier demande.
-
-REGLES CRITIQUES:
-- Code 100% complet — JAMAIS de "// TODO", "// a completer", ou de placeholder vide
-- Design MODERNE et PROFESSIONNEL — utilise des gradients, ombres, animations CSS, transitions
-- RESPONSIVE obligatoire — mobile-first, flexbox/grid, media queries
-- Couleurs harmonieuses — utilise les couleurs du design system fourni
-- Contenu REALISTE — pas de "Lorem ipsum", ecris du vrai texte adapte au projet
-- Images: utilise des placeholder via https://placehold.co/600x400/hex/hex ou des SVG inline
-- Icones: utilise des SVG inline simples ou des emoji pour les icones
-- Typographie: Google Fonts (Inter, Poppins, Playfair Display selon le style)
-- Animations: fadeIn, slideUp, hover effects, transitions douces
-
-Pour HTML:
-- Structure semantique (header, nav, main, section, footer)
-- Meta tags SEO complets
-- Open Graph tags
-- Favicon link
-
-Pour CSS:
-- Variables CSS pour les couleurs et tailles
-- Responsive breakpoints (mobile, tablet, desktop)
-- Animations @keyframes
-- Hover/focus states sur tous les elements interactifs
-- Box shadows, border radius, gradients
-
-Pour JavaScript:
-- Code modulaire avec fonctions claires
-- Gestion d'evenements propre
-- Validation de formulaires
-- Animations et transitions
-- LocalStorage pour la persistance si pertinent
-
-Format de sortie: chaque fichier comme:
-```language
-// Chemin: filepath
-// Code complet ici
-```"""
 
     async def execute(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Genere le code source pour les fichiers du projet.
-        Utilise la generation par batch pour les gros projets.
+        Point d'entrée unique — route vers le bon mode.
+
+        Args:
+            request: {
+                "mode": "code" | "refactor" | "debug" | "review" | "test",
+                # ── Mode "code" (génération projet) ──
+                "architecture": dict,
+                "plan": dict,
+                "project_name": str,
+                # ── Modes "refactor" / "debug" / "review" / "test" ──
+                "code": str,           # Code source à traiter
+                "language": str,       # Langage du code
+                "context": str,        # Contexte additionnel (message utilisateur, erreur, etc.)
+                "file_path": str,      # Chemin du fichier (optionnel)
+            }
+
+        Returns:
+            Dict avec "status", "result", et des champs spécifiques au mode.
+        """
+        mode = request.get("mode", "code")
+
+        if mode not in self.MODES:
+            return {
+                "status": "error",
+                "error": f"Mode inconnu: {mode}. Modes disponibles: {list(self.MODES.keys())}",
+                "tokens_used": self.tokens_used,
+            }
+
+        logger.info(f"[{self.name}] Mode: {mode}")
+
+        dispatch = {
+            "code": self._execute_code,
+            "refactor": self._execute_single,
+            "debug": self._execute_single,
+            "review": self._execute_review,
+            "test": self._execute_single,
+        }
+
+        handler = dispatch[mode]
+        return await handler(request, mode)
+
+    # ────────────────── Mode CODE (génération projet par batch) ──────────────
+
+    async def _execute_code(self, request: Dict[str, Any], mode: str) -> Dict[str, Any]:
+        """Génère le code source d'un projet complet par batch de fichiers.
+
+        Stratégie d'exécution:
+        1. Le 1er batch est exécuté seul (fournit le contexte de base).
+        2. Les batches suivants sont lancés en parallèle (max MAX_PARALLEL_BATCHES
+           simultanés) avec la liste des fichiers déjà générés pour la cohérence.
         """
         architecture = request.get("architecture", {})
         plan = request.get("plan", {})
         project_name = request.get("project_name", "project")
 
-        logger.info(f"[{self.name}] Generation code: {project_name}")
+        logger.info(f"[{self.name}] Génération code: {project_name}")
 
         files_to_generate = architecture.get("structure", {}).get("files", [])
         total_files = len(files_to_generate)
 
         if total_files == 0:
-            logger.warning(f"[{self.name}] Aucun fichier a generer")
+            logger.warning(f"[{self.name}] Aucun fichier à générer")
             return {
                 "status": "error",
                 "error": "Aucun fichier dans l'architecture",
                 "files": {},
-                "tokens_used": self.tokens_used
+                "tokens_used": self.tokens_used,
             }
 
-        # Generate in batches of 5 files
+        # Découper en batches
         all_files: Dict[str, str] = {}
-        batch_size = 5
-        batches = [files_to_generate[i:i + batch_size] for i in range(0, total_files, batch_size)]
+        batch_size = self.CODE_BATCH_SIZE
+        batches = [
+            files_to_generate[i : i + batch_size]
+            for i in range(0, total_files, batch_size)
+        ]
 
-        # Get design info from plan
+        # Design info
         design_info = plan.get("architecture", {}).get("design", {})
         design_context = ""
         if design_info:
             colors = design_info.get("colors", {})
-            design_context = f"""
-Design System:
-- Style: {design_info.get('style', 'moderne et professionnel')}
-- Couleur primaire: {colors.get('primary', '#3B82F6')}
-- Couleur secondaire: {colors.get('secondary', '#8B5CF6')}
-- Couleur accent: {colors.get('accent', '#F59E0B')}
-- Typographie: {design_info.get('fonts', 'Inter, system-ui, sans-serif')}
-"""
+            design_context = (
+                f"\nDesign System:\n"
+                f"- Style: {design_info.get('style', 'moderne et professionnel')}\n"
+                f"- Couleur primaire: {colors.get('primary', '#3B82F6')}\n"
+                f"- Couleur secondaire: {colors.get('secondary', '#8B5CF6')}\n"
+                f"- Couleur accent: {colors.get('accent', '#F59E0B')}\n"
+                f"- Typographie: {design_info.get('fonts', 'Inter, system-ui, sans-serif')}\n"
+            )
 
-        for batch_idx, batch in enumerate(batches):
-            files_str = "\n".join([
-                f"- {f.get('path')}: {f.get('description')} ({f.get('type', 'unknown')})"
-                for f in batch
-            ])
+        arch_summary = str(architecture)[:2000]
+        desc_summary = str(plan.get("description", ""))[:1000]
 
-            # Context from already generated files
-            existing_context = ""
-            if all_files:
-                existing_files_list = ", ".join(all_files.keys())
-                existing_context = f"\nFichiers deja generes: {existing_files_list}\nAssure la coherence avec ces fichiers existants."
+        # ── Batch 1 : séquentiel (crée le contexte de base) ──
+        first_batch = batches[0]
+        first_result = await self._generate_batch(
+            batch=first_batch,
+            batch_idx=0,
+            total_batches=len(batches),
+            project_name=project_name,
+            design_context=design_context,
+            arch_summary=arch_summary,
+            desc_summary=desc_summary,
+            existing_files_list="",
+        )
+        all_files.update(first_result)
+        logger.info(f"[{self.name}] Batch 1/{len(batches)}: {len(first_result)} fichiers")
 
-            user_message = f"""Genere le code source COMPLET pour ces fichiers du projet '{project_name}' (batch {batch_idx + 1}/{len(batches)}):
-
-{files_str}
-{design_context}
-Architecture globale: {str(architecture)[:2000]}
-
-Description du projet: {str(plan.get('description', ''))[:1000]}
-{existing_context}
-
-IMPORTANT:
-- Chaque fichier doit etre COMPLET et FONCTIONNEL
-- Le design doit etre MODERNE et PROFESSIONNEL
-- Utilise du contenu REALISTE (pas de Lorem ipsum)
-- Les liens entre pages doivent etre coherents
-
-Format chaque fichier comme:
-```language
-// Chemin: filepath
-// Code complet ici
-```"""
-
-            messages = [
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": user_message}
+        # ── Batches 2+ : parallèle par groupes de MAX_PARALLEL_BATCHES ──
+        remaining = batches[1:]
+        if remaining:
+            existing_files_list = ", ".join(sorted(all_files.keys()))
+            parallel_groups = [
+                remaining[i : i + self.MAX_PARALLEL_BATCHES]
+                for i in range(0, len(remaining), self.MAX_PARALLEL_BATCHES)
             ]
 
-            try:
-                response = await self.call_deepseek(
-                    messages=messages,
-                    temperature=0.5,
-                    max_tokens=8000
-                )
+            for group in parallel_groups:
+                tasks = [
+                    self._generate_batch(
+                        batch=batch,
+                        batch_idx=batches.index(batch),
+                        total_batches=len(batches),
+                        project_name=project_name,
+                        design_context=design_context,
+                        arch_summary=arch_summary,
+                        desc_summary=desc_summary,
+                        existing_files_list=existing_files_list,
+                    )
+                    for batch in group
+                ]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                batch_files = self._extract_code_blocks(response)
-                all_files.update(batch_files)
-                logger.info(f"[{self.name}] Batch {batch_idx + 1}: {len(batch_files)} fichiers generes")
+                for i, result in enumerate(results):
+                    if isinstance(result, Exception):
+                        logger.error(f"[{self.name}] Batch parallèle échoué: {result}")
+                        continue
+                    all_files.update(result)
+                    logger.info(
+                        f"[{self.name}] Batch parallèle: {len(result)} fichiers"
+                    )
 
-            except Exception as e:
-                logger.error(f"[{self.name}] Erreur batch {batch_idx + 1}: {e}")
-                # Continue with next batch instead of failing completely
-                continue
+                # Mettre à jour la liste pour le groupe suivant
+                existing_files_list = ", ".join(sorted(all_files.keys()))
 
         if not all_files:
             return {
                 "status": "error",
-                "error": "Aucun fichier genere",
+                "error": "Aucun fichier généré",
                 "files": {},
-                "tokens_used": self.tokens_used
+                "tokens_used": self.tokens_used,
             }
 
         return {
             "status": "success",
             "files": all_files,
             "count": len(all_files),
-            "tokens_used": self.tokens_used
+            "tokens_used": self.tokens_used,
         }
 
+    async def _generate_batch(
+        self,
+        batch: List[Dict[str, Any]],
+        batch_idx: int,
+        total_batches: int,
+        project_name: str,
+        design_context: str,
+        arch_summary: str,
+        desc_summary: str,
+        existing_files_list: str,
+    ) -> Dict[str, str]:
+        """Génère un seul batch de fichiers. Retourne {path: content}."""
+        files_str = "\n".join(
+            f"- {f.get('path')}: {f.get('description')} ({f.get('type', 'unknown')})"
+            for f in batch
+        )
+
+        existing_context = ""
+        if existing_files_list:
+            existing_context = (
+                f"\nFichiers déjà générés: {existing_files_list}\n"
+                "Assure la cohérence avec ces fichiers existants."
+            )
+
+        user_message = (
+            f"Génère le code source COMPLET pour ces fichiers du projet "
+            f"'{project_name}' (batch {batch_idx + 1}/{total_batches}):\n\n"
+            f"{files_str}\n{design_context}\n"
+            f"Architecture globale: {arch_summary}\n\n"
+            f"Description du projet: {desc_summary}\n"
+            f"{existing_context}\n\n"
+            "IMPORTANT:\n"
+            "- Chaque fichier doit être COMPLET et FONCTIONNEL\n"
+            "- Le design doit être MODERNE et PROFESSIONNEL\n"
+            "- Utilise du contenu RÉALISTE (pas de Lorem ipsum)\n"
+            "- Les liens entre pages doivent être cohérents\n\n"
+            "Format chaque fichier comme:\n"
+            "```language\n// Chemin: filepath\n// Code complet ici\n```"
+        )
+
+        messages = [
+            {"role": "system", "content": self.MODES["code"]},
+            {"role": "user", "content": user_message},
+        ]
+
+        response = await self.call_deepseek(
+            messages=messages,
+            temperature=self.MODE_TEMPERATURES["code"],
+            max_tokens=self.MODE_MAX_TOKENS["code"],
+        )
+        return self._extract_code_blocks(response)
+
+    # ────────────────── Modes REFACTOR / DEBUG / TEST (single-shot) ──────────
+
+    async def _execute_single(self, request: Dict[str, Any], mode: str) -> Dict[str, Any]:
+        """Exécute un mode single-shot: refactor, debug, ou test."""
+        code = request.get("code", "")
+        language = request.get("language", "")
+        context = request.get("context", "")
+        file_path = request.get("file_path", "")
+
+        if not code and not context:
+            return {
+                "status": "error",
+                "error": "Aucun code ou contexte fourni",
+                "tokens_used": self.tokens_used,
+            }
+
+        # Construire le message utilisateur selon le mode
+        parts = []
+        if file_path:
+            parts.append(f"Fichier: {file_path}")
+        if language:
+            parts.append(f"Langage: {language}")
+        if context:
+            parts.append(f"Contexte: {context}")
+        if code:
+            parts.append(f"```{language or ''}\n{code}\n```")
+
+        user_message = "\n\n".join(parts)
+
+        messages = [
+            {"role": "system", "content": self.MODES[mode]},
+            {"role": "user", "content": user_message},
+        ]
+
+        try:
+            response = await self.call_deepseek(
+                messages=messages,
+                temperature=self.MODE_TEMPERATURES[mode],
+                max_tokens=self.MODE_MAX_TOKENS[mode],
+            )
+
+            return {
+                "status": "success",
+                "mode": mode,
+                "result": response,
+                "tokens_used": self.tokens_used,
+            }
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Erreur mode {mode}: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "tokens_used": self.tokens_used,
+            }
+
+    # ────────────────── Mode REVIEW (retourne du JSON structuré) ─────────────
+
+    async def _execute_review(self, request: Dict[str, Any], mode: str) -> Dict[str, Any]:
+        """Exécute une code review avec scoring structuré."""
+        code = request.get("code", "")
+        language = request.get("language", "")
+        context = request.get("context", "")
+        file_path = request.get("file_path", "")
+
+        if not code:
+            return {
+                "status": "error",
+                "error": "Aucun code fourni pour la review",
+                "tokens_used": self.tokens_used,
+            }
+
+        parts = []
+        if file_path:
+            parts.append(f"Fichier: {file_path}")
+        if language:
+            parts.append(f"Langage: {language}")
+        if context:
+            parts.append(f"Contexte: {context}")
+        parts.append(f"```{language or ''}\n{code}\n```")
+
+        user_message = "\n\n".join(parts)
+
+        messages = [
+            {"role": "system", "content": self.MODES["review"]},
+            {"role": "user", "content": user_message},
+        ]
+
+        try:
+            response = await self.call_deepseek(
+                messages=messages,
+                temperature=self.MODE_TEMPERATURES["review"],
+                max_tokens=self.MODE_MAX_TOKENS["review"],
+                response_format={"type": "json_object"},
+            )
+
+            # Parser le JSON de review
+            try:
+                review_data = self.parse_json_response(response)
+            except ValueError:
+                # Fallback: renvoyer le texte brut
+                review_data = {"raw_review": response}
+
+            return {
+                "status": "success",
+                "mode": "review",
+                "review": review_data,
+                "score": review_data.get("score", 0),
+                "grade": review_data.get("grade", "?"),
+                "tokens_used": self.tokens_used,
+            }
+
+        except Exception as e:
+            logger.error(f"[{self.name}] Erreur review: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "tokens_used": self.tokens_used,
+            }
+
+    # ────────────────── Extraction de blocs de code ──────────────────────────
+
     def _extract_code_blocks(self, response: str) -> Dict[str, str]:
-        """Extrait les blocs de code de la reponse."""
+        """Extrait les blocs de code de la réponse (multi-pattern, robust).
+
+        Handles many LLM output variations:
+        - // Chemin: path, <!-- Chemin: path -->, # Chemin: path
+        - // File: path, // Path: path, /* path */
+        - Filename as first comment line
+        """
         files: Dict[str, str] = {}
 
         # Pattern 1: ```lang\n// Chemin: filepath\ncode```
-        pattern1 = r'''```(\w+)\n//\s*Chemin:\s*([^\n]+)\n(.*?)```'''
-        matches = re.findall(pattern1, response, re.DOTALL)
-        for language, filepath, code in matches:
+        pattern1 = r"```(\w+)\n//\s*Chemin:\s*([^\n]+)\n(.*?)```"
+        for _, filepath, code in re.findall(pattern1, response, re.DOTALL):
             files[filepath.strip()] = code.strip()
 
         # Pattern 2: ```lang\n<!-- Chemin: filepath -->\ncode```
-        pattern2 = r'''```(\w+)\n<!--\s*Chemin:\s*([^\n]+?)\s*-->\n(.*?)```'''
-        matches2 = re.findall(pattern2, response, re.DOTALL)
-        for language, filepath, code in matches2:
+        pattern2 = r"```(\w+)\n<!--\s*Chemin:\s*([^\n]+?)\s*-->\n(.*?)```"
+        for _, filepath, code in re.findall(pattern2, response, re.DOTALL):
             if filepath.strip() not in files:
                 files[filepath.strip()] = code.strip()
 
         # Pattern 3: ```lang\n# Chemin: filepath\ncode```
-        pattern3 = r'''```(\w+)\n#\s*Chemin:\s*([^\n]+)\n(.*?)```'''
-        matches3 = re.findall(pattern3, response, re.DOTALL)
-        for language, filepath, code in matches3:
+        pattern3 = r"```(\w+)\n#\s*Chemin:\s*([^\n]+)\n(.*?)```"
+        for _, filepath, code in re.findall(pattern3, response, re.DOTALL):
             if filepath.strip() not in files:
                 files[filepath.strip()] = code.strip()
 
+        # Pattern 4: ```lang\n// File: filepath or // Path: filepath
+        pattern4 = r"```(\w+)\n//\s*(?:File|Path|Fichier):\s*([^\n]+)\n(.*?)```"
+        for _, filepath, code in re.findall(pattern4, response, re.DOTALL):
+            if filepath.strip() not in files:
+                files[filepath.strip()] = code.strip()
+
+        # Pattern 5: ```lang\n/* filepath */\ncode```
+        pattern5 = r"```(\w+)\n/\*\s*([^\n*]+?)\s*\*/\n(.*?)```"
+        for _, filepath, code in re.findall(pattern5, response, re.DOTALL):
+            fp = filepath.strip()
+            if fp not in files and ("." in fp or "/" in fp):
+                files[fp] = code.strip()
+
+        # Pattern 6: Heading before code block — **filepath** or ### filepath
+        pattern6 = r"(?:^|\n)(?:\*\*|#{1,4}\s*)([^\n*#]+\.(?:py|js|ts|tsx|jsx|html|css|json|md|yml|yaml|toml|sql|go|rs|java|sh))\s*(?:\*\*)?[^\n]*\n```\w*\n(.*?)```"
+        for filepath, code in re.findall(pattern6, response, re.DOTALL):
+            fp = filepath.strip().strip("`")
+            if fp not in files:
+                files[fp] = code.strip()
+
         if not files:
-            # Fallback: store the entire response
-            files["generated_code.txt"] = response
+            # Last resort: try to split by file-like markers in the response
+            # Look for lines that look like file paths between code blocks
+            blocks = re.findall(r"```\w*\n(.*?)```", response, re.DOTALL)
+            if len(blocks) == 1:
+                files["generated_code.txt"] = blocks[0].strip()
+            elif blocks:
+                for i, block in enumerate(blocks):
+                    # Check if first line is a path-like comment
+                    first_line = block.split("\n")[0].strip()
+                    path_match = re.match(r'^(?://|#|/\*)\s*(.+\.\w+)', first_line)
+                    if path_match:
+                        fp = path_match.group(1).strip().rstrip(" */")
+                        rest = "\n".join(block.split("\n")[1:]).strip()
+                        files[fp] = rest
+                    else:
+                        files[f"file_{i+1}.txt"] = block.strip()
+            else:
+                files["generated_code.txt"] = response
 
         return files

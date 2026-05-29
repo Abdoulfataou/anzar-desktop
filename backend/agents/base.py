@@ -78,8 +78,9 @@ class BaseAgent(ABC):
         try:
             logger.debug(f"[{self.name}] Appel DeepSeek (tokens max: {max_tokens})")
 
-            # Estimation tokens (approximation)
-            self.tokens_used += max_tokens // 3
+            # Estimate input tokens from message content (~4 chars/token)
+            input_chars = sum(len(m.get("content") or "") for m in messages)
+            input_tokens_est = input_chars // 4
 
             if stream:
                 result = ""
@@ -91,15 +92,21 @@ class BaseAgent(ABC):
                     response_format=response_format,
                 ):
                     result += chunk
-                return result
             else:
-                return await self.deepseek_client.chat(
+                result = await self.deepseek_client.chat(
                     messages=messages,
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     response_format=response_format,
                 )
+
+            # Estimate output tokens from actual response length
+            output_tokens_est = len(result) // 4
+            self.tokens_used += input_tokens_est + output_tokens_est
+            logger.debug(f"[{self.name}] Tokens estimés: ~{input_tokens_est} in + ~{output_tokens_est} out")
+
+            return result
 
         except Exception as e:
             logger.error(f"[{self.name}] Erreur DeepSeek: {e}")

@@ -105,11 +105,8 @@ class AgentService {
     if (!isAvailable) {
       // Fallback: just yield completion statuses
       yield [
-        { name: 'orchestrator', status: 'done', progress: 100, message: 'Mode déconnecté' },
-        { name: 'planner', status: 'done', progress: 100 },
+        { name: 'planner', status: 'done', progress: 100, message: 'Mode déconnecté' },
         { name: 'coder', status: 'done', progress: 100 },
-        { name: 'tester', status: 'done', progress: 100 },
-        { name: 'executor', status: 'done', progress: 100 },
       ];
       return;
     }
@@ -178,11 +175,8 @@ class AgentService {
       console.error('Error executing project:', error);
       // Yield error state for all agents
       yield [
-        { name: 'orchestrator', status: 'error', progress: 0, message: 'Erreur d\'exécution' },
-        { name: 'planner', status: 'error', progress: 0 },
+        { name: 'planner', status: 'error', progress: 0, message: 'Erreur d\'exécution' },
         { name: 'coder', status: 'error', progress: 0 },
-        { name: 'tester', status: 'error', progress: 0 },
-        { name: 'executor', status: 'error', progress: 0 },
       ];
     }
   }
@@ -198,11 +192,8 @@ class AgentService {
 
     if (!isAvailable) {
       return [
-        { name: 'orchestrator', status: 'idle', progress: 0 },
         { name: 'planner', status: 'idle', progress: 0 },
         { name: 'coder', status: 'idle', progress: 0 },
-        { name: 'tester', status: 'idle', progress: 0 },
-        { name: 'executor', status: 'idle', progress: 0 },
       ];
     }
 
@@ -224,11 +215,8 @@ class AgentService {
     } catch (error) {
       console.error('Error getting agent status:', error);
       return [
-        { name: 'orchestrator', status: 'error', progress: 0, message: 'Erreur de connexion' },
-        { name: 'planner', status: 'error', progress: 0 },
+        { name: 'planner', status: 'error', progress: 0, message: 'Erreur de connexion' },
         { name: 'coder', status: 'error', progress: 0 },
-        { name: 'tester', status: 'error', progress: 0 },
-        { name: 'executor', status: 'error', progress: 0 },
       ];
     }
   }

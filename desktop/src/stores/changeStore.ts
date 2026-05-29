@@ -2,8 +2,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { FileOperation } from '@/types'
 import { useProjectStore } from '@/stores/projectStore'
-import { useSettingsStore } from '@/stores/settingsStore'
-import { runService } from '@/services/runService'
 
 type PendingChangeSet = {
   id: string
@@ -87,16 +85,6 @@ export const useChangeStore = create<ChangeStore>()(
 
         // Remove after apply
         get().remove(projectId, changeSetId)
-
-        // Auto-verify (Cowork-like)
-        const settings = useSettingsStore.getState().settings
-        if (settings.autoVerifyAfterApply) {
-          const project = useProjectStore.getState().projects.find((p) => p.id === projectId)
-          const projectPath = (project?.metadata as any)?.localPath as string | undefined
-          if (projectPath) {
-            await runService.executeVerifyPipeline({ projectId, projectPath })
-          }
-        }
       },
 
       applySelected: async (projectId, changeSetId, selectedIndexes) => {
@@ -133,16 +121,6 @@ export const useChangeStore = create<ChangeStore>()(
             ),
           },
         }))
-
-        // Auto-verify (Cowork-like)
-        const settings = useSettingsStore.getState().settings
-        if (settings.autoVerifyAfterApply) {
-          const project = useProjectStore.getState().projects.find((p) => p.id === projectId)
-          const projectPath = (project?.metadata as any)?.localPath as string | undefined
-          if (projectPath) {
-            await runService.executeVerifyPipeline({ projectId, projectPath })
-          }
-        }
       },
     }),
     { name: 'anzar-change-queue', version: 1, partialize: (s) => ({ pending: s.pending }) }

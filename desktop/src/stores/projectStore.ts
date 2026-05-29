@@ -158,11 +158,8 @@ export const useProjectStore = create<ProjectStore>()(
           updatedAt: Date.now(),
           files: [],
           agents: [
-            { name: 'orchestrator', status: 'idle', progress: 0 },
             { name: 'planner', status: 'idle', progress: 0 },
             { name: 'coder', status: 'idle', progress: 0 },
-            { name: 'tester', status: 'idle', progress: 0 },
-            { name: 'executor', status: 'idle', progress: 0 },
           ],
           metadata: { model },
         };

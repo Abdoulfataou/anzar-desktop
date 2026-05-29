@@ -261,6 +261,89 @@ class ProjectGenerationService {
   }
 
   /**
+   * Phase 3 : Itérer sur un projet existant.
+   * Appelle POST /api/projects/{id}/iterate → CoderAgent refactor mode via SSE.
+   * L'utilisateur décrit une modification ("change la couleur du header en bleu")
+   * et le backend retourne les fichiers modifiés.
+   *
+   * @param projectId - ID backend du projet
+   * @param message - Description de la modification en langage naturel
+   * @param files - Map path → contenu des fichiers courants
+   * @param onUpdate - Callback pour chaque événement SSE (step, file)
+   * @param fileFocus - Fichier principal à modifier (optionnel)
+   */
+  async iterate(
+    projectId: string,
+    message: string,
+    files: Record<string, string>,
+    onUpdate: OnAgentUpdate,
+    fileFocus?: string,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const url = `${getBackendUrl()}/api/projects/${projectId}/iterate`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      signal,
+      body: JSON.stringify({
+        message,
+        files,
+        file_focus: fileFocus || null,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      const msg = error?.error?.message || error?.detail || `Erreur itération (HTTP ${response.status})`;
+      if (response.status === 402) throw new Error('Crédits insuffisants. Recharge ton compte.');
+      if (response.status === 401) throw new Error('Session expirée. Reconnecte-toi.');
+      throw new Error(msg);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Pas de flux de réponse du serveur');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let lastEventTime = Date.now();
+    const ITERATE_TIMEOUT_MS = 150_000; // 2.5 min sans événement = timeout
+
+    try {
+      while (true) {
+        if (signal?.aborted) {
+          reader.cancel();
+          throw new DOMException('Itération annulée', 'AbortError');
+        }
+
+        if (Date.now() - lastEventTime > ITERATE_TIMEOUT_MS) {
+          reader.cancel();
+          throw new Error('Timeout: le serveur ne répond plus. Essaie une modification plus ciblée.');
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        lastEventTime = Date.now();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const event = parseSSELine(line);
+          if (event) onUpdate(event);
+        }
+      }
+
+      if (buffer.trim()) {
+        const event = parseSSELine(buffer);
+        if (event) onUpdate(event);
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  /**
    * Download generated files from backend.
    * Returns a dict of filepath → content to write locally via Tauri FS.
    */

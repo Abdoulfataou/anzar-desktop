@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useMemo, useRef, useState } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Presentation, FileCheck } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Presentation, FileCheck, ExternalLink, Play } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
@@ -26,6 +27,7 @@ interface MessageBubbleProps {
 }
 
 export default function MessageBubble({ message, onCopy, onRegenerate, selectedProjectId = null, selectedProjectPath }: MessageBubbleProps) {
+  const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
@@ -266,6 +268,18 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                     ['bash', 'sh', 'shell', 'zsh', 'cmd', 'powershell'].includes(language.toLowerCase());
                   if (isShell && raw.trim()) {
                     const cmdText = raw.trim();
+                    // Skip useless commands (cd, mkdir, echo, etc.)
+                    const SKIP_CMD = /^\s*(cd\s|mkdir\s|echo\s|#|\/\/|ls\s|pwd|cat\s|touch\s)/i;
+                    const hasUsefulCmd = cmdText.split('\n').some((l: string) => {
+                      const t = l.trim();
+                      return t && !t.startsWith('#') && !SKIP_CMD.test(t);
+                    });
+                    if (!hasUsefulCmd) {
+                      // Render as plain code block instead of command card
+                      return (
+                        <CodeBlock language={language} code={raw} />
+                      );
+                    }
                     const cardId = `${message.id}::cmd::${Math.abs(hashCode(cmdText))}`;
                     // Ensure a stable card exists (Trae/Claude cowork-style command card)
                     ensureCard({
@@ -329,6 +343,20 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             {cardsForThisMessage.map((id) => (
               <CommandCard key={id} cardId={id} />
             ))}
+          </div>
+        )}
+
+        {/* Project action button — "Open & Run" after generation */}
+        {message.actionProjectId && !message.isStreaming && (
+          <div className="flex gap-2 mt-1">
+            <button
+              onClick={() => navigate(`/projects/${message.actionProjectId}`)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 gradient-bg text-white shadow-md hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]"
+            >
+              <Play size={15} />
+              <span>Ouvrir et Lancer le projet</span>
+              <ExternalLink size={13} className="opacity-60" />
+            </button>
           </div>
         )}
 
