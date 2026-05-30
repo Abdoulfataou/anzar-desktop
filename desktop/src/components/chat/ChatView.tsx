@@ -28,27 +28,23 @@ import ChatInput from './ChatInput';
 import { cn } from '@/lib/utils';
 import { AIModel, type Message, type ChatAttachment } from '@/types';
 import { aiRouter } from '@/services/router';
-import { aiService } from '@/services/ai';
+import { aiService } from '@/services/ai/ai';
 import { projectGeneration, type PlanResult, type ExecutionEvent, type StepEvent, type AgentsEvent, type FileEvent } from '@/services/projectGeneration';
-import { detectProjectIntent, detectVisualIntent, extractProjectName } from '@/services/intentDetection';
-import { fileSystemService } from '@/services/fileSystem';
+import { detectProjectIntent, detectVisualIntent, detectAuditIntent, extractProjectName } from '@/services/ai/intentDetection';
+import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { useUsageStore } from '@/stores/usageStore';
 import { useActivityStore } from '@/stores/activityStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useActiveConversation, useChatStore } from '@/stores/chatStore';
 import { documentDir } from '@tauri-apps/api/path';
-import BackgroundTasksDock from './BackgroundTasksDock';
-import { useCommandStore } from '@/stores/commandStore';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { commandCardService } from '@/services/commandCardService';
-import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
 import ProjectWizardModal from './ProjectWizardModal';
 import GenerationPanel from './GenerationPanel';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
-import { generationTracker } from '@/services/generationTracker';
+import { generationTracker } from '@/services/ai/generationTracker';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { STUDENT_PROMPTS, AGENT_PROMPTS, SKILL_PROMPTS } from '@/services/studentPrompts';
+import { STUDENT_PROMPTS, AGENT_PROMPTS, SKILL_PROMPTS } from '@/services/student/studentPrompts';
 import { VibeCodingStudio } from '@/components/vibecoding';
 import { useVibeCodingStudio } from '@/hooks/useVibeCodingStudio';
 
@@ -439,7 +435,7 @@ Rédige un document professionnel avec les clauses standards. ATTENTION : préci
 // INTENT DETECTION - Détecte si le message demande une génération de projet
 // ============================================================================
 
-// detectProjectIntent, detectVisualIntent, extractProjectName → imported from '@/services/intentDetection'
+// detectProjectIntent, detectVisualIntent, extractProjectName → imported from '@/services/ai/intentDetection'
 
 // ============================================================================
 // COMPONENT
@@ -1004,10 +1000,97 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       addStep(sessionId, { type: 'complete', label: `Projet genere en ${elapsed}s` });
       endSession(sessionId, 'done');
 
+      // Detect project type + extract dependencies from generated files
+      const fileNames = plan.files.map((f: any) => f.path || f.name || '').join(' ');
+      const hasPackageJson = fileNames.includes('package.json');
+      const hasRequirements = fileNames.includes('requirements.txt') || fileNames.includes('Pipfile');
+      const hasCargo = fileNames.includes('Cargo.toml');
+      const hasIndexHtml = fileNames.includes('index.html') && !hasPackageJson;
+
+      // Extract dependency list from generated files
+      let depsInfo = '';
+      if (hasPackageJson) {
+        // Find package.json in receivedFiles
+        const pkgEntry = [...receivedFiles.entries()].find(([p]) => p.endsWith('package.json'));
+        if (pkgEntry) {
+          try {
+            const pkg = JSON.parse(pkgEntry[1]);
+            const deps = Object.keys(pkg.dependencies || {});
+            const devDeps = Object.keys(pkg.devDependencies || {});
+            if (deps.length > 0) {
+              depsInfo += `\n\n**Dependances** (${deps.length}) : ${deps.join(', ')}`;
+            }
+            if (devDeps.length > 0) {
+              depsInfo += `\n**Dev dependencies** (${devDeps.length}) : ${devDeps.join(', ')}`;
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      } else if (hasRequirements) {
+        const reqEntry = [...receivedFiles.entries()].find(([p]) => p.endsWith('requirements.txt'));
+        if (reqEntry) {
+          const lines = reqEntry[1].split('\n').filter((l: string) => l.trim() && !l.startsWith('#'));
+          if (lines.length > 0) {
+            depsInfo += `\n\n**Dependances Python** (${lines.length}) : ${lines.map((l: string) => l.split('==')[0].split('>=')[0].trim()).join(', ')}`;
+          }
+        }
+      }
+
+      // Detect entry point script
+      let runCmd = 'npm run dev';
+      if (hasPackageJson) {
+        const pkgEntry = [...receivedFiles.entries()].find(([p]) => p.endsWith('package.json'));
+        if (pkgEntry) {
+          try {
+            const pkg = JSON.parse(pkgEntry[1]);
+            const scripts = pkg.scripts || {};
+            if (scripts.dev) runCmd = 'npm run dev';
+            else if (scripts.start) runCmd = 'npm start';
+            else if (scripts.serve) runCmd = 'npm run serve';
+          } catch { /* ignore */ }
+        }
+      }
+
+      let pyEntryPoint = 'python main.py';
+      if (hasRequirements) {
+        // Check common entry points
+        if (receivedFiles.has('app.py') || [...receivedFiles.keys()].some(k => k.endsWith('/app.py'))) {
+          pyEntryPoint = 'python app.py';
+        } else if (receivedFiles.has('manage.py') || [...receivedFiles.keys()].some(k => k.endsWith('/manage.py'))) {
+          pyEntryPoint = 'python manage.py runserver';
+        }
+      }
+
+      let terminalInstructions = '';
+      if (localPath) {
+        const safePath = localPath.includes(' ') ? `"${localPath}"` : localPath;
+        if (hasPackageJson) {
+          terminalInstructions =
+            depsInfo +
+            `\n\n**Pour lancer le projet**, ouvre ton terminal et tape :\n` +
+            `\`\`\`bash\ncd ${safePath}\nnpm install\n${runCmd}\n\`\`\``;
+        } else if (hasRequirements) {
+          terminalInstructions =
+            depsInfo +
+            `\n\n**Pour lancer le projet**, ouvre ton terminal et tape :\n` +
+            `\`\`\`bash\ncd ${safePath}\npip install -r requirements.txt\n${pyEntryPoint}\n\`\`\``;
+        } else if (hasCargo) {
+          terminalInstructions =
+            `\n\n**Pour lancer le projet**, ouvre ton terminal et tape :\n` +
+            `\`\`\`bash\ncd ${safePath}\ncargo run\n\`\`\``;
+        } else if (hasIndexHtml) {
+          terminalInstructions =
+            `\n\n**Pour voir le projet**, ouvre ce fichier dans ton navigateur :\n` +
+            `\`\`\`\n${localPath}/index.html\n\`\`\``;
+        } else {
+          terminalInstructions =
+            `\n\n**Emplacement du projet** :\n\`\`\`\n${localPath}\n\`\`\``;
+        }
+      }
+
       const nextContent =
         `**${plan.title || projectName}** — Projet pret !\n\n` +
-        `${plan.files.length} fichiers crees en ${elapsed}s.\n\n` +
-        `Clique sur le bouton ci-dessous pour ouvrir le workspace et lancer le projet.`;
+        `${plan.files.length} fichiers crees en ${elapsed}s.` +
+        terminalInstructions;
       updateConversationMessage(aiMessageId, {
         content: nextContent,
         isStreaming: false,
@@ -1174,6 +1257,82 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     }
 
     // ══════════════════════════════════════════════════════════════
+    // INTENT DETECTION: demande d'audit → CodeReviewAgent backend
+    // ══════════════════════════════════════════════════════════════
+    if (selectedProjectId && detectAuditIntent(content)) {
+      const project = useProjectStore.getState().projects.find((p) => p.id === selectedProjectId);
+      if (project) {
+        const localPath = project.localPath || (project.metadata as any)?.localPath;
+        if (localPath) {
+          try {
+            addStep(sessionId, { type: 'understanding', label: `Préparation de l'audit de "${project.name}"` });
+
+            const diskFiles = await fileSystemService.readProjectFiles(localPath);
+            const filesMap: Record<string, string> = {};
+            for (const f of diskFiles) {
+              if (f.content) filesMap[f.path] = f.content;
+            }
+
+            if (Object.keys(filesMap).length > 0) {
+              addStep(sessionId, { type: 'processing', label: `${Object.keys(filesMap).length} fichiers chargés — lancement de l'audit` });
+
+              const aiMessageId = `msg_${Date.now() + 1}`;
+              addConversationMessage({
+                id: aiMessageId,
+                role: 'assistant',
+                content: '',
+                timestamp: Date.now(),
+                model: selectedModel,
+                isStreaming: true,
+                activitySessionId: sessionId,
+              });
+              startStreamingMessage(aiMessageId);
+              updateStreamingContent('⏳ Audit en cours...\n\n');
+
+              try {
+                const backendId = (project.metadata as any)?.backendProjectId || project.id;
+                const report = await projectGeneration.review(
+                  backendId,
+                  project.name,
+                  filesMap,
+                  (event) => {
+                    if (event.type === 'step') {
+                      addStep(sessionId, { type: event.action === 'complete' ? 'complete' : 'processing', label: event.label || '' });
+                    }
+                  },
+                  undefined, // focus
+                );
+
+                // Update the message with the full report
+                updateStreamingContent(report || 'Aucun rapport généré.');
+                finalizeStreamingMessage();
+                updateConversationMessage(aiMessageId, {
+                  content: report || 'Aucun rapport généré.',
+                  activitySessionId: sessionId,
+                });
+
+                endSession(sessionId, 'completed');
+                return true;
+              } catch (auditErr: any) {
+                const errMsg = `Erreur lors de l'audit: ${auditErr.message || auditErr}`;
+                finalizeStreamingMessage();
+                updateConversationMessage(aiMessageId, {
+                  content: errMsg,
+                  activitySessionId: sessionId,
+                });
+                endSession(sessionId, 'error');
+                return true;
+              }
+            }
+          } catch (e) {
+            console.warn('[ANZAR] Audit intent detected but failed to read files:', e);
+            // Fall through to normal chat with project context
+          }
+        }
+      }
+    }
+
+    // ══════════════════════════════════════════════════════════════
     // INTENT DETECTION: demande visuelle → routage vers Kimi
     // ══════════════════════════════════════════════════════════════
     const isVisualRequest = detectVisualIntent(content);
@@ -1185,7 +1344,11 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     // Step 1: Understanding
     const understandStepId = addStep(sessionId, {
       type: 'understanding',
-      label: isVisualRequest ? 'Détection de demande visuelle' : 'Compréhension de la demande',
+      label: isVisualRequest
+        ? 'Détection de demande visuelle'
+        : selectedProjectId
+          ? 'Lecture du projet et compréhension de la demande'
+          : 'Compréhension de la demande',
     });
 
       // Build API messages - le routeur injecte le prompt système optimisé pour le cache
@@ -1216,34 +1379,136 @@ Réponds TOUJOURS avec le contenu visuel demandé (Mermaid ou SVG), accompagné 
     // Quand un projet est sélectionné, on injecte ses fichiers dans le prompt système
     // pour que l'IA puisse lire, corriger et modifier le projet directement depuis le chat.
     let projectContextPrompt = '';
+    let projectFilesCount = 0;
     if (selectedProjectId) {
       const project = useProjectStore.getState().projects.find((p) => p.id === selectedProjectId);
-      if (project && project.files && project.files.length > 0) {
+      if (project) {
+        // Step: lecture du projet
+        const readProjectStepId = addStep(sessionId, {
+          type: 'analyzing',
+          label: `Lecture du projet "${project.name}"`,
+        });
         const MAX_PROJECT_CONTEXT_CHARS = 100_000;
         let usedChars = 0;
         const fileContents: string[] = [];
+        let localPath = (project.metadata as any)?.localPath as string | undefined;
 
-        // Priorité: fichiers avec contenu, triés par taille (petits d'abord)
-        const sortedFiles = [...project.files]
-          .filter((f) => f.content && f.content.trim().length > 0)
-          .sort((a, b) => (a.content?.length || 0) - (b.content?.length || 0));
+        // Auto-detect localPath if missing — check default project directory
+        if (!localPath) {
+          try {
+            const docsDir = await documentDir();
+            const candidatePath = `${docsDir}ANZAR/Projects/${project.name}`;
+            const pathExists = await fileSystemService.exists(candidatePath);
+            if (pathExists) {
+              localPath = candidatePath;
+              // Persist it for future use
+              updateProject(project.id, { metadata: { ...project.metadata, localPath } });
+              console.log('[ANZAR] Auto-detected localPath:', localPath);
+            }
+          } catch {
+            // documentDir not available (web mode) — ignore
+          }
+        }
 
-        for (const file of sortedFiles) {
-          const entry = `\n--- ${file.path} ---\n${file.content}`;
-          if (usedChars + entry.length > MAX_PROJECT_CONTEXT_CHARS) break;
-          fileContents.push(entry);
-          usedChars += entry.length;
+        // TOUJOURS lire depuis le disque pour avoir la version la plus récente
+        // (le vibecodeur peut avoir modifié des fichiers manuellement, installé des deps, etc.)
+        const TEXT_EXTS = /\.(html?|css|jsx?|tsx?|json|md|txt|py|yml|yaml|toml|xml|svg|sh|env|gitignore|rs|go|java|php|rb|c|cpp|h|sql|lock)$/i;
+
+        if (localPath) {
+          try {
+            console.log('[ANZAR] Reading FRESH project files from disk:', localPath);
+            const diskFiles = await fileSystemService.readProjectFiles(localPath);
+            console.log('[ANZAR] Fresh disk files found:', diskFiles.length);
+            const textFiles = diskFiles
+              .filter((f) => TEXT_EXTS.test(f.path) && f.content && f.content.trim().length > 0)
+              .sort((a, b) => (a.content?.length || 0) - (b.content?.length || 0));
+            for (const file of textFiles) {
+              const entry = `\n--- ${file.path} ---\n${file.content}`;
+              if (usedChars + entry.length > MAX_PROJECT_CONTEXT_CHARS) break;
+              fileContents.push(entry);
+              usedChars += entry.length;
+            }
+          } catch (e) {
+            console.warn('[ANZAR] Failed to read project files from disk:', e);
+          }
+        }
+
+        // Fallback: fichiers du store si le disque n'a rien donné
+        if (fileContents.length === 0) {
+          const storeFiles = (project.files || []).filter((f) => f.content && f.content.trim().length > 0);
+          if (storeFiles.length > 0) {
+            const sortedFiles = [...storeFiles].sort((a, b) => (a.content?.length || 0) - (b.content?.length || 0));
+            for (const file of sortedFiles) {
+              const entry = `\n--- ${file.path} ---\n${file.content}`;
+              if (usedChars + entry.length > MAX_PROJECT_CONTEXT_CHARS) break;
+              fileContents.push(entry);
+              usedChars += entry.length;
+            }
+          }
         }
 
         if (fileContents.length > 0) {
-          projectContextPrompt = `\n\n═══ PROJET OUVERT: ${project.name} ═══
-Tu as accès aux fichiers du projet ci-dessous. L'utilisateur peut te demander de les lire, expliquer, corriger ou modifier.
-Quand tu proposes des modifications, montre le code complet du fichier modifié dans un bloc avec le chemin du fichier.
-NE DEMANDE JAMAIS à l'utilisateur de coller du code — tu as déjà tous les fichiers.
+          projectFilesCount = fileContents.length;
+          projectContextPrompt = `\n\n⚠️ IMPORTANT: Tu as DÉJÀ accès à TOUS les fichiers du projet. Ils sont inclus ci-dessous dans ce message. NE DIS JAMAIS que tu n'as pas accès aux fichiers ou que tu ne peux pas les lire. Tu les as DÉJÀ.
+
+═══ PROJET OUVERT: ${project.name} (${projectFilesCount} fichiers chargés) ═══
+
+RÈGLES ABSOLUES:
+1. Tu as accès aux ${projectFilesCount} fichiers du projet ci-dessous. LIS-LES TOUS attentivement.
+2. NE DEMANDE JAMAIS à l'utilisateur de coller du code — tu as déjà tous les fichiers.
+3. NE DIS JAMAIS que tu n'as pas accès aux fichiers — ils sont TOUS ci-dessous.
+4. Quand tu proposes des modifications, montre le code complet du fichier modifié avec le chemin.
+
+SI L'UTILISATEUR DEMANDE UN AUDIT / REVUE / ANALYSE DU PROJET:
+- Identifie le STACK EXACT (langages, frameworks, versions depuis package.json/requirements.txt/etc.)
+- Analyse l'ARCHITECTURE (patterns, structure dossiers, flux de données)
+- Cite TOUJOURS les fichiers et numéros de lignes quand tu signales un problème
+- Sois PRÉCIS et CONCRET — pas de conseils génériques
+- Structure ton rapport: Résumé → Architecture → Points forts → Bugs → Qualité → Sécurité → Performance → Recommandations
+- Donne un score global /10
+
+SI L'UTILISATEUR SIGNALE UNE ERREUR / UN BUG / "ÇA MARCHE PAS" / "L'APP REFUSE DE SE LANCER":
+Tu es un expert en debugging. Tu as TOUS les fichiers du projet. Voici ta méthode:
+
+1. DEMANDE LE MESSAGE D'ERREUR EXACT: dis "Colle-moi le message d'erreur du terminal (le texte en rouge ou après 'Error:')."
+2. EN ATTENDANT, ANALYSE TOI-MÊME le code pour trouver les causes probables:
+   a) Vérifie package.json / requirements.txt : dépendances manquantes, versions incompatibles
+   b) Vérifie les imports : fichiers qui importent des modules inexistants ou mal nommés
+   c) Vérifie les variables d'environnement : .env manquant, clés API non définies
+   d) Vérifie la config : vite.config, tsconfig.json, tailwind.config — erreurs de chemins
+   e) Vérifie les types : erreurs TypeScript évidentes, props manquantes
+   f) Vérifie les ports : conflit de port (3000, 5173, 8080 déjà utilisé)
+   g) Vérifie la base de données : URL de connexion, migrations non exécutées
+3. DONNE DES COMMANDES EXACTES pour corriger, avec le chemin complet du projet. Par exemple:
+   - "Tape dans ton terminal: cd /chemin/du/projet && npm install nom-du-package"
+   - "Remplace le contenu de fichier X par: [code complet]"
+4. Si tu identifies le bug dans le code, montre le FICHIER CORRIGÉ EN ENTIER (pas juste la ligne).
+
+ERREURS COURANTES À VÉRIFIER EN PRIORITÉ:
+- "Module not found" → import incorrect ou dépendance non installée → npm install <package>
+- "EADDRINUSE" → port déjà utilisé → changer le port ou tuer le processus
+- "Cannot find module" → chemin d'import relatif incorrect (./composants vs ./components)
+- "SyntaxError" → erreur de syntaxe dans le code → montrer la correction
+- "TypeError: X is not a function" → mauvais export/import (default vs named)
+- "ENOENT" → fichier ou dossier manquant → créer le fichier manquant
+- "ERR_MODULE_NOT_FOUND" → package.json type:"module" vs require()
+- Écran blanc React → erreur dans un composant (vérifie les imports et le JSX)
+- "digital envelope routines" → version Node trop récente → export NODE_OPTIONS=--openssl-legacy-provider
+- CORS error → backend n'autorise pas le frontend → ajouter CORS middleware
 
 ${fileContents.join('\n')}
 
-═══ FIN DES FICHIERS DU PROJET ═══`;
+═══ FIN DES FICHIERS DU PROJET (${projectFilesCount} fichiers) ═══`;
+          completeStep(sessionId, readProjectStepId);
+          addStep(sessionId, {
+            type: 'complete',
+            label: `${projectFilesCount} fichiers chargés — analyse de l'architecture`,
+          });
+        } else if (localPath) {
+          projectContextPrompt = `\n\nProjet sélectionné: "${project.name}" (dossier: ${localPath}). Les fichiers n'ont pas pu être lus. Demande à l'utilisateur de vérifier que le dossier existe.`;
+          completeStep(sessionId, readProjectStepId);
+        } else {
+          completeStep(sessionId, readProjectStepId);
         }
       }
     }
@@ -1251,11 +1516,23 @@ ${fileContents.join('\n')}
       const rawMessages = [
       {
         role: 'system' as const,
-        content: systemPrompt + projectContextPrompt,
+        content: systemPrompt,
       },
       ...history.map((m) => ({ role: m.role as any, content: m.content })),
     ];
     const apiMessages = aiRouter.prepareMessages(rawMessages);
+
+    // Inject project context AFTER prepareMessages (which replaces the system prompt)
+    // Strategy: add context both to system prompt AND as a user message right before the last user message
+    // This ensures the model sees the files even with long conversation history
+    if (projectContextPrompt && apiMessages.length > 0 && apiMessages[0].role === 'system') {
+      // 1) Add to system prompt
+      apiMessages[0] = {
+        ...apiMessages[0],
+        content: apiMessages[0].content + projectContextPrompt,
+      };
+      console.log('[ANZAR] Project context injected — system prompt length:', apiMessages[0].content.length, 'chars');
+    }
 
     completeStep(sessionId, understandStepId);
 
@@ -1291,7 +1568,14 @@ ${fileContents.join('\n')}
       });
 
       completeStep(sessionId, routingStepId);
-      addStep(sessionId, { type: 'planning', label: isVisualRequest ? 'Génération du contenu visuel' : 'Recherche et redaction' });
+      const processingLabel = isVisualRequest
+        ? 'Génération du contenu visuel'
+        : selectedProjectId && projectFilesCount > 0
+          ? 'Analyse du code et rédaction de la réponse'
+          : selectedProjectId
+            ? 'Analyse du projet et rédaction'
+            : 'Réflexion et rédaction';
+      addStep(sessionId, { type: 'planning', label: processingLabel });
 
       // Route: Kimi pour le visuel, DeepSeek smartChat pour le reste
       if (isVisualRequest) {
@@ -1312,38 +1596,17 @@ ${fileContents.join('\n')}
         fullContent = resp?.choices?.[0]?.message?.content || '';
         reasoningContent = resp?.choices?.[0]?.message?.reasoning_content || '';
 
-        // Extract bash commands from response and create command cards
-        // Filter out useless commands (cd, mkdir, echo, comments)
-        const SKIP_CMD_PATTERNS = /^\s*(cd\s|mkdir\s|echo\s|#|\/\/|ls\s|pwd|cat\s|touch\s)/i;
-        const ensureCard = useCommandStore.getState().ensureCard;
-        const bashRegex = /```(?:bash|sh|shell)\n([\s\S]*?)```/g;
-        let cmdMatch: RegExpExecArray | null;
-        let cardIdx = 0;
-        while ((cmdMatch = bashRegex.exec(fullContent)) !== null) {
-          const cmds = cmdMatch[1].trim().split('\n').filter((l: string) => {
-            const t = l.trim();
-            return t && !t.startsWith('#') && !SKIP_CMD_PATTERNS.test(t);
-          });
-          for (const cmd of cmds) {
-            const cardId = `${aiMessageId}::tool::${cardIdx++}`;
-            ensureCard({
-              id: cardId,
-              messageId: aiMessageId,
-              command: cmd.trim(),
-              title: 'Commande proposee',
-              projectId: selectedProjectId,
-              projectPath: selectedProjectPath,
-            });
-            if (selectedProjectPath) {
-              const auto = shouldAutoRunCommand(cmd.trim(), settings);
-              if (auto.ok) void commandCardService.run(cardId);
-            }
-          }
-        }
       } // end else (DeepSeek path)
 
-      addStep(sessionId, { type: 'complete', label: `Terminé (${((Date.now() - startTime) / 1000).toFixed(1)}s)` });
-      endSession(sessionId, 'done');
+      // Guard: if the AI returned an empty response, show an error message
+      if (!fullContent.trim()) {
+        fullContent = "Désolé, je n'ai pas pu générer de réponse. Le serveur a renvoyé une réponse vide. Réessaie ou reformule ta demande.";
+        addStep(sessionId, { type: 'error', label: 'Réponse vide du serveur' });
+        endSession(sessionId, 'error');
+      } else {
+        addStep(sessionId, { type: 'complete', label: `Terminé (${((Date.now() - startTime) / 1000).toFixed(1)}s)` });
+        endSession(sessionId, 'done');
+      }
 
       // Stream the final content progressively (token-by-token UX)
       // Note: tool calling itself is non-streaming, but we still render the answer incrementally.
@@ -1705,6 +1968,11 @@ ${fileContents.join('\n')}
             isIterating={studioState.isIterating}
             lastIterationResult={studioState.lastIterationResult}
             projectPath={studioState.projectPath}
+            autoFix={studioState.autoFix}
+            onStopAutoFix={studioActions.stopAutoFix}
+            git={studioState.git}
+            onRollback={studioActions.rollback}
+            ckg={studioState.ckg}
           />
         </div>
       )}
@@ -1725,8 +1993,6 @@ ${fileContents.join('\n')}
         />
       </div>
       )}
-
-      <BackgroundTasksDock />
 
       {/* ===== STUDENT ASSISTANT MENU (modal overlay) ===== */}
       {showStudentMenu && (

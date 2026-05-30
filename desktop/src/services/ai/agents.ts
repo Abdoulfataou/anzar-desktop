@@ -5,7 +5,7 @@
  */
 
 import { ProjectPlan, AgentStatus, Project } from '@/types';
-import { aiRouter } from './router';
+import { aiRouter } from '@/services/router';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 /**

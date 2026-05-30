@@ -9,9 +9,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { aiRouter } from '@/services/router';
-import { getSystemPrompt } from '@/services/prompts';
+import { getSystemPrompt } from '@/services/ai/prompts';
 import { ANZAR_TOOLS } from '@/types';
-import { createChangeToolExecutor } from '@/services/aiToolChangeExecutor';
+import { createChangeToolExecutor } from '@/services/ai/aiToolChangeExecutor';
 
 interface ChatMessage {
   id: string;

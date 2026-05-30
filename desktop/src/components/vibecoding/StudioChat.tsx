@@ -14,11 +14,13 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Loader2, CheckCircle2, Circle, AlertCircle,
   FileCode, Sparkles, ArrowDown, Zap,
-  MessageSquare, Terminal,
+  MessageSquare, Terminal, Wand2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { StudioFile, StudioPhase } from './VibeCodingStudio';
 import type { AgentUpdate, StepEvent } from '@/services/projectGeneration';
+import StudioTodoList from './StudioTodoList';
+import SkillsPanel from './SkillsPanel';
 
 // ============================================================================
 // TYPES
@@ -36,7 +38,7 @@ interface StudioChatProps {
   /** Iteration loading state from parent hook */
   isIteratingExternal?: boolean;
   /** Result of last iteration from parent hook */
-  lastIterationResult?: { success: boolean; modifiedFiles: string[]; error?: string } | null;
+  lastIterationResult?: { success: boolean; modifiedFiles: string[]; affectedFiles?: string[]; error?: string } | null;
   /** Currently selected file in the editor — sent as fileFocus to iterate */
   selectedFile?: string | null;
 }
@@ -170,6 +172,7 @@ const StudioChat: React.FC<StudioChatProps> = ({
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [showSkills, setShowSkills] = useState(false);
   const isIterating = isIteratingExternal ?? false;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -198,12 +201,22 @@ const StudioChat: React.FC<StudioChatProps> = ({
     if (lastIterationResult.success) {
       const count = lastIterationResult.modifiedFiles.length;
       const fileNames = lastIterationResult.modifiedFiles.map(f => f.split('/').pop()).join(', ');
+      const affected = lastIterationResult.affectedFiles || [];
+
+      let content = count > 0
+        ? `${count} fichier${count > 1 ? 's' : ''} modifié${count > 1 ? 's' : ''} : ${fileNames}`
+        : 'Aucun fichier modifié. Essaie de reformuler ta demande.';
+
+      // Show affected files warning if any
+      if (affected.length > 0) {
+        const affectedNames = affected.map(f => f.split('/').pop()).join(', ');
+        content += `\n\n⚠️ ${affected.length} fichier${affected.length > 1 ? 's' : ''} dépendant${affected.length > 1 ? 's' : ''} potentiellement impacté${affected.length > 1 ? 's' : ''} : ${affectedNames}`;
+      }
+
       setMessages(prev => [...prev, {
         id: `assistant-${Date.now()}`,
         role: 'assistant',
-        content: count > 0
-          ? `${count} fichier${count > 1 ? 's' : ''} modifié${count > 1 ? 's' : ''} : ${fileNames}`
-          : 'Aucun fichier modifié. Essaie de reformuler ta demande.',
+        content,
         timestamp: Date.now(),
       }]);
     } else {
@@ -249,6 +262,19 @@ const StudioChat: React.FC<StudioChatProps> = ({
     inputRef.current?.focus();
   }, []);
 
+  // Execute a skill: inject prompt as user message and iterate
+  const handleSkillExecute = useCallback((prompt: string, mode: string) => {
+    setShowSkills(false);
+    // Add as user message
+    setMessages(prev => [...prev, {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: prompt.slice(0, 100) + (prompt.length > 100 ? '...' : ''),
+      timestamp: Date.now(),
+    }]);
+    onIterate(prompt, selectedFile || undefined);
+  }, [onIterate, selectedFile]);
+
   return (
     <div className="flex flex-col h-full bg-bg-primary">
       {/* Header */}
@@ -262,15 +288,40 @@ const StudioChat: React.FC<StudioChatProps> = ({
               </span>
             </>
           ) : (
-            <>
-              <MessageSquare size={14} className="text-accent-primary" />
-              <span className="text-[11px] font-bold text-text-primary uppercase tracking-wider">
-                Itérer
-              </span>
-            </>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setShowSkills(false)}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors',
+                  !showSkills
+                    ? 'text-accent-primary bg-accent-primary/10'
+                    : 'text-text-muted hover:text-text-secondary'
+                )}
+              >
+                <MessageSquare size={13} />
+                Chat
+              </button>
+              <button
+                onClick={() => setShowSkills(true)}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors',
+                  showSkills
+                    ? 'text-accent-primary bg-accent-primary/10'
+                    : 'text-text-muted hover:text-text-secondary'
+                )}
+              >
+                <Wand2 size={13} />
+                Skills
+              </button>
+            </div>
           )}
         </div>
       </div>
+
+      {/* ── TODO LIST (visible in all active phases) ── */}
+      {(phase === 'generating' || phase === 'planning' || phase === 'iterating') && (
+        <StudioTodoList />
+      )}
 
       {/* ── GENERATING MODE : timeline ── */}
       {(phase === 'generating' || phase === 'planning') && (
@@ -292,8 +343,18 @@ const StudioChat: React.FC<StudioChatProps> = ({
         </div>
       )}
 
+      {/* ── ITERATING MODE : skills panel ── */}
+      {phase === 'iterating' && showSkills && (
+        <SkillsPanel
+          onExecuteSkill={handleSkillExecute}
+          disabled={isIterating}
+          selectedFile={selectedFile}
+          projectName={projectName}
+        />
+      )}
+
       {/* ── ITERATING MODE : chat ── */}
-      {phase === 'iterating' && (
+      {phase === 'iterating' && !showSkills && (
         <>
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 scrollbar-thin">

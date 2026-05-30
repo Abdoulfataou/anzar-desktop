@@ -8,7 +8,7 @@ import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import { Project, ProjectFile, AgentStatus, FileOperation } from '@/types';
 import { generateId } from '@/lib/utils';
-import { fileSystemService } from '@/services/fileSystem';
+import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { terminalService } from '@/services/terminal';
 
 /**

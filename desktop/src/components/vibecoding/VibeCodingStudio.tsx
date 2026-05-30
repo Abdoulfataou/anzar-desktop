@@ -1,12 +1,12 @@
 /**
  * VibeCodingStudio — Le cœur du vibecoding dans ANZAR.
  *
- * Layout 3 panneaux :
- *   ┌─────────────┬───────────────────────┬───────────────┐
- *   │  FileTree    │     Code Editor       │   Chat        │
- *   │  (240px)     │     (flexible)        │   (360px)     │
- *   │             │     + tabs + live      │   itératif    │
- *   └─────────────┴───────────────────────┴───────────────┘
+ * Layout 4 panneaux (preview optionnel) :
+ *   ┌──────────┬──────────────┬──────────────┬───────────┐
+ *   │ FileTree │  Code Editor │ Live Preview │   Chat    │
+ *   │ (240px)  │  (flexible)  │  (flexible)  │  (360px)  │
+ *   │          │  + tabs      │  iframe app  │  itératif │
+ *   └──────────┴──────────────┴──────────────┴───────────┘
  *
  * S'affiche inline dans le chat quand une génération démarre.
  * Reste ouvert pour l'itération après la génération.
@@ -17,6 +17,7 @@ import {
   X, Maximize2, Minimize2, Play, Square,
   Loader2, CheckCircle2, AlertCircle,
   FolderOpen, Sparkles, ChevronDown, Package, Terminal,
+  Eye, EyeOff, ExternalLink, Undo2, GitBranch, Braces, Paintbrush,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectFile } from '@/types';
@@ -25,8 +26,11 @@ import { PlanResult, StepEvent, FileEvent, AgentsEvent, AgentUpdate } from '@/se
 import StudioFileTree from './StudioFileTree';
 import StudioEditor from './StudioEditor';
 import StudioChat from './StudioChat';
+import StudioPreview from './StudioPreview';
 import PlanReview from './PlanReview';
-import { terminalService } from '@/services/terminal';
+import DesignToCodePanel from './DesignToCodePanel';
+import { terminalService, onDevServerUrl } from '@/services/terminal';
+import { open as shellOpen } from '@tauri-apps/api/shell';
 
 // ============================================================================
 // TYPES
@@ -80,6 +84,30 @@ export interface VibeCodingStudioProps {
   errorMessage?: string;
   /** Chemin local du projet (pour Install/Run) */
   projectPath?: string;
+  /** Auto-fix state */
+  autoFix?: {
+    isRunning: boolean;
+    attempt: number;
+    maxAttempts: number;
+    lastError: string | null;
+  };
+  /** Callback pour arrêter l'auto-fix */
+  onStopAutoFix?: () => void;
+  /** Git state */
+  git?: {
+    initialized: boolean;
+    commitCount: number;
+    canRollback: boolean;
+  };
+  /** Callback pour rollback (git reset --hard HEAD~1) */
+  onRollback?: () => Promise<void>;
+  /** CKG (Code Knowledge Graph) stats */
+  ckg?: {
+    indexed: boolean;
+    totalSymbols: number;
+    totalFiles: number;
+    languages: Record<string, number>;
+  };
 }
 
 // ============================================================================
@@ -105,14 +133,31 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
   isIterating: isIteratingProp,
   lastIterationResult,
   projectPath,
+  autoFix,
+  onStopAutoFix,
+  git,
+  onRollback,
+  ckg,
 }) => {
   // ── State local ──
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [isMaximized, setIsMaximized] = useState(false);
   const [showFileTree, setShowFileTree] = useState(true);
   const [showChat, setShowChat] = useState(true);
+  const [showPreview, setShowPreview] = useState(false);
+  const [showDesignToCode, setShowDesignToCode] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+
+  // ── Écouter les URLs du dev server ──
+  useEffect(() => {
+    const unsub = onDevServerUrl((url) => {
+      setPreviewUrl(url);
+      setShowPreview(true);
+    });
+    return unsub;
+  }, []);
 
   // ── Install / Run handlers ──
   const handleInstall = useCallback(async () => {
@@ -132,6 +177,7 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
     try {
       await terminalService.runDevServer(projectPath);
       setRunStatus('done');
+      // Le preview s'ouvrira automatiquement via onDevServerUrl
     } catch {
       setRunStatus('error');
     }
@@ -266,6 +312,30 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
           )}
           {phase === 'iterating' && projectPath && (
             <>
+              {/* Undo last iteration */}
+              {git?.canRollback && onRollback && (
+                <button
+                  onClick={onRollback}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-orange-400 hover:bg-orange-500/10 transition-colors"
+                  title="Annuler la dernière itération (git rollback)"
+                >
+                  <Undo2 size={12} />
+                  Undo
+                </button>
+              )}
+              {/* Git indicator */}
+              {git?.initialized && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-text-muted bg-bg-tertiary/40" title={`${git.commitCount} snapshots git`}>
+                  <GitBranch size={10} />
+                  {git.commitCount}
+                </div>
+              )}
+              {ckg?.indexed && (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-emerald-400/80 bg-emerald-400/10" title={`CKG: ${ckg.totalSymbols} symboles indexés dans ${ckg.totalFiles} fichiers`}>
+                  <Braces size={10} />
+                  {ckg.totalSymbols}
+                </div>
+              )}
               <button
                 onClick={handleInstall}
                 disabled={installStatus === 'running'}
@@ -308,6 +378,26 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
             <FolderOpen size={16} />
           </button>
           <button
+            onClick={() => setShowPreview(!showPreview)}
+            className={cn(
+              'p-1.5 rounded-lg transition-colors',
+              showPreview ? 'text-emerald-400 bg-emerald-500/10' : 'text-text-muted hover:bg-surface-hover'
+            )}
+            title={showPreview ? 'Masquer le preview' : 'Afficher le preview'}
+          >
+            {showPreview ? <Eye size={16} /> : <EyeOff size={16} />}
+          </button>
+          <button
+            onClick={() => { setShowDesignToCode(!showDesignToCode); if (!showDesignToCode) setShowChat(true); }}
+            className={cn(
+              'p-1.5 rounded-lg transition-colors',
+              showDesignToCode ? 'text-purple-400 bg-purple-500/10' : 'text-text-muted hover:bg-surface-hover'
+            )}
+            title={showDesignToCode ? 'Masquer Design→Code' : 'Design → Code'}
+          >
+            <Paintbrush size={16} />
+          </button>
+          <button
             onClick={() => setIsMaximized(!isMaximized)}
             className="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover transition-colors"
             title={isMaximized ? 'Réduire' : 'Agrandir'}
@@ -330,6 +420,30 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
           <Loader2 size={10} className="animate-spin mr-2 text-accent-primary" />
         )}
         <span className="truncate">{statusText}</span>
+
+        {/* Auto-fix indicator */}
+        {autoFix?.isRunning && (
+          <div className="flex items-center gap-2 ml-3 px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-400 animate-pulse">
+            <Loader2 size={10} className="animate-spin" />
+            <span className="text-[10px] font-semibold">
+              Auto-fix {autoFix.attempt}/{autoFix.maxAttempts}
+            </span>
+            {onStopAutoFix && (
+              <button
+                onClick={onStopAutoFix}
+                className="ml-1 text-[9px] underline hover:text-amber-300 transition-colors"
+              >
+                Stop
+              </button>
+            )}
+          </div>
+        )}
+        {autoFix?.lastError && !autoFix.isRunning && (
+          <div className="flex items-center gap-1.5 ml-3 px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 text-[10px]">
+            <AlertCircle size={10} />
+            <span className="truncate max-w-[200px]">{autoFix.lastError}</span>
+          </div>
+        )}
 
         {/* Agent indicators */}
         {agents.length > 0 && (
@@ -411,22 +525,51 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
               )}
             </div>
 
-            {/* Chat */}
+            {/* Live Preview */}
+            {showPreview && (
+              <div className="flex-1 min-w-[300px] border-l border-border-subtle overflow-hidden">
+                <StudioPreview
+                  previewUrl={previewUrl}
+                  onOpenExternal={() => {
+                    if (previewUrl) shellOpen(previewUrl).catch(() => {});
+                  }}
+                />
+              </div>
+            )}
+
+            {/* Chat / Design-to-Code */}
             {showChat && (
               <div className="w-[360px] flex-shrink-0 border-l border-border-subtle overflow-hidden">
-                <StudioChat
-                  projectId={projectId}
-                  projectName={projectName}
-                  phase={phase}
-                  files={filesList}
-                  agents={agents}
-                  currentStep={currentStep}
-                  onIterate={onIterate}
-                  selectedFile={selectedFile}
-                  errorMessage={errorMessage}
-                  isIteratingExternal={isIteratingProp}
-                  lastIterationResult={lastIterationResult}
-                />
+                {showDesignToCode ? (
+                  <DesignToCodePanel
+                    projectId={projectId}
+                    projectName={projectName}
+                    existingFiles={Object.fromEntries(filesList.map(f => [f.path, f.content]))}
+                    onFilesGenerated={(newFiles) => {
+                      if (onFileChange) {
+                        for (const [path, content] of Object.entries(newFiles)) {
+                          onFileChange(path, content);
+                        }
+                      }
+                    }}
+                    onUpdate={() => {}}
+                    disabled={isIteratingProp}
+                  />
+                ) : (
+                  <StudioChat
+                    projectId={projectId}
+                    projectName={projectName}
+                    phase={phase}
+                    files={filesList}
+                    agents={agents}
+                    currentStep={currentStep}
+                    onIterate={onIterate}
+                    selectedFile={selectedFile}
+                    errorMessage={errorMessage}
+                    isIteratingExternal={isIteratingProp}
+                    lastIterationResult={lastIterationResult}
+                  />
+                )}
               </div>
             )}
           </>

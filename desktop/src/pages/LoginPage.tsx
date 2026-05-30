@@ -14,7 +14,7 @@ import {
   CheckCircle, Eye, EyeOff, LogIn, UserPlus, KeyRound,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { authService } from '@/services/auth';
+import { authService } from '@/services/infra/auth';
 import TitleBar from '@/components/layout/TitleBar';
 
 type Step = 'email' | 'otp' | 'password';

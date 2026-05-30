@@ -8,15 +8,22 @@
  *  - L'itération par chat (modif de fichiers existants)
  */
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import type { StudioPhase, StudioFile } from '@/components/vibecoding/VibeCodingStudio';
 import type { PlanResult, ExecutionEvent, StepEvent, FileEvent, AgentsEvent, AgentUpdate } from '@/services/projectGeneration';
 import { projectGeneration } from '@/services/projectGeneration';
-import { extractProjectName } from '@/services/intentDetection';
-import { fileSystemService } from '@/services/fileSystem';
+import { extractProjectName } from '@/services/ai/intentDetection';
+import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { useProjectStore } from '@/stores/projectStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { documentDir } from '@tauri-apps/api/path';
+import { terminalService, onTerminalError, type TerminalErrorEvent } from '@/services/terminal';
+import { codeIndexer, type ProjectIndex } from '@/services/filesystem/codeIndexer';
+import { lintResolver } from '@/services/filesystem/lintResolver';
+import { iterationMemory } from '@/services/studio/iterationMemory';
+import { studioTodoManager } from '@/services/studio/studioTodoManager';
+import { iterationRouter } from '@/services/studio/iterationRouter';
+import type { IterationMode } from '@/services/studio/iterationRouter';
 
 // ============================================================================
 // TYPES
@@ -49,12 +56,34 @@ export interface VibeCodingStudioState {
   lastIterationResult: IterationResult | null;
   /** Chemin local du projet */
   projectPath: string | undefined;
+  /** Auto-fix state */
+  autoFix: {
+    isRunning: boolean;
+    attempt: number;
+    maxAttempts: number;
+    lastError: string | null;
+  };
+  /** Git state */
+  git: {
+    initialized: boolean;
+    commitCount: number;
+    canRollback: boolean;
+  };
+  /** Code Knowledge Graph stats */
+  ckg: {
+    indexed: boolean;
+    totalSymbols: number;
+    totalFiles: number;
+    languages: Record<string, number>;
+  };
 }
 
 /** Résultat d'une itération renvoyé au StudioChat */
 export interface IterationResult {
   success: boolean;
   modifiedFiles: string[];
+  /** Files that depend on modified files and may need attention */
+  affectedFiles?: string[];
   error?: string;
 }
 
@@ -64,7 +93,7 @@ export interface VibeCodingStudioActions {
   /** Valide le plan et lance l'exécution */
   executePlan: () => Promise<void>;
   /** Envoie un message d'itération (retourne quand terminé) */
-  iterate: (message: string, fileFocus?: string) => Promise<void>;
+  iterate: (message: string, fileFocus?: string, mode?: IterationMode) => Promise<void>;
   /** Édition manuelle d'un fichier dans l'éditeur */
   updateFile: (path: string, newContent: string) => void;
   /** Revenir à la version précédente d'un fichier */
@@ -77,6 +106,10 @@ export interface VibeCodingStudioActions {
   close: () => void;
   /** Reçoit un événement SSE externe (pour compatibilité) */
   handleSSEEvent: (event: ExecutionEvent) => void;
+  /** Arrêter l'auto-fix loop */
+  stopAutoFix: () => void;
+  /** Rollback: annuler la dernière itération (git reset --hard HEAD~1) */
+  rollback: () => Promise<void>;
 }
 
 // ============================================================================
@@ -160,6 +193,14 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
 
       setPlan(planResult);
       planRef.current = planResult;
+
+      // Create todo list from plan
+      studioTodoManager.fromPlan(planResult, name);
+      // Mark "Analyser le plan" as done immediately
+      const todoItems = studioTodoManager.getItems();
+      if (todoItems.length > 0) {
+        studioTodoManager.updateTask(todoItems[0].id, 'done');
+      }
 
       // Pre-populate pending files
       const pendingFiles = new Map<string, StudioFile>();
@@ -264,7 +305,8 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
         } catch { /* ok */ }
       }
 
-      // Done!
+      // Done! End todo session for generation
+      studioTodoManager.endSession();
       setPhase('iterating');
       setProjectStatus(projectId, 'complete');
       setAgents([
@@ -303,6 +345,8 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
         return next;
       });
       setActiveGeneratingFile(undefined);
+      // Todo: mark file as done
+      studioTodoManager.markDoneByFile(fe.path);
       return;
     }
 
@@ -312,6 +356,8 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
 
       if (step.file && (step.action === 'writing' || step.action === 'creating')) {
         setActiveGeneratingFile(step.file);
+        // Todo: mark file as running
+        studioTodoManager.markRunningByFile(step.file);
         setFiles(prev => {
           const next = new Map(prev);
           const existing = next.get(step.file!);
@@ -340,9 +386,10 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
   // ══════════════════════════════════════════════════════════════════════════
 
   const iterateAbortRef = useRef<AbortController | null>(null);
-  const iterationHistoryRef = useRef<Array<{ role: 'user' | 'assistant'; content: string }>>([]);
+  // iterationMemory handles history + auto-compaction (replaces raw ref)
+  const projectIndexRef = useRef<ProjectIndex | null>(null);
 
-  const iterate = useCallback(async (message: string, fileFocus?: string) => {
+  const iterate = useCallback(async (message: string, fileFocus?: string, mode: IterationMode = 'iterate') => {
     const bpId = backendProjectIdRef.current;
     if (!bpId) {
       setLastIterationResult({ success: false, modifiedFiles: [], error: 'Aucun projet backend associé' });
@@ -357,6 +404,14 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
     setIsIterating(true);
     setLastIterationResult(null);
 
+    // ── Todo: create iteration tasks ──
+    const todoIds = studioTodoManager.fromIteration(message, fileFocus || undefined);
+    // Mark "Analyser la demande" as running
+    if (todoIds.length > 0) studioTodoManager.updateTask(todoIds[0], 'running');
+
+    // ── Git: snapshot before iteration ──
+    await gitSnapshotBeforeIterate();
+
     // Build current files dict for context — filter empty/placeholder files
     const currentFiles: Record<string, string> = {};
     files.forEach((f, path) => {
@@ -365,12 +420,39 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
       }
     });
 
+    // ── CKG: index project and build smart context ──
+    let projectMap = '';
+    try {
+      const idx = codeIndexer.indexProject(currentFiles);
+      projectIndexRef.current = idx;
+      const smart = codeIndexer.buildSmartContext(idx, message, currentFiles);
+      projectMap = smart.projectMap;
+      // Prefix the message with the project map for better AI context
+      if (projectMap) {
+        message = `[Project Map]\n${codeIndexer.generateProjectMap(idx)}\n\n[User Request]\n${message}`;
+      }
+    } catch {
+      // CKG failure is non-blocking — fallback to raw context
+    }
+
+    // ── Multi-Agent Routing: auto-detect optimal mode ──
+    const isAutoFix = message.startsWith('🔧') || message.includes('auto-fix') || message.includes('LINT AUTO-FIX');
+    const routeResult = iterationRouter.route(message, false, isAutoFix);
+    const effectiveMode: IterationMode = mode !== 'iterate' ? mode as IterationMode : routeResult.mode;
+
     const modifiedPaths: string[] = [];
     let encounteredError = false;
     let errorMsg = '';
 
-    // Record user message in history
-    iterationHistoryRef.current.push({ role: 'user', content: message });
+    // Record user message in memory (auto-compacts if needed)
+    iterationMemory.push('user', message);
+
+    // Todo: mark analysis done, modifications running
+    if (todoIds.length > 0) studioTodoManager.updateTask(todoIds[0], 'done');
+    if (todoIds.length > 1) studioTodoManager.updateTask(todoIds[1], 'running');
+    // "Appliquer les modifications" is at index 2 (or 1 if no fileFocus)
+    const applyIdx = fileFocus ? 2 : 1;
+    if (todoIds.length > applyIdx) studioTodoManager.updateTask(todoIds[applyIdx], 'running');
 
     try {
       await projectGeneration.iterate(
@@ -421,21 +503,32 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
         },
         fileFocus,
         abortController.signal,
-        iterationHistoryRef.current.slice(0, -1), // Send history WITHOUT current message
+        iterationMemory.getHistoryWithoutLast(), // Send compacted history WITHOUT current message
+        effectiveMode,
       );
 
       // Record assistant response summary in history
       if (modifiedPaths.length > 0) {
-        iterationHistoryRef.current.push({
-          role: 'assistant',
-          content: `Fichiers modifiés: ${modifiedPaths.join(', ')}`,
-        });
+        iterationMemory.push('assistant', `Fichiers modifiés: ${modifiedPaths.join(', ')}`);
       }
 
       if (encounteredError) {
         setLastIterationResult({ success: false, modifiedFiles: modifiedPaths, error: errorMsg });
       } else {
-        setLastIterationResult({ success: true, modifiedFiles: modifiedPaths });
+        // ── CKG: detect affected files (dependents of modified files) ──
+        let affectedFiles: string[] = [];
+        if (projectIndexRef.current && modifiedPaths.length > 0) {
+          const affectedSet = new Set<string>();
+          for (const modPath of modifiedPaths) {
+            const deps = codeIndexer.findAffectedFiles(projectIndexRef.current, modPath, 1);
+            deps.forEach(d => {
+              if (!modifiedPaths.includes(d)) affectedSet.add(d);
+            });
+          }
+          affectedFiles = Array.from(affectedSet);
+        }
+        setLastIterationResult({ success: true, modifiedFiles: modifiedPaths, affectedFiles });
+        studioTodoManager.endSession();
       }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
@@ -525,6 +618,202 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
   }, [phase]);
 
   // ══════════════════════════════════════════════════════════════════════════
+  // AUTO-FIX LOOP — capture terminal errors → AI fix → re-run
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const MAX_AUTOFIX_ATTEMPTS = 3;
+  const [autoFixState, setAutoFixState] = useState({
+    isRunning: false,
+    attempt: 0,
+    maxAttempts: MAX_AUTOFIX_ATTEMPTS,
+    lastError: null as string | null,
+  });
+  const autoFixEnabledRef = useRef(true);
+  const autoFixAttemptRef = useRef(0);
+
+  const stopAutoFix = useCallback(() => {
+    autoFixEnabledRef.current = false;
+    autoFixAttemptRef.current = 0;
+    setAutoFixState(prev => ({ ...prev, isRunning: false, attempt: 0, lastError: null }));
+  }, []);
+
+  // Listen to terminal errors and trigger auto-fix
+  useEffect(() => {
+    if (!isOpen || phase !== 'iterating') return;
+
+    const unsub = onTerminalError(async (error: TerminalErrorEvent) => {
+      // Guards
+      if (!autoFixEnabledRef.current) return;
+      if (isIterating) return; // Already iterating, don't stack
+      if (autoFixAttemptRef.current >= MAX_AUTOFIX_ATTEMPTS) {
+        setAutoFixState(prev => ({
+          ...prev,
+          isRunning: false,
+          lastError: `Max ${MAX_AUTOFIX_ATTEMPTS} tentatives atteint. Corrige manuellement.`,
+        }));
+        return;
+      }
+
+      // ── Lint Resolver: parse structured errors from terminal output ──
+      const lintResult = lintResolver.parse(error.errorOutput);
+
+      // Fallback: check for actionable errors even if lint resolver found nothing
+      if (lintResult.errorCount === 0) {
+        const errorLower = error.errorOutput.toLowerCase();
+        const isActionable =
+          /error|failed|cannot find|module not found|syntaxerror|typeerror|referenceerror|importerror|modulenotfounderror|enoent|eacces|unexpected token|compilation failed/i.test(errorLower);
+        if (!isActionable) return;
+      }
+
+      // Start auto-fix
+      autoFixAttemptRef.current += 1;
+      const attempt = autoFixAttemptRef.current;
+
+      setAutoFixState({
+        isRunning: true,
+        attempt,
+        maxAttempts: MAX_AUTOFIX_ATTEMPTS,
+        lastError: lintResult.errorCount > 0
+          ? `${lintResult.errorCount} erreur(s) dans ${lintResult.affectedFiles.length} fichier(s)`
+          : error.errorOutput.slice(0, 200),
+      });
+
+      // Build fix prompt — use structured lint summary if available
+      let fixPrompt: string;
+      let fixMode: 'iterate' | 'patch' = 'iterate';
+
+      if (lintResult.errorCount > 0) {
+        // Structured errors detected → use patch mode for precise, token-efficient fixes
+        fixPrompt = lintResolver.buildFixPrompt(lintResult, attempt, MAX_AUTOFIX_ATTEMPTS, error.command);
+        fixMode = 'patch';
+      } else {
+        // Fallback: raw error output (no structured parsing possible)
+        fixPrompt = [
+          `🔧 AUTO-FIX (tentative ${attempt}/${MAX_AUTOFIX_ATTEMPTS})`,
+          '',
+          `La commande \`${error.command}\` a échoué (code ${error.exitCode}).`,
+          '',
+          'Voici l\'erreur complète:',
+          '```',
+          error.errorOutput.slice(-3000),
+          '```',
+          '',
+          'Analyse cette erreur et corrige les fichiers concernés.',
+          'Corrige UNIQUEMENT ce qui cause l\'erreur, ne modifie rien d\'autre.',
+        ].join('\n');
+      }
+
+      try {
+        // Focus on first affected file if detected
+        const focusFile = lintResult.affectedFiles[0] || undefined;
+        await iterate(fixPrompt, focusFile, fixMode);
+
+        setAutoFixState(prev => ({
+          ...prev,
+          isRunning: false,
+          lastError: null,
+        }));
+      } catch {
+        setAutoFixState(prev => ({
+          ...prev,
+          isRunning: false,
+          lastError: 'Échec de l\'auto-fix',
+        }));
+      }
+    });
+
+    return unsub;
+  }, [isOpen, phase, isIterating, iterate]);
+
+  // Reset auto-fix counter + iteration memory when generation completes (new project = fresh state)
+  useEffect(() => {
+    if (phase === 'iterating') {
+      autoFixAttemptRef.current = 0;
+      autoFixEnabledRef.current = true;
+      iterationMemory.clear();
+    }
+  }, [phase]);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // GIT INTEGRATION — auto-commit before iterations, rollback
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const [gitState, setGitState] = useState({
+    initialized: false,
+    commitCount: 0,
+    canRollback: false,
+  });
+
+  /** Initialize git repo + first commit when generation completes */
+  useEffect(() => {
+    if (phase !== 'iterating' || !localPathRef.current || gitState.initialized) return;
+
+    const initGit = async () => {
+      const path = localPathRef.current!;
+      try {
+        // Check if already a git repo
+        const isRepo = await terminalService.gitIsRepo(path);
+        if (!isRepo) {
+          await terminalService.gitInit(path);
+        }
+        // Initial commit with all generated files
+        await terminalService.gitCommit(path, 'ANZAR: generation initiale');
+        const count = await terminalService.gitCommitCount(path);
+        setGitState({ initialized: true, commitCount: count, canRollback: count > 1 });
+      } catch {
+        // Git not available or failed — non-blocking
+        setGitState({ initialized: false, commitCount: 0, canRollback: false });
+      }
+    };
+
+    initGit();
+  }, [phase, gitState.initialized]);
+
+  /** Auto-snapshot before each iterate — called inside iterate() */
+  const gitSnapshotBeforeIterate = useCallback(async () => {
+    const path = localPathRef.current;
+    if (!path || !gitState.initialized) return;
+    try {
+      const result = await terminalService.gitCommit(path, `ANZAR: avant iteration ${Date.now()}`);
+      if (result.success) {
+        const count = await terminalService.gitCommitCount(path);
+        setGitState(prev => ({ ...prev, commitCount: count, canRollback: count > 1 }));
+      }
+    } catch {
+      // non-blocking
+    }
+  }, [gitState.initialized]);
+
+  /** Rollback: git reset --hard HEAD~1 + reload files from disk */
+  const rollback = useCallback(async () => {
+    const path = localPathRef.current;
+    if (!path || !gitState.canRollback) return;
+
+    try {
+      const result = await terminalService.gitRollback(path);
+      if (result.success) {
+        // Reload files from disk into studio state
+        const diskFiles = await fileSystemService.readProjectFiles(path);
+        const newFiles = new Map<string, StudioFile>();
+        for (const pf of diskFiles) {
+          newFiles.set(pf.path, {
+            path: pf.path,
+            content: pf.content,
+            language: pf.path.split('.').pop() || 'txt',
+            status: 'done',
+          });
+        }
+        setFiles(newFiles);
+
+        const count = await terminalService.gitCommitCount(path);
+        setGitState(prev => ({ ...prev, commitCount: count, canRollback: count > 1 }));
+      }
+    } catch {
+      // non-blocking
+    }
+  }, [gitState.canRollback]);
+
+  // ══════════════════════════════════════════════════════════════════════════
   // RETURN
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -542,6 +831,14 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
     isIterating,
     lastIterationResult,
     projectPath: localPathRef.current,
+    autoFix: autoFixState,
+    git: gitState,
+    ckg: {
+      indexed: projectIndexRef.current !== null,
+      totalSymbols: projectIndexRef.current?.stats.totalSymbols || 0,
+      totalFiles: projectIndexRef.current?.stats.totalFiles || 0,
+      languages: projectIndexRef.current?.stats.languages || {},
+    },
   };
 
   const actions: VibeCodingStudioActions = {
@@ -554,6 +851,8 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
     cancelIteration: () => { iterateAbortRef.current?.abort(); },
     close,
     handleSSEEvent,
+    stopAutoFix,
+    rollback,
   };
 
   return [state, actions];

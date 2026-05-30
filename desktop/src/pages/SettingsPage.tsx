@@ -15,11 +15,11 @@ import {
 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
-import { authService } from '@/services/auth';
+import { authService } from '@/services/infra/auth';
 import { Transaction } from '@/types';
 import { cn, isTauri } from '@/lib/utils';
-import { openExternalUrl } from '@/services/externalLinks';
-import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch } from '@/services/updateService';
+import { openExternalUrl } from '@/services/infra/externalLinks';
+import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch } from '@/services/infra/updateService';
 import { useThemeStore } from '@/stores/themeStore';
 
 /* ===== Toggle Switch ===== */

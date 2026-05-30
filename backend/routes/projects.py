@@ -3,6 +3,7 @@ PROJECTS routes — /api/projects/*
 Plan, execute, status, download-files, CRUD, cancel.
 """
 import json
+import re
 import uuid
 import asyncio
 import logging
@@ -19,7 +20,7 @@ from database import (
     has_credits, deduct_credits, record_usage,
     create_project, update_project, get_project, get_user_projects, delete_project,
 )
-from agents import PlannerAgent, CoderAgent
+from agents import PlannerAgent, CoderAgent, CodeReviewAgent, VisionAgent
 from routes._state import (
     _project_states, _cleanup_project_states, _deepseek_client,
 )
@@ -27,6 +28,51 @@ from routes._state import (
 logger = logging.getLogger("anzar")
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+
+# ── Patch parser — applies <<<PATCH ... >>> blocks from AI response ──
+
+def _apply_patches(response_text: str, current_files: Dict[str, str]) -> Dict[str, str]:
+    """Parse <<<PATCH ... >>> blocks from AI response and apply them to current files.
+    Returns dict of {filepath: new_content} for modified files.
+    Returns empty dict if no patches found (caller falls back to code block extraction).
+    """
+    patch_pattern = re.compile(
+        r'<<<PATCH\s*\n'
+        r'FILE:\s*(.+?)\s*\n'
+        r'SEARCH:\s*\n(.*?)\n'
+        r'REPLACE:\s*\n(.*?)\n'
+        r'>>>',
+        re.DOTALL,
+    )
+    patches = list(patch_pattern.finditer(response_text))
+    if not patches:
+        return {}
+
+    patches_by_file: Dict[str, list] = {}
+    for m in patches:
+        filepath = m.group(1).strip()
+        search = m.group(2)
+        replace = m.group(3)
+        patches_by_file.setdefault(filepath, []).append((search, replace))
+
+    modified: Dict[str, str] = {}
+    for filepath, file_patches in patches_by_file.items():
+        content = current_files.get(filepath, "")
+        if not content:
+            logger.warning(f"Patch target not found: {filepath}")
+            continue
+        for search, replace in file_patches:
+            if search in content:
+                content = content.replace(search, replace, 1)
+            else:
+                s = search.strip()
+                if s and s in content:
+                    content = content.replace(s, replace.strip(), 1)
+                else:
+                    logger.warning(f"Patch SEARCH not found in {filepath}")
+        modified[filepath] = content
+    return modified
 
 
 # ── Models ──
@@ -54,6 +100,7 @@ class IterateRequest(BaseModel):
     files: Dict[str, str] = Field(default_factory=dict, description="Current files: {path: content}")
     file_focus: Optional[str] = Field(None, description="Specific file to modify")
     history: list[IterateHistoryMessage] = Field(default_factory=list, description="Previous iteration messages for context continuity")
+    mode: str = Field("iterate", description="Agent mode: iterate|patch|refactor|debug|test|review")
 
 
 # ── Routes ──
@@ -622,9 +669,13 @@ async def iterate_project(project_id: str, body: IterateRequest, user: dict = De
                 "file": None,
             }) + "\n"
 
+            # Multi-agent routing: accept all CoderAgent modes
+            VALID_MODES = {"iterate", "patch", "refactor", "debug", "test", "review", "code"}
+            agent_mode = body.mode if body.mode in VALID_MODES else "iterate"
+
             result = await asyncio.wait_for(
                 coder.execute({
-                    "mode": "iterate",
+                    "mode": agent_mode,
                     "code": files_context,
                     "language": "",
                     "context": (
@@ -650,7 +701,15 @@ async def iterate_project(project_id: str, body: IterateRequest, user: dict = De
                 return
 
             response_text = result.get("result", "")
-            modified_files = coder._extract_code_blocks(response_text)
+
+            # In patch mode, try to apply patches first; fall back to code blocks
+            if agent_mode == "patch":
+                modified_files = _apply_patches(response_text, body.files)
+                if not modified_files:
+                    # Fallback: AI may have returned full files instead of patches
+                    modified_files = coder._extract_code_blocks(response_text)
+            else:
+                modified_files = coder._extract_code_blocks(response_text)
 
             actual_count = 0
             for filepath, content in modified_files.items():
@@ -718,6 +777,122 @@ async def iterate_project(project_id: str, body: IterateRequest, user: dict = De
     )
 
 
+# ── CODE REVIEW ──
+
+class ReviewRequest(BaseModel):
+    files: Dict[str, str] = Field(..., description="Map filepath → content")
+    project_name: str = Field("Projet", description="Nom du projet")
+    focus: Optional[str] = Field(None, description="Focus spécifique (sécurité, performance, etc.)")
+
+
+@router.post("/{project_id}/review")
+async def review_project(project_id: str, body: ReviewRequest, user: dict = Depends(get_current_user)):
+    """Run a deep code review/audit on a project's files.
+
+    Returns a streaming response with step events and the final markdown report.
+    """
+    email = user["sub"]
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+
+    if not body.files:
+        raise HTTPException(400, "Aucun fichier fourni pour l'audit")
+
+    reviewer = CodeReviewAgent(deepseek_client=_deepseek_client)
+
+    async def _review_stream():
+        try:
+            yield json.dumps({
+                "type": "step",
+                "action": "thinking",
+                "label": f"Lecture de {len(body.files)} fichiers du projet",
+                "file": None,
+            }) + "\n"
+
+            yield json.dumps({
+                "type": "step",
+                "action": "thinking",
+                "label": "Analyse de l'architecture et du code",
+                "file": None,
+            }) + "\n"
+
+            result = await asyncio.wait_for(
+                reviewer.execute({
+                    "project_name": body.project_name,
+                    "files": body.files,
+                    "focus": body.focus,
+                }),
+                timeout=300.0,  # 5 min for deep audit
+            )
+
+            report = result.get("report", "Aucun rapport généré.")
+
+            yield json.dumps({
+                "type": "step",
+                "action": "writing",
+                "label": "Rédaction du rapport d'audit",
+                "file": None,
+            }) + "\n"
+
+            yield json.dumps({
+                "type": "review",
+                "report": report,
+            }) + "\n"
+
+            yield json.dumps({
+                "type": "step",
+                "action": "complete",
+                "label": "Audit terminé",
+                "file": None,
+            }) + "\n"
+
+            # Billing
+            total_tokens = result.get("tokens_used", 0)
+            if total_tokens > 0:
+                input_est = int(total_tokens * 0.7)
+                output_est = total_tokens - input_est
+                review_model = result.get("model", "") or settings.deepseek_model
+                cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", input_est, output_est, model=review_model)
+                try:
+                    await deduct_credits(email, cost_fcfa)
+                    await record_usage(
+                        email=email,
+                        provider="deepseek",
+                        model=review_model,
+                        input_tokens=input_est,
+                        output_tokens=output_est,
+                        cost_usd=cost_usd,
+                        cost_fcfa=cost_fcfa,
+                        endpoint="review",
+                    )
+                except Exception as billing_err:
+                    logger.error(f"Billing error (review): {billing_err}")
+
+        except asyncio.TimeoutError:
+            yield json.dumps({
+                "type": "step",
+                "action": "error",
+                "label": "Timeout: l'audit prend trop de temps. Essaie avec moins de fichiers.",
+                "file": None,
+            }) + "\n"
+
+        except Exception as e:
+            logger.error(f"Review project error: {e}", exc_info=True)
+            yield json.dumps({
+                "type": "step",
+                "action": "error",
+                "label": f"Erreur: {str(e)[:200]}",
+                "file": None,
+            }) + "\n"
+
+    return StreamingResponse(
+        _review_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 # ── CRUD ──
 
 @router.get("")
@@ -746,3 +921,229 @@ async def remove_project(project_id: str, user: dict = Depends(get_current_user)
         raise HTTPException(404, "Projet non trouvé ou accès non autorisé")
     _project_states.pop(project_id, None)
     return {"status": "deleted"}
+
+
+# ── Design-to-Code ──
+
+class DesignToCodeRequest(BaseModel):
+    """Request to convert a design image into code."""
+    image_data: Optional[str] = Field(None, description="Base64-encoded image")
+    image_url: Optional[str] = Field(None, description="Image URL")
+    framework: str = Field("html", description="Target framework: html|react|vue")
+    css_mode: str = Field("tailwind", description="CSS approach: tailwind|css-modules|inline|vanilla")
+    responsive: bool = Field(True, description="Generate responsive code")
+    instructions: str = Field("", max_length=5000, description="Additional user instructions")
+    existing_files: Dict[str, str] = Field(default_factory=dict, description="Existing project files for context")
+
+
+@router.post("/{project_id}/design-to-code")
+async def design_to_code(project_id: str, body: DesignToCodeRequest, user: dict = Depends(get_current_user)):
+    """Convert a design image to code using VisionAgent + CoderAgent pipeline.
+
+    1. VisionAgent analyses the image → structured description
+    2. CoderAgent generates code from the description
+    3. Files are streamed back via SSE
+    """
+    email = user["sub"]
+
+    if not await has_credits(email):
+        raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
+
+    if not body.image_data and not body.image_url:
+        raise HTTPException(400, "Aucune image fournie (image_data ou image_url requis)")
+
+    vision = VisionAgent()
+    if not vision.is_available:
+        raise HTTPException(503, "Service vision non disponible (API Kimi non configurée)")
+
+    coder = CoderAgent(deepseek_client=_deepseek_client)
+
+    # Framework-specific code generation prompt
+    framework_hints = {
+        "html": "HTML5 sémantique + CSS moderne. Un seul fichier index.html avec le CSS inline ou dans un <style> tag.",
+        "react": "React fonctionnel avec hooks. Composants séparés dans des fichiers .tsx. Utilise TypeScript.",
+        "vue": "Vue 3 Composition API avec <script setup>. Composants séparés dans des fichiers .vue.",
+    }
+    css_hints = {
+        "tailwind": "Utilise Tailwind CSS pour le styling (classes utilitaires). Ajoute le CDN Tailwind si HTML.",
+        "css-modules": "Utilise des CSS Modules (.module.css) pour le styling scopé.",
+        "inline": "Utilise des styles inline (objets style en React, attribut style en HTML).",
+        "vanilla": "Utilise du CSS vanilla dans des fichiers .css séparés.",
+    }
+
+    fw = framework_hints.get(body.framework, framework_hints["html"])
+    css = css_hints.get(body.css_mode, css_hints["tailwind"])
+    responsive_hint = "Le code DOIT être responsive (mobile-first, media queries ou classes responsive Tailwind)." if body.responsive else ""
+
+    async def _d2c_stream():
+        total_tokens = 0
+
+        try:
+            # Step 1: Analyze the design with VisionAgent
+            yield json.dumps({
+                "type": "step",
+                "action": "analyzing",
+                "label": "Analyse du design avec l'IA vision...",
+                "file": None,
+            }) + "\n"
+
+            vision_result = await asyncio.wait_for(
+                vision.execute({
+                    "image_data": body.image_data or "",
+                    "image_url": body.image_url or "",
+                    "prompt": (
+                        "Analyse cette maquette/screenshot de design web en détail. "
+                        "Décris PRÉCISÉMENT le layout, les couleurs, la typographie, "
+                        "les composants, le contenu textuel, et les interactions. "
+                        "Réponds en JSON structuré."
+                    ),
+                    "mode": "analyze",
+                }),
+                timeout=120.0,
+            )
+
+            if vision_result.get("status") == "error":
+                yield json.dumps({
+                    "type": "error",
+                    "message": f"Erreur d'analyse visuelle: {vision_result.get('error', 'Unknown')}",
+                }) + "\n"
+                return
+
+            analysis_text = vision_result.get("analysis", "")
+            total_tokens += vision_result.get("tokens_used", 0)
+
+            # Try to parse as JSON for structured analysis
+            analysis_data = None
+            try:
+                analysis_data = json.loads(analysis_text)
+            except (json.JSONDecodeError, TypeError):
+                analysis_data = {"description": analysis_text}
+
+            yield json.dumps({
+                "type": "analysis",
+                "analysis": {
+                    "layout": analysis_data.get("layout", ""),
+                    "colors": list(analysis_data.get("colors", {}).values()) if isinstance(analysis_data.get("colors"), dict) else [],
+                    "typography": str(analysis_data.get("typography", "")),
+                    "components": analysis_data.get("components", []),
+                    "interactions": analysis_data.get("interactions", []),
+                    "description": analysis_data.get("description", analysis_text[:500]),
+                    "raw": analysis_text[:2000],
+                },
+            }) + "\n"
+
+            yield json.dumps({
+                "type": "step",
+                "action": "generating",
+                "label": "Génération du code à partir du design...",
+                "file": None,
+            }) + "\n"
+
+            # Step 2: Generate code from the analysis
+            user_instructions = f"\nInstructions supplémentaires: {body.instructions}" if body.instructions else ""
+
+            # Include existing files context if any
+            existing_context = ""
+            if body.existing_files:
+                existing_context = "\n\nFICHIERS EXISTANTS DU PROJET (adapte le nouveau code pour s'intégrer):\n"
+                for fpath, fcontent in list(body.existing_files.items())[:10]:
+                    existing_context += f"\n--- {fpath} ---\n{fcontent[:2000]}\n"
+
+            code_prompt = (
+                f"Voici l'analyse détaillée d'un design web:\n\n"
+                f"{analysis_text}\n\n"
+                f"GÉNÈRE LE CODE COMPLET pour reproduire ce design.\n\n"
+                f"FRAMEWORK: {fw}\n"
+                f"CSS: {css}\n"
+                f"{responsive_hint}\n"
+                f"{user_instructions}\n"
+                f"{existing_context}\n\n"
+                f"RÈGLES:\n"
+                f"1. Reproduis le design le plus fidèlement possible\n"
+                f"2. Utilise le contenu textuel EXACT de l'analyse\n"
+                f"3. Respecte les couleurs, tailles et espacements décrits\n"
+                f"4. Code PROPRE, bien structuré, commenté\n"
+                f"5. Fonctionnel immédiatement (pas de placeholder)\n"
+                f"6. Chaque fichier dans un code block avec le chemin en premier commentaire"
+            )
+
+            code_result = await asyncio.wait_for(
+                coder.execute({
+                    "mode": "code",
+                    "code": "",
+                    "language": body.framework,
+                    "context": code_prompt,
+                }),
+                timeout=180.0,
+            )
+
+            if code_result.get("status") == "error":
+                yield json.dumps({
+                    "type": "error",
+                    "message": f"Erreur de génération: {code_result.get('error', 'Unknown')}",
+                }) + "\n"
+                return
+
+            total_tokens += code_result.get("tokens_used", 0)
+
+            # Extract generated files
+            response_text = code_result.get("result", "")
+            generated_files = coder._extract_code_blocks(response_text)
+
+            file_count = 0
+            for filepath, content in generated_files.items():
+                if filepath == "generated_code.txt":
+                    continue
+
+                file_count += 1
+                yield json.dumps({
+                    "type": "step",
+                    "action": "writing",
+                    "label": f"Écriture de {filepath}",
+                    "file": filepath,
+                }) + "\n"
+
+                yield json.dumps({
+                    "type": "file",
+                    "path": filepath,
+                    "content": content,
+                }) + "\n"
+
+            # Billing
+            try:
+                cost = calculate_cost_fcfa(total_tokens, "generation")
+                if cost > 0:
+                    await deduct_credits(email, cost)
+                    await record_usage(email, "design_to_code", total_tokens, cost, {
+                        "project_id": project_id,
+                        "framework": body.framework,
+                        "files_generated": file_count,
+                    })
+            except Exception as e:
+                logger.warning(f"[design-to-code] Billing error: {e}")
+
+            yield json.dumps({
+                "type": "done",
+                "files_count": file_count,
+                "tokens_used": total_tokens,
+            }) + "\n"
+
+            logger.info(f"[design-to-code] {file_count} files generated, {total_tokens} tokens used")
+
+        except asyncio.TimeoutError:
+            yield json.dumps({
+                "type": "error",
+                "message": "Timeout — la génération a pris trop de temps (>3 min)",
+            }) + "\n"
+        except Exception as e:
+            logger.error(f"[design-to-code] Error: {e}")
+            yield json.dumps({
+                "type": "error",
+                "message": "Erreur interne lors de la conversion design → code",
+            }) + "\n"
+
+    return StreamingResponse(
+        _d2c_stream(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )

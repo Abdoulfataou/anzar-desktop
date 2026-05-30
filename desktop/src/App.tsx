@@ -9,8 +9,8 @@ import { Loader2 } from 'lucide-react';
 import AppLayout from '@/components/layout/AppLayout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useAccountStore } from '@/stores/accountStore';
-import { authService } from '@/services/auth';
-import { autoCheckOncePerDay } from '@/services/updateService';
+import { authService } from '@/services/infra/auth';
+import { autoCheckOncePerDay } from '@/services/infra/updateService';
 
 // Lazy-load des pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));

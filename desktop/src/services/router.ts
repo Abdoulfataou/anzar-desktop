@@ -24,8 +24,8 @@
  */
 
 import { AIProvider, AIModel, ChatOptions, APIMessage, StreamDelta } from '@/types';
-import { aiService } from './ai';
-import { getSystemPrompt, type PromptContext } from './prompts';
+import { aiService } from './ai/ai';
+import { getSystemPrompt, type PromptContext } from './ai/prompts';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 // ============================================================================

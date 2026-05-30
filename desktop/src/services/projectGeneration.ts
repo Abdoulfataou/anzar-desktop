@@ -70,7 +70,7 @@ export type OnAgentUpdate = (event: ExecutionEvent) => void;
 // HELPERS
 // ============================================================================
 
-function getBackendUrl(): string {
+export function getBackendUrl(): string {
   try {
     return useSettingsStore.getState().getBackendUrl?.() || 'https://anzar-desktop-production.up.railway.app';
   } catch {
@@ -78,7 +78,7 @@ function getBackendUrl(): string {
   }
 }
 
-function getAuthHeaders(): Record<string, string> {
+export function getAuthHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -280,6 +280,7 @@ class ProjectGenerationService {
     fileFocus?: string,
     signal?: AbortSignal,
     history?: Array<{ role: 'user' | 'assistant'; content: string }>,
+    mode: string = 'iterate',
   ): Promise<void> {
     const url = `${getBackendUrl()}/api/projects/${projectId}/iterate`;
     const response = await fetch(url, {
@@ -291,6 +292,7 @@ class ProjectGenerationService {
         files,
         file_focus: fileFocus || null,
         history: history || [],
+        mode,
       }),
     });
 
@@ -343,6 +345,81 @@ class ProjectGenerationService {
     } finally {
       reader.releaseLock();
     }
+  }
+
+  /**
+   * Appelle POST /api/projects/{id}/review → CodeReviewAgent audit via SSE.
+   * Retourne un rapport markdown d'audit complet.
+   */
+  async review(
+    projectId: string,
+    projectName: string,
+    files: Record<string, string>,
+    onUpdate: OnAgentUpdate,
+    focus?: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const url = `${getBackendUrl()}/api/projects/${projectId}/review`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      signal,
+      body: JSON.stringify({
+        project_name: projectName,
+        files,
+        focus: focus || null,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => null);
+      const msg = error?.error?.message || error?.detail || `Erreur audit (HTTP ${response.status})`;
+      if (response.status === 402) throw new Error('Crédits insuffisants. Recharge ton compte.');
+      if (response.status === 401) throw new Error('Session expirée. Reconnecte-toi.');
+      throw new Error(msg);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Pas de flux de réponse du serveur');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let report = '';
+
+    try {
+      while (true) {
+        if (signal?.aborted) {
+          reader.cancel();
+          throw new DOMException('Audit annulé', 'AbortError');
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const event = JSON.parse(trimmed);
+            if (event.type === 'review') {
+              report = event.report || '';
+            } else if (event.type === 'step') {
+              onUpdate(event);
+            }
+          } catch {
+            // ignore
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return report;
   }
 
   /**

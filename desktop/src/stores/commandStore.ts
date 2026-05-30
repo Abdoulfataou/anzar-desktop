@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { commandCardService } from '@/services/commandCardService'
+import { commandCardService } from '@/services/commands/commandCardService'
 import { useSettingsStore } from '@/stores/settingsStore'
 
 export type CommandCardStatus = 'suggested' | 'running' | 'success' | 'error' | 'killed'

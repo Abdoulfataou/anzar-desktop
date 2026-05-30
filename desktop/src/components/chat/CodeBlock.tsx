@@ -8,6 +8,8 @@ interface CodeBlockProps {
   showLineNumbers?: boolean;
   filename?: string;
   collapsible?: boolean;
+  /** Hide copy buttons (vibecoding mode) */
+  hideActions?: boolean;
 }
 
 const LANG_COLORS: Record<string, string> = {
@@ -39,6 +41,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   language = 'text',
   code,
   showLineNumbers = true,
+  hideActions = false,
 }) => {
   const [copied, setCopied] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
@@ -71,18 +74,20 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
               <code className="font-mono text-[13px] text-text-primary whitespace-pre">{code}</code>
             </pre>
           </div>
-          <button
-            onClick={handleCopy}
-            className={cn(
-              'flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all ml-2 flex-shrink-0',
-              copied
-                ? 'text-accent-success'
-                : 'text-text-muted hover:text-text-secondary'
-            )}
-          >
-            {copied ? <Check size={12} /> : <Copy size={12} />}
-            {copied ? 'Copie' : 'Copier'}
-          </button>
+          {!hideActions && (
+            <button
+              onClick={handleCopy}
+              className={cn(
+                'flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium transition-all ml-2 flex-shrink-0',
+                copied
+                  ? 'text-accent-success'
+                  : 'text-text-muted hover:text-text-secondary'
+              )}
+            >
+              {copied ? <Check size={12} /> : <Copy size={12} />}
+              {copied ? 'Copie' : 'Copier'}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -112,18 +117,20 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
             </button>
           )}
 
-          <button
-            onClick={handleCopy}
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all duration-200',
-              copied
-                ? 'text-accent-success bg-accent-success/10'
-                : 'text-text-muted hover:text-text-secondary hover:bg-bg-secondary'
-            )}
-          >
-            {copied ? <Check size={13} /> : <Copy size={13} />}
-            {copied ? 'Copie' : 'Copier'}
-          </button>
+          {!hideActions && (
+            <button
+              onClick={handleCopy}
+              className={cn(
+                'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all duration-200',
+                copied
+                  ? 'text-accent-success bg-accent-success/10'
+                  : 'text-text-muted hover:text-text-secondary hover:bg-bg-secondary'
+              )}
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              {copied ? 'Copie' : 'Copier'}
+            </button>
+          )}
         </div>
       </div>
 

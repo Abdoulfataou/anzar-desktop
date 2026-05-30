@@ -8,9 +8,9 @@
  * 4. Propose des actions automatiques (installer un package, corriger un fichier, etc.)
  */
 
-import { aiRouter } from './router';
-import { getSystemPrompt } from './prompts';
-import { terminalService, ProcessOutput } from './terminal';
+import { aiRouter } from '@/services/router';
+import { getSystemPrompt } from '@/services/ai/prompts';
+import { terminalService, ProcessOutput } from '@/services/terminal';
 
 // ============================================================================
 // TYPES

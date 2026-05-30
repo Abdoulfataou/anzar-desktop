@@ -214,6 +214,35 @@ FORMAT DE SORTIE — pour chaque fichier modifié:
 
 Ne retourne que les blocs de code des fichiers modifiés. Pas d'explication avant ou après, sauf si l'utilisateur pose une question."""
 
+PROMPT_PATCH = """Tu es un développeur senior qui corrige des erreurs dans un projet existant.
+Tu reçois des erreurs de lint/compilation structurées avec le fichier et la ligne exacte.
+
+TON RÔLE:
+- Tu LIS les erreurs fournies (fichier, ligne, message)
+- Tu LIS le code du projet fourni dans le contexte
+- Tu CORRIGES chaque erreur avec un patch SEARCH/REPLACE minimal
+
+FORMAT DE SORTIE — pour chaque correction:
+<<<PATCH
+FILE: chemin/du/fichier.ts
+SEARCH:
+[lignes exactes du code original à remplacer — copie EXACTE, espaces et indentation inclus]
+REPLACE:
+[lignes corrigées qui remplacent le bloc SEARCH]
+>>>
+
+RÈGLES:
+1. Le bloc SEARCH doit correspondre EXACTEMENT au code existant (même espaces, même indentation)
+2. Inclus suffisamment de contexte autour de l'erreur pour que le match soit unique
+3. Un PATCH par correction (plusieurs patchs possibles pour un même fichier)
+4. Ne corrige QUE ce qui cause l'erreur, pas de refactoring
+5. Si un import manque, ajoute-le avec un patch au début du fichier
+6. Si tu ne peux pas patcher (fichier trop modifié), retourne le fichier complet au format classique:
+   ```language
+   // Chemin: filepath
+   [code complet]
+   ```"""
+
 PROMPT_TEST = """Tu es un ingénieur QA expert en testing automatisé.
 Tu écris des tests qui PROUVENT que le code fonctionne — pas des tests qui passent toujours.
 
@@ -267,6 +296,7 @@ class CoderAgent(BaseAgent):
         "code": PROMPT_CODE,
         "refactor": PROMPT_REFACTOR,
         "iterate": PROMPT_ITERATE,
+        "patch": PROMPT_PATCH,
         "debug": PROMPT_DEBUG,
         "review": PROMPT_REVIEW,
         "test": PROMPT_TEST,
@@ -277,6 +307,7 @@ class CoderAgent(BaseAgent):
         "code": 0.5,       # Créatif mais déterministe
         "refactor": 0.3,   # Très déterministe — on ne veut pas de surprises
         "iterate": 0.4,    # Équilibre entre respect du contexte et créativité
+        "patch": 0.2,      # Ultra-précis — corrections chirurgicales
         "debug": 0.3,      # Analytique et précis
         "review": 0.2,     # Évaluation objective
         "test": 0.4,       # Un peu de créativité pour les edge cases
@@ -288,6 +319,7 @@ class CoderAgent(BaseAgent):
         "code_complex": 48000,  # Pour fichiers complexes (API, DB, auth)
         "refactor": 32000,   # Refactoring avec contexte complet
         "iterate": 32000,   # Itérations sur projet existant
+        "patch": 8000,       # Corrections ciblées — petits diffs
         "debug": 8000,
         "review": 4000,
         "test": 12000,
@@ -298,6 +330,7 @@ class CoderAgent(BaseAgent):
         "code": MODEL_PRO,       # Génération de projet: qualité maximale
         "refactor": MODEL_FLASH, # Refactoring: rapide et économique
         "iterate": MODEL_FLASH,  # Itérations: rapidité prioritaire (interactif)
+        "patch": MODEL_FLASH,    # Patch: rapide et économique
         "debug": MODEL_PRO,      # Debug: précision critique
         "review": MODEL_PRO,     # Review: évaluation approfondie
         "test": MODEL_FLASH,     # Tests: patterns répétitifs, Flash suffit
@@ -356,6 +389,7 @@ class CoderAgent(BaseAgent):
             "code": self._execute_code,
             "refactor": self._execute_single,
             "iterate": self._execute_single,
+            "patch": self._execute_single,
             "debug": self._execute_single,
             "review": self._execute_review,
             "test": self._execute_single,

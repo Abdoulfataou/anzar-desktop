@@ -22,8 +22,8 @@ import ProjectChat from '@/components/projects/ProjectChat';
 import AgentProgress from '@/components/projects/AgentProgress';
 import TerminalPanel from '@/components/terminal/Terminal';
 import { terminalService } from '@/services/terminal';
-import { diagnosticService, DiagnosticReport, DiagnosticSolution } from '@/services/diagnostic';
-import { fileSystemService } from '@/services/fileSystem';
+import { diagnosticService, DiagnosticReport, DiagnosticSolution } from '@/services/infra/diagnostic';
+import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { useChangeStore } from '@/stores/changeStore';
 
 /* ===== Convert ProjectFile[] to FileNode[] tree ===== */

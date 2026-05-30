@@ -7,14 +7,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
 import { cn } from '@/lib/utils';
-import { openExternalUrl } from '@/services/externalLinks';
-import { useCommandStore } from '@/stores/commandStore';
-import CommandCard from '@/components/chat/CommandCard';
-import { useSettingsStore } from '@/stores/settingsStore';
-import { commandCardService } from '@/services/commandCardService';
-import { shouldAutoRunCommand } from '@/services/commandAutoPolicy';
-import { exportToDocx, exportToPdf, isCorrection, cleanCorrectionForExport } from '@/services/documentExport';
-import { exportToPptx } from '@/services/presentationExport';
+import { openExternalUrl } from '@/services/infra/externalLinks';
+import { exportToDocx, exportToPdf, isCorrection, cleanCorrectionForExport } from '@/services/export/documentExport';
+import { exportToPptx } from '@/services/export/presentationExport';
 import toast from 'react-hot-toast';
 import type { Message } from '@/types';
 
@@ -35,18 +30,6 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const [exportingPptx, setExportingPptx] = useState(false);
   const [expandedLong, setExpandedLong] = useState(false);
   const textRef = useRef<HTMLDivElement>(null);
-  const ensureCard = useCommandStore((s) => s.ensureCard);
-  const commandOrder = useCommandStore((s) => s.order);
-  const commandCards = useCommandStore((s) => s.cards);
-  const settings = useSettingsStore((s) => s.settings);
-
-  const cardsForThisMessage = useMemo(() => {
-    return commandOrder
-      .map((id) => commandCards[id])
-      .filter(Boolean)
-      .filter((c) => c.messageId === message.id)
-      .map((c) => c.id);
-  }, [commandOrder, commandCards, message.id]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -119,8 +102,12 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     }
   };
 
-  /** Show export buttons only for substantial document-like content */
+  // En contexte vibecoding (projet sélectionné), on masque les exports document
+  const isVibecoding = !!selectedProjectId;
+
+  /** Show export buttons only for substantial document-like content — NEVER in vibecoding */
   const looksLikeDocument = (() => {
+    if (isVibecoding) return false; // Pas d'export Word/PPTX/PDF en vibecoding
     const c = message.content;
     if (c.length < 500) return false; // Réponses courtes = pas d'export
     const hasHeadings = /(^|\n)#{1,3}\s/m.test(c);
@@ -264,45 +251,12 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                   }
 
                   const raw = String(children).replace(/\n$/, '');
-                  const isShell =
-                    ['bash', 'sh', 'shell', 'zsh', 'cmd', 'powershell'].includes(language.toLowerCase());
-                  if (isShell && raw.trim()) {
-                    const cmdText = raw.trim();
-                    // Skip useless commands (cd, mkdir, echo, etc.)
-                    const SKIP_CMD = /^\s*(cd\s|mkdir\s|echo\s|#|\/\/|ls\s|pwd|cat\s|touch\s)/i;
-                    const hasUsefulCmd = cmdText.split('\n').some((l: string) => {
-                      const t = l.trim();
-                      return t && !t.startsWith('#') && !SKIP_CMD.test(t);
-                    });
-                    if (!hasUsefulCmd) {
-                      // Render as plain code block instead of command card
-                      return (
-                        <CodeBlock language={language} code={raw} />
-                      );
-                    }
-                    const cardId = `${message.id}::cmd::${Math.abs(hashCode(cmdText))}`;
-                    // Ensure a stable card exists (Trae/Claude cowork-style command card)
-                    ensureCard({
-                      id: cardId,
-                      messageId: message.id,
-                      command: cmdText,
-                      title: 'Commande proposée',
-                      projectId: selectedProjectId,
-                      projectPath: selectedProjectPath,
-                    });
-                    // Auto-run mode (safe only)
-                    if (selectedProjectPath) {
-                      const auto = shouldAutoRunCommand(cmdText, settings);
-                      if (auto.ok) void commandCardService.run(cardId);
-                    }
-                    // The card will be rendered below the message; keep markdown clean.
-                    return <span className="hidden" />;
-                  }
 
                   return (
                     <CodeBlock
                       language={language}
                       code={raw}
+                      hideActions={isVibecoding}
                     />
                   );
                 },
@@ -337,15 +291,6 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
           )}
         </div>
 
-        {/* Command Cards docked under message (Trae/Claude cowork-like) */}
-        {cardsForThisMessage.length > 0 && (
-          <div className="space-y-2">
-            {cardsForThisMessage.map((id) => (
-              <CommandCard key={id} cardId={id} />
-            ))}
-          </div>
-        )}
-
         {/* Project action button — "Open & Run" after generation */}
         {message.actionProjectId && !message.isStreaming && (
           <div className="flex gap-2 mt-1">
@@ -362,17 +307,19 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
 
         {/* Actions bar */}
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-          {/* Copy */}
-          <button
-            onClick={handleCopy}
-            className={cn(
-              'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
-              'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
-            )}
-          >
-            {copied ? <Check size={13} className="text-accent-success" /> : <Copy size={13} />}
-            <span>{copied ? 'Copié' : 'Copier'}</span>
-          </button>
+          {/* Copy — masqué en vibecoding */}
+          {!isVibecoding && (
+            <button
+              onClick={handleCopy}
+              className={cn(
+                'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
+                'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
+              )}
+            >
+              {copied ? <Check size={13} className="text-accent-success" /> : <Copy size={13} />}
+              <span>{copied ? 'Copié' : 'Copier'}</span>
+            </button>
+          )}
 
           {/* Regenerate / Retry */}
           {onRegenerate && (
@@ -498,13 +445,4 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
       </div>
     </div>
   );
-}
-
-function hashCode(str: string): number {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return hash;
 }

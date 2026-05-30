@@ -1,4 +1,4 @@
-import { assessCommandRisk } from '@/services/commandRisk'
+import { assessCommandRisk } from '@/services/commands/commandRisk'
 import type { Settings } from '@/stores/settingsStore'
 
 /**

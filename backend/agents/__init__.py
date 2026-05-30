@@ -32,6 +32,7 @@ from .summarizer import SummarizerAgent
 from .student_writer import StudentWriterAgent
 from .student_corrector import StudentCorrectorAgent
 from .student_researcher import StudentResearcherAgent
+from .code_review import CodeReviewAgent
 
 __all__ = [
     # Base
@@ -44,6 +45,7 @@ __all__ = [
     "VisionAgent",
     "DocWriterAgent",
     "SummarizerAgent",
+    "CodeReviewAgent",
     # Étudiants
     "StudentWriterAgent",
     "StudentCorrectorAgent",

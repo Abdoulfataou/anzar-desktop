@@ -4,7 +4,7 @@
  */
 
 import { create } from 'zustand';
-import { studentService, type StudentProject } from '@/services/studentService';
+import { studentService, type StudentProject } from '@/services/student/studentService';
 
 // ============================================================================
 // TYPES

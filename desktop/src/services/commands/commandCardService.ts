@@ -1,7 +1,7 @@
 import { terminalService, type TerminalEvent } from '@/services/terminal'
 import { useCommandStore } from '@/stores/commandStore'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { assessCommandRisk } from '@/services/commandRisk'
+import { assessCommandRisk } from '@/services/commands/commandRisk'
 
 /**
  * Service central pour synchroniser les CommandCards avec TerminalService.

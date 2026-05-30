@@ -3,11 +3,11 @@ import { Play, Square, RotateCcw, Terminal, Trash2, Copy, ChevronDown, ChevronUp
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
-import { commandCardService } from '@/services/commandCardService'
+import { commandCardService } from '@/services/commands/commandCardService'
 import { useCommandStore, type CommandCard as CommandCardType } from '@/stores/commandStore'
-import { assessCommandRisk } from '@/services/commandRisk'
-import { detectToolFromCommand, devToolInstallUrl, devToolLabel } from '@/services/devToolLinks'
-import { openExternalUrl } from '@/services/externalLinks'
+import { assessCommandRisk } from '@/services/commands/commandRisk'
+import { detectToolFromCommand, devToolInstallUrl, devToolLabel } from '@/services/infra/devToolLinks'
+import { openExternalUrl } from '@/services/infra/externalLinks'
 
 function badgeVariant(status: CommandCardType['status']) {
   if (status === 'running') return 'warning'

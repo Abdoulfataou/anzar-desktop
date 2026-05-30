@@ -76,6 +76,48 @@ class SimpleEventEmitter<T> {
   }
 }
 
+/** Separate event bus for dev server URL detection */
+type DevServerUrlListener = (url: string) => void;
+const devServerUrlListeners: DevServerUrlListener[] = [];
+
+/** Subscribe to dev server URL detection events */
+export function onDevServerUrl(listener: DevServerUrlListener): () => void {
+  devServerUrlListeners.push(listener);
+  return () => {
+    const idx = devServerUrlListeners.indexOf(listener);
+    if (idx >= 0) devServerUrlListeners.splice(idx, 1);
+  };
+}
+
+function emitDevServerUrl(url: string): void {
+  devServerUrlListeners.forEach(l => l(url));
+}
+
+/** Terminal error event — emitted when a process fails with actionable errors */
+export interface TerminalErrorEvent {
+  processId: string;
+  command: string;
+  exitCode: number;
+  /** Combined stderr + relevant stdout lines (truncated) */
+  errorOutput: string;
+}
+
+type TerminalErrorListener = (error: TerminalErrorEvent) => void;
+const terminalErrorListeners: TerminalErrorListener[] = [];
+
+/** Subscribe to terminal error events for auto-fix */
+export function onTerminalError(listener: TerminalErrorListener): () => void {
+  terminalErrorListeners.push(listener);
+  return () => {
+    const idx = terminalErrorListeners.indexOf(listener);
+    if (idx >= 0) terminalErrorListeners.splice(idx, 1);
+  };
+}
+
+function emitTerminalError(error: TerminalErrorEvent): void {
+  terminalErrorListeners.forEach(l => l(error));
+}
+
 // ============================================================================
 // SECURITY — Command & Path Validation
 // ============================================================================
@@ -353,14 +395,24 @@ class TerminalService {
         env: options.env,
       });
 
+      // Collect stderr for auto-fix error detection
+      const stderrLines: string[] = [];
+      const stdoutLines: string[] = [];
+
       // Stream stdout
       cmd.stdout.on('data', (line: string) => {
         this.emitOutput(processId, 'stdout', line);
+        stdoutLines.push(line);
+        // Keep last 50 lines only
+        if (stdoutLines.length > 50) stdoutLines.shift();
       });
 
       // Stream stderr
       cmd.stderr.on('data', (line: string) => {
         this.emitOutput(processId, 'stderr', line);
+        stderrLines.push(line);
+        // Keep last 80 lines only
+        if (stderrLines.length > 80) stderrLines.shift();
       });
 
       // Spawn the process
@@ -384,6 +436,26 @@ class TerminalService {
         }
 
         this.eventBus.emit({ type: 'process-end', processId, exitCode: data.code });
+
+        // ── Auto-fix: emit error event when process fails ──
+        if (data.code !== 0 && stderrLines.length > 0) {
+          // Combine stderr + last relevant stdout lines for context
+          const errorLines = [...stderrLines];
+          // Add stdout lines that look like errors too (compilation errors often go to stdout)
+          for (const line of stdoutLines) {
+            if (/error|Error|ERROR|failed|Failed|FAILED|Cannot find|Module not found|SyntaxError|TypeError|ReferenceError|ImportError|ModuleNotFoundError/.test(line)) {
+              errorLines.push(line);
+            }
+          }
+          const errorOutput = errorLines.join('\n').slice(-4000); // Truncate to ~4K chars
+
+          emitTerminalError({
+            processId,
+            command: `${parsed.cmdName} ${parsed.args.join(' ')}`.trim(),
+            exitCode: data.code,
+            errorOutput,
+          });
+        }
       });
 
       cmd.on('error', (error: string) => {
@@ -407,6 +479,54 @@ class TerminalService {
       });
 
       return processId;
+    }
+  }
+
+  /**
+   * Internal exec — skips command validation. Used ONLY by internal git methods
+   * that build safe commands programmatically. NEVER expose to user input.
+   */
+  private async _internalExec(
+    command: string,
+    options: { cwd?: string; timeout?: number; silent?: boolean } = {}
+  ): Promise<CommandResult> {
+    const startTime = Date.now();
+    try {
+      const parsed = parseExecutable(command);
+      if (!parsed) {
+        return { success: false, exitCode: 1, stdout: '', stderr: 'Commande non autorisée', durationMs: 0 };
+      }
+
+      const cmd = new Command(parsed.cmdName, parsed.args, { cwd: options.cwd });
+      let stdout = '';
+      let stderr = '';
+
+      cmd.stdout.on('data', (line: string) => { stdout += line + '\n'; });
+      cmd.stderr.on('data', (line: string) => { stderr += line + '\n'; });
+
+      const child = await cmd.spawn();
+
+      let timeoutId: NodeJS.Timeout | undefined;
+      if (options.timeout) {
+        timeoutId = setTimeout(() => { child.kill(); }, options.timeout);
+      }
+
+      const result = await new Promise<{ code: number }>((resolve) => {
+        cmd.on('close', (data: { code: number }) => resolve(data));
+        cmd.on('error', () => resolve({ code: 1 }));
+      });
+
+      if (timeoutId) clearTimeout(timeoutId);
+
+      return {
+        success: result.code === 0,
+        exitCode: result.code,
+        stdout: stdout.trim(),
+        stderr: stderr.trim(),
+        durationMs: Date.now() - startTime,
+      };
+    } catch (error: any) {
+      return { success: false, exitCode: 1, stdout: '', stderr: error.message || String(error), durationMs: Date.now() - startTime };
     }
   }
 
@@ -598,8 +718,9 @@ class TerminalService {
         opened = true;
         unsub();
         const url = match[0].replace('0.0.0.0', 'localhost');
-        this.emitOutput(processId, 'success', `Ouverture dans le navigateur: ${url}`);
-        shellOpen(url).catch(() => { /* ignore if open fails */ });
+        this.emitOutput(processId, 'success', `Serveur lancé: ${url}`);
+        // Emit URL to preview listeners (VibeCodingStudio) instead of opening browser
+        emitDevServerUrl(url);
       }
     });
 
@@ -767,35 +888,80 @@ class TerminalService {
   }
 
   // ─── Git Operations ───
+  // Uses exec() for sequential git commands (no shell chaining needed)
 
-  async gitStatus(projectPath: string): Promise<string> {
-    return this.runCommand('git status --short', { cwd: projectPath });
+  async gitStatus(projectPath: string): Promise<CommandResult> {
+    return this.exec('git status --short', { cwd: projectPath, silent: true });
   }
 
-  async gitCommit(projectPath: string, message: string): Promise<string> {
-    // Sanitize commit message: remove shell metacharacters
+  /** Check if the project has a git repo initialized */
+  async gitIsRepo(projectPath: string): Promise<boolean> {
+    const result = await this.exec('git rev-parse --is-inside-work-tree', { cwd: projectPath, silent: true });
+    return result.success;
+  }
+
+  async gitInit(projectPath: string): Promise<CommandResult> {
+    return this.exec('git init', { cwd: projectPath });
+  }
+
+  /** Stage all files and commit with the given message. Returns success. */
+  async gitCommit(projectPath: string, message: string): Promise<{ success: boolean; error?: string }> {
+    // Sanitize commit message
     const safeMessage = message
       .replace(/[`$\\!;"'|&<>(){}]/g, '')
       .slice(0, 200)
       .trim();
     if (!safeMessage) {
-      const processId = `proc-${++this.processCounter}-${Date.now()}`;
-      this.emitOutput(processId, 'error', '⛔ Message de commit invalide');
-      return processId;
+      return { success: false, error: 'Message de commit invalide' };
     }
-    return this.runCommand(`git add -A && git commit -m "${safeMessage}"`, { cwd: projectPath });
+
+    // Step 1: git add -A (uses _internalExec to bypass && block)
+    const addResult = await this._internalExec('git add -A', { cwd: projectPath, silent: true });
+    if (!addResult.success) {
+      return { success: false, error: `git add échoué: ${addResult.stderr}` };
+    }
+
+    // Step 2: git commit -m "message"
+    const commitResult = await this._internalExec(`git commit -m "${safeMessage}"`, { cwd: projectPath, silent: true });
+    // "nothing to commit" is not an error in our context
+    if (!commitResult.success && !commitResult.stdout.includes('nothing to commit')) {
+      return { success: false, error: `git commit échoué: ${commitResult.stderr}` };
+    }
+
+    return { success: true };
   }
 
-  async gitPush(projectPath: string): Promise<string> {
-    return this.runCommand('git push', { cwd: projectPath });
+  /** Undo the last N commits but keep files on disk as-is (git reset --soft) */
+  async gitUndoLastCommit(projectPath: string): Promise<CommandResult> {
+    return this._internalExec('git reset --soft HEAD~1', { cwd: projectPath, silent: true });
   }
 
-  async gitPull(projectPath: string): Promise<string> {
-    return this.runCommand('git pull', { cwd: projectPath });
+  /** Hard reset to undo last iteration — restores files to the previous commit state */
+  async gitRollback(projectPath: string): Promise<CommandResult> {
+    // This is the nuclear option: discards file changes and goes back one commit
+    return this._internalExec('git reset --hard HEAD~1', { cwd: projectPath });
   }
 
-  async gitInit(projectPath: string): Promise<string> {
-    return this.runCommand('git init', { cwd: projectPath });
+  /** Get the number of commits in the repo */
+  async gitCommitCount(projectPath: string): Promise<number> {
+    const result = await this.exec('git rev-list --count HEAD', { cwd: projectPath, silent: true });
+    if (!result.success) return 0;
+    return parseInt(result.stdout.trim(), 10) || 0;
+  }
+
+  /** Get last N commit messages (for history display) */
+  async gitLog(projectPath: string, count = 5): Promise<string[]> {
+    const result = await this._internalExec(`git log --oneline -${count}`, { cwd: projectPath, silent: true });
+    if (!result.success) return [];
+    return result.stdout.trim().split('\n').filter(Boolean);
+  }
+
+  async gitPush(projectPath: string): Promise<CommandResult> {
+    return this.exec('git push', { cwd: projectPath });
+  }
+
+  async gitPull(projectPath: string): Promise<CommandResult> {
+    return this.exec('git pull', { cwd: projectPath });
   }
 
   // ─── Process Management ───

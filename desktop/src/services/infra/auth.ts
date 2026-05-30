@@ -6,8 +6,8 @@
 
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
-import { secureTokenStore } from '@/services/secureTokenStore';
-import { generationTracker } from '@/services/generationTracker';
+import { secureTokenStore } from '@/services/infra/secureTokenStore';
+import { generationTracker } from '@/services/ai/generationTracker';
 
 // ============================================================================
 // TYPES

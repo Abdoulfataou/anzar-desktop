@@ -3,10 +3,10 @@ import { Activity, ChevronUp, ChevronDown, Trash2, Square, CornerUpLeft, Play, S
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/Button'
 import { useCommandStore } from '@/stores/commandStore'
-import { commandCardService } from '@/services/commandCardService'
+import { commandCardService } from '@/services/commands/commandCardService'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { assessCommandRisk } from '@/services/commandRisk'
-import { isAllowlistedForAutoRun } from '@/services/commandAutoPolicy'
+import { assessCommandRisk } from '@/services/commands/commandRisk'
+import { isAllowlistedForAutoRun } from '@/services/commands/commandAutoPolicy'
 
 export default function BackgroundTasksDock() {
   const [open, setOpen] = useState(true)

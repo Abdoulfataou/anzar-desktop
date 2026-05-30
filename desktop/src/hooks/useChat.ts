@@ -12,7 +12,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useOffline } from '@/hooks/useOffline';
 import { Message, APIMessage, AIModel } from '@/types';
 import { generateId } from '@/lib/utils';
-import { authService } from '@/services/auth';
+import { authService } from '@/services/infra/auth';
 
 /**
  * Return type for useChat hook

@@ -10,7 +10,7 @@ import {
 import { useProjectStore, useSortedProjects } from '@/stores/projectStore';
 import { cn, generateId } from '@/lib/utils';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
-import { agentService } from '@/services/agents';
+import { agentService } from '@/services/ai/agents';
 import { useActivityStore } from '@/stores/activityStore';
 import ProjectCard from './ProjectCard';
 

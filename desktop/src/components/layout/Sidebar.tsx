@@ -105,6 +105,18 @@ export default function Sidebar({
       }
       return;
     }
+    // Si on est sur la page chat (/) — sélectionner le projet dans le chat
+    if (location.pathname === '/') {
+      // Toggle: si déjà sélectionné, désélectionner
+      if (selectedProjectId === projectId) {
+        onSelectProject?.(null);
+      } else {
+        // Créer une nouvelle conversation pour éviter la pollution de l'historique
+        createConversation(undefined, model);
+        onSelectProject?.(projectId);
+      }
+      return;
+    }
     navigate(`/projects/${projectId}`);
   };
 
@@ -256,7 +268,7 @@ export default function Sidebar({
                       className={cn(
                         'flex-1 flex items-center gap-2 px-3 py-1.5 rounded-lg min-w-0',
                         'text-xs transition-colors duration-150 text-left',
-                        location.pathname === `/projects/${project.id}`
+                        location.pathname === `/projects/${project.id}` || selectedProjectId === project.id
                           ? 'bg-accent-primary/10 text-accent-primary'
                           : 'text-text-secondary hover:text-text-primary hover:bg-surface-hover'
                       )}
