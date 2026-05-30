@@ -354,6 +354,7 @@ export interface Project {
   conversationId?: string;
   errorMessage?: string;
   metadata?: Record<string, any>;
+  localPath?: string;
 }
 
 export interface ProjectFile {

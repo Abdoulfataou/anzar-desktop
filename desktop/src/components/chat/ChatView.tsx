@@ -1274,7 +1274,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             }
 
             if (Object.keys(filesMap).length > 0) {
-              addStep(sessionId, { type: 'processing', label: `${Object.keys(filesMap).length} fichiers chargés — lancement de l'audit` });
+              addStep(sessionId, { type: 'analyzing', label: `${Object.keys(filesMap).length} fichiers chargés — lancement de l'audit` });
 
               const aiMessageId = `msg_${Date.now() + 1}`;
               addConversationMessage({
@@ -1297,7 +1297,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   filesMap,
                   (event) => {
                     if (event.type === 'step') {
-                      addStep(sessionId, { type: event.action === 'complete' ? 'complete' : 'processing', label: event.label || '' });
+                      addStep(sessionId, { type: event.action === 'complete' ? 'complete' : 'analyzing', label: event.label || '' });
                     }
                   },
                   undefined, // focus
@@ -1311,7 +1311,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   activitySessionId: sessionId,
                 });
 
-                endSession(sessionId, 'completed');
+                endSession(sessionId, 'done');
                 return true;
               } catch (auditErr: any) {
                 const errMsg = `Erreur lors de l'audit: ${auditErr.message || auditErr}`;
@@ -1531,7 +1531,7 @@ ${fileContents.join('\n')}
         ...apiMessages[0],
         content: apiMessages[0].content + projectContextPrompt,
       };
-      console.log('[ANZAR] Project context injected — system prompt length:', apiMessages[0].content.length, 'chars');
+      console.log('[ANZAR] Project context injected — system prompt length:', String(apiMessages[0].content || '').length, 'chars');
     }
 
     completeStep(sessionId, understandStepId);
