@@ -21,7 +21,6 @@ class DeepSeekClient:
         # V4: 384K max output possible, long generations need generous timeout
         self.timeout = httpx.Timeout(300.0, connect=15.0)
     
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     async def stream_chat(
         self,
         messages: list[dict],
