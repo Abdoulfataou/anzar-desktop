@@ -448,14 +448,16 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
   // When Sidebar clicks "Nouvelle tache" it sets activeProjectId to null.
   // Listen to that and clear the local state so the old project stops following.
+  // But NOT while generating/auditing — the project must stay selected.
   const storeActiveProjectId = useProjectStore((s) => s.activeProjectId);
   const prevStoreRef = useRef(storeActiveProjectId);
+  const isLoading = useChatStore((s) => s.isGenerating);
   useEffect(() => {
-    if (prevStoreRef.current !== null && storeActiveProjectId === null) {
+    if (prevStoreRef.current !== null && storeActiveProjectId === null && !isLoading) {
       setSelectedProjectId(null);
     }
     prevStoreRef.current = storeActiveProjectId;
-  }, [storeActiveProjectId]);
+  }, [storeActiveProjectId, isLoading]);
   const [showStudentMenu, setShowStudentMenu] = useState(false);
   const [showDataMenu, setShowDataMenu] = useState(false);
   const [showSearchMenu, setShowSearchMenu] = useState(false);
@@ -530,7 +532,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   const createConversation = useChatStore((s) => s.createConversation);
   const addConversationMessage = useChatStore((s) => s.addMessage);
   const updateConversationMessage = useChatStore((s) => s.updateMessage);
-  const isLoading = useChatStore((s) => s.isGenerating);
+  // isLoading already declared above (used by activeProjectId effect)
   const setIsGenerating = useChatStore((s) => s.setIsGenerating);
   const pendingRetry = useChatStore((s) => s.pendingRetry);
   const setPendingRetry = useChatStore((s) => s.setPendingRetry);
@@ -1265,15 +1267,39 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         const localPath = project.localPath || (project.metadata as any)?.localPath;
         if (localPath) {
           try {
-            addStep(sessionId, { type: 'understanding', label: `Préparation de l'audit de "${project.name}"` });
+            // Show the GenerationPanel for audit progress
+            setGenerationPanelSessionId(sessionId);
+
+            // Set up todo list for audit
+            setTodos(sessionId, [
+              { label: 'Lecture des fichiers du projet', status: 'active' },
+              { label: 'Analyse de l\'architecture', status: 'pending' },
+              { label: 'Détection des bugs et problèmes', status: 'pending' },
+              { label: 'Analyse de sécurité', status: 'pending' },
+              { label: 'Rédaction du rapport', status: 'pending' },
+            ]);
+            setContextPercent(sessionId, 5);
+
+            addStep(sessionId, { type: 'reading', label: `Lecture des fichiers de "${project.name}"` });
 
             const diskFiles = await fileSystemService.readProjectFiles(localPath);
             const filesMap: Record<string, string> = {};
             for (const f of diskFiles) {
-              if (f.content) filesMap[f.path] = f.content;
+              if (f.content) {
+                filesMap[f.path] = f.content;
+                addContextFile(sessionId, { path: f.path, type: 'file', status: 'reading' });
+              }
             }
 
             if (Object.keys(filesMap).length > 0) {
+              setContextPercent(sessionId, 20);
+              setTodos(sessionId, [
+                { label: 'Lecture des fichiers du projet', status: 'done' },
+                { label: 'Analyse de l\'architecture', status: 'active' },
+                { label: 'Détection des bugs et problèmes', status: 'pending' },
+                { label: 'Analyse de sécurité', status: 'pending' },
+                { label: 'Rédaction du rapport', status: 'pending' },
+              ]);
               addStep(sessionId, { type: 'analyzing', label: `${Object.keys(filesMap).length} fichiers chargés — lancement de l'audit` });
 
               const aiMessageId = `msg_${Date.now() + 1}`;
@@ -1287,10 +1313,14 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                 activitySessionId: sessionId,
               });
               startStreamingMessage(aiMessageId);
-              updateStreamingContent('⏳ Audit en cours...\n\n');
+              updateStreamingContent('Audit en cours...');
 
               try {
+                addStep(sessionId, { type: 'analyzing', label: 'Analyse de l\'architecture et du code' });
+                setContextPercent(sessionId, 35);
+
                 const backendId = (project.metadata as any)?.backendProjectId || project.id;
+                const savedProjectId = selectedProjectId; // preserve before async
                 const report = await projectGeneration.review(
                   backendId,
                   project.name,
@@ -1298,10 +1328,24 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   (event) => {
                     if (event.type === 'step') {
                       addStep(sessionId, { type: event.action === 'complete' ? 'complete' : 'analyzing', label: event.label || '' });
+                      // Progress context as steps come in
+                      const ctx = useActivityStore.getState().sessions.get(sessionId);
+                      const stepCount = ctx?.steps.length || 0;
+                      setContextPercent(sessionId, Math.min(85, 35 + stepCount * 8));
                     }
                   },
                   undefined, // focus
                 );
+
+                setTodos(sessionId, [
+                  { label: 'Lecture des fichiers du projet', status: 'done' },
+                  { label: 'Analyse de l\'architecture', status: 'done' },
+                  { label: 'Détection des bugs et problèmes', status: 'done' },
+                  { label: 'Analyse de sécurité', status: 'done' },
+                  { label: 'Rédaction du rapport', status: 'active' },
+                ]);
+                setContextPercent(sessionId, 90);
+                addStep(sessionId, { type: 'writing', label: 'Rédaction du rapport d\'audit' });
 
                 // Update the message with the full report
                 updateStreamingContent(report || 'Aucun rapport généré.');
@@ -1311,15 +1355,32 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   activitySessionId: sessionId,
                 });
 
+                setTodos(sessionId, [
+                  { label: 'Lecture des fichiers du projet', status: 'done' },
+                  { label: 'Analyse de l\'architecture', status: 'done' },
+                  { label: 'Détection des bugs et problèmes', status: 'done' },
+                  { label: 'Analyse de sécurité', status: 'done' },
+                  { label: 'Rédaction du rapport', status: 'done' },
+                ]);
+                setContextPercent(sessionId, 100);
+                addStep(sessionId, { type: 'complete', label: 'Audit terminé' });
                 endSession(sessionId, 'done');
+
+                // Restore project selection if it was lost during async
+                if (!selectedProjectId && savedProjectId) {
+                  setSelectedProjectId(savedProjectId);
+                }
+
                 return true;
               } catch (auditErr: any) {
                 const errMsg = `Erreur lors de l'audit: ${auditErr.message || auditErr}`;
                 finalizeStreamingMessage();
                 updateConversationMessage(aiMessageId, {
                   content: errMsg,
+                  isError: true,
                   activitySessionId: sessionId,
                 });
+                addStep(sessionId, { type: 'error', label: errMsg.slice(0, 100) });
                 endSession(sessionId, 'error');
                 return true;
               }

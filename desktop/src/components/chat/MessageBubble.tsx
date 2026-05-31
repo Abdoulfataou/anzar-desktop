@@ -38,13 +38,15 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const LONG_THRESHOLD = 12000;
-  const isLong = message.content.length > LONG_THRESHOLD && !message.isStreaming;
+  const LONG_THRESHOLD = 25000;
+  // Never truncate audit reports or structured reports — they need full context
+  const isStructuredReport = /^#\s/.test(message.content.trim());
+  const isLong = message.content.length > LONG_THRESHOLD && !message.isStreaming && !isStructuredReport;
   const displayContent = useMemo(() => {
     if (!isLong) return message.content;
     if (expandedLong) return message.content;
-    const head = message.content.slice(0, 6000);
-    const tail = message.content.slice(-2000);
+    const head = message.content.slice(0, 12000);
+    const tail = message.content.slice(-4000);
     const omitted = message.content.length - head.length - tail.length;
     return `${head}\n\n[... ${omitted} caractères masqués ...]\n\n${tail}`;
   }, [message.content, isLong, expandedLong, message.isStreaming]);
