@@ -82,7 +82,7 @@ class DeepSeekClient:
                         data = json.loads(line)
                         if "choices" in data and len(data["choices"]) > 0:
                             delta = data["choices"][0].get("delta", {})
-                            if "content" in delta:
+                            if delta.get("content"):
                                 yield delta["content"]
                     except json.JSONDecodeError:
                         pass
