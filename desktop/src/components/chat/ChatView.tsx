@@ -1315,9 +1315,41 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
               startStreamingMessage(aiMessageId);
               updateStreamingContent('Audit en cours...');
 
+              let progressInterval: ReturnType<typeof setInterval> | null = null;
               try {
                 addStep(sessionId, { type: 'analyzing', label: 'Analyse de l\'architecture et du code' });
-                setContextPercent(sessionId, 35);
+                setContextPercent(sessionId, 25);
+
+                // Progressive context simulation — the API call is a single request,
+                // so we simulate realistic progress with a timer
+                let progressPct = 25;
+                const todoPhases = [
+                  { at: 35, idx: 1, label: 'Analyse de l\'architecture' },
+                  { at: 50, idx: 2, label: 'Détection des bugs et problèmes' },
+                  { at: 65, idx: 3, label: 'Analyse de sécurité' },
+                  { at: 80, idx: 4, label: 'Rédaction du rapport' },
+                ];
+                let phaseIdx = 0;
+                progressInterval = setInterval(() => {
+                  progressPct = Math.min(progressPct + 2, 85);
+                  setContextPercent(sessionId, progressPct);
+                  // Advance todos based on progress
+                  while (phaseIdx < todoPhases.length && progressPct >= todoPhases[phaseIdx].at) {
+                    const phase = todoPhases[phaseIdx];
+                    const todos: Array<{ label: string; status: 'pending' | 'active' | 'done' | 'error' }> = [
+                      { label: 'Lecture des fichiers du projet', status: 'done' },
+                      { label: 'Analyse de l\'architecture', status: 'pending' },
+                      { label: 'Détection des bugs et problèmes', status: 'pending' },
+                      { label: 'Analyse de sécurité', status: 'pending' },
+                      { label: 'Rédaction du rapport', status: 'pending' },
+                    ];
+                    // Mark all before current as done, current as active
+                    for (let i = 1; i <= phase.idx; i++) todos[i].status = i < phase.idx ? 'done' : 'active';
+                    setTodos(sessionId, todos);
+                    addStep(sessionId, { type: 'analyzing', label: phase.label });
+                    phaseIdx++;
+                  }
+                }, 2000);
 
                 const backendId = (project.metadata as any)?.backendProjectId || project.id;
                 const savedProjectId = selectedProjectId; // preserve before async
@@ -1328,14 +1360,12 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   (event) => {
                     if (event.type === 'step') {
                       addStep(sessionId, { type: event.action === 'complete' ? 'complete' : 'analyzing', label: event.label || '' });
-                      // Progress context as steps come in
-                      const ctx = useActivityStore.getState().sessions.get(sessionId);
-                      const stepCount = ctx?.steps.length || 0;
-                      setContextPercent(sessionId, Math.min(85, 35 + stepCount * 8));
                     }
                   },
                   undefined, // focus
                 );
+
+                clearInterval(progressInterval);
 
                 setTodos(sessionId, [
                   { label: 'Lecture des fichiers du projet', status: 'done' },
@@ -1373,6 +1403,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
                 return true;
               } catch (auditErr: any) {
+                if (progressInterval) clearInterval(progressInterval);
                 const errMsg = `Erreur lors de l'audit: ${auditErr.message || auditErr}`;
                 finalizeStreamingMessage();
                 updateConversationMessage(aiMessageId, {
