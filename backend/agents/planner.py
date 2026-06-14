@@ -110,6 +110,7 @@ class PlannerAgent(BaseAgent):
                 "project_type": str,      # "web_app" | "api_backend" | "fullstack" | etc.
                 "tech_stack": list[str],   # ["React", "Node.js", "PostgreSQL"]
                 "requirements": list[str], # Exigences spécifiques
+                "user_memory": dict,       # Profil mémoire développeur (optionnel)
             }
 
         Returns:
@@ -152,8 +153,13 @@ class PlannerAgent(BaseAgent):
             "Génère le plan complet avec architecture et structure de fichiers."
         )
 
+        # Inject developer memory context if available
+        user_memory = request.get("user_memory")
+        memory_ctx = self.format_memory_context(user_memory) if user_memory else ""
+        system_prompt = PLANNER_SYSTEM_PROMPT + memory_ctx
+
         messages = [
-            {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
 

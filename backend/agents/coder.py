@@ -369,12 +369,18 @@ class CoderAgent(BaseAgent):
                 "language": str,       # Langage du code
                 "context": str,        # Contexte additionnel (message utilisateur, erreur, etc.)
                 "file_path": str,      # Chemin du fichier (optionnel)
+                # ── Mémoire développeur (optionnel) ──
+                "user_memory": dict,   # Profil mémoire {category: {key: value}}
             }
 
         Returns:
             Dict avec "status", "result", et des champs spécifiques au mode.
         """
         mode = request.get("mode", "code")
+
+        # Format memory context once — will be injected into system prompts
+        user_memory = request.get("user_memory")
+        self._memory_context = self.format_memory_context(user_memory) if user_memory else ""
 
         if mode not in self.MODES:
             return {
@@ -598,8 +604,9 @@ class CoderAgent(BaseAgent):
             "```language\n// Chemin: filepath\n[code complet ici — AUCUNE coupure]\n```"
         )
 
+        system_prompt = self.MODES["code"] + getattr(self, "_memory_context", "")
         messages = [
-            {"role": "system", "content": self.MODES["code"]},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
 
@@ -640,8 +647,9 @@ class CoderAgent(BaseAgent):
 
         user_message = "\n\n".join(parts)
 
+        system_prompt = self.MODES[mode] + getattr(self, "_memory_context", "")
         messages = [
-            {"role": "system", "content": self.MODES[mode]},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
 
@@ -697,8 +705,9 @@ class CoderAgent(BaseAgent):
 
         user_message = "\n\n".join(parts)
 
+        system_prompt = self.MODES["review"] + getattr(self, "_memory_context", "")
         messages = [
-            {"role": "system", "content": self.MODES["review"]},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
 
@@ -940,8 +949,9 @@ class CoderAgent(BaseAgent):
             f"```{lang_hint}\n// Chemin: {path}\n[code complet]\n```"
         )
 
+        system_prompt = self.MODES["code"] + getattr(self, "_memory_context", "")
         messages = [
-            {"role": "system", "content": self.MODES["code"]},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
         ]
 

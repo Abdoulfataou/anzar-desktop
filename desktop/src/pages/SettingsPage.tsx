@@ -11,7 +11,7 @@ import {
   Smartphone,
   Plus, Gift, X, LogOut,
   Mail, Phone, MessageCircle, Send, MapPin, Globe,
-  Settings, Wrench,
+  Settings, Wrench, Trash2, Edit3, BookOpen,
 } from 'lucide-react';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
@@ -21,6 +21,8 @@ import { cn, isTauri } from '@/lib/utils';
 import { openExternalUrl } from '@/services/infra/externalLinks';
 import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch } from '@/services/infra/updateService';
 import { useThemeStore } from '@/stores/themeStore';
+import { useDevMemoryStore, CATEGORY_LABELS, CATEGORY_ICONS, ALL_CATEGORIES } from '@/stores/devMemoryStore';
+import type { MemoryCategory } from '@/services/memoryService';
 
 /* ===== Toggle Switch ===== */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -350,12 +352,13 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
 /* ===================================================================
    TAB DEFINITIONS
    =================================================================== */
-type TabId = 'profil' | 'abonnement' | 'preferences' | 'avance' | 'apropos';
+type TabId = 'profil' | 'abonnement' | 'preferences' | 'memoire' | 'avance' | 'apropos';
 
 const TABS: { id: TabId; label: string; icon: React.ElementType }[] = [
   { id: 'profil',      label: 'Profil',       icon: User },
   { id: 'abonnement',  label: 'Abonnement',   icon: CreditCard },
   { id: 'preferences', label: 'Preferences',  icon: Palette },
+  { id: 'memoire',     label: 'Memoire IA',   icon: Brain },
   { id: 'avance',      label: 'Avance',       icon: Wrench },
   { id: 'apropos',     label: 'A propos',     icon: Info },
 ];
@@ -713,6 +716,209 @@ export default function SettingsPage() {
     </div>
   );
 
+  /* ── Memoire IA ── */
+  const memEntries = useDevMemoryStore((s) => s.entries);
+  const memLoading = useDevMemoryStore((s) => s.loading);
+  const memError = useDevMemoryStore((s) => s.error);
+  const memSelectedCat = useDevMemoryStore((s) => s.selectedCategory);
+  const memFetchEntries = useDevMemoryStore((s) => s.fetchEntries);
+  const memUpsert = useDevMemoryStore((s) => s.upsertEntry);
+  const memDelete = useDevMemoryStore((s) => s.deleteEntry);
+  const memClearAll = useDevMemoryStore((s) => s.clearAll);
+  const memSetCat = useDevMemoryStore((s) => s.setSelectedCategory);
+
+  const [memAddOpen, setMemAddOpen] = useState(false);
+  const [memNewCat, setMemNewCat] = useState<MemoryCategory>('stack');
+  const [memNewKey, setMemNewKey] = useState('');
+  const [memNewVal, setMemNewVal] = useState('');
+
+  useEffect(() => {
+    if (activeTab === 'memoire' && memEntries.length === 0 && !memLoading) {
+      memFetchEntries();
+    }
+  }, [activeTab]);
+
+  const filteredMemEntries = memSelectedCat
+    ? memEntries.filter((e) => e.category === memSelectedCat)
+    : memEntries;
+
+  const handleMemAdd = async () => {
+    if (!memNewKey.trim() || !memNewVal.trim()) return;
+    await memUpsert(memNewCat, memNewKey.trim(), memNewVal.trim());
+    setMemNewKey('');
+    setMemNewVal('');
+    setMemAddOpen(false);
+  };
+
+  const renderMemoire = () => (
+    <div className="space-y-6">
+      {/* Header + description */}
+      <div className="p-5 rounded-2xl bg-surface-default border border-border-subtle">
+        <div className="flex items-center gap-2 mb-2">
+          <Brain size={15} className="text-purple-500" />
+          <span className="text-sm font-semibold text-text-primary">Memoire developpeur</span>
+        </div>
+        <p className="text-xs text-text-muted">
+          ANZAR apprend tes preferences de code (stack, conventions, patterns, style) pour personnaliser
+          chaque generation. Les preferences sont detectees automatiquement ou ajoutees manuellement.
+        </p>
+      </div>
+
+      {/* Category filter pills */}
+      <div className="flex flex-wrap gap-2">
+        <button
+          onClick={() => { memSetCat(null); memFetchEntries(); }}
+          className={cn(
+            'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+            !memSelectedCat
+              ? 'bg-accent-primary/10 text-accent-primary'
+              : 'bg-bg-secondary text-text-muted hover:text-text-primary'
+          )}
+        >
+          Tout ({memEntries.length})
+        </button>
+        {ALL_CATEGORIES.map((cat) => {
+          const count = memEntries.filter((e) => e.category === cat).length;
+          return (
+            <button
+              key={cat}
+              onClick={() => { memSetCat(cat); }}
+              className={cn(
+                'px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                memSelectedCat === cat
+                  ? 'bg-accent-primary/10 text-accent-primary'
+                  : 'bg-bg-secondary text-text-muted hover:text-text-primary'
+              )}
+            >
+              {CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]} ({count})
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Error */}
+      {memError && (
+        <div className="p-3 rounded-xl bg-accent-error/10 border border-accent-error/20 text-xs text-accent-error">
+          {memError}
+        </div>
+      )}
+
+      {/* Entries list */}
+      <div className="space-y-2">
+        {memLoading ? (
+          <div className="text-center text-sm text-text-muted py-8">Chargement...</div>
+        ) : filteredMemEntries.length === 0 ? (
+          <div className="text-center py-8">
+            <BookOpen size={32} className="mx-auto text-text-muted/30 mb-2" />
+            <p className="text-sm text-text-muted">Aucune preference enregistree</p>
+            <p className="text-xs text-text-muted/60 mt-1">
+              Genere un projet pour que ANZAR apprenne automatiquement tes preferences.
+            </p>
+          </div>
+        ) : (
+          filteredMemEntries.map((entry) => (
+            <div
+              key={`${entry.category}-${entry.key}`}
+              className="p-3 rounded-xl bg-surface-default border border-border-subtle flex items-start gap-3 group"
+            >
+              <span className="text-sm mt-0.5">{CATEGORY_ICONS[entry.category]}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-text-primary">{entry.key}</span>
+                  <span className={cn(
+                    'text-[10px] px-1.5 py-0.5 rounded-full',
+                    entry.source === 'auto'
+                      ? 'bg-blue-500/10 text-blue-400'
+                      : 'bg-green-500/10 text-green-400'
+                  )}>
+                    {entry.source === 'auto' ? 'auto' : 'manuel'}
+                  </span>
+                </div>
+                <p className="text-xs text-text-muted mt-0.5 break-words">{entry.value}</p>
+                <p className="text-[10px] text-text-muted/50 mt-1">
+                  Confiance: {Math.round(entry.confidence * 100)}%
+                </p>
+              </div>
+              <button
+                onClick={() => memDelete(entry.category, entry.key)}
+                className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-accent-error/10 text-text-muted hover:text-accent-error transition-all"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Add new entry */}
+      {memAddOpen ? (
+        <div className="p-4 rounded-2xl bg-surface-default border border-border-subtle space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Edit3 size={14} className="text-accent-primary" />
+            <span className="text-sm font-semibold text-text-primary">Nouvelle preference</span>
+          </div>
+          <select
+            value={memNewCat}
+            onChange={(e) => setMemNewCat(e.target.value as MemoryCategory)}
+            className="w-full px-3 py-2 rounded-xl text-sm bg-bg-secondary border border-border-subtle text-text-primary"
+          >
+            {ALL_CATEGORIES.map((cat) => (
+              <option key={cat} value={cat}>{CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]}</option>
+            ))}
+          </select>
+          <input
+            value={memNewKey}
+            onChange={(e) => setMemNewKey(e.target.value)}
+            placeholder="Cle (ex: framework, indentation)"
+            className="w-full px-3 py-2 rounded-xl text-sm bg-bg-secondary border border-border-subtle text-text-primary placeholder:text-text-muted/50"
+          />
+          <input
+            value={memNewVal}
+            onChange={(e) => setMemNewVal(e.target.value)}
+            placeholder="Valeur (ex: React + TypeScript, 2 espaces)"
+            className="w-full px-3 py-2 rounded-xl text-sm bg-bg-secondary border border-border-subtle text-text-primary placeholder:text-text-muted/50"
+          />
+          <div className="flex gap-2">
+            <button
+              onClick={handleMemAdd}
+              disabled={!memNewKey.trim() || !memNewVal.trim()}
+              className="flex-1 py-2 rounded-xl text-sm font-medium text-white gradient-bg hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Ajouter
+            </button>
+            <button
+              onClick={() => setMemAddOpen(false)}
+              className="px-4 py-2 rounded-xl text-sm text-text-muted hover:bg-surface-hover"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setMemAddOpen(true)}
+          className="w-full py-2.5 rounded-xl text-sm font-medium text-accent-primary border border-accent-primary/20 hover:bg-accent-primary/5 transition-all flex items-center justify-center gap-2"
+        >
+          <Plus size={14} /> Ajouter une preference
+        </button>
+      )}
+
+      {/* Clear all */}
+      {memEntries.length > 0 && (
+        <button
+          onClick={() => {
+            if (window.confirm('Supprimer toutes les preferences ?')) {
+              memClearAll(memSelectedCat ?? undefined);
+            }
+          }}
+          className="w-full py-2 rounded-xl text-xs text-accent-error/60 hover:text-accent-error hover:bg-accent-error/5 transition-all"
+        >
+          Tout effacer{memSelectedCat ? ` (${CATEGORY_LABELS[memSelectedCat]})` : ''}
+        </button>
+      )}
+    </div>
+  );
+
   const renderAvance = () => (
     <div className="space-y-6">
       {/* Reseau */}
@@ -1011,6 +1217,7 @@ export default function SettingsPage() {
     profil: renderProfil,
     abonnement: renderAbonnement,
     preferences: renderPreferences,
+    memoire: renderMemoire,
     avance: renderAvance,
     apropos: renderApropos,
   };

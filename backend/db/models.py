@@ -231,6 +231,76 @@ class StudentProject(Base):
 
 
 # ============================================================================
+# USER MEMORY (Hermes-inspired persistent learning)
+# ============================================================================
+
+class UserMemory(Base):
+    """Persistent developer memory — learns preferences, conventions, patterns."""
+    __tablename__ = "user_memory"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_email: Mapped[str] = mapped_column(String(255), ForeignKey("users.email", ondelete="CASCADE"), index=True)
+    category: Mapped[str] = mapped_column(String(30), nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)  # JSON string
+    confidence: Mapped[float] = mapped_column(Float, default=0.5, nullable=False)  # 0-1, auto-learned vs manual
+    source: Mapped[str] = mapped_column(String(10), default="auto", nullable=False)  # auto | manual
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_email", "category", "key", name="uq_user_memory_entry"),
+        CheckConstraint(
+            "category IN ('stack', 'conventions', 'patterns', 'errors', 'preferences', 'style')",
+            name="ck_user_memory_category",
+        ),
+        CheckConstraint("source IN ('auto', 'manual')", name="ck_user_memory_source"),
+    )
+
+
+# ============================================================================
+# COMMUNITY SKILLS (Hermes-inspired skill hub)
+# ============================================================================
+
+class CommunitySkill(Base):
+    """Shareable skills that users can publish and install."""
+    __tablename__ = "community_skills"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # uuid4 hex
+    author_email: Mapped[str] = mapped_column(String(255), ForeignKey("users.email", ondelete="CASCADE"), index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    mode: Mapped[str] = mapped_column(String(30), default="iterate", nullable=False)
+    category: Mapped[str] = mapped_column(String(30), default="custom", nullable=False)
+    icon: Mapped[str] = mapped_column(String(10), default="⭐", nullable=False)
+    downloads: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    rating: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    rating_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    is_public: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# ============================================================================
+# INSTALLED SKILLS (user's installed community skills)
+# ============================================================================
+
+class InstalledSkill(Base):
+    """Tracks which community skills a user has installed."""
+    __tablename__ = "installed_skills"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_email: Mapped[str] = mapped_column(String(255), ForeignKey("users.email", ondelete="CASCADE"), index=True)
+    skill_id: Mapped[str] = mapped_column(String(64), ForeignKey("community_skills.id", ondelete="CASCADE"))
+    installed_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_email", "skill_id", name="uq_installed_skill"),
+    )
+
+
+# ============================================================================
 # RATE LIMIT
 # ============================================================================
 

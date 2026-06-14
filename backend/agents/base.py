@@ -60,6 +60,45 @@ class BaseAgent(ABC):
             return settings.deepseek_pro_model or settings.deepseek_model
         return settings.deepseek_model
 
+    @staticmethod
+    def format_memory_context(profile: Dict[str, Any]) -> str:
+        """Format a user memory profile into a system prompt snippet.
+
+        Args:
+            profile: Dict from get_memory_as_profile() — {category: {key: value}}
+
+        Returns:
+            A formatted string to inject into agent system prompts, or "" if empty.
+        """
+        if not profile:
+            return ""
+
+        parts = []
+        labels = {
+            "stack": "Stack technologique préféré",
+            "conventions": "Conventions de code",
+            "patterns": "Patterns & Architecture",
+            "errors": "Erreurs connues à éviter",
+            "preferences": "Préférences générales",
+            "style": "Style de code",
+        }
+        for cat, label in labels.items():
+            entries = profile.get(cat, {})
+            if not entries:
+                continue
+            items = ", ".join(f"{k}: {v}" for k, v in entries.items() if v)
+            if items:
+                parts.append(f"- {label}: {items}")
+
+        if not parts:
+            return ""
+
+        return (
+            "\n\n══ PROFIL DÉVELOPPEUR (appris des projets précédents) ══\n"
+            + "\n".join(parts)
+            + "\nRespecte ces préférences sauf indication contraire de l'utilisateur.\n"
+        )
+
     @abstractmethod
     async def execute(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """

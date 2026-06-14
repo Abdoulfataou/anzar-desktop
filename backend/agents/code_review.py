@@ -317,6 +317,10 @@ class CodeReviewAgent(BaseAgent):
         files = request.get("files", {})
         focus = request.get("focus")
 
+        # Format memory context for audit — helps understand dev conventions
+        user_memory = request.get("user_memory")
+        self._memory_context = self.format_memory_context(user_memory) if user_memory else ""
+
         if not files:
             return {
                 "report": f"# Audit — {project_name}\n\nAucun fichier fourni pour l'audit.",
@@ -363,9 +367,10 @@ Cite systématiquement les fichiers et lignes quand tu identifies un problème."
         model = self.resolve_model(MODEL_PRO)
         logger.info(f"[CodeReview] Single-pass audit avec {model}")
 
+        system_prompt = AUDIT_SYSTEM_PROMPT + getattr(self, "_memory_context", "")
         report = await self.call_deepseek(
             messages=[
-                {"role": "system", "content": AUDIT_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             model=model,
@@ -424,9 +429,10 @@ Voici les résultats de chaque lot:
 Produis maintenant le rapport d'audit FINAL et COMPLET en Markdown selon le format standard.
 Fusionne et déduplique les issues. Priorise les problèmes critiques."""
 
+        system_prompt = AUDIT_SYSTEM_PROMPT + getattr(self, "_memory_context", "")
         report = await self.call_deepseek(
             messages=[
-                {"role": "system", "content": AUDIT_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": synthesis_prompt},
             ],
             model=model,

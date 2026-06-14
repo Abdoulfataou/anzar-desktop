@@ -19,6 +19,7 @@ from security import get_current_user, calculate_cost_fcfa
 from database import (
     has_credits, deduct_credits, record_usage,
     create_project, update_project, get_project, get_user_projects, delete_project,
+    get_memory_as_profile,
 )
 from agents import PlannerAgent, CoderAgent, CodeReviewAgent, VisionAgent
 from routes._state import (
@@ -114,6 +115,9 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
         raise HTTPException(402, "Solde épuisé. Rechargez pour continuer.")
 
     try:
+        # Load developer memory profile for personalized planning
+        memory_profile = await get_memory_as_profile(email)
+
         planner = PlannerAgent(deepseek_client=_deepseek_client)
         planner_result = await planner.execute({
             "project_name": body.project_name,
@@ -121,6 +125,7 @@ async def plan_project(body: PlanRequest, user: dict = Depends(get_current_user)
             "project_type": body.project_type or "other",
             "tech_stack": body.tech_stack or [],
             "requirements": body.requirements or [],
+            "user_memory": memory_profile,
         })
 
         if planner_result.get("status") == "error":
@@ -182,6 +187,9 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
     if not files_spec:
         raise HTTPException(400, "Plan invalide: aucun fichier à générer. Relancez la planification.")
 
+    # Load developer memory profile for personalized code generation
+    memory_profile = await get_memory_as_profile(email)
+
     await update_project(project_id, status="generating")
     _cleanup_project_states()
 
@@ -230,6 +238,8 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             })
 
             coder = CoderAgent(deepseek_client=_deepseek_client)
+            # Inject memory context for personalized code generation
+            coder._memory_context = coder.format_memory_context(memory_profile) if memory_profile else ""
             architecture = plan.get("architecture", plan)
 
             # ── Extract file specs and batch them ──
@@ -658,7 +668,11 @@ async def iterate_project(project_id: str, body: IterateRequest, user: dict = De
             + "\n═══ FIN HISTORIQUE ═══\n"
         )
 
+    # Load developer memory for personalized iteration
+    memory_profile = await get_memory_as_profile(email)
+
     coder = CoderAgent(deepseek_client=_deepseek_client)
+    coder._memory_context = coder.format_memory_context(memory_profile) if memory_profile else ""
 
     async def _iterate_stream():
         try:
@@ -799,7 +813,11 @@ async def review_project(project_id: str, body: ReviewRequest, user: dict = Depe
     if not body.files:
         raise HTTPException(400, "Aucun fichier fourni pour l'audit")
 
+    # Load developer memory for contextual audit
+    memory_profile = await get_memory_as_profile(email)
+
     reviewer = CodeReviewAgent(deepseek_client=_deepseek_client)
+    reviewer._memory_context = reviewer.format_memory_context(memory_profile) if memory_profile else ""
 
     async def _review_stream():
         try:
@@ -956,7 +974,11 @@ async def design_to_code(project_id: str, body: DesignToCodeRequest, user: dict 
     if not vision.is_available:
         raise HTTPException(503, "Service vision non disponible (API Kimi non configurée)")
 
+    # Load developer memory for personalized code generation
+    memory_profile_dtc = await get_memory_as_profile(email)
+
     coder = CoderAgent(deepseek_client=_deepseek_client)
+    coder._memory_context = coder.format_memory_context(memory_profile_dtc) if memory_profile_dtc else ""
 
     # Framework-specific code generation prompt
     framework_hints = {

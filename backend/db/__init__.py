@@ -28,6 +28,9 @@ from db.models import (
     Admin,
     PaymentIntent,
     StudentProject,
+    UserMemory,
+    CommunitySkill,
+    InstalledSkill,
     RateLimit,
 )
 
@@ -112,6 +115,29 @@ from db.payments import (
     admin_mark_payment_intent_paid,
 )
 
+# Memory (Hermes-inspired)
+from db.memory import (
+    get_user_memory,
+    get_memory_as_profile,
+    upsert_memory,
+    batch_upsert_memory,
+    delete_memory,
+    clear_user_memory,
+)
+
+# Community Skills
+from db.skills import (
+    publish_skill,
+    get_skill,
+    list_public_skills,
+    get_user_published_skills,
+    install_skill,
+    uninstall_skill,
+    get_installed_skills,
+    rate_skill,
+    delete_skill,
+)
+
 # Student
 from db.student import (
     create_student_project,
@@ -126,7 +152,8 @@ __all__ = [
     "Base", "get_engine", "get_sessionmaker", "get_db", "db_ping", "init_db",
     # Models
     "User", "OtpCode", "Credits", "Transaction", "UsageRecord",
-    "Project", "Admin", "PaymentIntent", "StudentProject", "RateLimit",
+    "Project", "Admin", "PaymentIntent", "StudentProject",
+    "UserMemory", "CommunitySkill", "InstalledSkill", "RateLimit",
     # Password
     "hash_password", "verify_password",
     # Users
@@ -152,6 +179,13 @@ __all__ = [
     "admin_get_all_transactions", "admin_get_all_usage",
     # Payments
     "create_payment_intent", "admin_list_payment_intents", "admin_mark_payment_intent_paid",
+    # Memory
+    "get_user_memory", "get_memory_as_profile", "upsert_memory",
+    "batch_upsert_memory", "delete_memory", "clear_user_memory",
+    # Community Skills
+    "publish_skill", "get_skill", "list_public_skills",
+    "get_user_published_skills", "install_skill", "uninstall_skill",
+    "get_installed_skills", "rate_skill", "delete_skill",
     # Student
     "create_student_project", "get_student_project", "get_user_student_projects",
     "update_student_project", "delete_student_project",
