@@ -1270,13 +1270,15 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             // Show the GenerationPanel for audit progress
             setGenerationPanelSessionId(sessionId);
 
-            // Set up todo list for audit
+            // Set up todo list for audit (matches the 10-section report)
             setTodos(sessionId, [
               { label: 'Lecture des fichiers du projet', status: 'active' },
-              { label: 'Analyse de l\'architecture', status: 'pending' },
-              { label: 'Détection des bugs et problèmes', status: 'pending' },
-              { label: 'Analyse de sécurité', status: 'pending' },
-              { label: 'Rédaction du rapport', status: 'pending' },
+              { label: 'Analyse du stack & architecture', status: 'pending' },
+              { label: 'Identification des points forts', status: 'pending' },
+              { label: 'Détection des problèmes critiques', status: 'pending' },
+              { label: 'Analyse de sécurité & performance', status: 'pending' },
+              { label: 'Audit des dépendances & dette technique', status: 'pending' },
+              { label: 'Rédaction du rapport final', status: 'pending' },
             ]);
             setContextPercent(sessionId, 5);
 
@@ -1292,13 +1294,15 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             }
 
             if (Object.keys(filesMap).length > 0) {
-              setContextPercent(sessionId, 20);
+              setContextPercent(sessionId, 15);
               setTodos(sessionId, [
                 { label: 'Lecture des fichiers du projet', status: 'done' },
-                { label: 'Analyse de l\'architecture', status: 'active' },
-                { label: 'Détection des bugs et problèmes', status: 'pending' },
-                { label: 'Analyse de sécurité', status: 'pending' },
-                { label: 'Rédaction du rapport', status: 'pending' },
+                { label: 'Analyse du stack & architecture', status: 'active' },
+                { label: 'Identification des points forts', status: 'pending' },
+                { label: 'Détection des problèmes critiques', status: 'pending' },
+                { label: 'Analyse de sécurité & performance', status: 'pending' },
+                { label: 'Audit des dépendances & dette technique', status: 'pending' },
+                { label: 'Rédaction du rapport final', status: 'pending' },
               ]);
               addStep(sessionId, { type: 'analyzing', label: `${Object.keys(filesMap).length} fichiers chargés — lancement de l'audit` });
 
@@ -1322,34 +1326,40 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
                 // Progressive context simulation — the API call is a single request,
                 // so we simulate realistic progress with a timer
-                let progressPct = 25;
+                let progressPct = 20;
+                const todoLabels = [
+                  'Lecture des fichiers du projet',
+                  'Analyse du stack & architecture',
+                  'Identification des points forts',
+                  'Détection des problèmes critiques',
+                  'Analyse de sécurité & performance',
+                  'Audit des dépendances & dette technique',
+                  'Rédaction du rapport final',
+                ];
                 const todoPhases = [
-                  { at: 35, idx: 1, label: 'Analyse de l\'architecture' },
-                  { at: 50, idx: 2, label: 'Détection des bugs et problèmes' },
-                  { at: 65, idx: 3, label: 'Analyse de sécurité' },
-                  { at: 80, idx: 4, label: 'Rédaction du rapport' },
+                  { at: 28, idx: 1, label: 'Analyse du stack & architecture' },
+                  { at: 38, idx: 2, label: 'Identification des points forts' },
+                  { at: 50, idx: 3, label: 'Détection des problèmes critiques' },
+                  { at: 62, idx: 4, label: 'Analyse de sécurité & performance' },
+                  { at: 74, idx: 5, label: 'Audit des dépendances & dette technique' },
+                  { at: 85, idx: 6, label: 'Rédaction du rapport final' },
                 ];
                 let phaseIdx = 0;
                 progressInterval = setInterval(() => {
-                  progressPct = Math.min(progressPct + 2, 85);
+                  progressPct = Math.min(progressPct + 1.5, 88);
                   setContextPercent(sessionId, progressPct);
                   // Advance todos based on progress
                   while (phaseIdx < todoPhases.length && progressPct >= todoPhases[phaseIdx].at) {
                     const phase = todoPhases[phaseIdx];
-                    const todos: Array<{ label: string; status: 'pending' | 'active' | 'done' | 'error' }> = [
-                      { label: 'Lecture des fichiers du projet', status: 'done' },
-                      { label: 'Analyse de l\'architecture', status: 'pending' },
-                      { label: 'Détection des bugs et problèmes', status: 'pending' },
-                      { label: 'Analyse de sécurité', status: 'pending' },
-                      { label: 'Rédaction du rapport', status: 'pending' },
-                    ];
-                    // Mark all before current as done, current as active
+                    const todos: Array<{ label: string; status: 'pending' | 'active' | 'done' | 'error' }> =
+                      todoLabels.map((label, i) => ({ label, status: 'pending' as const }));
+                    todos[0].status = 'done';
                     for (let i = 1; i <= phase.idx; i++) todos[i].status = i < phase.idx ? 'done' : 'active';
                     setTodos(sessionId, todos);
                     addStep(sessionId, { type: 'analyzing', label: phase.label });
                     phaseIdx++;
                   }
-                }, 2000);
+                }, 2500);
 
                 const backendId = (project.metadata as any)?.backendProjectId || project.id;
                 const savedProjectId = selectedProjectId; // preserve before async
@@ -1367,15 +1377,12 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
                 clearInterval(progressInterval);
 
-                setTodos(sessionId, [
-                  { label: 'Lecture des fichiers du projet', status: 'done' },
-                  { label: 'Analyse de l\'architecture', status: 'done' },
-                  { label: 'Détection des bugs et problèmes', status: 'done' },
-                  { label: 'Analyse de sécurité', status: 'done' },
-                  { label: 'Rédaction du rapport', status: 'active' },
-                ]);
-                setContextPercent(sessionId, 90);
-                addStep(sessionId, { type: 'writing', label: 'Rédaction du rapport d\'audit' });
+                setTodos(sessionId, todoLabels.map((label, i) => ({
+                  label,
+                  status: (i < todoLabels.length - 1 ? 'done' : 'active') as 'done' | 'active',
+                })));
+                setContextPercent(sessionId, 92);
+                addStep(sessionId, { type: 'writing', label: 'Finalisation du rapport d\'audit' });
 
                 // Update the message with the full report
                 updateStreamingContent(report || 'Aucun rapport généré.');
@@ -1385,13 +1392,10 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
                   activitySessionId: sessionId,
                 });
 
-                setTodos(sessionId, [
-                  { label: 'Lecture des fichiers du projet', status: 'done' },
-                  { label: 'Analyse de l\'architecture', status: 'done' },
-                  { label: 'Détection des bugs et problèmes', status: 'done' },
-                  { label: 'Analyse de sécurité', status: 'done' },
-                  { label: 'Rédaction du rapport', status: 'done' },
-                ]);
+                setTodos(sessionId, todoLabels.map((label) => ({
+                  label,
+                  status: 'done' as const,
+                })));
                 setContextPercent(sessionId, 100);
                 addStep(sessionId, { type: 'complete', label: 'Audit terminé' });
                 endSession(sessionId, 'done');
