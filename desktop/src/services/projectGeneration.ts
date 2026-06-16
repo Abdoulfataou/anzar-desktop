@@ -452,7 +452,7 @@ class ProjectGenerationService {
       onPhaseChange: (phase: string, message: string) => void;
       onAgentUpdate: OnAgentUpdate;
       onPlanReady: (plan: PlanResult) => void;
-      onComplete: (projectId: string) => void;
+      onComplete: (projectId: string) => Promise<void> | void;
       onError: (error: string) => void;
     },
     baseDir?: string,
@@ -472,7 +472,7 @@ class ProjectGenerationService {
       callbacks.onPhaseChange('executing', 'Generation du code en cours...');
       await this.execute(plan.project_id, plan, callbacks.onAgentUpdate, baseDir, signal);
       callbacks.onPhaseChange('complete', 'Projet généré avec succès !');
-      callbacks.onComplete(plan.project_id);
+      await callbacks.onComplete(plan.project_id);
 
       return plan;
     } catch (error: any) {

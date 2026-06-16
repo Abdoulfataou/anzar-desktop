@@ -270,9 +270,14 @@ export const useProjectStore = create<ProjectStore>()(
         set((state) => ({
           projects: state.projects.map((p) => {
             if (p.id === projectId) {
+              // Upsert: replace existing file with same path, or append
+              const existingIdx = p.files.findIndex((f) => f.path === file.path);
+              const updatedFiles = existingIdx >= 0
+                ? p.files.map((f, i) => (i === existingIdx ? file : f))
+                : [...p.files, file];
               return {
                 ...p,
-                files: [...p.files, file],
+                files: updatedFiles,
                 updatedAt: Date.now(),
               };
             }

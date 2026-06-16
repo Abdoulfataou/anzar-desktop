@@ -305,6 +305,14 @@ export function useProjectPipeline(params: ProjectPipelineParams) {
               const fileEvt = event as FileEvent;
               if (fileEvt.path && typeof fileEvt.content === 'string') {
                 receivedFiles.set(fileEvt.path, fileEvt.content);
+                // Immediately add file to projectStore so the Studio can display it
+                // even before disk write completes
+                addFile(projectId, {
+                  path: fileEvt.path,
+                  content: fileEvt.content,
+                  language: fileEvt.path.split('.').pop() || 'text',
+                  size: fileEvt.content.length,
+                });
                 addContextFile(sessionId, { path: fileEvt.path, type: 'file', status: 'writing' });
               }
               return;
