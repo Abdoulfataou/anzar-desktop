@@ -138,15 +138,6 @@ from db.skills import (
     delete_skill,
 )
 
-# Student
-from db.student import (
-    create_student_project,
-    get_student_project,
-    get_user_student_projects,
-    update_student_project,
-    delete_student_project,
-)
-
 __all__ = [
     # Base
     "Base", "get_engine", "get_sessionmaker", "get_db", "db_ping", "init_db",
@@ -186,7 +177,4 @@ __all__ = [
     "publish_skill", "get_skill", "list_public_skills",
     "get_user_published_skills", "install_skill", "uninstall_skill",
     "get_installed_skills", "rate_skill", "delete_skill",
-    # Student
-    "create_student_project", "get_student_project", "get_user_student_projects",
-    "update_student_project", "delete_student_project",
 ]

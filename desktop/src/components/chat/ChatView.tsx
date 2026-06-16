@@ -1,17 +1,15 @@
 /**
- * ChatView — Hub/routeur léger ANZAR
+ * ChatView — Hub principal ANZAR (vibecoding uniquement)
  *
- * Toute la logique métier est extraite dans des hooks autonomes :
+ * Logique métier extraite dans des hooks autonomes :
  * - useChatEngine : envoi de messages, intent detection, streaming, retry
  * - useProjectPipeline : génération de projets, import dossier, dialog
- *
- * Le composant ne fait que du routage de rendu et du câblage de props.
  */
-import React, { useEffect, useState, useRef, Suspense, lazy } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { WifiOff } from 'lucide-react';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
-import WelcomeScreen, { type ActiveFeature } from './WelcomeScreen';
+import WelcomeScreen from './WelcomeScreen';
 import { cn } from '@/lib/utils';
 import { AIModel, type Message } from '@/types';
 import { useProjectStore } from '@/stores/projectStore';
@@ -24,17 +22,6 @@ import { VibeCodingStudio } from '@/components/vibecoding';
 import { useVibeCodingStudio } from '@/hooks/useVibeCodingStudio';
 import { useChatEngine } from '@/hooks/useChatEngine';
 import { useProjectPipeline } from '@/hooks/useProjectPipeline';
-const StudentAssistant = lazy(() => import('@/components/features/StudentAssistant'));
-const FeatureAssistant = lazy(() => import('@/components/features/FeatureAssistant'));
-import { DATA_CONFIG, SEARCH_CONFIG, DOCUMENT_CONFIG } from '@/components/features/featureConfigs';
-import FeatureErrorBoundary from '@/components/features/FeatureErrorBoundary';
-
-// Lightweight fallback shown while lazy chunks load
-const FeatureLoadingFallback = () => (
-  <div className="flex-1 flex items-center justify-center bg-bg-primary">
-    <div className="w-6 h-6 border-2 border-accent-primary border-t-transparent rounded-full animate-spin" />
-  </div>
-);
 
 interface ChatViewProps {
   onlineStatus?: boolean;
@@ -59,7 +46,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   }, [storeActiveProjectId, isLoading]);
 
   const [showProjectWizard, setShowProjectWizard] = useState(false);
-  const [activeFeature, setActiveFeature] = useState<ActiveFeature>(null);
 
   // ── VibeCoding Studio hook ──
   const [studioState, studioActions] = useVibeCodingStudio();
@@ -130,8 +116,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     <div className="h-full min-h-0 flex bg-bg-primary">
       {/* Main chat column */}
       <div className="flex-1 min-h-0 flex flex-col bg-bg-primary">
-      {/* Chat area (hidden when studio or autonomous feature is active) */}
-      {!studioState.isOpen && !activeFeature && (
+      {/* Chat area (hidden when studio is active) */}
+      {!studioState.isOpen && (
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {!isEffectivelyOnline && (
           <div className="px-4 pt-3">
@@ -145,7 +131,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         )}
         {messages.length === 0 && showWelcome ? (
           <WelcomeScreen
-            onSetActiveFeature={setActiveFeature}
             onImportFolder={projectPipeline.handleImportFolder}
             onShowProjectWizard={() => setShowProjectWizard(true)}
             onQuickStart={chatEngine.quickStart}
@@ -193,42 +178,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         </div>
       )}
 
-      {/* ===== AUTONOMOUS FEATURES (lazy-loaded + error-isolated) ===== */}
-      {activeFeature && !studioState.isOpen && (
-        <Suspense fallback={<FeatureLoadingFallback />}>
-          {activeFeature === 'student' && (
-            <FeatureErrorBoundary featureName="Assistant Étudiant" onClose={() => setActiveFeature(null)}>
-              <div className="flex-1 min-h-0">
-                <StudentAssistant onClose={() => setActiveFeature(null)} />
-              </div>
-            </FeatureErrorBoundary>
-          )}
-          {activeFeature === 'data' && (
-            <FeatureErrorBoundary featureName="Analyse de données" onClose={() => setActiveFeature(null)}>
-              <div className="flex-1 min-h-0">
-                <FeatureAssistant config={DATA_CONFIG} onClose={() => setActiveFeature(null)} />
-              </div>
-            </FeatureErrorBoundary>
-          )}
-          {activeFeature === 'search' && (
-            <FeatureErrorBoundary featureName="Recherche intelligente" onClose={() => setActiveFeature(null)}>
-              <div className="flex-1 min-h-0">
-                <FeatureAssistant config={SEARCH_CONFIG} onClose={() => setActiveFeature(null)} />
-              </div>
-            </FeatureErrorBoundary>
-          )}
-          {activeFeature === 'document' && (
-            <FeatureErrorBoundary featureName="Rédaction" onClose={() => setActiveFeature(null)}>
-              <div className="flex-1 min-h-0">
-                <FeatureAssistant config={DOCUMENT_CONFIG} onClose={() => setActiveFeature(null)} />
-              </div>
-            </FeatureErrorBoundary>
-          )}
-        </Suspense>
-      )}
-
       {/* ===== INPUT BAR ===== */}
-      {!studioState.isOpen && !activeFeature && (
+      {!studioState.isOpen && (
       <div className="flex-shrink-0">
         <ChatInput
           onSendMessage={async (msg, attachments) => { await chatEngine.sendMessage(msg, false, { attachments }); }}
@@ -239,7 +190,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           onModelChange={setSelectedModel}
           selectedProjectId={selectedProjectId}
           onSelectProject={setSelectedProjectId}
-          placeholder="Décris ta tâche, ANZAR s'en occupe..."
+          placeholder="Décris ton app, ANZAR la construit..."
         />
       </div>
       )}

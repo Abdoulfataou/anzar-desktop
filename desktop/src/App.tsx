@@ -14,7 +14,6 @@ import { autoCheckOncePerDay } from '@/services/infra/updateService';
 
 // Lazy-load des pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
-const ProjectWorkspacePage = lazy(() => import('@/pages/ProjectWorkspacePage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 
@@ -73,8 +72,8 @@ export default function App() {
               {/* Vue principale unifiée (chat + accueil) */}
               <Route index element={<ChatPage />} />
 
-              {/* Workspace projet (éditeur + chat contextuel) */}
-              <Route path="projects/:id" element={<ProjectWorkspacePage />} />
+              {/* Projet → redirige vers le chat (le Studio s'ouvre depuis ChatView) */}
+              <Route path="projects/:id" element={<ChatPage />} />
 
               {/* Paramètres */}
               <Route path="settings" element={<SettingsPage />} />

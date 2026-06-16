@@ -1,5 +1,5 @@
 """
-Agents du backend ANZAR — Architecture 10 agents.
+Agents du backend ANZAR — Architecture 7 agents.
 
 Agents principaux (cloud — DeepSeek):
   - CoderAgent        : Multi-mode (code, refactor, debug, review, test)
@@ -7,11 +7,8 @@ Agents principaux (cloud — DeepSeek):
   - WebSearchAgent    : Recherche web + synthèse (Serper + DeepSeek)
   - DocWriterAgent    : Documentation technique auto
   - SummarizerAgent   : Résumé et compaction de contexte
-
-Agents étudiants (cloud — DeepSeek):
-  - StudentWriterAgent    : Rédaction académique
-  - StudentCorrectorAgent : Correction de textes
-  - StudentResearcherAgent: Recherche documentaire
+  - CodeReviewAgent   : Audit complet de projets
+  - MemoryAgent       : Apprentissage automatique
 
 Agents spéciaux:
   - OrchestratorAgent : Routage intelligent (LOCAL — 0 coût API)
@@ -29,9 +26,6 @@ from .web_search import WebSearchAgent
 from .vision import VisionAgent
 from .doc_writer import DocWriterAgent
 from .summarizer import SummarizerAgent
-from .student_writer import StudentWriterAgent
-from .student_corrector import StudentCorrectorAgent
-from .student_researcher import StudentResearcherAgent
 from .code_review import CodeReviewAgent
 from .memory_agent import MemoryAgent
 
@@ -48,8 +42,4 @@ __all__ = [
     "SummarizerAgent",
     "CodeReviewAgent",
     "MemoryAgent",
-    # Étudiants
-    "StudentWriterAgent",
-    "StudentCorrectorAgent",
-    "StudentResearcherAgent",
 ]

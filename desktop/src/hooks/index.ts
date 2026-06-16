@@ -3,10 +3,6 @@
  * Central export point for all custom hooks
  */
 
-// Chat and messaging hooks
-export { useChat, useChatInput, useMessageActions } from './useChat';
-export type { UseChatReturn } from './useChat';
-
 // Theme hook
 export { useTheme } from './useTheme';
 export type { UseThemeReturn } from './useTheme';
