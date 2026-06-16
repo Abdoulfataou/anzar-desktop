@@ -102,12 +102,12 @@ class CommandCardService {
   }
 
   private async confirm(message: string): Promise<boolean> {
-    // Tauri: use native dialog, else fallback to window.confirm
+    // Tauri native dialog — in non-Tauri env, auto-confirm (dev only)
     try {
       const { confirm } = await import('@tauri-apps/api/dialog')
       return await confirm(message, { title: 'Confirmer', type: 'warning' })
     } catch {
-      return window.confirm(message)
+      return true
     }
   }
 

@@ -9,7 +9,7 @@ import { assessCommandRisk } from '@/services/commands/commandRisk'
 import { detectToolFromCommand, devToolInstallUrl, devToolLabel } from '@/services/infra/devToolLinks'
 import { openExternalUrl } from '@/services/infra/externalLinks'
 
-function badgeVariant(status: CommandCardType['status']) {
+function badgeVariant(status: CommandCardType['status']): 'warning' | 'success' | 'error' | 'ghost' | 'outline' {
   if (status === 'running') return 'warning'
   if (status === 'success') return 'success'
   if (status === 'error') return 'error'
@@ -40,7 +40,7 @@ export default function CommandCard({ cardId }: { cardId: string }) {
   const isActive = activeCardId === cardId
   const risk = useMemo(() => assessCommandRisk(card.command), [card.command])
 
-  const riskVariant =
+  const riskVariant: 'success' | 'warning' | 'error' =
     risk.level === 'safe' ? 'success' : risk.level === 'warning' ? 'warning' : 'error'
   const riskLabel =
     risk.level === 'safe' ? 'Sûr' : risk.level === 'warning' ? 'Risqué' : 'Dangereux'
@@ -107,11 +107,11 @@ export default function CommandCard({ cardId }: { cardId: string }) {
           <div className="flex items-center gap-2">
             <Terminal className="w-4 h-4 text-accent-primary" />
             <p className="text-xs font-semibold text-text-primary truncate">{card.title}</p>
-            <Badge variant={badgeVariant(card.status) as any} className="capitalize">
+            <Badge variant={badgeVariant(card.status)} className="capitalize">
               {card.status}
             </Badge>
             <Badge
-              variant={riskVariant as any}
+              variant={riskVariant}
               title={risk.reason}
             >
               {riskLabel}

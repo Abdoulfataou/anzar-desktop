@@ -42,6 +42,8 @@ interface ChatStore {
   conversations: Conversation[];
   activeConversationId: string | null;
   isGenerating: boolean;
+  /** Separate flag for project generation — avoids race with chat isGenerating */
+  isProjectGenerating: boolean;
   streamingContent: string;
   streamingMessageId: string | null;
   /** Buffer non flushé (throttle) pour limiter les re-renders */
@@ -73,6 +75,9 @@ interface ChatStore {
 
   /** Delete a conversation */
   deleteConversation: (id: string) => void;
+
+  /** Rename a conversation */
+  renameConversation: (id: string, title: string) => void;
 
   /** Set the active conversation */
   setActiveConversation: (id: string | null) => void;
@@ -109,6 +114,10 @@ interface ChatStore {
 
   /** Set generation state */
   setIsGenerating: (isGenerating: boolean) => void;
+  setIsProjectGenerating: (isProjectGenerating: boolean) => void;
+
+  /** Ensure there is an active conversation, creating one if needed */
+  ensureActiveConversation: (model?: import('@/types').AIModel) => void;
 
   /** Compact conversation by replacing old messages with a summary */
   compactConversation: (summary: string) => void;
@@ -150,6 +159,7 @@ export const useChatStore = create<ChatStore>()(
       conversations: [],
       activeConversationId: null,
       isGenerating: false,
+      isProjectGenerating: false,
       streamingContent: '',
       streamingMessageId: null,
       streamingBuffer: '',
@@ -297,6 +307,17 @@ export const useChatStore = create<ChatStore>()(
             activeConversationId: newActiveId,
           };
         });
+      },
+
+      /**
+       * Rename a conversation
+       */
+      renameConversation: (id: string, title: string) => {
+        set((state) => ({
+          conversations: state.conversations.map((c) =>
+            c.id === id ? { ...c, title, updatedAt: Date.now() } : c
+          ),
+        }));
       },
 
       /**
@@ -626,6 +647,16 @@ export const useChatStore = create<ChatStore>()(
        */
       setIsGenerating: (isGenerating: boolean) => {
         set({ isGenerating });
+      },
+
+      setIsProjectGenerating: (isProjectGenerating: boolean) => {
+        set({ isProjectGenerating });
+      },
+
+      ensureActiveConversation: (model) => {
+        if (!get().activeConversationId) {
+          get().createConversation(undefined, model || ('fast' as any));
+        }
       },
 
       /**

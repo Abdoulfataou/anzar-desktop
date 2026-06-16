@@ -138,7 +138,7 @@ export default function BackgroundTasksDock() {
               </div>
               <select
                 value={filter}
-                onChange={(e) => setFilter(e.target.value as any)}
+                onChange={(e) => setFilter(e.target.value as typeof filter)}
                 className={cn('px-2 py-1 rounded-lg text-xs bg-bg-tertiary/40 border border-border-subtle text-text-primary')}
               >
                 <option value="all">Tous</option>

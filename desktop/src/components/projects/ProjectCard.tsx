@@ -2,7 +2,7 @@
  * ProjectCard - Carte de projet dans la grille
  * Affiche statut, fichiers, progression et actions
  */
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Project } from '@/types';
 import {
@@ -12,6 +12,7 @@ import {
 import { cn, formatRelativeTime } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import AgentProgress from './AgentProgress';
+import { useConfirmModal } from '@/components/ui/ConfirmModal';
 
 interface ProjectCardProps {
   project: Project;
@@ -32,6 +33,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(project.name);
+  const { confirm, ConfirmDialog } = useConfirmModal();
 
   const isImported = project.metadata?.imported === true;
   const status = statusConfig[project.status] || statusConfig.planning;
@@ -43,10 +45,15 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
     }
   };
 
-  const handleDelete = () => {
-    if (window.confirm('Supprimer ce projet ?')) {
-      deleteProject(project.id);
-    }
+  const handleDelete = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const ok = await confirm({
+      title: 'Supprimer le projet',
+      message: `Supprimer « ${project.name} » ? Cette action est irréversible.`,
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (ok) deleteProject(project.id);
   };
 
   const progressPercent =
@@ -57,6 +64,8 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
     20;
 
   return (
+    <>
+    {ConfirmDialog}
     <div
       onClick={() => navigate(`/projects/${project.id}`)}
       className="group relative rounded-xl border border-border-subtle bg-surface-default hover:bg-surface-hover hover:border-border-medium transition-all duration-200 overflow-hidden card-hover cursor-pointer">
@@ -162,6 +171,7 @@ const ProjectCard: React.FC<ProjectCardProps> = ({ project }) => {
         </span>
       </div>
     </div>
+    </>
   );
 };
 

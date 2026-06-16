@@ -37,12 +37,12 @@ export const TokenCounter: React.FC<TokenCounterProps> = ({
     const threshold120K = 120000;
 
     if (tokenCount >= threshold120K) {
-      return 'text-red-500'; // Red when >120K
+      return 'text-accent-error';
     }
     if (tokenCount >= threshold80K) {
-      return 'text-orange-500'; // Orange when >80K
+      return 'text-accent-warning';
     }
-    return 'text-gray-500'; // Gray otherwise
+    return 'text-text-muted';
   };
 
   const tooltipText = `${tokenCount.toLocaleString()} tokens estimés
@@ -61,12 +61,12 @@ Limite max: ${maxTokens.toLocaleString()} tokens`;
 
       {/* Tooltip */}
       {showTooltip && (
-        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-gray-100 text-xs rounded shadow-lg whitespace-nowrap z-50">
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-surface-elevated border border-border-subtle text-text-primary text-xs rounded-lg shadow-lg whitespace-nowrap z-50">
           <div>{tokenCount.toLocaleString()} tokens estimés</div>
-          <div className="text-gray-400 mt-1">
+          <div className="text-text-muted mt-1">
             Limite: {formatTokens(maxTokens)}
           </div>
-          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-surface-elevated" />
         </div>
       )}
     </div>

@@ -444,15 +444,15 @@ export default function ChatInput({
       if (isLoading) return;
       attachButtonRef.current?.click();
     };
-    window.addEventListener('anzar:open-file-dialog', onOpen as any);
-    return () => window.removeEventListener('anzar:open-file-dialog', onOpen as any);
+    window.addEventListener('anzar:open-file-dialog', onOpen);
+    return () => window.removeEventListener('anzar:open-file-dialog', onOpen);
   }, [isLoading]);
 
   // Compose flow: pré-remplir le message + ouvrir le picker + (optionnel) auto-send après sélection
   useEffect(() => {
-    const onCompose = (e: any) => {
+    const onCompose = (e: Event) => {
       try {
-        const detail = e?.detail || {};
+        const detail = (e as CustomEvent)?.detail || {};
         const text = typeof detail.text === 'string' ? detail.text : '';
         const autoSend = !!detail.autoSend;
         pendingAutoSendRef.current = autoSend;
@@ -466,8 +466,8 @@ export default function ChatInput({
         // ignore
       }
     };
-    window.addEventListener('anzar:compose-with-attachments', onCompose as any);
-    return () => window.removeEventListener('anzar:compose-with-attachments', onCompose as any);
+    window.addEventListener('anzar:compose-with-attachments', onCompose);
+    return () => window.removeEventListener('anzar:compose-with-attachments', onCompose);
   }, [isLoading]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -526,6 +526,7 @@ export default function ChatInput({
       }
     } catch (err) {
       console.error('Failed to open folder:', err);
+      toast.error('Impossible d\'ouvrir le dossier — vérifie les permissions');
     }
   };
 

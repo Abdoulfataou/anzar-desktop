@@ -63,8 +63,12 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
         : message.content;
       const suffix = (!annotated && contentIsCorrection) ? '_corrige' : '';
       await exportToDocx(content, `anzar_document${suffix}_${Date.now()}.docx`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Export DOCX failed:', err);
+      const msg = err?.message?.includes('scope')
+        ? 'Emplacement non autorisé — choisis Documents ou Bureau'
+        : 'Export Word échoué — vérifie les permissions';
+      toast.error(msg);
     } finally {
       setExporting(null);
     }
@@ -79,8 +83,12 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
         : message.content;
       const suffix = (!annotated && contentIsCorrection) ? '_corrige' : '';
       await exportToPdf(content, `anzar_document${suffix}_${Date.now()}.pdf`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Export PDF failed:', err);
+      const msg = err?.message?.includes('scope')
+        ? 'Emplacement non autorisé — choisis Documents ou Bureau'
+        : 'Export PDF échoué — vérifie les permissions';
+      toast.error(msg);
     } finally {
       setExporting(null);
     }
@@ -196,7 +204,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             {showThinking && (
               <div className="px-3 py-2.5 border-t border-border-subtle space-y-2 bg-bg-primary/50">
                 {message.reasoning?.map((step, idx) => (
-                  <p key={idx} className="text-xs text-text-tertiary leading-relaxed">{step}</p>
+                  <p key={`step-${idx}-${step.slice(0, 20)}`} className="text-xs text-text-tertiary leading-relaxed">{step}</p>
                 )) || (
                   <p className="text-xs text-text-tertiary leading-relaxed">{message.thinking}</p>
                 )}
@@ -266,7 +274,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                 ol: ({ children }) => <ol className="list-decimal list-inside text-sm mb-2 space-y-1">{children}</ol>,
                 li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
                 blockquote: ({ children }) => (
-                  <blockquote className="border-l-3 border-accent-primary pl-3 my-2 text-sm italic text-text-secondary">{children}</blockquote>
+                  <blockquote className="border-l-2 border-accent-primary pl-3 my-2 text-sm italic text-text-secondary">{children}</blockquote>
                 ),
                 h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
                 h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h2>,
@@ -363,7 +371,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                     disabled={exporting !== null}
                     className={cn(
                       'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs transition-all duration-200',
-                      'text-text-muted hover:text-amber-500 hover:bg-amber-500/10'
+                      'text-text-muted hover:text-accent-warning hover:bg-accent-warning/10'
                     )}
                     title="Exporter avec les annotations et explications"
                   >

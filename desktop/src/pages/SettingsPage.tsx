@@ -22,7 +22,9 @@ import { openExternalUrl } from '@/services/infra/externalLinks';
 import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch } from '@/services/infra/updateService';
 import { useThemeStore } from '@/stores/themeStore';
 import { useDevMemoryStore, CATEGORY_LABELS, CATEGORY_ICONS, ALL_CATEGORIES } from '@/stores/devMemoryStore';
+import toast from 'react-hot-toast';
 import type { MemoryCategory } from '@/services/memoryService';
+import { useConfirmModal } from '@/components/ui/ConfirmModal';
 
 /* ===== Toggle Switch ===== */
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -160,6 +162,7 @@ function getRechargeBonus(amount: number): number {
 function RechargeModal({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState<number | ''>('');
   const [method, setMethod] = useState<PaymentMethod>('wave');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const methods: { id: PaymentMethod; label: string; color: string }[] = [
     { id: 'wave',              label: 'Wave',              color: 'from-blue-500 to-cyan-500' },
@@ -291,7 +294,8 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
 
             <button
               onClick={async () => {
-                if (!isValid) return;
+                if (!isValid || isSubmitting) return;
+                setIsSubmitting(true);
                 try {
                   const BACKEND = useSettingsStore.getState().getBackendUrl();
                   const res = await fetch(`${BACKEND}/api/payments/initiate`, {
@@ -312,9 +316,10 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                       onClose();
                       return;
                     }
-                    window.alert(
+                    toast.success(
                       data?.message ||
-                        `Demande de recharge de ${numericAmount.toLocaleString('fr-FR')} F enregistree !\n\nEnvoie le paiement via ${methods.find((m2) => m2.id === method)?.label || method}, puis ton compte sera credite${bonusPct > 0 ? ` de ${totalCredited.toLocaleString('fr-FR')} F (bonus +${bonusPct}% inclus)` : ''} apres validation.`
+                        `Demande de recharge de ${numericAmount.toLocaleString('fr-FR')} F enregistrée ! Envoie le paiement via ${methods.find((m2) => m2.id === method)?.label || method}.`,
+                      { duration: 6000 }
                     );
                     onClose();
                     return;
@@ -325,10 +330,12 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                 } catch (e) {
                   const msg =
                     e instanceof Error ? e.message : "Paiement indisponible pour le moment. Reessaie plus tard.";
-                  window.alert(msg);
+                  toast.error(msg);
+                } finally {
+                  setIsSubmitting(false);
                 }
               }}
-              disabled={!isValid}
+              disabled={!isValid || isSubmitting}
               className={cn(
                 'w-full py-3 rounded-xl font-medium text-sm shadow-md transition-all flex items-center justify-center gap-2',
                 isValid
@@ -336,10 +343,19 @@ function RechargeModal({ onClose }: { onClose: () => void }) {
                   : 'bg-bg-tertiary text-text-muted cursor-not-allowed'
               )}
             >
-              <CreditCard size={16} />
-              {isValid
-                ? `Payer ${numericAmount.toLocaleString('fr-FR')} FCFA${bonusPct > 0 ? ` → ${totalCredited.toLocaleString('fr-FR')} F credites` : ''}`
-                : 'Saisir un montant (min. 500 FCFA)'}
+              {isSubmitting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  Traitement en cours…
+                </>
+              ) : (
+                <>
+                  <CreditCard size={16} />
+                  {isValid
+                    ? `Payer ${numericAmount.toLocaleString('fr-FR')} FCFA${bonusPct > 0 ? ` → ${totalCredited.toLocaleString('fr-FR')} F crédités` : ''}`
+                    : 'Saisir un montant (min. 500 FCFA)'}
+                </>
+              )}
             </button>
           </div>
         </div>
@@ -376,9 +392,16 @@ export default function SettingsPage() {
   const user = useAccountStore((s) => s.user);
   const credits = useAccountStore((s) => s.credits);
   const transactions = useAccountStore((s) => s.transactions);
+  const { confirm, ConfirmDialog } = useConfirmModal();
 
-  const handleLogout = () => {
-    if (window.confirm('Se deconnecter ?')) {
+  const handleLogout = async () => {
+    const ok = await confirm({
+      title: 'Déconnexion',
+      message: 'Tu veux vraiment te déconnecter ?',
+      confirmLabel: 'Se déconnecter',
+      variant: 'warning',
+    });
+    if (ok) {
       authService.logout();
       navigate('/login', { replace: true });
     }
@@ -447,8 +470,14 @@ export default function SettingsPage() {
     }, 400);
   };
 
-  const handleReset = () => {
-    if (window.confirm('Reinitialiser tous les parametres par defaut ?')) {
+  const handleReset = async () => {
+    const ok = await confirm({
+      title: 'Réinitialisation',
+      message: 'Réinitialiser tous les paramètres par défaut ?',
+      confirmLabel: 'Réinitialiser',
+      variant: 'warning',
+    });
+    if (ok) {
       resetSettings();
       setForm(useSettingsStore.getState().settings);
       setStatus('saved');
@@ -906,8 +935,14 @@ export default function SettingsPage() {
       {/* Clear all */}
       {memEntries.length > 0 && (
         <button
-          onClick={() => {
-            if (window.confirm('Supprimer toutes les preferences ?')) {
+          onClick={async () => {
+            const ok = await confirm({
+              title: 'Effacer la mémoire',
+              message: `Supprimer toutes les préférences${memSelectedCat ? ` (${CATEGORY_LABELS[memSelectedCat]})` : ''} ? Cette action est irréversible.`,
+              confirmLabel: 'Tout effacer',
+              variant: 'danger',
+            });
+            if (ok) {
               memClearAll(memSelectedCat ?? undefined);
             }
           }}
@@ -1223,6 +1258,8 @@ export default function SettingsPage() {
   };
 
   return (
+    <>
+    {ConfirmDialog}
     <div className="h-full flex flex-col overflow-hidden bg-bg-primary">
       {/* Header */}
       <div className="border-b border-border-subtle px-6 py-4 flex-shrink-0">
@@ -1262,5 +1299,6 @@ export default function SettingsPage() {
       {/* Modals */}
       {showRecharge && <RechargeModal onClose={() => setShowRecharge(false)} />}
     </div>
+    </>
   );
 }

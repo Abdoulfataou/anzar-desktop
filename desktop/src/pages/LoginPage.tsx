@@ -7,8 +7,9 @@
  *
  * Fallback: mot de passe (si Brevo pas configuré)
  */
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { openExternalUrl } from '@/services/infra/externalLinks';
 import {
   Mail, ArrowRight, Loader2, AlertCircle, ArrowLeft,
   CheckCircle, Eye, EyeOff, LogIn, UserPlus, KeyRound,
@@ -66,7 +67,7 @@ export default function LoginPage() {
       setExpiresIn(result.expires_in_minutes);
       setStep('otp');
       setResendCooldown(60);
-      setSuccessMessage(`Code envoye a ${trimmedEmail}`);
+      setSuccessMessage(`Code envoyé à ${trimmedEmail}`);
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (err) {
       // If email sending fails (Brevo not configured), offer password fallback
@@ -174,7 +175,7 @@ export default function LoginPage() {
     try {
       await authService.sendCode(email.trim().toLowerCase());
       setResendCooldown(60);
-      setSuccessMessage('Nouveau code envoye !');
+      setSuccessMessage('Nouveau code envoyé !');
       setOtpDigits(['', '', '', '', '', '']);
       setTimeout(() => otpRefs.current[0]?.focus(), 100);
     } catch (err) {
@@ -267,7 +268,7 @@ export default function LoginPage() {
               </button>
 
               <p className="text-xs text-text-muted text-center mt-3">
-                Un code a 6 chiffres sera envoye a ton email.
+                Un code a 6 chiffres sera envoyé à ton email.
                 Si tu n'as pas de compte, il sera cree automatiquement.
               </p>
 
@@ -297,7 +298,7 @@ export default function LoginPage() {
                 </button>
                 <div className="flex-1">
                   <p className="text-sm text-text-secondary">
-                    Code envoye a <span className="font-medium text-text-primary">{email}</span>
+                    Code envoyé à <span className="font-medium text-text-primary">{email}</span>
                   </p>
                   {expiresIn > 0 && (
                     <p className="text-xs text-text-muted">Expire dans {expiresIn} minutes</p>
@@ -442,17 +443,17 @@ export default function LoginPage() {
           {/* Footer */}
           <div className="mt-10 pt-6 border-t border-border-subtle/30 text-center space-y-3">
             <div className="flex items-center justify-center gap-4 text-xs text-text-muted">
-              <a href="mailto:abdul@issalanhub.com" className="hover:text-accent-primary transition-colors">
+              <button onClick={() => openExternalUrl('mailto:abdul@issalanhub.com')} className="hover:text-accent-primary transition-colors">
                 abdul@issalanhub.com
-              </a>
+              </button>
               <span className="text-border-subtle">|</span>
-              <a href="https://wa.me/17172161490" target="_blank" rel="noopener noreferrer" className="hover:text-green-500 transition-colors">
+              <button onClick={() => openExternalUrl('https://wa.me/17172161490')} className="hover:text-accent-success transition-colors">
                 WhatsApp
-              </a>
+              </button>
               <span className="text-border-subtle">|</span>
-              <a href="https://t.me/+17172161490" target="_blank" rel="noopener noreferrer" className="hover:text-blue-500 transition-colors">
+              <button onClick={() => openExternalUrl('https://t.me/+17172161490')} className="hover:text-accent-info transition-colors">
                 Telegram
-              </a>
+              </button>
             </div>
             <p className="text-[10px] text-text-muted/60">
               {"© "}{new Date().getFullYear()} IssalanHub · USA · Niger · Tous droits reserves

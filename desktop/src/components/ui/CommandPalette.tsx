@@ -16,6 +16,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useThemeStore } from '@/stores/themeStore';
+import { useChatStore } from '@/stores/chatStore';
+import { useProjectStore } from '@/stores/projectStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 
 interface CommandItem {
   id: string;
@@ -43,7 +46,13 @@ export default function CommandPalette() {
       description: 'Démarrer une nouvelle conversation',
       icon: Plus,
       shortcut: '⌘N',
-      action: () => { navigate('/'); setIsOpen(false); },
+      action: () => {
+        const model = useSettingsStore.getState().settings.model;
+        useProjectStore.getState().setActiveProject(null);
+        useChatStore.getState().createConversation(undefined, model);
+        navigate('/');
+        setIsOpen(false);
+      },
       category: 'Actions',
     },
     {
@@ -126,6 +135,14 @@ export default function CommandPalette() {
       switch (e.key) {
         case '1': e.preventDefault(); navigate('/'); break;
         case ',': e.preventDefault(); navigate('/settings'); break;
+        case 'n': {
+          e.preventDefault();
+          const model = useSettingsStore.getState().settings.model;
+          useProjectStore.getState().setActiveProject(null);
+          useChatStore.getState().createConversation(undefined, model);
+          navigate('/');
+          break;
+        }
       }
     }
 
