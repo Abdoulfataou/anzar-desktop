@@ -710,7 +710,4 @@ Sois précis sur les fichiers à créer. Chaque fichier doit avoir un chemin ré
 
 export const aiService = new AIService();
 
-/** Legacy alias for backward compatibility */
-export const deepseekService = aiService;
-
 export default AIService;

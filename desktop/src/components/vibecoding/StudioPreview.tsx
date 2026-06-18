@@ -388,7 +388,7 @@ const StudioPreview: React.FC<StudioPreviewProps> = ({
       </div>
 
       {/* ── Iframe container ── */}
-      <div className="flex-1 overflow-hidden flex items-start justify-center bg-[#1a1a2e]/30 p-0 relative">
+      <div className="flex-1 overflow-hidden flex items-start justify-center bg-bg-tertiary/50 p-0 relative">
         <div
           className="h-full bg-white transition-all duration-300 overflow-hidden"
           style={{

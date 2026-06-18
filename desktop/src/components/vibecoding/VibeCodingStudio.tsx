@@ -12,12 +12,12 @@
  * Reste ouvert pour l'itération après la génération.
  */
 
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
   X, Maximize2, Minimize2, Play, Square,
   Loader2, CheckCircle2, AlertCircle,
-  FolderOpen, Sparkles, ChevronDown, Package, Terminal,
-  Eye, EyeOff, ExternalLink, Undo2, GitBranch, Braces, Paintbrush,
+  FolderOpen, Sparkles, ChevronDown, Package, Terminal, Rocket,
+  Eye, EyeOff, ExternalLink, Undo2, GitBranch, Braces, Paintbrush, History,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ProjectFile } from '@/types';
@@ -29,6 +29,7 @@ import StudioChat from './StudioChat';
 import StudioPreview from './StudioPreview';
 import PlanReview from './PlanReview';
 import DesignToCodePanel from './DesignToCodePanel';
+import StudioGitHistory from './StudioGitHistory';
 import { terminalService, onDevServerUrl } from '@/services/terminal';
 import { open as shellOpen } from '@tauri-apps/api/shell';
 
@@ -108,6 +109,15 @@ export interface VibeCodingStudioProps {
     totalFiles: number;
     languages: Record<string, number>;
   };
+  /** Deploy (build) state */
+  deploy?: {
+    status: 'idle' | 'building' | 'success' | 'error';
+    output: string;
+    durationMs: number;
+    bundleSize: string | null;
+  };
+  /** Callback pour lancer le build */
+  onDeploy?: () => Promise<void>;
 }
 
 // ============================================================================
@@ -138,6 +148,8 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
   git,
   onRollback,
   ckg,
+  deploy,
+  onDeploy,
 }) => {
   // ── State local ──
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -146,6 +158,7 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
   const [showChat, setShowChat] = useState(true);
   const [showPreview, setShowPreview] = useState(false);
   const [showDesignToCode, setShowDesignToCode] = useState(false);
+  const [showGitHistory, setShowGitHistory] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [installStatus, setInstallStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
@@ -182,6 +195,42 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
       setRunStatus('error');
     }
   }, [projectPath, runStatus]);
+
+  // ── Auto-install + auto-run après génération ──
+  const autoInstallTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (phase !== 'iterating' || !projectPath || autoInstallTriggeredRef.current) return;
+    // Detect if project has package.json
+    const hasPackageJson = Array.from(files.keys()).some(p => p.endsWith('package.json'));
+    if (!hasPackageJson) return;
+
+    autoInstallTriggeredRef.current = true;
+    (async () => {
+      // Auto install
+      setInstallStatus('running');
+      try {
+        await terminalService.installDependencies(projectPath);
+        setInstallStatus('done');
+      } catch {
+        setInstallStatus('error');
+        return;
+      }
+      // Auto run dev server
+      setRunStatus('running');
+      try {
+        await terminalService.runDevServer(projectPath);
+        setRunStatus('done');
+        // Preview s'ouvre automatiquement via onDevServerUrl
+      } catch {
+        setRunStatus('error');
+      }
+    })();
+  }, [phase, projectPath, files]);
+
+  // Reset auto-install flag when project changes
+  useEffect(() => {
+    autoInstallTriggeredRef.current = false;
+  }, [projectId]);
 
   // ── Fichiers triés pour le file tree ──
   const filesList = useMemo(() => {
@@ -323,12 +372,21 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
                   Undo
                 </button>
               )}
-              {/* Git indicator */}
+              {/* Git history toggle */}
               {git?.initialized && (
-                <div className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-text-muted bg-bg-tertiary/40" title={`${git.commitCount} snapshots git`}>
-                  <GitBranch size={10} />
+                <button
+                  onClick={() => setShowGitHistory(!showGitHistory)}
+                  className={cn(
+                    'flex items-center gap-1 px-2 py-1 rounded-md text-[10px] transition-colors',
+                    showGitHistory
+                      ? 'text-accent-primary bg-accent-primary/10'
+                      : 'text-text-muted bg-bg-tertiary/40 hover:bg-surface-hover',
+                  )}
+                  title={`${git.commitCount} snapshots — ${showGitHistory ? 'Masquer' : 'Afficher'} l'historique`}
+                >
+                  <History size={10} />
                   {git.commitCount}
-                </div>
+                </button>
               )}
               {ckg?.indexed && (
                 <div className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] text-emerald-400/80 bg-emerald-400/10" title={`CKG: ${ckg.totalSymbols} symboles indexés dans ${ckg.totalFiles} fichiers`}>
@@ -365,6 +423,37 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
                 {runStatus === 'running' ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
                 Run
               </button>
+              {/* Deploy button */}
+              {onDeploy && (
+                <button
+                  onClick={onDeploy}
+                  disabled={deploy?.status === 'building'}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                    deploy?.status === 'building' && 'text-purple-400 bg-purple-500/10',
+                    deploy?.status === 'success' && 'text-emerald-400 bg-emerald-500/10',
+                    deploy?.status === 'error' && 'text-red-400 bg-red-500/10',
+                    (!deploy || deploy.status === 'idle') && 'text-purple-400 hover:bg-purple-500/10',
+                  )}
+                  title={deploy?.status === 'success'
+                    ? `Build réussi en ${(deploy.durationMs / 1000).toFixed(1)}s${deploy.bundleSize ? ` — ${deploy.bundleSize}` : ''}`
+                    : 'Build de production (npm run build)'}
+                >
+                  {deploy?.status === 'building'
+                    ? <Loader2 size={12} className="animate-spin" />
+                    : deploy?.status === 'success'
+                      ? <CheckCircle2 size={12} />
+                      : deploy?.status === 'error'
+                        ? <AlertCircle size={12} />
+                        : <Rocket size={12} />}
+                  Deploy
+                  {deploy?.status === 'success' && deploy.durationMs > 0 && (
+                    <span className="text-[10px] opacity-70">
+                      {(deploy.durationMs / 1000).toFixed(1)}s
+                    </span>
+                  )}
+                </button>
+              )}
             </>
           )}
           <button
@@ -445,6 +534,27 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
           </div>
         )}
 
+        {/* Deploy status indicator */}
+        {deploy?.status === 'building' && (
+          <div className="flex items-center gap-1.5 ml-3 px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 animate-pulse text-[10px] font-semibold">
+            <Loader2 size={10} className="animate-spin" />
+            Build en cours...
+          </div>
+        )}
+        {deploy?.status === 'success' && (
+          <div className="flex items-center gap-1.5 ml-3 px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 text-[10px]">
+            <CheckCircle2 size={10} />
+            Build OK — {(deploy.durationMs / 1000).toFixed(1)}s
+            {deploy.bundleSize && <span className="font-semibold ml-1">{deploy.bundleSize}</span>}
+          </div>
+        )}
+        {deploy?.status === 'error' && (
+          <div className="flex items-center gap-1.5 ml-3 px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-400 text-[10px]">
+            <AlertCircle size={10} />
+            <span className="truncate max-w-[250px]">Build échoué</span>
+          </div>
+        )}
+
         {/* Agent indicators */}
         {agents.length > 0 && (
           <div className="flex items-center gap-2 ml-auto">
@@ -479,13 +589,24 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
         {(phase === 'generating' || phase === 'iterating' || phase === 'error') && (
           <>
             {/* File Tree */}
-            {showFileTree && (
+            {showFileTree && !showGitHistory && (
               <div className="w-[240px] flex-shrink-0 border-r border-border-subtle overflow-hidden">
                 <StudioFileTree
                   files={filesList}
                   selectedFile={selectedFile}
                   activeGeneratingFile={activeGeneratingFile}
                   onSelectFile={handleSelectFile}
+                />
+              </div>
+            )}
+
+            {/* Git History Panel */}
+            {showGitHistory && projectPath && git?.initialized && (
+              <div className="w-[280px] flex-shrink-0 border-r border-border-subtle overflow-hidden">
+                <StudioGitHistory
+                  projectPath={projectPath}
+                  commitCount={git.commitCount}
+                  onRollbackToCommit={onRollback ? async () => { await onRollback(); } : undefined}
                 />
               </div>
             )}

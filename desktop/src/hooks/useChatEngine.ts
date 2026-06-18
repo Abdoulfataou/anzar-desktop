@@ -10,7 +10,7 @@ import { AIModel, type Message, type ChatAttachment } from '@/types';
 import { aiRouter } from '@/services/router';
 import { aiService } from '@/services/ai/ai';
 import { projectGeneration } from '@/services/projectGeneration';
-import { detectProjectIntent, detectVisualIntent, detectAuditIntent } from '@/services/ai/intentDetection';
+import { detectVisualIntent, detectAuditIntent } from '@/services/ai/intentDetection';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { useUsageStore } from '@/stores/usageStore';
 import { useActivityStore } from '@/stores/activityStore';
@@ -157,12 +157,13 @@ export function useChatEngine(params: ChatEngineParams) {
     startSession(sessionId, sessionLabel);
 
     // ══════════════════════════════════════════════════════════════
-    // INTENT DETECTION: est-ce une demande de génération de projet ?
+    // PROJECT GENERATION: uniquement via le wizard (forceProject)
+    // Le backend orchestrator gère la classification automatique.
     // ══════════════════════════════════════════════════════════════
     const forceProject = forceProjectGenerationOnceRef.current;
     if (forceProject) forceProjectGenerationOnceRef.current = false;
 
-    if (forceProject || detectProjectIntent(content)) {
+    if (forceProject) {
       const detectStepId = addStep(sessionId, {
         type: 'understanding',
         label: 'Preparation du projet',
@@ -804,10 +805,11 @@ ${fileContents.join('\n')}
     useChatStore.getState().setIsProjectGenerating(false);
   }, [setIsGenerating]);
 
-  // ── Quick start ──
+  // ── Quick start (always triggers project generation) ──
   const handleQuickStart = useCallback((prompt: string) => {
+    forceProjectGenerationOnceRef.current = true;
     handleSendMessage(prompt);
-  }, [handleSendMessage]);
+  }, [handleSendMessage, forceProjectGenerationOnceRef]);
 
   return {
     sendMessage: handleSendMessage,

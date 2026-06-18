@@ -76,6 +76,13 @@ export interface VibeCodingStudioState {
     totalFiles: number;
     languages: Record<string, number>;
   };
+  /** Deploy (build) state */
+  deploy: {
+    status: 'idle' | 'building' | 'success' | 'error';
+    output: string;
+    durationMs: number;
+    bundleSize: string | null;
+  };
 }
 
 /** Résultat d'une itération renvoyé au StudioChat */
@@ -110,6 +117,8 @@ export interface VibeCodingStudioActions {
   stopAutoFix: () => void;
   /** Rollback: annuler la dernière itération (git reset --hard HEAD~1) */
   rollback: () => Promise<void>;
+  /** Lancer npm run build et capturer le résultat */
+  deploy: () => Promise<void>;
 }
 
 // ============================================================================
@@ -413,20 +422,45 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
     await gitSnapshotBeforeIterate();
 
     // Build current files dict for context — filter empty/placeholder files
-    const currentFiles: Record<string, string> = {};
+    const allFiles: Record<string, string> = {};
     files.forEach((f, path) => {
       if (f.content && f.content.trim().length > 5) {
-        currentFiles[path] = f.content;
+        allFiles[path] = f.content;
       }
     });
 
     // ── CKG: index project and build smart context ──
+    // Only send relevant files to the backend (saves tokens on large projects)
+    let currentFiles = allFiles;
     let projectMap = '';
     try {
-      const idx = codeIndexer.indexProject(currentFiles);
+      const idx = codeIndexer.indexProject(allFiles);
       projectIndexRef.current = idx;
-      const smart = codeIndexer.buildSmartContext(idx, message, currentFiles);
+      const smart = codeIndexer.buildSmartContext(idx, message, allFiles);
       projectMap = smart.projectMap;
+
+      // Filter to relevant files only (CKG-selected + fileFocus + config files)
+      if (smart.relevantFiles.length > 0) {
+        const relevantSet = new Set(smart.relevantFiles);
+        // Always include fileFocus if specified
+        if (fileFocus) relevantSet.add(fileFocus);
+        // Always include key config files
+        for (const key of Object.keys(allFiles)) {
+          if (/^(package\.json|tsconfig\.json|vite\.config\.\w+|tailwind\.config\.\w+|\.env|next\.config\.\w+)$/i.test(key.split('/').pop() || '')) {
+            relevantSet.add(key);
+          }
+        }
+        const filtered: Record<string, string> = {};
+        for (const path of relevantSet) {
+          if (allFiles[path]) filtered[path] = allFiles[path];
+        }
+        // Only use filtered set if it's meaningfully smaller (>30% reduction)
+        if (Object.keys(filtered).length < Object.keys(allFiles).length * 0.7) {
+          currentFiles = filtered;
+          console.log(`[CKG] Smart context: ${Object.keys(filtered).length}/${Object.keys(allFiles).length} files sent`);
+        }
+      }
+
       // Prefix the message with the project map for better AI context
       if (projectMap) {
         message = `[Project Map]\n${codeIndexer.generateProjectMap(idx)}\n\n[User Request]\n${message}`;
@@ -814,6 +848,59 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
   }, [gitState.canRollback]);
 
   // ══════════════════════════════════════════════════════════════════════════
+  // DEPLOY — npm run build + bundle aperçu
+  // ══════════════════════════════════════════════════════════════════════════
+
+  const [deployState, setDeployState] = useState({
+    status: 'idle' as 'idle' | 'building' | 'success' | 'error',
+    output: '',
+    durationMs: 0,
+    bundleSize: null as string | null,
+  });
+
+  const deployProject = useCallback(async () => {
+    const path = localPathRef.current;
+    if (!path || deployState.status === 'building') return;
+
+    setDeployState({ status: 'building', output: '', durationMs: 0, bundleSize: null });
+
+    try {
+      // Use exec() to get structured result (stdout/stderr + exit code)
+      const result = await terminalService.exec('npm run build', { cwd: path, timeout: 120_000 });
+
+      if (result.success) {
+        // Try to extract bundle size from build output
+        let bundleSize: string | null = null;
+        const sizeMatch = result.stdout.match(/(?:total|bundle|gzip|dist|build)\s*[:\-]?\s*([\d.]+\s*[KMG]?B)/i);
+        if (sizeMatch) {
+          bundleSize = sizeMatch[1];
+        }
+
+        setDeployState({
+          status: 'success',
+          output: result.stdout || 'Build réussi.',
+          durationMs: result.durationMs,
+          bundleSize,
+        });
+      } else {
+        setDeployState({
+          status: 'error',
+          output: result.stderr || result.stdout || 'Build échoué.',
+          durationMs: result.durationMs,
+          bundleSize: null,
+        });
+      }
+    } catch (err: any) {
+      setDeployState({
+        status: 'error',
+        output: err?.message || 'Erreur lors du build.',
+        durationMs: 0,
+        bundleSize: null,
+      });
+    }
+  }, [deployState.status]);
+
+  // ══════════════════════════════════════════════════════════════════════════
   // RETURN
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -839,6 +926,7 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
       totalFiles: projectIndexRef.current?.stats.totalFiles || 0,
       languages: projectIndexRef.current?.stats.languages || {},
     },
+    deploy: deployState,
   };
 
   const actions: VibeCodingStudioActions = {
@@ -853,6 +941,7 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
     handleSSEEvent,
     stopAutoFix,
     rollback,
+    deploy: deployProject,
   };
 
   return [state, actions];

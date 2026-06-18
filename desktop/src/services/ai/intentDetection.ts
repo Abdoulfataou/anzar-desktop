@@ -1,59 +1,11 @@
 /**
  * Intent Detection Service
- * Pure functions to classify user messages: project generation, visual intent, project name extraction.
+ * Pure functions to classify user messages: visual intent, audit intent, project name extraction.
+ *
+ * NOTE: La détection d'intention "projet" est gérée uniquement côté backend
+ * par l'OrchestratorAgent. Le frontend ne déclenche la génération de projet
+ * que via le wizard (forceProject flag).
  */
-
-import { aiRouter } from '@/services/router';
-
-/**
- * Détecte si le message de l'utilisateur est une demande de génération de projet.
- * Utilise un scoring heuristique (verbes, objets, scope, domaine) + classifieur local.
- */
-export function detectProjectIntent(message: string): boolean {
-  const msg = (message || '').trim()
-  if (msg.length < 18) return false
-
-  // Heuristiques "anti-faux-positifs"
-  if (msg.includes('```')) return false // souvent un extrait de code / logs
-  if (/\b(stack trace|traceback|exception)\b/i.test(msg)) return false
-
-  // Prompts de l'assistant étudiant — JAMAIS un projet à générer
-  const isStudentPrompt =
-    /^Tu es un[e]?\s+(super-)?(correct|expert|profess|traducteur|assistant|tuteur)/i.test(msg) &&
-    /\b(correction|reformulat|orthographe|grammaire|academique|pedagogique|exercice|flashcard|quiz|bareme|evaluat|plagiat|bibliograph|citation|revision|memoire|rapport|expose|redaction|traduction|fiche|tuteur|enseign|expliqu)/i.test(msg)
-  if (isStudentPrompt) return false
-
-  const questionLike = /(\bcomment\b|\bpourquoi\b|\bexplique\b|\bexpliquer\b|\bwhat\b|\bwhy\b|\bhow\b)\b/i.test(msg)
-  const asksToCreate = /\b(cr[ée]{1,2}[es]?\b|cr[ée]{1,2}[- ]?moi|g[ée]n[eè]re|développe|construis|build|create|generate|make|develop)\b/i.test(msg)
-  if (questionLike && !asksToCreate) return false
-
-  const verb = /\b(cr[ée]{1,2}[es]?\b|cr[ée]{1,2}[- ]?moi|g[ée]n[eè]re|développe|construis|fais|monte|build|create|generate|make|develop)\b/i
-  const obj = /\b(app|application|projet|site|api|dashboard|plateforme|système|logiciel|outil|saas|mvp|prototype|backend|frontend|page web|landing|project|website|platform)\b/i
-  const scope = /\b(complet|from scratch|de zéro|entier|full\s*stack|crud|auth|authentification|base de données|database)\b/i
-  const domain = /\b(stock|inventaire|crm|facturation|billing|e-?commerce|boutique|restaurant|réservation|booking|gestion)\b/i
-
-  let score = 0
-  if (verb.test(msg)) score += 1
-  if (obj.test(msg)) score += 1
-  if (scope.test(msg)) score += 1
-  if (domain.test(msg)) score += 1
-
-  // Si ça ressemble à une demande de debug/correction, on ne déclenche pas le builder
-  const looksLikeFix =
-    /\b(corrige[rs]?|corriger|correcteur|corrections?|reformul|fix|débug|debug|bug|erreur|errors?|refactor|optimise|lint|tests?)\b/i.test(msg)
-  if (looksLikeFix) return false
-
-  // Appui du classifieur local (0 coût, heuristique)
-  try {
-    const cls = aiRouter.classifyTask([{ role: 'user', content: msg } as any], { hasImages: false })
-    if (cls.type === 'planning' || cls.type === 'code_gen') score += 1
-    if (cls.type === 'code_review' || cls.type === 'debug_visual') score -= 1
-  } catch {
-    // ignore
-  }
-
-  return score >= 3
-}
 
 /**
  * Détecte si le message demande du contenu visuel (images, diagrammes, etc.)
@@ -62,12 +14,6 @@ export function detectProjectIntent(message: string): boolean {
 export function detectVisualIntent(message: string): boolean {
   const msg = (message || '').trim().toLowerCase();
   if (msg.length < 8) return false;
-
-  // Prompts de l'assistant étudiant — JAMAIS un routage visuel
-  const isStudentPrompt =
-    /^tu es un[e]?\s+(super-)?(correct|expert|profess|traducteur|assistant|tuteur)/i.test(msg) &&
-    /\b(correction|reformulat|orthographe|grammaire|academique|pedagogique|exercice|flashcard|quiz|bareme|evaluat|plagiat|bibliograph|citation|revision|memoire|rapport|expose|redaction|traduction|fiche|tuteur|enseign|expliqu)/i.test(msg);
-  if (isStudentPrompt) return false;
 
   // Mots-clés visuels (FR + EN)
   const visualKeywords =

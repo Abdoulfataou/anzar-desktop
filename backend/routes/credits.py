@@ -46,12 +46,19 @@ async def get_user_credits(user: dict = Depends(get_current_user)):
 async def recharge_credits(body: RechargeRequest, user: dict = Depends(get_current_user)):
     """
     Add credits to user balance.
-    In production, this should be called AFTER payment verification.
+    SECURITY: Requires a valid payment_ref. In production, this should only be
+    called by the payment webhook or admin. Self-service without payment_ref is blocked.
     """
+    # Block self-service recharge without a verified payment reference
+    if not body.payment_ref or len(body.payment_ref.strip()) < 6:
+        raise HTTPException(
+            403,
+            "Recharge directe non autorisée. Utilisez le flux de paiement (Wave, Orange Money, etc.) pour recharger vos crédits.",
+        )
+
     email = user["sub"]
     description = f"Recharge {body.payment_method}"
-    if body.payment_ref:
-        description += f" (ref: {body.payment_ref})"
+    description += f" (ref: {body.payment_ref})"
 
     creds = await add_credits(
         email,

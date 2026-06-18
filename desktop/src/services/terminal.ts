@@ -956,6 +956,39 @@ class TerminalService {
     return result.stdout.trim().split('\n').filter(Boolean);
   }
 
+  /** Get detailed git log with hash, message, and relative date */
+  async gitLogDetailed(projectPath: string, count = 20): Promise<Array<{ hash: string; message: string; date: string }>> {
+    const result = await this._internalExec(
+      `git log --format=%H||%s||%cr -${count}`,
+      { cwd: projectPath, silent: true }
+    );
+    if (!result.success) return [];
+    return result.stdout.trim().split('\n').filter(Boolean).map(line => {
+      const [hash, message, date] = line.split('||');
+      return { hash: hash || '', message: message || '', date: date || '' };
+    });
+  }
+
+  /** Get diff between two commits (or between a commit and its parent) */
+  async gitDiff(projectPath: string, commitHash: string): Promise<string> {
+    const result = await this._internalExec(
+      `git diff ${commitHash}~1 ${commitHash} --stat --no-color`,
+      { cwd: projectPath, silent: true }
+    );
+    if (!result.success) return '';
+    return result.stdout.trim();
+  }
+
+  /** Get full file diff for a commit */
+  async gitDiffFull(projectPath: string, commitHash: string): Promise<string> {
+    const result = await this._internalExec(
+      `git diff ${commitHash}~1 ${commitHash} --no-color`,
+      { cwd: projectPath, silent: true }
+    );
+    if (!result.success) return '';
+    return result.stdout.trim();
+  }
+
   async gitPush(projectPath: string): Promise<CommandResult> {
     return this.exec('git push', { cwd: projectPath });
   }

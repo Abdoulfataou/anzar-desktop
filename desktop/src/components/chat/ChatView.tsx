@@ -174,6 +174,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             git={studioState.git}
             onRollback={studioActions.rollback}
             ckg={studioState.ckg}
+            deploy={studioState.deploy}
+            onDeploy={studioActions.deploy}
           />
         </div>
       )}

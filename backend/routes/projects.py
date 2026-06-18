@@ -1133,14 +1133,13 @@ async def design_to_code(project_id: str, body: DesignToCodeRequest, user: dict 
 
             # Billing
             try:
-                cost = calculate_cost_fcfa(total_tokens, "generation")
-                if cost > 0:
-                    await deduct_credits(email, cost)
-                    await record_usage(email, "design_to_code", total_tokens, cost, {
-                        "project_id": project_id,
-                        "framework": body.framework,
-                        "files_generated": file_count,
-                    })
+                if total_tokens > 0:
+                    input_est = int(total_tokens * 0.6)
+                    output_est = total_tokens - input_est
+                    cost_usd, cost_fcfa = calculate_cost_fcfa("deepseek", input_est, output_est, model=settings.deepseek_pro_model)
+                    if cost_fcfa > 0:
+                        await deduct_credits(email, cost_fcfa)
+                        await record_usage(email, "deepseek", settings.deepseek_pro_model, input_est, output_est, cost_usd, cost_fcfa, task_type="design_to_code")
             except Exception as e:
                 logger.warning(f"[design-to-code] Billing error: {e}")
 

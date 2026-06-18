@@ -58,7 +58,7 @@ const generateColorFromString = (str: string): string => {
   if (!str) return 'accent-primary';
 
   const accentColors = [
-    'accent-primary',    // #3B82F6
+    'accent-primary',    // #6366F1
     'accent-secondary',  // #8B5CF6
     'accent-success',    // #10B981
     'accent-warning',    // #F59E0B
@@ -85,13 +85,13 @@ const generateGeometricPattern = (seed: string, size: number = 100): string => {
 
   const color = generateColorFromString(seed);
   const colorMap: Record<string, string> = {
-    'accent-primary': '#3B82F6',
+    'accent-primary': '#6366F1',
     'accent-secondary': '#8B5CF6',
     'accent-success': '#10B981',
     'accent-warning': '#F59E0B',
     'accent-error': '#EF4444',
   };
-  const hexColor = colorMap[color] || '#3B82F6';
+  const hexColor = colorMap[color] || '#6366F1';
 
   const patternType = Math.abs(hash) % 4;
   const rotation = Math.abs(hash) % 360;

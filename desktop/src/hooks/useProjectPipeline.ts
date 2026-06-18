@@ -551,28 +551,25 @@ export function useProjectPipeline(params: ProjectPipelineParams) {
 
       let terminalInstructions = '';
       if (localPath) {
-        const safePath = localPath.includes(' ') ? `"${localPath}"` : localPath;
         if (hasPackageJson) {
           terminalInstructions =
             depsInfo +
-            `\n\n**Pour lancer le projet**, ouvre ton terminal et tape :\n` +
-            `\`\`\`bash\ncd ${safePath}\nnpm install\n${runCmd}\n\`\`\``;
+            `\n\nInstallation et lancement automatiques en cours...`;
         } else if (hasRequirements) {
           terminalInstructions =
             depsInfo +
-            `\n\n**Pour lancer le projet**, ouvre ton terminal et tape :\n` +
-            `\`\`\`bash\ncd ${safePath}\npip install -r requirements.txt\n${pyEntryPoint}\n\`\`\``;
+            `\n\n**Pour lancer le projet** :\n` +
+            `\`\`\`bash\ncd "${localPath}"\npip install -r requirements.txt\n${pyEntryPoint}\n\`\`\``;
         } else if (hasCargo) {
           terminalInstructions =
-            `\n\n**Pour lancer le projet**, ouvre ton terminal et tape :\n` +
-            `\`\`\`bash\ncd ${safePath}\ncargo run\n\`\`\``;
+            `\n\n**Pour lancer le projet** :\n` +
+            `\`\`\`bash\ncd "${localPath}"\ncargo run\n\`\`\``;
         } else if (hasIndexHtml) {
           terminalInstructions =
-            `\n\n**Pour voir le projet**, ouvre ce fichier dans ton navigateur :\n` +
-            `\`\`\`\n${localPath}/index.html\n\`\`\``;
+            `\n\nOuvre \`${localPath}/index.html\` dans ton navigateur.`;
         } else {
           terminalInstructions =
-            `\n\n**Emplacement du projet** :\n\`\`\`\n${localPath}\n\`\`\``;
+            `\n\n**Emplacement** : \`${localPath}\``;
         }
       }
 

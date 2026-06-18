@@ -18,6 +18,11 @@ export { useThemeStore } from './themeStore';
 // Account store (profil, crédits, abonnement)
 export { useAccountStore } from './accountStore';
 
-// Pending changes (A-mode approval queue)
-export { useChangeStore } from './changeStore';
+// Activity store (generation panel, agent steps)
+export { useActivityStore } from './activityStore';
 
+// Usage store (API usage tracking)
+export { useUsageStore } from './usageStore';
+
+// Dev memory store (user preferences learned by AI)
+export { useDevMemoryStore } from './devMemoryStore';
