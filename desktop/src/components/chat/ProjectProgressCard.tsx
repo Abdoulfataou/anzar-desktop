@@ -5,11 +5,13 @@
  * (dossiers, fichiers, éditeur) ne s'ouvre que si l'utilisateur clique
  * sur "Voir le projet".
  */
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Loader2, CheckCircle2, AlertCircle, FolderOpen, Square, Hammer,
+  ChevronDown, ChevronRight, Circle, FileCode,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { studioTodoManager, TodoItem } from '@/services/studio/studioTodoManager';
 import type { StudioPhase, StudioFile } from '@/components/vibecoding/VibeCodingStudio';
 import type { StepEvent } from '@/services/projectGeneration';
 
@@ -35,6 +37,13 @@ const ProjectProgressCard: React.FC<ProjectProgressCardProps> = ({
   const filesList = [...files.values()];
   const doneCount = filesList.filter(f => f.status === 'done' || f.status === 'modified').length;
   const total = filesList.length;
+
+  // ── Activité dépliable (style TRAE "Used skills 2 times ›") ──
+  const [expanded, setExpanded] = useState(false);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  useEffect(() => studioTodoManager.subscribe((items) => setTodos(items)), []);
+  const doneTodos = todos.filter(t => t.status === 'done').length;
+  const recentFiles = filesList.filter(f => f.status === 'done').slice(-5);
 
   const progress =
     phase === 'planning' ? 10
@@ -126,6 +135,63 @@ const ProjectProgressCard: React.FC<ProjectProgressCardProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Ligne d'activité repliable (style TRAE "Used skills N times ›") */}
+        {(todos.length > 0 || recentFiles.length > 0) && (
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="w-full flex items-center gap-1.5 px-4 py-1.5 border-t border-border-subtle/50 text-text-muted hover:text-text-primary hover:bg-bg-tertiary/40 transition-colors"
+          >
+            {expanded ? <ChevronDown size={11} className="flex-shrink-0" /> : <ChevronRight size={11} className="flex-shrink-0" />}
+            <span className="text-[10px]">
+              {todos.length > 0
+                ? `${doneTodos}/${todos.length} étapes`
+                : `${doneCount} fichiers`}
+              {recentFiles.length > 0 && todos.length > 0 && ` · ${doneCount} fichiers`}
+            </span>
+          </button>
+        )}
+
+        {/* Détail de l'activité (déplié) */}
+        {expanded && (
+          <div className="px-4 pb-3 pt-1 space-y-2 max-h-52 overflow-y-auto scrollbar-thin border-t border-border-subtle/30">
+            {todos.length > 0 && (
+              <div className="space-y-0.5">
+                {todos.map(item => (
+                  <div key={item.id} className="flex items-start gap-2 py-0.5">
+                    {item.status === 'done' ? (
+                      <CheckCircle2 size={11} className="text-emerald-400 flex-shrink-0 mt-0.5" />
+                    ) : item.status === 'running' ? (
+                      <Loader2 size={11} className="text-accent-primary animate-spin flex-shrink-0 mt-0.5" />
+                    ) : (
+                      <Circle size={11} className="text-text-muted/40 flex-shrink-0 mt-0.5" />
+                    )}
+                    <span
+                      className={cn(
+                        'text-[10px] leading-snug',
+                        item.status === 'done' ? 'text-text-muted line-through decoration-text-muted/40'
+                          : item.status === 'running' ? 'text-text-primary'
+                          : 'text-text-secondary'
+                      )}
+                    >
+                      {item.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {recentFiles.length > 0 && (
+              <div className="space-y-0.5 pt-1 border-t border-border-subtle/30">
+                {recentFiles.map(f => (
+                  <div key={f.path} className="flex items-center gap-1.5 py-0.5">
+                    <FileCode size={10} className="text-emerald-400/70 flex-shrink-0" />
+                    <span className="text-[10px] text-text-secondary font-mono truncate">{f.path}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Barre de progression */}
         {phase !== 'error' && (

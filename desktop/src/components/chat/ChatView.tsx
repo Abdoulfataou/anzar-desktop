@@ -8,6 +8,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { WifiOff } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import WelcomeScreen from './WelcomeScreen';
@@ -151,6 +152,36 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     <div className="h-full min-h-0 flex bg-bg-primary">
       {/* Main chat column */}
       <div className="flex-1 min-h-0 flex flex-col bg-bg-primary">
+
+      {/* ── Navigation de session (style TRAE Work/Code) : Discussion | Studio ── */}
+      {studioState.isOpen && (
+        <div className="flex items-center justify-center pt-2 pb-1 flex-shrink-0">
+          <div className="p-0.5 rounded-lg bg-bg-tertiary border border-border-subtle flex items-center gap-0.5">
+            <button
+              onClick={() => setStudioVisible(false)}
+              className={cn(
+                'px-3.5 py-1 rounded-md text-[11px] font-semibold transition-all',
+                !studioVisible
+                  ? 'bg-surface-default text-text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
+              )}
+            >
+              Discussion
+            </button>
+            <button
+              onClick={() => setStudioVisible(true)}
+              className={cn(
+                'px-3.5 py-1 rounded-md text-[11px] font-semibold transition-all',
+                studioVisible
+                  ? 'bg-surface-default text-text-primary shadow-sm'
+                  : 'text-text-muted hover:text-text-primary'
+              )}
+            >
+              Studio
+            </button>
+          </div>
+        </div>
+      )}
       {/* Chat area — visible tant que l'utilisateur n'a pas OUVERT le studio */}
       {!(studioState.isOpen && studioVisible) && (
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">

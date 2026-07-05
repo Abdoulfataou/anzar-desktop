@@ -98,6 +98,8 @@ Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). 
 
 **Panneau d'activité chat-first (05/07)** : `ProjectActivityPanel` à droite du chat pendant une session projet — todo réelle (abonnée à `studioTodoManager`, donc synchronisée avec `markAllDone`), étape en cours, liste des fichiers réellement générés avec compteur unique. Masquable (X), réaffiché à chaque nouvelle session. L'ancien `GenerationPanel` est réservé au flux import/audit.
 
+**Inspiration TRAE (05/07)** : (1) onglets de session **Discussion | Studio** centrés en haut pendant une session projet — navigation explicite entre chat et code ; (2) **carte projet dépliable** — ligne "N/M étapes · X fichiers ›" qui déplie la todo condensée + les 5 derniers fichiers, sans quitter le chat ; (3) panneau droit restructuré en sections Todo / Fichiers générés / Références avec états vides élégants + timer.
+
 **Reste à faire (épuration profonde, seconde passe)** : dégraisser `ChatInput` (863 l.) et `useChatEngine` (821 l.) du code de routage projet devenu inutile (forceProjectGenerationOnceRef, wizardMetaRef) ; redesign Sidebar (546 l.) ; unifier GenerationPanel dans le studio pour supprimer le doublon d'affichage de génération ; commit des suppressions `.git_broken/`.
 
 ## 6. Fichiers critiques à connaître
