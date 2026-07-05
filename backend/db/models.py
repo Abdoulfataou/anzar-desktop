@@ -197,40 +197,6 @@ class PaymentIntent(Base):
 
 
 # ============================================================================
-# STUDENT PROJECT
-# ============================================================================
-
-class StudentProject(Base):
-    __tablename__ = "student_projects"
-
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)  # uuid4 hex
-    user_email: Mapped[str] = mapped_column(String(255), ForeignKey("users.email", ondelete="CASCADE"), index=True)
-    project_type: Mapped[str] = mapped_column(String(30), nullable=False)
-    title: Mapped[str] = mapped_column(String(500), default="")
-    subject: Mapped[str] = mapped_column(Text, default="")
-    level: Mapped[str] = mapped_column(String(50), default="")  # L1, L2, L3, M1, M2, Doctorat
-    status: Mapped[str] = mapped_column(String(30), default="draft", nullable=False, index=True)
-    outline_json: Mapped[str] = mapped_column(Text, default="{}")
-    sections_json: Mapped[str] = mapped_column(Text, default="[]")
-    content: Mapped[str] = mapped_column(Text, default="")
-    metadata_json: Mapped[str] = mapped_column(Text, default="{}")
-    tokens_used: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False, index=True)
-
-    __table_args__ = (
-        CheckConstraint(
-            "project_type IN ('memoire', 'rapport', 'expose', 'plan', 'correction', 'research', 'quiz', 'flashcards')",
-            name="ck_student_projects_type",
-        ),
-        CheckConstraint(
-            "status IN ('draft', 'in_progress', 'review', 'completed', 'archived')",
-            name="ck_student_projects_status",
-        ),
-    )
-
-
-# ============================================================================
 # USER MEMORY (Hermes-inspired persistent learning)
 # ============================================================================
 

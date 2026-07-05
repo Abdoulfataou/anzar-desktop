@@ -27,7 +27,6 @@ from db.models import (
     Project,
     Admin,
     PaymentIntent,
-    StudentProject,
     UserMemory,
     CommunitySkill,
     InstalledSkill,
@@ -143,7 +142,7 @@ __all__ = [
     "Base", "get_engine", "get_sessionmaker", "get_db", "db_ping", "init_db",
     # Models
     "User", "OtpCode", "Credits", "Transaction", "UsageRecord",
-    "Project", "Admin", "PaymentIntent", "StudentProject",
+    "Project", "Admin", "PaymentIntent",
     "UserMemory", "CommunitySkill", "InstalledSkill", "RateLimit",
     # Password
     "hash_password", "verify_password",

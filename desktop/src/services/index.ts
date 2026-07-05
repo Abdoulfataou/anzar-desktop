@@ -16,3 +16,7 @@ export { storageService, StorageService } from './infra/storage';
 
 // Terminal service — exécution de commandes, dépendances, processus
 export { terminalService } from './terminal';
+
+// Agent — moteur agentique tool-use (Phase 1)
+export { runAgentSession, AGENT_TOOLS } from './agent';
+export type { AgentEvent, AgentStopReason, AgentSessionOptions, AgentSessionResult } from './agent';

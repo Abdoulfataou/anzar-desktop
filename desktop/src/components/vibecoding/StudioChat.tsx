@@ -14,13 +14,14 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Loader2, CheckCircle2, Circle, AlertCircle,
   FileCode, Sparkles, ArrowDown, Zap,
-  MessageSquare, Terminal, Wand2,
+  MessageSquare, Terminal, Wand2, Bot,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { StudioFile, StudioPhase } from './VibeCodingStudio';
 import type { AgentUpdate, StepEvent } from '@/services/projectGeneration';
 import StudioTodoList from './StudioTodoList';
 import SkillsPanel from './SkillsPanel';
+import AgentPanel from './AgentPanel';
 
 // ============================================================================
 // TYPES
@@ -41,6 +42,10 @@ interface StudioChatProps {
   lastIterationResult?: { success: boolean; modifiedFiles: string[]; affectedFiles?: string[]; error?: string } | null;
   /** Currently selected file in the editor — sent as fileFocus to iterate */
   selectedFile?: string | null;
+  /** Racine locale du projet (requis pour le mode Agent) */
+  projectPath?: string;
+  /** Notifie l'éditeur qu'un fichier a changé sur disque (mode Agent) */
+  onFileChange?: (path: string, newContent: string) => void;
 }
 
 interface ChatMessage {
@@ -169,10 +174,13 @@ const StudioChat: React.FC<StudioChatProps> = ({
   isIteratingExternal,
   lastIterationResult,
   selectedFile,
+  projectPath,
+  onFileChange,
 }) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
-  const [showSkills, setShowSkills] = useState(false);
+  const [panel, setPanel] = useState<'chat' | 'skills' | 'agent'>('chat');
+  const showSkills = panel === 'skills';
   const isIterating = isIteratingExternal ?? false;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -264,7 +272,7 @@ const StudioChat: React.FC<StudioChatProps> = ({
 
   // Execute a skill: inject prompt as user message and iterate
   const handleSkillExecute = useCallback((prompt: string, mode: string) => {
-    setShowSkills(false);
+    setPanel('chat');
     // Add as user message
     setMessages(prev => [...prev, {
       id: `user-${Date.now()}`,
@@ -290,10 +298,10 @@ const StudioChat: React.FC<StudioChatProps> = ({
           ) : (
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setShowSkills(false)}
+                onClick={() => setPanel('chat')}
                 className={cn(
                   'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors',
-                  !showSkills
+                  panel === 'chat'
                     ? 'text-accent-primary bg-accent-primary/10'
                     : 'text-text-muted hover:text-text-secondary'
                 )}
@@ -302,10 +310,22 @@ const StudioChat: React.FC<StudioChatProps> = ({
                 Chat
               </button>
               <button
-                onClick={() => setShowSkills(true)}
+                onClick={() => setPanel('agent')}
                 className={cn(
                   'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors',
-                  showSkills
+                  panel === 'agent'
+                    ? 'text-accent-primary bg-accent-primary/10'
+                    : 'text-text-muted hover:text-text-secondary'
+                )}
+              >
+                <Bot size={13} />
+                Agent
+              </button>
+              <button
+                onClick={() => setPanel('skills')}
+                className={cn(
+                  'flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors',
+                  panel === 'skills'
                     ? 'text-accent-primary bg-accent-primary/10'
                     : 'text-text-muted hover:text-text-secondary'
                 )}
@@ -353,8 +373,18 @@ const StudioChat: React.FC<StudioChatProps> = ({
         />
       )}
 
+      {/* ── ITERATING MODE : agent autonome ── */}
+      {phase === 'iterating' && panel === 'agent' && (
+        <AgentPanel
+          projectName={projectName}
+          projectRoot={projectPath}
+          files={files}
+          onFileChange={onFileChange}
+        />
+      )}
+
       {/* ── ITERATING MODE : chat ── */}
-      {phase === 'iterating' && !showSkills && (
+      {phase === 'iterating' && panel === 'chat' && (
         <>
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 scrollbar-thin">

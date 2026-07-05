@@ -689,6 +689,8 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
                     errorMessage={errorMessage}
                     isIteratingExternal={isIteratingProp}
                     lastIterationResult={lastIterationResult}
+                    projectPath={projectPath}
+                    onFileChange={onFileChange}
                   />
                 )}
               </div>

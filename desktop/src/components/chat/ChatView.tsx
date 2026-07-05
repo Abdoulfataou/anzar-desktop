@@ -10,13 +10,11 @@ import { WifiOff } from 'lucide-react';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
 import WelcomeScreen from './WelcomeScreen';
-import { cn } from '@/lib/utils';
 import { AIModel, type Message } from '@/types';
 import { useProjectStore } from '@/stores/projectStore';
 import { useActiveConversation, useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useActivityStore } from '@/stores/activityStore';
-import ProjectWizardModal from './ProjectWizardModal';
 import GenerationPanel from './GenerationPanel';
 import { VibeCodingStudio } from '@/components/vibecoding';
 import { useVibeCodingStudio } from '@/hooks/useVibeCodingStudio';
@@ -44,8 +42,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     }
     prevStoreRef.current = storeActiveProjectId;
   }, [storeActiveProjectId, isLoading]);
-
-  const [showProjectWizard, setShowProjectWizard] = useState(false);
 
   // ── VibeCoding Studio hook ──
   const [studioState, studioActions] = useVibeCodingStudio();
@@ -131,9 +127,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         )}
         {messages.length === 0 && showWelcome ? (
           <WelcomeScreen
+            onGenerate={chatEngine.quickStart}
             onImportFolder={projectPipeline.handleImportFolder}
-            onShowProjectWizard={() => setShowProjectWizard(true)}
-            onQuickStart={chatEngine.quickStart}
+            isLoading={isLoading}
           />
         ) : (
           <MessageList
@@ -180,8 +176,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         </div>
       )}
 
-      {/* ===== INPUT BAR ===== */}
-      {!studioState.isOpen && (
+      {/* ===== INPUT BAR (hidden on welcome screen — it has its own input) ===== */}
+      {!studioState.isOpen && !(messages.length === 0 && showWelcome) && (
       <div className="flex-shrink-0">
         <ChatInput
           onSendMessage={async (msg, attachments) => { await chatEngine.sendMessage(msg, false, { attachments }); }}
@@ -195,32 +191,6 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           placeholder="Décris ton app, ANZAR la construit..."
         />
       </div>
-      )}
-
-      {/* ===== PROJECT WIZARD (modal) ===== */}
-      {showProjectWizard && (
-        <ProjectWizardModal
-          onClose={() => setShowProjectWizard(false)}
-          onGenerate={async (prompt, projectName, projectType, techs) => {
-            setShowProjectWizard(false);
-            await projectPipeline.prepareProjectGeneration();
-            forceProjectGenerationOnceRef.current = true;
-            wizardMetaRef.current = { projectType, techs };
-
-            const displayMessage = `Genere le projet "${projectName}"`;
-            chatEngine.ensureActiveConversation();
-            const userMsgId = `msg_${Date.now()}`;
-            useChatStore.getState().addMessage({
-              id: userMsgId,
-              content: displayMessage,
-              role: 'user',
-              timestamp: Date.now(),
-              model: selectedModel,
-            });
-
-            chatEngine.sendMessage(prompt, false, { skipUserMessage: true, userMessageId: userMsgId });
-          }}
-        />
       )}
 
       </div>

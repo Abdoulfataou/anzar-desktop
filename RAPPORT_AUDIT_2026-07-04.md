@@ -1,0 +1,88 @@
+# RAPPORT D'AUDIT — ANZAR
+**Date : 4 juillet 2026** · Branche `main` · Dernier commit : `353f274` (AXE 4: Audit complet)
+**Objectif du chantier : transformer ANZAR en logiciel de vibecoding complet, niveau Claude Code / Cowork.**
+
+---
+
+## 1. Vue d'ensemble
+
+ANZAR est un assistant IA de vibecoding : l'utilisateur décrit un projet, ANZAR planifie (`/plan`), génère le code (`/execute` en SSE), permet d'itérer, puis vise une boucle Verify → Fix → Verify. Monorepo propriétaire (ISSALANHUB), 846 fichiers trackés.
+
+| Module | Stack | Taille | État |
+|---|---|---|---|
+| `desktop/` | Tauri **1.6** + React 18 + TS + Zustand + Tailwind | ~26 000 lignes, 82 fichiers TS/TSX | **Cœur du produit**, v2.0.0 |
+| `backend/` | FastAPI + SQLAlchemy async (SQLite/Postgres) | ~6 000 lignes | Déployé Railway, proxy IA + crédits |
+| `admin/` | React + Tauri | — | Console d'admin |
+| `mobile/` | React Native/Expo | — | Secondaire |
+
+## 2. Architecture actuelle
+
+**Backend (proxy sécurisé + pipeline multi-agents)**
+- Clés API (DeepSeek, Kimi, Serper) 100 % côté serveur. Auth JWT + OTP email (Brevo). Crédits prépayés serveur = source de vérité. Rate limiting, housekeeping périodique.
+- 4 agents : `planner`, `coder` (971 lignes — génération batch, détection de fichiers tronqués, régénération unitaire), `code_review`, `vision` (design-to-code).
+- Routes clés : `/plan`, `/{id}/execute` (SSE), `/iterate`, `/review`, `/design-to-code`, `/cancel`, `/api/chat/smart` (avec tool_executor), proxy DeepSeek (chat, FIM, files, batches).
+
+**Desktop (VibeCoding Studio)**
+- Studio complet : `StudioChat`, `StudioEditor`, `StudioFileTree`, `StudioPreview`, `StudioGitHistory`, `StudioTodoList`, `SkillsPanel`, `PlanReview`, `DesignToCodePanel`.
+- `iterationRouter` : routage regex vers 6 modes (iterate/patch/refactor/debug/test/review), inspiré TRAE SOLO.
+- `devMemoryStore` + `iterationMemory` : mémoire développeur (inspirée Hermes) + skills hub communautaire.
+- `terminal.ts` : exécution shell via Tauri (allowlist node/npm/npx/git/pip/cargo…), streaming stdout/stderr.
+- 8 stores Zustand, `codeIndexer`, `lintResolver`, exports docx/pptx/pdf, Sentry, auto-update Tauri.
+- `main.rs` = 17 lignes : quasi aucune logique native Rust, tout passe par la webview + allowlist Tauri.
+
+## 3. Forces
+
+1. Base saine et récente : refonte "purge non-vibecoding" (43 fichiers supprimés), audit AXE 4 déjà passé, zéro erreur TS exigée en CI.
+2. Sécurité bien pensée : clés serveur, crédits serveur, allowlist shell avec validators regex, OTP hashé.
+3. Pipeline SSE plan→execute→iterate fonctionnel avec annulation, suivi d'agents, persistance.
+4. UX déjà orientée "studio" (todo list, git history, preview, skills) — la coquille du produit cible existe.
+5. Infra prod réelle : Railway, CI GitHub Actions, releases Windows/macOS signées, auto-update.
+
+## 4. Faiblesses et écarts vs l'objectif « logiciel comme Claude »
+
+**Écart n°1 — pas de vraie boucle agentique.** Le cœur de Claude Code, c'est un agent qui *utilise des outils en boucle* (lire fichier → chercher → éditer → exécuter → lire l'erreur → corriger) jusqu'à ce que la tâche soit finie. ANZAR fait de la *génération dirigée* : le coder produit des blocs de code extraits par regex (`_extract_code_blocks`), appliqués ensuite. Le `tool_executor` existe dans `/api/chat/smart` mais n'est pas le moteur du studio.
+
+**Écart n°2 — Verify→Fix→Verify non bouclé.** Le README le promet, mais il n'y a pas de boucle automatique "run tests/lint → injecter les erreurs → re-patcher → re-run" pilotée par l'agent.
+
+**Écart n°3 — contexte limité.** `_build_smart_context` plafonne (~30k chars, tri heuristique). Pas d'index sémantique (embeddings/tree-sitter), pas de retrieval intelligent sur gros projets.
+
+**Écart n°4 — édition destructive.** Génération/itération = réécriture de fichiers entiers plutôt que edits ciblés (search/replace) → lent, coûteux en tokens, risque de troncature (le code contient d'ailleurs `_detect_truncated_files` pour compenser).
+
+**Autres points :**
+- Tauri 1.6 (obsolète — Tauri 2 stable depuis fin 2024 : meilleur IPC, permissions fines, mobile).
+- **Zéro test** (ni front ni back) ; `lint` = `tsc --noEmit` seulement.
+- Incohérence sécurité : le README annonce un scope FS limité à `*/ANZAR/**`, mais `tauri.conf.json` autorise `$DOCUMENTS/**`, `$DESKTOP/**`, `$HOME/Projects/**`, etc.
+- `jwt_secret` a une valeur par défaut "CHANGE-ME" (validate_config existe, à vérifier qu'il bloque).
+- Mono-provider de fait (DeepSeek) ; Kimi câblé mais secondaire. Pas de MCP, pas de sous-agents parallèles.
+- Terminal = commandes one-shot allowlistées, pas de vrai PTY interactif.
+- Dossier `.git_broken/` en suppressions non commitées (à nettoyer).
+
+## 5. Roadmap proposée (vers un Claude-like)
+
+**Phase 1 — Le moteur agentique (le plus important)** — ✅ *Cœur implémenté le 04/07/2026 : `desktop/src/services/agent/` (agentTools, agentLoop, agentPrompts) + hook `useAgentSession`. Boucle client-driven via le proxy existant. UI branchée : onglet **Agent** dans StudioChat (`AgentPanel.tsx`) avec timeline des tool calls, streaming, stop. Reste : test en conditions réelles (`npm run tauri:dev`).*
+Remplacer la génération one-shot par une boucle tool-use côté backend : outils `read_file`, `write_file`, `edit_file` (search/replace), `list_dir`, `grep`, `run_command`, `web_search`. DeepSeek supporte le function calling — le `tool_executor` de `chat.py` est le point de départ. L'agent boucle jusqu'à complétion avec budget de tokens/étapes. Les écritures passent par ChangeSets (preview → apply) déjà prévus dans le design.
+
+**Phase 2 — Verify → Fix → Verify réel** — ✅ *Implémenté le 04/07/2026 : `agentVerifier.ts` (détection npm/cargo/python → lint/typecheck/build/test) + gate dans `agentLoop.ts` : task_done REFUSÉ si la vérification échoue, erreurs réinjectées, 3 cycles de correction max. UI dans AgentPanel (badges vérif).*
+Après chaque tâche : détection auto du type de projet → run lint/build/tests via `terminal.ts` → parse des erreurs → réinjection à l'agent → nouvelle passe. Checkpoints git automatiques avant chaque apply (rollback en 1 clic via `StudioGitHistory`).
+
+**Phase 3 — Contexte et mémoire** — ✅ *Implémenté le 04/07/2026 : `agentContext.ts` — indexation auto au démarrage de session (codeIndexer réutilisé : code map bornée 9k + hints par tâche via scoring/graphe de dépendances) injectée dans le system prompt. Mémoire persistante `ANZAR.md` à la racine du projet (équivalent CLAUDE.md), lue à chaque session, enrichie par le nouvel outil `remember`.*
+Indexation locale du projet (tree-sitter + embeddings), retrieval pour construire le contexte au lieu du plafond 30k chars. Fusionner `codeIndexer` + `devMemoryStore` en une vraie mémoire projet (conventions, décisions, erreurs passées) injectée dans le system prompt — équivalent CLAUDE.md/skills.
+
+**Phase 4 — Plateforme**
+Migration Tauri 2 (+ PTY réel type `portable-pty` pour un terminal interactif). Multi-provider (DeepSeek, Kimi, + Claude/GPT en option) avec routage par tâche. Support MCP pour connecteurs externes. Sous-agents parallèles (ex. génération multi-fichiers concurrente, agent review séparé).
+
+**Phase 5 — Qualité et durcissement**
+Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). Aligner le scope FS réel sur la promesse du README (ou l'inverse, mais documenté). Forcer `jwt_secret` en prod. Nettoyer `.git_broken`.
+
+## 6. Fichiers critiques à connaître
+
+- `backend/agents/coder.py` — moteur de génération actuel (à transformer en agent tool-use)
+- `backend/routes/projects.py` (1170 l.) — orchestration plan/execute/iterate/review
+- `backend/routes/chat.py` — proxy + `smart_chat` avec tool_executor (germe de la boucle agentique)
+- `desktop/src/hooks/useVibeCodingStudio.ts` (948 l.) — orchestration UI du studio
+- `desktop/src/services/studio/iterationRouter.ts` — routage des modes
+- `desktop/src/services/terminal.ts` — exécution shell (base du Verify)
+- `desktop/src-tauri/tauri.conf.json` — allowlist FS/shell
+
+---
+**Conclusion.** La coquille (studio, sécurité, infra, UX) est déjà au niveau. Ce qui sépare ANZAR d'un Claude Code, c'est le **moteur** : passer d'un générateur de code dirigé à un **agent autonome à outils, bouclant jusqu'au succès vérifié**. C'est la Phase 1, et tout le reste s'y accroche.

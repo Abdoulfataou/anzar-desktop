@@ -64,7 +64,7 @@ export function useProjectPipeline(params: ProjectPipelineParams) {
     useChatStore.getState().ensureActiveConversation(selectedModel);
   }, [selectedModel]);
 
-  // ── Prepare project generation (directory dialog) ──
+  // ── Prepare project generation (auto-create in default dir, no dialog) ──
   const prepareProjectGeneration = useCallback(async () => {
     lastProjectGenerationWasUserActionRef.current = true;
     projectBaseDirOverrideRef.current = null;
@@ -77,50 +77,20 @@ export function useProjectPipeline(params: ProjectPipelineParams) {
       } catch {
         // ignore
       }
-
-      try {
-        const { confirm, open } = await import('@tauri-apps/api/dialog');
-        const okDefault = await confirm(
-          `Où veux-tu créer le projet ?\n\nPar défaut:\n${defaultBase}\n\nUtiliser cet emplacement ?`,
-          { title: 'Emplacement du projet', type: 'info' as any }
-        );
-        if (okDefault) {
-          projectBaseDirOverrideRef.current = defaultBase;
-          return;
-        }
-        const selected = await open({
-          directory: true,
-          multiple: false,
-          title: 'Choisir le dossier de sortie (dans ANZAR)',
-        });
-        if (selected && typeof selected === 'string') {
-          const allowed = await isAllowedProjectRoot(selected);
-          if (!allowed) {
-            toast.error('Dossier non autorisé. Choisis un dossier dans ton répertoire personnel.');
-            projectBaseDirOverrideRef.current = defaultBase;
-            return;
-          }
-          projectBaseDirOverrideRef.current = selected.replace(/\\/g, '/').replace(/\/+$/, '');
-          return;
-        }
-      } catch {
-        // ignore - fallback default
-      }
-
       projectBaseDirOverrideRef.current = defaultBase;
     } catch {
       projectBaseDirOverrideRef.current = null;
     }
   }, []);
 
-  // ── Import existing folder as project ──
+  // ── Import existing folder as project (1 clic = import + ouverture studio) ──
   const handleImportFolder = useCallback(async () => {
     try {
       const { open } = await import('@tauri-apps/api/dialog');
       const selected = await open({
         directory: true,
         multiple: false,
-        title: 'Importer un dossier (projet existant)',
+        title: 'Importer un projet existant',
       });
 
       if (!selected || typeof selected !== 'string') return;
@@ -139,34 +109,15 @@ export function useProjectPipeline(params: ProjectPipelineParams) {
       } as any);
       useProjectStore.getState().setActiveProject(project.id);
       setSelectedProjectId(project.id);
-      toast.success(`Projet importé : ${folderName}`);
+      toast.success(`Projet "${folderName}" importé`);
 
-      try {
-        const { confirm } = await import('@tauri-apps/api/dialog');
-        const ok = await confirm(
-          `Projet importé : ${folderName}\n\nChemin:\n${selected}\n\nOuvrir le projet maintenant ?`,
-          { title: 'Projet importé', type: 'info' as any }
-        );
-        if (ok) navigate(`/projects/${project.id}`);
-      } catch {
-        // Fallback web
-      }
+      // Navigation directe vers le studio — pas de confirm
+      navigate(`/projects/${project.id}`);
     } catch (err) {
       console.error('Import folder failed:', err);
-      ensureActiveConversation();
-      const msgId = `msg_${Date.now()}`;
-      const content = `Impossible d'ouvrir le selecteur de dossier. (Fonction disponible sur l'app desktop Tauri.)`;
-      addConversationMessage({
-        id: msgId,
-        role: 'assistant',
-        content,
-        timestamp: Date.now(),
-        model: selectedModel,
-        isError: true,
-      });
-      toast.error("Impossible d'importer le dossier");
+      toast.error("Impossible d'importer le dossier. Fonction disponible sur l'app desktop.");
     }
-  }, [selectedModel, ensureActiveConversation, addConversationMessage, navigate, setSelectedProjectId]);
+  }, [selectedModel, navigate, setSelectedProjectId]);
 
   // ── Main project generation handler ──
   const handleProjectGeneration = useCallback(async (
