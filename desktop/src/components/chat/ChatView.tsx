@@ -16,6 +16,7 @@ import { useActiveConversation, useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useActivityStore } from '@/stores/activityStore';
 import GenerationPanel from './GenerationPanel';
+import ProjectProgressCard from './ProjectProgressCard';
 import { VibeCodingStudio } from '@/components/vibecoding';
 import { useVibeCodingStudio } from '@/hooks/useVibeCodingStudio';
 import { useChatEngine } from '@/hooks/useChatEngine';
@@ -29,6 +30,10 @@ interface ChatViewProps {
 export default function ChatView({ onlineStatus = true, showWelcome = true }: ChatViewProps) {
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+
+  // ── Flux chat-first : le studio ne s'affiche QUE si l'utilisateur clique
+  //    sur "Voir le projet" (la génération continue dans le chat sinon) ──
+  const [studioVisible, setStudioVisible] = useState(false);
 
   // Track sidebar "Nouvelle tache" clearing the project
   const storeActiveProjectId = useProjectStore((s) => s.activeProjectId);
@@ -45,6 +50,15 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
   // ── VibeCoding Studio hook ──
   const [studioState, studioActions] = useVibeCodingStudio();
+
+  // Nouvelle session studio → on repart dans le chat (carte de progression)
+  const prevStudioOpenRef = useRef(false);
+  useEffect(() => {
+    if (!prevStudioOpenRef.current && studioState.isOpen) {
+      setStudioVisible(false);
+    }
+    prevStudioOpenRef.current = studioState.isOpen;
+  }, [studioState.isOpen]);
 
   // ── Activity panel ──
   const generationPanelSessionId = useActivityStore((s) => s.generationPanelSessionId);
@@ -112,8 +126,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     <div className="h-full min-h-0 flex bg-bg-primary">
       {/* Main chat column */}
       <div className="flex-1 min-h-0 flex flex-col bg-bg-primary">
-      {/* Chat area (hidden when studio is active) */}
-      {!studioState.isOpen && (
+      {/* Chat area — visible tant que l'utilisateur n'a pas OUVERT le studio */}
+      {!(studioState.isOpen && studioVisible) && (
       <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {!isEffectivelyOnline && (
           <div className="px-4 pt-3">
@@ -144,8 +158,21 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       </div>
       )}
 
-      {/* ===== VIBECODING STUDIO ===== */}
-      {studioState.isOpen && (
+      {/* ── Carte de progression du projet (flux chat-first) ── */}
+      {studioState.isOpen && !studioVisible && (
+        <ProjectProgressCard
+          projectName={studioState.projectName}
+          phase={studioState.phase}
+          files={studioState.files}
+          currentStep={studioState.currentStep}
+          errorMessage={studioState.errorMessage}
+          onOpenStudio={() => setStudioVisible(true)}
+          onCancel={studioActions.cancel}
+        />
+      )}
+
+      {/* ===== VIBECODING STUDIO (ouvert uniquement sur clic) ===== */}
+      {studioState.isOpen && studioVisible && (
         <div className="flex-1 min-h-0">
           <VibeCodingStudio
             projectId={studioState.projectId}
@@ -160,7 +187,8 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
             onFileChange={studioActions.updateFile}
             onFileRevert={studioActions.revertFile}
             onCancel={studioActions.cancel}
-            onClose={studioActions.close}
+            onClose={() => { setStudioVisible(false); studioActions.close(); }}
+            onMinimize={() => setStudioVisible(false)}
             activeGeneratingFile={studioState.activeGeneratingFile}
             errorMessage={studioState.errorMessage}
             isIterating={studioState.isIterating}
@@ -178,7 +206,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       )}
 
       {/* ===== INPUT BAR (hidden on welcome screen — it has its own input) ===== */}
-      {!studioState.isOpen && !(messages.length === 0 && showWelcome) && (
+      {!(studioState.isOpen && studioVisible) && !(messages.length === 0 && showWelcome) && (
       <div className="flex-shrink-0">
         <ChatInput
           onSendMessage={async (msg, attachments) => { await chatEngine.sendMessage(msg, false, { attachments }); }}
@@ -196,7 +224,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
 
       </div>
       {/* ── Generation Panel (right sidebar) ── */}
-      {generationPanelSessionId && !studioState.isOpen && (
+      {generationPanelSessionId && !(studioState.isOpen && studioVisible) && (
         <GenerationPanel
           sessionId={generationPanelSessionId}
           onClose={() => setGenerationPanelSessionId(null)}

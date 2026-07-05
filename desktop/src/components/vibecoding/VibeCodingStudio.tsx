@@ -14,7 +14,7 @@
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  X, Maximize2, Minimize2, Play, Square,
+  X, Maximize2, Minimize2, Play, Square, MessageSquare,
   Loader2, CheckCircle2, AlertCircle,
   FolderOpen, Sparkles, ChevronDown, Package, Terminal, Rocket,
   Eye, EyeOff, ExternalLink, Undo2, GitBranch, Braces, Paintbrush, History,
@@ -79,6 +79,8 @@ export interface VibeCodingStudioProps {
   onCancel: () => void;
   /** Callback pour fermer le studio */
   onClose: () => void;
+  /** Revenir au chat SANS fermer la session (flux chat-first) */
+  onMinimize?: () => void;
   /** Fichier en cours de génération */
   activeGeneratingFile?: string;
   /** Message d'erreur */
@@ -211,6 +213,7 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
   onFileRevert,
   onCancel,
   onClose,
+  onMinimize,
   activeGeneratingFile,
   errorMessage,
   isIterating: isIteratingProp,
@@ -559,6 +562,15 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
           >
             <Paintbrush size={16} />
           </button>
+          {onMinimize && (
+            <button
+              onClick={onMinimize}
+              className="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover transition-colors"
+              title="Retour au chat (la génération continue en arrière-plan)"
+            >
+              <MessageSquare size={16} />
+            </button>
+          )}
           <button
             onClick={() => setIsMaximized(!isMaximized)}
             className="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover transition-colors"

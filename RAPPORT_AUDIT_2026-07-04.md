@@ -92,6 +92,8 @@ Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). 
 
 **Correctifs 2e test réel (04/07, 21h30)** : (1) **CAUSE RACINE des fichiers vides trouvée et corrigée** — bug backend : `routes/projects.py` appelait `_generate_batch(existing_files_list=…)` alors que la méthode attend `existing_files_context` → TypeError à chaque batch → zéro fichier généré (⚠️ redéployer Railway) ; (2) **flux sans clic** : plan → génération automatique, plus d'écran "Générer le projet" ; (3) **auto-vérification post-génération** : ANZAR lance lui-même `npm install` + `npm run build` par package détecté et affiche ✅/❌ dans le chat avec proposition de correction ; (4) **commandes terminal** affichées à l'utilisateur dans le message de fin (cd …, npm install && npm run dev).
 
+**Flux chat-first (04/07, 22h)** : la génération vit désormais DANS le chat via `ProjectProgressCard` (nom, phase, étape courante, barre de progression, Annuler). Le studio (fichiers/éditeur) ne s'ouvre que sur clic "Voir le projet" ; bouton "Retour au chat" dans le studio (la session continue en arrière-plan). `studioVisible` est distinct de `isOpen` dans ChatView.
+
 **Reste à faire (épuration profonde, seconde passe)** : dégraisser `ChatInput` (863 l.) et `useChatEngine` (821 l.) du code de routage projet devenu inutile (forceProjectGenerationOnceRef, wizardMetaRef) ; redesign Sidebar (546 l.) ; unifier GenerationPanel dans le studio pour supprimer le doublon d'affichage de génération ; commit des suppressions `.git_broken/`.
 
 ## 6. Fichiers critiques à connaître
