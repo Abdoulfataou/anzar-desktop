@@ -277,9 +277,62 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
         localPathRef.current,
       );
 
-      // ── Write files to disk ──
+      // ══════════════════════════════════════════════════════════════════
+      // FIABILISATION (fix "fichiers vides") :
+      // 1. La fin du stream N'EST PAS un succès — on vérifie le statut serveur.
+      // 2. Réconciliation SYSTÉMATIQUE : si des fichiers manquent par rapport
+      //    au plan, on les télécharge depuis le serveur (source de vérité).
+      // 3. Zéro fichier avec contenu = ERREUR affichée, jamais un faux succès.
+      // ══════════════════════════════════════════════════════════════════
+
+      // ── 1. Statut final côté serveur ──
+      try {
+        const st = await projectGeneration.getStatus(thePlan.project_id);
+        if (st.status === 'error' || st.status === 'cancelled') {
+          const coderMsg = st.agents?.find(a => a.name === 'coder')?.message;
+          throw new Error(coderMsg || `La génération a échoué côté serveur (${st.status}).`);
+        }
+      } catch (stErr: any) {
+        if (stErr?.message && !/HTTP/.test(stErr.message)) throw stErr;
+        // Statut injoignable (réseau) : on continue, la réconciliation tranchera
+      }
+
+      // ── 2. Réconciliation : le serveur est la source de vérité ──
+      const expectedCount = (thePlan.files?.length as number) ?? 0;
+      if (receivedFiles.size < expectedCount) {
+        try {
+          const serverFiles = await projectGeneration.downloadFiles(thePlan.project_id);
+          for (const [filePath, content] of Object.entries(serverFiles)) {
+            if (!receivedFiles.has(filePath)) receivedFiles.set(filePath, content);
+          }
+        } catch { /* le serveur n'a peut-être plus l'état — on garde le SSE */ }
+      }
+
+      // ── 3. Zéro contenu = erreur franche ──
+      const withContent = [...receivedFiles.values()].filter(c => c && c.length > 0).length;
+      if (withContent === 0) {
+        throw new Error(
+          'Aucun fichier reçu du serveur. La génération a probablement échoué — vérifie tes crédits et réessaie.'
+        );
+      }
+
+      // ── Mise à jour du store (tous les fichiers, statut done) ──
+      setFiles(prev => {
+        const next = new Map(prev);
+        for (const [filePath, content] of receivedFiles) {
+          next.set(filePath, {
+            path: filePath,
+            content,
+            language: filePath.split('.').pop() || 'txt',
+            status: 'done',
+          });
+        }
+        return next;
+      });
+
+      // ── Écriture disque ──
       const localPath = localPathRef.current;
-      if (localPath && receivedFiles.size > 0) {
+      if (localPath) {
         for (const [filePath, content] of receivedFiles) {
           try {
             const fullPath = `${localPath}/${filePath}`;
@@ -291,27 +344,6 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
           }
         }
         try { await loadProjectFromDisk(projectId); } catch { /* ok */ }
-      }
-
-      // ── Download fallback if no SSE files ──
-      if (receivedFiles.size === 0 && localPath) {
-        try {
-          const serverFiles = await projectGeneration.downloadFiles(thePlan.project_id);
-          for (const [filePath, content] of Object.entries(serverFiles)) {
-            setFiles(prev => {
-              const next = new Map(prev);
-              next.set(filePath, { path: filePath, content, language: filePath.split('.').pop() || 'txt', status: 'done' });
-              return next;
-            });
-            // Write to disk
-            try {
-              const fullPath = `${localPath}/${filePath}`;
-              const parentDir = fullPath.substring(0, fullPath.lastIndexOf('/'));
-              await fileSystemService.createDirectory(parentDir).catch(() => {});
-              await fileSystemService.writeFile(fullPath, content);
-            } catch { /* ok */ }
-          }
-        } catch { /* ok */ }
       }
 
       // Done! End todo session for generation

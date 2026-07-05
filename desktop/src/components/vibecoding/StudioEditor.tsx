@@ -357,7 +357,14 @@ const StudioEditor: React.FC<StudioEditorProps> = ({
         {openTabs.map(tabPath => {
           const f = files.find(x => x.path === tabPath);
           const isActive = tabPath === selectedFile;
-          const tabName = tabPath.split('/').pop() || tabPath;
+          const baseName = tabPath.split('/').pop() || tabPath;
+          // Désambiguïsation : si un autre onglet porte le même nom,
+          // on préfixe par le dossier parent (client/package.json)
+          const hasDuplicate = openTabs.some(
+            other => other !== tabPath && (other.split('/').pop() || other) === baseName
+          );
+          const parentDir = tabPath.split('/').slice(-2, -1)[0];
+          const tabName = hasDuplicate && parentDir ? `${parentDir}/${baseName}` : baseName;
           return (
             <button
               key={tabPath}
@@ -374,7 +381,7 @@ const StudioEditor: React.FC<StudioEditorProps> = ({
               ) : (
                 <FileCode size={12} className={cn('flex-shrink-0', isActive ? 'text-accent-primary' : 'text-text-muted')} />
               )}
-              <span className="truncate max-w-[120px]">{tabName}</span>
+              <span className="truncate max-w-[160px]">{tabName}</span>
               {f?.status === 'modified' && (
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
               )}

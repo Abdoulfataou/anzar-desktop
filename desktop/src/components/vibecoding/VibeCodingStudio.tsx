@@ -124,6 +124,79 @@ export interface VibeCodingStudioProps {
 // COMPOSANT PRINCIPAL
 // ============================================================================
 
+// ============================================================================
+// PLANNING PROGRESS — étapes visibles une à une + annulation
+// ============================================================================
+
+const PLANNING_STEPS = [
+  'Analyse de ta demande',
+  'Choix de la stack technique',
+  'Architecture des fichiers',
+  'Découpage en étapes de génération',
+];
+
+const PlanningProgress: React.FC<{ onCancel: () => void }> = ({ onCancel }) => {
+  const [currentIdx, setCurrentIdx] = useState(0);
+
+  // Progression indicative (le plan est une seule requête serveur) :
+  // chaque étape s'active progressivement pour montrer l'avancement.
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => setCurrentIdx(1), 4000),
+      setTimeout(() => setCurrentIdx(2), 12000),
+      setTimeout(() => setCurrentIdx(3), 22000),
+    ];
+    return () => timers.forEach(clearTimeout);
+  }, []);
+
+  return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-full max-w-sm px-6">
+        <div className="text-center mb-6">
+          <div className="relative mx-auto w-14 h-14 mb-3">
+            <div className="absolute inset-0 rounded-full border-2 border-accent-primary/20" />
+            <div className="absolute inset-0 rounded-full border-2 border-accent-primary border-t-transparent animate-spin" />
+          </div>
+          <p className="text-sm font-semibold text-text-primary">Préparation du plan</p>
+        </div>
+
+        <div className="space-y-2.5 mb-8">
+          {PLANNING_STEPS.map((label, i) => (
+            <div key={label} className="flex items-center gap-2.5">
+              {i < currentIdx ? (
+                <CheckCircle2 size={15} className="text-emerald-400 flex-shrink-0" />
+              ) : i === currentIdx ? (
+                <Loader2 size={15} className="text-accent-primary animate-spin flex-shrink-0" />
+              ) : (
+                <div className="w-[15px] h-[15px] rounded-full border border-border-subtle flex-shrink-0" />
+              )}
+              <span
+                className={cn(
+                  'text-[13px]',
+                  i < currentIdx ? 'text-text-secondary line-through decoration-text-muted/40'
+                    : i === currentIdx ? 'text-text-primary font-medium'
+                    : 'text-text-muted'
+                )}
+              >
+                {label}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="text-center">
+          <button
+            onClick={onCancel}
+            className="px-5 py-2 rounded-xl text-[13px] text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors border border-border-subtle"
+          >
+            Annuler
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
   projectId,
   projectName,
@@ -698,23 +771,9 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
           </>
         )}
 
-        {/* ── Phase planning : loader central ── */}
+        {/* ── Phase planning : étapes visibles + annulation ── */}
         {phase === 'planning' && (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <div className="relative mx-auto w-16 h-16 mb-4">
-                <div className="absolute inset-0 rounded-full border-2 border-accent-primary/20" />
-                <div className="absolute inset-0 rounded-full border-2 border-accent-primary border-t-transparent animate-spin" />
-                <Sparkles size={20} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 text-accent-primary" />
-              </div>
-              <p className="text-sm font-medium text-text-primary mb-1">
-                Analyse de ta demande...
-              </p>
-              <p className="text-xs text-text-muted">
-                L'IA planifie l'architecture et la structure du projet
-              </p>
-            </div>
-          </div>
+          <PlanningProgress onCancel={onCancel} />
         )}
       </div>
     </div>

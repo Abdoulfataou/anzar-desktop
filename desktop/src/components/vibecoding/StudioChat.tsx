@@ -181,6 +181,30 @@ const StudioChat: React.FC<StudioChatProps> = ({
   const [input, setInput] = useState('');
   const [panel, setPanel] = useState<'chat' | 'skills' | 'agent'>('chat');
   const showSkills = panel === 'skills';
+
+  // ── File d'attente : demandes saisies PENDANT la génération,
+  //    exécutées automatiquement dès que le projet est prêt ──
+  const [queuedInput, setQueuedInput] = useState('');
+  const [queue, setQueue] = useState<string[]>([]);
+  const flushingRef = useRef(false);
+
+  useEffect(() => {
+    if (phase !== 'iterating' || queue.length === 0 || flushingRef.current) return;
+    flushingRef.current = true;
+    (async () => {
+      for (const msg of queue) {
+        setMessages(prev => [...prev, {
+          id: `user-${Date.now()}-${Math.random()}`,
+          role: 'user',
+          content: `⏳ (mis en attente) ${msg}`,
+          timestamp: Date.now(),
+        }]);
+        try { await onIterate(msg); } catch { /* affiché via lastIterationResult */ }
+      }
+      setQueue([]);
+      flushingRef.current = false;
+    })();
+  }, [phase, queue, onIterate]);
   const isIterating = isIteratingExternal ?? false;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -343,13 +367,79 @@ const StudioChat: React.FC<StudioChatProps> = ({
         <StudioTodoList />
       )}
 
-      {/* ── GENERATING MODE : timeline ── */}
+      {/* ── GENERATING MODE : timeline + saisie en attente ── */}
       {(phase === 'generating' || phase === 'planning') && (
-        <StepTimeline
-          files={files}
-          currentStep={currentStep}
-          agents={agents}
-        />
+        <>
+          <StepTimeline
+            files={files}
+            currentStep={currentStep}
+            agents={agents}
+          />
+
+          {/* Demandes en attente déjà saisies */}
+          {queue.length > 0 && (
+            <div className="px-3 py-2 border-t border-border-subtle flex-shrink-0 space-y-1">
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider">
+                En attente ({queue.length}) — exécutées après la génération
+              </p>
+              {queue.map((q, i) => (
+                <div key={i} className="flex items-center gap-2 text-[11px] text-text-secondary">
+                  <Circle size={8} className="text-amber-400 flex-shrink-0" />
+                  <span className="truncate flex-1">{q}</span>
+                  <button
+                    onClick={() => setQueue(prev => prev.filter((_, j) => j !== i))}
+                    className="text-text-muted hover:text-red-400 text-[10px] flex-shrink-0"
+                  >
+                    retirer
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Saisie pendant la génération → file d'attente */}
+          <div className="px-3 pb-3 pt-2 border-t border-border-subtle flex-shrink-0">
+            <div className="flex items-end gap-2">
+              <textarea
+                value={queuedInput}
+                onChange={e => setQueuedInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    const msg = queuedInput.trim();
+                    if (msg) {
+                      setQueue(prev => [...prev, msg]);
+                      setQueuedInput('');
+                    }
+                  }
+                }}
+                placeholder="Ajoute une demande pour après la génération…"
+                rows={1}
+                className="flex-1 px-3 py-2 bg-bg-tertiary border border-border-subtle rounded-xl text-[13px] text-text-primary placeholder-text-muted resize-none focus:outline-none focus:ring-1 focus:ring-accent-primary/50 max-h-[80px]"
+                style={{ minHeight: '36px' }}
+              />
+              <button
+                onClick={() => {
+                  const msg = queuedInput.trim();
+                  if (msg) {
+                    setQueue(prev => [...prev, msg]);
+                    setQueuedInput('');
+                  }
+                }}
+                disabled={!queuedInput.trim()}
+                className={cn(
+                  'p-2 rounded-xl transition-all flex-shrink-0',
+                  queuedInput.trim()
+                    ? 'bg-bg-tertiary text-text-primary hover:bg-surface-hover border border-border-subtle'
+                    : 'bg-bg-tertiary text-text-muted cursor-not-allowed'
+                )}
+                title="Mettre en attente"
+              >
+                <Send size={15} />
+              </button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* ── ERROR MODE ── */}

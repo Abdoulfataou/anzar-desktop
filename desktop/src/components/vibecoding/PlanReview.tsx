@@ -193,18 +193,27 @@ const PlanReview: React.FC<PlanReviewProps> = ({ plan, onExecute, onCancel }) =>
                         </span>
                       )}
                     </div>
-                    {phase.description && (
+                    {/* Anti-répétition : la description n'apparaît que si elle
+                        apporte quelque chose de plus que le titre */}
+                    {phase.description && phase.description.trim() !== phase.name.trim() && (
                       <p className="text-[11px] text-text-muted mt-0.5">{phase.description}</p>
                     )}
-                    {phase.tasks && phase.tasks.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {phase.tasks.map((task, j) => (
-                          <span key={j} className="px-2 py-0.5 rounded-md bg-bg-tertiary text-[10px] text-text-secondary">
-                            {task}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                    {/* Tâches : uniquement celles différentes du titre (le
+                        planner recopie souvent le titre en tâche unique) */}
+                    {(() => {
+                      const distinctTasks = (phase.tasks || []).filter(
+                        t => t.trim() !== phase.name.trim() && t.trim() !== (phase.description || '').trim()
+                      );
+                      return distinctTasks.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {distinctTasks.map((task, j) => (
+                            <span key={j} className="px-2 py-0.5 rounded-md bg-bg-tertiary text-[10px] text-text-secondary">
+                              {task}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                 </div>
               ))}

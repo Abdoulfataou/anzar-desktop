@@ -423,6 +423,16 @@ class ProjectGenerationService {
   }
 
   /**
+   * Get final project status from backend (source of truth after stream end).
+   */
+  async getStatus(backendProjectId: string): Promise<{ status: string; agents: Array<{ name: string; status: string; message?: string }> }> {
+    const url = `${getBackendUrl()}/api/projects/${backendProjectId}/status`;
+    const response = await fetch(url, { method: 'GET', headers: getAuthHeaders() });
+    if (!response.ok) throw new Error(`Erreur statut (HTTP ${response.status})`);
+    return response.json();
+  }
+
+  /**
    * Download generated files from backend.
    * Returns a dict of filepath → content to write locally via Tauri FS.
    */

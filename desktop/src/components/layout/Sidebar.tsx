@@ -209,8 +209,17 @@ export default function Sidebar({
       )}
       style={{ width: expanded ? 260 : 56 }}
     >
-      {/* ===== Branding ===== */}
-      <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border-subtle/50">
+      {/* ===== Branding =====
+          Replié (56px) : logo et bouton EMPILÉS verticalement — avant, le
+          bouton débordait à droite et était masqué par overflow-hidden. */}
+      <div
+        className={cn(
+          'border-b border-border-subtle/50',
+          expanded
+            ? 'flex items-center gap-2.5 px-4 py-3'
+            : 'flex flex-col items-center gap-2 px-2 py-3'
+        )}
+      >
         <div className="flex-shrink-0 shadow-md rounded-lg overflow-hidden">
           <AnzarLogo size={32} />
         </div>
@@ -224,9 +233,15 @@ export default function Sidebar({
         )}
         <button
           onClick={() => setExpanded(!expanded)}
-          className="p-1 rounded-lg text-text-muted hover:bg-surface-hover hover:text-text-primary transition-colors flex-shrink-0"
+          className="p-1.5 rounded-lg text-text-muted hover:bg-surface-hover hover:text-text-primary transition-colors flex-shrink-0 relative group"
+          title={expanded ? 'Réduire le panneau' : 'Afficher le panneau'}
         >
           {expanded ? <PanelLeftClose size={16} /> : <PanelLeft size={16} />}
+          {!expanded && (
+            <span className="absolute left-full ml-2.5 px-2.5 py-1.5 rounded-lg bg-surface-elevated border border-border-subtle text-xs text-text-primary opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap transition-opacity z-50 shadow-lg">
+              Afficher le panneau
+            </span>
+          )}
         </button>
       </div>
 

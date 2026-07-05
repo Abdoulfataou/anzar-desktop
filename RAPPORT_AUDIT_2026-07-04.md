@@ -88,6 +88,8 @@ Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). 
 - `intentDetection` : sert au chat (détection visuel/audit), plus au routage projet.
 - Exports docx/pptx (`MessageBubble`) : liés au chat conservé.
 
+**Correctifs post-test réel (04/07 soir)** : (1) **fix fichiers vides** — la fin du stream SSE n'est plus traitée comme un succès : vérification du statut serveur (`getStatus`) + réconciliation systématique via `download-files` + erreur franche si zéro contenu ; (2) sidebar repliée : bouton "Afficher" empilé (il débordait et était masqué par overflow-hidden) ; (3) phase planning : étapes visibles une à une + bouton Annuler ; (4) saisie en file d'attente pendant la génération (exécutée automatiquement après) ; (5) PlanReview dédupliqué (titre ≠ description ≠ tâches) ; (6) onglets homonymes désambiguïsés (client/package.json).
+
 **Reste à faire (épuration profonde, seconde passe)** : dégraisser `ChatInput` (863 l.) et `useChatEngine` (821 l.) du code de routage projet devenu inutile (forceProjectGenerationOnceRef, wizardMetaRef) ; redesign Sidebar (546 l.) ; unifier GenerationPanel dans le studio pour supprimer le doublon d'affichage de génération ; commit des suppressions `.git_broken/`.
 
 ## 6. Fichiers critiques à connaître
