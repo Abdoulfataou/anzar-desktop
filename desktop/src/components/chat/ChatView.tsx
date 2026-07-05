@@ -256,6 +256,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           phase={studioState.phase}
           files={studioState.files}
           currentStep={studioState.currentStep}
+          plan={studioState.plan}
           onClose={() => setActivityPanelHidden(true)}
         />
       )}
