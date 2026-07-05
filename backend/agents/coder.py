@@ -814,7 +814,20 @@ class CoderAgent(BaseAgent):
             else:
                 files["generated_code.txt"] = response
 
-        return files
+        # ── Sanitisation des chemins ──
+        # Le LLM laisse parfois le libellé dans le chemin ("Chemin: client/...",
+        # "Path: src/..."), des backticks ou des slashes initiaux → dossiers
+        # fantômes type "Chemin: client" dans l'arborescence côté client.
+        cleaned: Dict[str, str] = {}
+        for raw_path, code in files.items():
+            p = raw_path.strip().strip("`'\"* ")
+            p = re.sub(r"^(?:chemin|path|file|fichier)\s*[:：]\s*", "", p, flags=re.IGNORECASE)
+            p = p.replace("\\", "/").strip().strip("`'\"* ")
+            while p.startswith("./") or p.startswith("/"):
+                p = p[2:] if p.startswith("./") else p[1:]
+            if p and ".." not in p.split("/"):
+                cleaned[p] = code
+        return cleaned
 
     # ────────────────── Context & Truncation helpers ──────────────────────────
 

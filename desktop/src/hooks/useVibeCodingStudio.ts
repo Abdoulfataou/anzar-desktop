@@ -266,20 +266,56 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
     const receivedFiles = new Map<string, string>();
 
     try {
-      await projectGeneration.execute(
-        thePlan.project_id,
-        thePlan,
-        (event: ExecutionEvent) => {
-          handleSSEEvent(event);
+      // ── Stream SSE — une coupure réseau N'EST PLUS fatale : la génération
+      //    continue côté serveur, on bascule en mode récupération (poll) ──
+      let streamFailure: Error | null = null;
+      try {
+        await projectGeneration.execute(
+          thePlan.project_id,
+          thePlan,
+          (event: ExecutionEvent) => {
+            handleSSEEvent(event);
 
-          // Also collect files for disk write
-          if (event.type === 'file') {
-            const fe = event as FileEvent;
-            receivedFiles.set(fe.path, fe.content);
-          }
-        },
-        localPathRef.current,
-      );
+            // Also collect files for disk write
+            if (event.type === 'file') {
+              const fe = event as FileEvent;
+              receivedFiles.set(fe.path, fe.content);
+            }
+          },
+          localPathRef.current,
+        );
+      } catch (streamErr: any) {
+        if (streamErr?.name === 'AbortError') throw streamErr;
+        streamFailure = streamErr;
+      }
+
+      // ── RÉCUPÉRATION après coupure ("Load failed") : le serveur continue
+      //    de générer — on attend la fin via le statut (poll toutes les 4s,
+      //    max 15 min), puis la réconciliation télécharge les fichiers. ──
+      if (streamFailure) {
+        setCurrentStep({
+          type: 'step',
+          action: 'thinking',
+          label: 'Connexion interrompue — récupération depuis le serveur…',
+          file: null,
+        } as any);
+        const deadline = Date.now() + 15 * 60_000;
+        let finalStatus = '';
+        while (Date.now() < deadline) {
+          try {
+            const st = await projectGeneration.getStatus(thePlan.project_id);
+            finalStatus = st.status;
+            if (['completed', 'complete', 'error', 'cancelled'].includes(st.status)) break;
+          } catch { /* réseau encore instable — on retente */ }
+          await new Promise(r => setTimeout(r, 4000));
+        }
+        if (!finalStatus || finalStatus === 'error' || finalStatus === 'cancelled') {
+          throw new Error(
+            `Connexion au serveur interrompue (${streamFailure.message}). ` +
+            (finalStatus ? `Statut serveur: ${finalStatus}.` : 'Impossible de récupérer le statut. Vérifie ta connexion et réessaie.')
+          );
+        }
+      }
 
       // ══════════════════════════════════════════════════════════════════
       // FIABILISATION (fix "fichiers vides") :
