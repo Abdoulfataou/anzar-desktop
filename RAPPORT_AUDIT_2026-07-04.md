@@ -96,6 +96,8 @@ Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). 
 
 **Fix majeur 3e test réel (05/07)** : le flux `forceProject` lançait **DEUX générations complètes en parallèle** (studio + legacy `onProjectGeneration`/useProjectPipeline) → double coût API, compteurs contradictoires (28/34/49/69 fichiers), projets dupliqués dans la sidebar, panneau d'activité doublonnant la carte. Corrigé : le studio est l'unique pipeline ; le store studio ne garde que les fichiers réellement générés (compteur unique) ; `markAllDone()` synchronise la todo au succès. Nettoyage conseillé : supprimer les projets dupliqués dans la sidebar à la main.
 
+**Panneau d'activité chat-first (05/07)** : `ProjectActivityPanel` à droite du chat pendant une session projet — todo réelle (abonnée à `studioTodoManager`, donc synchronisée avec `markAllDone`), étape en cours, liste des fichiers réellement générés avec compteur unique. Masquable (X), réaffiché à chaque nouvelle session. L'ancien `GenerationPanel` est réservé au flux import/audit.
+
 **Reste à faire (épuration profonde, seconde passe)** : dégraisser `ChatInput` (863 l.) et `useChatEngine` (821 l.) du code de routage projet devenu inutile (forceProjectGenerationOnceRef, wizardMetaRef) ; redesign Sidebar (546 l.) ; unifier GenerationPanel dans le studio pour supprimer le doublon d'affichage de génération ; commit des suppressions `.git_broken/`.
 
 ## 6. Fichiers critiques à connaître

@@ -18,6 +18,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useActivityStore } from '@/stores/activityStore';
 import GenerationPanel from './GenerationPanel';
 import ProjectProgressCard from './ProjectProgressCard';
+import ProjectActivityPanel from './ProjectActivityPanel';
 import { VibeCodingStudio } from '@/components/vibecoding';
 import { useVibeCodingStudio } from '@/hooks/useVibeCodingStudio';
 import { useChatEngine } from '@/hooks/useChatEngine';
@@ -52,11 +53,15 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
   // ── VibeCoding Studio hook ──
   const [studioState, studioActions] = useVibeCodingStudio();
 
-  // Nouvelle session studio → on repart dans le chat (carte de progression)
+  // Panneau d'activité droit (todo + contexte) — masquable
+  const [activityPanelHidden, setActivityPanelHidden] = useState(false);
+
+  // Nouvelle session studio → on repart dans le chat (carte + panneau visibles)
   const prevStudioOpenRef = useRef(false);
   useEffect(() => {
     if (!prevStudioOpenRef.current && studioState.isOpen) {
       setStudioVisible(false);
+      setActivityPanelHidden(false);
     }
     prevStudioOpenRef.current = studioState.isOpen;
   }, [studioState.isOpen]);
@@ -244,8 +249,19 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       )}
 
       </div>
-      {/* ── Generation Panel (right sidebar) ── */}
-      {generationPanelSessionId && !(studioState.isOpen && studioVisible) && (
+      {/* ── Panneau d'activité projet : todo réelle + contexte fichiers ── */}
+      {studioState.isOpen && !studioVisible && !activityPanelHidden && (
+        <ProjectActivityPanel
+          projectName={studioState.projectName}
+          phase={studioState.phase}
+          files={studioState.files}
+          currentStep={studioState.currentStep}
+          onClose={() => setActivityPanelHidden(true)}
+        />
+      )}
+
+      {/* ── Generation Panel (right sidebar — flux import/audit uniquement) ── */}
+      {generationPanelSessionId && !studioState.isOpen && (
         <GenerationPanel
           sessionId={generationPanelSessionId}
           onClose={() => setGenerationPanelSessionId(null)}
