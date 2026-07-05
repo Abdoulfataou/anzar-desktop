@@ -116,6 +116,22 @@ class StudioTodoManagerService {
     this.emit();
   }
 
+  /**
+   * Succès de la génération : toutes les étapes passent à "done".
+   * (Les libellés du plan ne matchent pas toujours les chemins des
+   * fichiers générés — sans ça, la todo restait décochée malgré la réussite.)
+   */
+  markAllDone(): void {
+    if (!this.currentSession) return;
+    for (const item of this.currentSession.items) {
+      if (item.status !== 'done') {
+        item.status = 'done';
+        item.updatedAt = Date.now();
+      }
+    }
+    this.emit();
+  }
+
   // ── Task CRUD ──
 
   /**

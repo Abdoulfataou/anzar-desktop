@@ -177,7 +177,20 @@ export function useChatEngine(params: ChatEngineParams) {
         techs: wizardMeta?.techs,
       });
 
-      await onProjectGeneration(content, userMessageId, sessionId);
+      // ══════════════════════════════════════════════════════════════
+      // FIX DOUBLE PIPELINE : onProjectGeneration() lançait ici une
+      // SECONDE génération complète en parallèle du studio (double coût
+      // API, compteurs incohérents, projets dupliqués dans la sidebar).
+      // Le studio (carte chat-first) est désormais l'UNIQUE pipeline.
+      // ══════════════════════════════════════════════════════════════
+      addConversationMessage({
+        id: `msg_${Date.now() + 2}`,
+        role: 'assistant',
+        content: '🚀 Génération lancée ! Suis la progression sur la carte projet ci-dessous — plan, code, puis vérification automatique. Tu peux continuer à discuter pendant ce temps.',
+        timestamp: Date.now(),
+        model: selectedModel,
+      });
+      setIsGenerating(false);
       return true;
     }
 

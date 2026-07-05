@@ -320,9 +320,12 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
         );
       }
 
-      // ── Mise à jour du store (tous les fichiers, statut done) ──
-      setFiles(prev => {
-        const next = new Map(prev);
+      // ── Mise à jour du store : UNIQUEMENT les fichiers réellement générés.
+      //    (Avant : on fusionnait avec les placeholders du plan dont les
+      //    chemins divergent souvent → compteurs faux type "49 fichiers"
+      //    alors que 34 existaient. Un seul compteur = la vérité du disque.) ──
+      setFiles(() => {
+        const next = new Map<string, StudioFile>();
         for (const [filePath, content] of receivedFiles) {
           next.set(filePath, {
             path: filePath,
@@ -350,7 +353,10 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
         try { await loadProjectFromDisk(projectId); } catch { /* ok */ }
       }
 
-      // Done! End todo session for generation
+      // Done! Succès → toutes les étapes de la todo passent à "fait"
+      // (les libellés du plan ne matchent pas toujours les chemins générés,
+      // markDoneByFile en laissait donc en suspens malgré la réussite)
+      studioTodoManager.markAllDone();
       studioTodoManager.endSession();
       setPhase('iterating');
       setProjectStatus(projectId, 'complete');
