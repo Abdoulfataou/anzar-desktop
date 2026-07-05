@@ -6,6 +6,7 @@
  * - useProjectPipeline : génération de projets, import dossier, dialog
  */
 import React, { useEffect, useState, useRef } from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import { WifiOff } from 'lucide-react';
 import MessageList from './MessageList';
 import ChatInput from './ChatInput';
@@ -59,6 +60,25 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     }
     prevStudioOpenRef.current = studioState.isOpen;
   }, [studioState.isOpen]);
+
+  // ── FIX navigation : le studio plein écran "avalait" les clics sidebar.
+  //    Toute navigation (Nouvelle tâche, historique, projet) ramène au chat. ──
+  const location = useLocation();
+  const activeConvIdForNav = useChatStore((s) => s.activeConversationId);
+  useEffect(() => {
+    setStudioVisible(false);
+  }, [location.key, activeConvIdForNav]);
+
+  // ── FIX /projects/:id ignoré : ouvrir un projet depuis la sidebar
+  //    sélectionne maintenant réellement ce projet dans le chat ──
+  const { id: routeProjectId } = useParams<{ id: string }>();
+  const setActiveProjectStore = useProjectStore((s) => s.setActiveProject);
+  useEffect(() => {
+    if (routeProjectId) {
+      setSelectedProjectId(routeProjectId);
+      setActiveProjectStore(routeProjectId);
+    }
+  }, [routeProjectId, setActiveProjectStore]);
 
   // ── Activity panel ──
   const generationPanelSessionId = useActivityStore((s) => s.generationPanelSessionId);
@@ -158,8 +178,9 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
       </div>
       )}
 
-      {/* ── Carte de progression du projet (flux chat-first) ── */}
-      {studioState.isOpen && !studioVisible && (
+      {/* ── Carte de progression du projet (flux chat-first) ──
+          Masquée sur l'écran d'accueil (Nouvelle tâche = repartir à neuf) */}
+      {studioState.isOpen && !studioVisible && !(messages.length === 0 && showWelcome) && (
         <ProjectProgressCard
           projectName={studioState.projectName}
           phase={studioState.phase}
