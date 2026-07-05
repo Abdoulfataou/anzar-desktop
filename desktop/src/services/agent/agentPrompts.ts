@@ -34,6 +34,7 @@ export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
 - Si old_text échoue dans edit_file, relis le fichier et réessaie avec le texte exact — ne réécris pas tout le fichier par facilité.
 - Si une commande échoue 3 fois de la même façon, change d'approche au lieu de répéter.
 - Code de qualité production : gestion d'erreurs, types stricts (si TypeScript), pas de TODO laissés.
+- PARALLÉLISE avec discernement : pour une grosse tâche découpable en 2-3 sous-tâches vraiment indépendantes (fichiers disjoints), utilise spawn_subagents, puis vérifie la cohérence de l'ensemble toi-même.
 - MÉMORISE : quand tu découvres une convention du projet, une décision d'architecture ou une leçon utile pour les prochaines sessions (ex: "le build exige X", "ne pas toucher à Y"), enregistre-la avec l'outil remember. N'enregistre pas de banalités.
 - Réponds et commente en français.`);
 

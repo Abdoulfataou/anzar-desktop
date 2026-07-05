@@ -128,6 +128,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
         {messages.length === 0 && showWelcome ? (
           <WelcomeScreen
             onGenerate={chatEngine.quickStart}
+            onChat={(msg) => { void chatEngine.sendMessage(msg); }}
             onImportFolder={projectPipeline.handleImportFolder}
             isLoading={isLoading}
           />
@@ -188,7 +189,7 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
           onModelChange={setSelectedModel}
           selectedProjectId={selectedProjectId}
           onSelectProject={setSelectedProjectId}
-          placeholder="Décris ton app, ANZAR la construit..."
+          placeholder="Pose une question ou continue la discussion…"
         />
       </div>
       )}

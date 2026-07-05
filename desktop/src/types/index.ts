@@ -8,7 +8,7 @@
 // ============================================================================
 
 /** AI Providers supported by ANZAR */
-export type AIProvider = 'deepseek' | 'kimi';
+export type AIProvider = 'deepseek' | 'kimi' | 'openrouter';
 
 /** User-facing mode names (white-labeled) */
 export type AIModel = 'fast' | 'thinking';
@@ -120,6 +120,16 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
     models: { fast: 'kimi-k2.6', thinking: 'kimi-k2.5' },
     defaultTemperature: { fast: 0.7, thinking: 0.7 },
     features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'Vision', '262K Context'],
+  },
+  openrouter: {
+    provider: 'openrouter',
+    label: 'ANZAR Pro+ (Claude/GPT)',
+    // NOTE: proxy backend — nécessite OPENROUTER_API_KEY côté serveur.
+    // IDs de modèles OpenRouter — à ajuster selon le catalogue (openrouter.ai/models).
+    baseUrl: 'proxy',
+    models: { fast: 'openai/gpt-4o-mini', thinking: 'anthropic/claude-sonnet-4' },
+    defaultTemperature: { fast: 0.7, thinking: 0.7 },
+    features: ['Chat', 'Streaming', 'Tool Calling', 'Claude', 'GPT'],
   },
 };
 

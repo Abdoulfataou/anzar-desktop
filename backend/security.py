@@ -331,6 +331,15 @@ def calculate_cost_fcfa(provider: str, input_tokens: int, output_tokens: int, mo
             (input_tokens / 1_000_000) * settings.kimi_input_cost_per_million
             + (output_tokens / 1_000_000) * settings.kimi_output_cost_per_million
         )
+    elif provider == "openrouter":
+        cost_usd = (
+            (input_tokens / 1_000_000) * (settings.openrouter_input_cost_per_million / settings.usd_to_fcfa)
+            + (output_tokens / 1_000_000) * (settings.openrouter_output_cost_per_million / settings.usd_to_fcfa)
+        )
+        cost_fcfa = (
+            (input_tokens / 1_000_000) * settings.openrouter_input_cost_per_million
+            + (output_tokens / 1_000_000) * settings.openrouter_output_cost_per_million
+        )
     else:
         cost_usd = 0.0
         cost_fcfa = 0.0

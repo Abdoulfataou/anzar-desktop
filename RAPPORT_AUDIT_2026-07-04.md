@@ -68,11 +68,27 @@ Après chaque tâche : détection auto du type de projet → run lint/build/test
 **Phase 3 — Contexte et mémoire** — ✅ *Implémenté le 04/07/2026 : `agentContext.ts` — indexation auto au démarrage de session (codeIndexer réutilisé : code map bornée 9k + hints par tâche via scoring/graphe de dépendances) injectée dans le system prompt. Mémoire persistante `ANZAR.md` à la racine du projet (équivalent CLAUDE.md), lue à chaque session, enrichie par le nouvel outil `remember`.*
 Indexation locale du projet (tree-sitter + embeddings), retrieval pour construire le contexte au lieu du plafond 30k chars. Fusionner `codeIndexer` + `devMemoryStore` en une vraie mémoire projet (conventions, décisions, erreurs passées) injectée dans le system prompt — équivalent CLAUDE.md/skills.
 
-**Phase 4 — Plateforme**
+**Phase 4 — Plateforme** — 🟡 *Partiellement fait le 04/07/2026 : (1) multi-provider **OpenRouter** (Claude/GPT en option) — backend (`config.py`, `_state.py`, `security.py`) + desktop (`AI_PROVIDERS`, coûts router) ; activer avec `OPENROUTER_API_KEY` sur Railway, IDs de modèles à ajuster dans `types/index.ts`. (2) **Sous-agents parallèles** : outil `spawn_subagents` (2-3 sessions concurrentes, budget réduit, le parent vérifie). (3) Migration **Tauri 2** : guide détaillé dans `desktop/MIGRATION_TAURI2.md` — à faire sur branche dédiée avec tests macOS/Windows. Reste : MCP, PTY (post-Tauri 2).*
 Migration Tauri 2 (+ PTY réel type `portable-pty` pour un terminal interactif). Multi-provider (DeepSeek, Kimi, + Claude/GPT en option) avec routage par tâche. Support MCP pour connecteurs externes. Sous-agents parallèles (ex. génération multi-fichiers concurrente, agent review séparé).
 
 **Phase 5 — Qualité et durcissement**
 Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). Aligner le scope FS réel sur la promesse du README (ou l'inverse, mais documenté). Forcer `jwt_secret` en prod. Nettoyer `.git_broken`.
+
+## 5 bis. Refonte UX du 04/07/2026 (épuration + redesign du parcours)
+
+**Décisions produit** (validées) : le chat généraliste est conservé ; admin/ et mobile/ intouchés.
+
+**Fait :**
+- **Accueil redesigné en hub à 2 modes explicites** (`WelcomeScreen.tsx`) : "Créer un projet" (→ pipeline plan → studio) et "Discuter" (→ chat classique). La détection d'intention ne décide plus du parcours — l'utilisateur choisit. Suggestions par mode, import de projet existant, design hero épuré.
+- **Parcours cible** : ouvrir → choisir le mode → décrire → (Créer) PlanReview → génération studio → itération Chat/Agent/Skills → vérification auto → projet final. (Discuter) conversation avec exports.
+- Orphelins supprimés : `ui/Button.tsx`, `ui/Input.tsx`. Placeholder du chat rendu neutre.
+
+**Analysé et volontairement CONSERVÉ :**
+- `GenerationPanel` + `ActivityTimeline` : encore utilisés par le flux import dossier + audit (useProjectPipeline).
+- `intentDetection` : sert au chat (détection visuel/audit), plus au routage projet.
+- Exports docx/pptx (`MessageBubble`) : liés au chat conservé.
+
+**Reste à faire (épuration profonde, seconde passe)** : dégraisser `ChatInput` (863 l.) et `useChatEngine` (821 l.) du code de routage projet devenu inutile (forceProjectGenerationOnceRef, wizardMetaRef) ; redesign Sidebar (546 l.) ; unifier GenerationPanel dans le studio pour supprimer le doublon d'affichage de génération ; commit des suppressions `.git_broken/`.
 
 ## 6. Fichiers critiques à connaître
 

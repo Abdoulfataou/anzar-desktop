@@ -89,6 +89,10 @@ const COST_PER_M_TOKENS = {
     fast:     { input: 0.60, output: 1.80 },     // Provider vision (estim.)
     thinking: { input: 0.60, output: 1.80 },     // Provider vision (estim.)
   },
+  openrouter: {
+    fast:     { input: 0.15, output: 0.60 },     // GPT-4o-mini via OpenRouter (estim.)
+    thinking: { input: 3.00, output: 15.00 },    // Claude Sonnet via OpenRouter (estim.)
+  },
 } as const;
 
 /** Taux de change USD → FCFA (approximatif, mis à jour manuellement) */
@@ -153,8 +157,9 @@ const PLANNING_KEYWORDS = [
 class AIRouter {
   /** Stats de coûts cumulés par session */
   private sessionStats = {
-    deepseek: { requests: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 },
-    kimi:     { requests: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 },
+    deepseek:   { requests: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 },
+    kimi:       { requests: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 },
+    openrouter: { requests: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 },
     fallbacks: 0,
     totalRequests: 0,
   };
@@ -615,6 +620,7 @@ class AIRouter {
     this.sessionStats = {
       deepseek: { requests: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 },
       kimi: { requests: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 },
+      openrouter: { requests: 0, inputTokens: 0, outputTokens: 0, costUSD: 0 },
       fallbacks: 0,
       totalRequests: 0,
     };

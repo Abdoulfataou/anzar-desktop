@@ -168,6 +168,25 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'spawn_subagents',
+      description:
+        "Lance 2 à 3 sous-agents EN PARALLÈLE pour des sous-tâches INDÉPENDANTES (fichiers différents, aucun chevauchement). Chaque sous-agent a les mêmes outils mais un budget réduit et pas de vérification finale — c'est TOI qui vérifies après. À utiliser uniquement pour les grosses tâches parallélisables (ex: créer 3 pages distinctes). Renvoie le résumé de chaque sous-agent.",
+      parameters: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            items: { type: 'string' },
+            description: '2 à 3 sous-tâches indépendantes, chacune décrite précisément (fichiers cibles inclus)',
+          },
+        },
+        required: ['tasks'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'remember',
       description:
         "Enregistre une information durable dans la mémoire du projet (ANZAR.md) : convention de code, décision d'architecture, piège découvert, commande de build particulière. Sera relue dans les prochaines sessions. N'enregistre PAS de banalités ni le détail de la tâche en cours.",
@@ -361,6 +380,53 @@ async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<Too
   return { output: parts.join('\n\n'), isError: !result.success };
 }
 
+async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const tasks: string[] = Array.isArray(args.tasks)
+    ? args.tasks.filter((t: any) => typeof t === 'string' && t.trim()).slice(0, 3)
+    : [];
+  if (tasks.length < 2) {
+    return { output: 'Erreur: spawn_subagents requiert 2 à 3 sous-tâches indépendantes. Pour une seule tâche, fais-la toi-même.', isError: true };
+  }
+
+  // Import dynamique pour éviter le cycle agentTools ↔ agentLoop
+  const { runAgentSession } = await import('./agentLoop');
+  const projectName = ctx.projectRoot.split(/[\\/]/).filter(Boolean).pop() || 'projet';
+
+  const results = await Promise.all(
+    tasks.map((task, i) =>
+      runAgentSession({
+        prompt: { projectName, projectRoot: ctx.projectRoot },
+        task,
+        maxSteps: 15,
+        gitCheckpoint: false,   // le checkpoint parent couvre déjà la session
+        autoVerify: false,      // le parent vérifie après consolidation
+        signal: ctx.signal,
+        onFileChanged: ctx.onFileChanged,
+      }).catch((e: any) => ({
+        stopReason: 'error' as const,
+        summary: e?.message || String(e),
+        steps: 0,
+        messages: [],
+        filesChanged: [] as string[],
+      })).then(r => ({ index: i + 1, task, ...r }))
+    )
+  );
+
+  const report = results
+    .map(r =>
+      `── Sous-agent ${r.index} [${r.stopReason}] — ${r.task.slice(0, 80)}\n` +
+      `Fichiers: ${r.filesChanged.join(', ') || 'aucun'}\n` +
+      `Résumé: ${r.summary.slice(0, 500)}`
+    )
+    .join('\n\n');
+
+  const anyError = results.some(r => r.stopReason === 'error');
+  return {
+    output: `${report}\n\n→ Vérifie maintenant la cohérence de l'ensemble (imports croisés, build) avant task_done.`,
+    isError: anyError,
+  };
+}
+
 async function execRemember(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const category = String(args.category || 'note').slice(0, 40);
   const note = String(args.note || '').trim();
@@ -389,6 +455,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   list_dir: execListDir,
   search_files: execSearchFiles,
   run_command: execRunCommand,
+  spawn_subagents: execSpawnSubagents,
   remember: execRemember,
   task_done: execTaskDone,
 };

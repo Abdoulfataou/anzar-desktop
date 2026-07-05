@@ -43,6 +43,7 @@ const TOOL_ICONS: Record<string, React.ReactNode> = {
   search_files: <Search size={12} />,
   run_command: <TerminalSquare size={12} />,
   remember: <Bot size={12} />,
+  spawn_subagents: <Bot size={12} />,
   task_done: <Flag size={12} />,
 };
 
@@ -56,6 +57,7 @@ function toolLabel(name: string, args: Record<string, any>): string {
     case 'search_files': return `Recherche /${args.pattern ?? ''}/`;
     case 'run_command': return `$ ${args.command ?? ''}`;
     case 'remember': return `Mémorisation [${args.category ?? 'note'}]`;
+    case 'spawn_subagents': return `${Array.isArray(args.tasks) ? args.tasks.length : '?'} sous-agents en parallèle`;
     case 'task_done': return 'Tâche terminée';
     default: return name;
   }

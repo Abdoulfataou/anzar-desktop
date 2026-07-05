@@ -26,6 +26,11 @@ PROVIDERS: Dict[str, Dict[str, str]] = {
         "base_url": settings.kimi_base_url,
         "api_key": settings.kimi_api_key,
     },
+    # OpenRouter — accès optionnel Claude/GPT/Gemini via une seule clé (API OpenAI-compatible)
+    "openrouter": {
+        "base_url": settings.openrouter_base_url,
+        "api_key": settings.openrouter_api_key,
+    },
 }
 
 _provider_disabled_until: Dict[str, float] = {}

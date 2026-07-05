@@ -14,11 +14,17 @@ class Settings(BaseSettings):
     # ─── API Keys (SERVER ONLY — never sent to client) ───
     deepseek_api_key: str = ""
     kimi_api_key: str = ""
+    openrouter_api_key: str = ""  # Accès Claude/GPT/etc. via OpenRouter (optionnel)
     serper_api_key: str = ""  # Google Search via Serper (2500 free, then $0.30/1000)
 
     # ─── API Base URLs ───
     deepseek_base_url: str = "https://api.deepseek.com"
     kimi_base_url: str = "https://api.moonshot.cn"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+
+    # ─── OpenRouter pricing (FCFA / million tokens — estimation prudente, à ajuster) ───
+    openrouter_input_cost_per_million: float = 2000.0
+    openrouter_output_cost_per_million: float = 10000.0
 
     # ─── Server ───
     server_host: str = "0.0.0.0"

@@ -1,21 +1,37 @@
 /**
- * WelcomeScreen — Écran d'accueil ANZAR (vibecoding)
+ * WelcomeScreen — Hub d'accueil ANZAR (redesign 2026)
  *
- * Design simplifié : un textarea central pour décrire son app,
- * des suggestions rapides cliquables, et un lien d'import discret.
- * Zéro wizard, zéro modal. L'IA déduit le type et les technos.
+ * Deux modes EXPLICITES (fini la détection d'intention qui devine) :
+ *  - Créer   : décris ton app → plan → studio → projet vérifié
+ *  - Discuter: question, aide, debug — conversation classique
+ *
+ * Design : hero centré, segmented control, un seul champ, suggestions
+ * par mode. Zéro modal, zéro wizard.
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { ArrowUp, FolderOpen, Wand2, Loader2 } from 'lucide-react';
+import { ArrowUp, FolderOpen, Loader2, Hammer, MessageSquare, Wand2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+// ============================================================================
+// TYPES
+// ============================================================================
+
+type HomeMode = 'build' | 'chat';
+
 interface WelcomeScreenProps {
+  /** Mode Créer : lance le pipeline plan → studio */
   onGenerate: (prompt: string) => void;
+  /** Mode Discuter : envoie un message chat classique */
+  onChat?: (prompt: string) => void;
   onImportFolder: () => void;
   isLoading?: boolean;
 }
 
-const QUICK_STARTS = [
+// ============================================================================
+// SUGGESTIONS PAR MODE
+// ============================================================================
+
+const BUILD_STARTS = [
   'App de gestion de stock avec React',
   'Dashboard analytics Next.js + Tailwind',
   'API REST FastAPI + PostgreSQL',
@@ -24,32 +40,48 @@ const QUICK_STARTS = [
   'Bot Discord en Python',
 ];
 
+const CHAT_STARTS = [
+  'Explique-moi les hooks React',
+  'Comment déboguer une erreur CORS ?',
+  'Compare PostgreSQL et MongoDB',
+  'Aide-moi à choisir ma stack',
+];
+
+// ============================================================================
+// COMPOSANT
+// ============================================================================
+
 export default function WelcomeScreen({
   onGenerate,
+  onChat,
   onImportFolder,
   isLoading = false,
 }: WelcomeScreenProps) {
+  const [mode, setMode] = useState<HomeMode>('build');
   const [prompt, setPrompt] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Auto-focus le textarea
+  // Auto-focus (aussi au changement de mode) + auto-resize
   useEffect(() => {
     textareaRef.current?.focus();
-  }, []);
+  }, [mode]);
 
-  // Auto-resize textarea
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    el.style.height = Math.min(el.scrollHeight, 180) + 'px';
   }, [prompt]);
 
   const handleSubmit = useCallback(() => {
     const trimmed = prompt.trim();
     if (!trimmed || isLoading) return;
-    onGenerate(trimmed);
-  }, [prompt, isLoading, onGenerate]);
+    if (mode === 'build') {
+      onGenerate(trimmed);
+    } else {
+      (onChat ?? onGenerate)(trimmed);
+    }
+  }, [prompt, isLoading, mode, onGenerate, onChat]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -58,45 +90,72 @@ export default function WelcomeScreen({
         handleSubmit();
       }
     },
-    [handleSubmit],
+    [handleSubmit]
   );
 
-  const handleQuickStart = useCallback(
-    (text: string) => {
-      if (isLoading) return;
-      onGenerate(text);
-    },
-    [isLoading, onGenerate],
-  );
-
+  const suggestions = mode === 'build' ? BUILD_STARTS : CHAT_STARTS;
   const canSubmit = prompt.trim().length > 0 && !isLoading;
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 sm:px-6 overflow-y-auto py-8">
-      {/* ── Hero ── */}
-      <div className="text-center mb-8 max-w-xl">
-        <div className="relative inline-block mb-5">
-          <div className="w-14 h-14 rounded-2xl gradient-bg flex items-center justify-center animate-float shadow-lg">
-            <Wand2 className="w-7 h-7 text-white" />
+      <div className="w-full max-w-2xl flex flex-col items-center">
+
+        {/* ── Hero ── */}
+        <div className="text-center mb-7">
+          <div className="relative inline-block mb-5">
+            <div className="w-14 h-14 rounded-2xl gradient-bg flex items-center justify-center animate-float shadow-lg">
+              <Wand2 className="w-7 h-7 text-white" />
+            </div>
+            <div className="absolute inset-0 w-14 h-14 rounded-2xl gradient-bg opacity-25 blur-xl" />
           </div>
-          <div className="absolute inset-0 w-14 h-14 rounded-2xl gradient-bg opacity-25 blur-xl" />
+          <h1 className="text-2xl sm:text-3xl font-bold text-text-primary mb-2">
+            {mode === 'build' ? (
+              <>Imagine. <span className="gradient-text">ANZAR</span> construit.</>
+            ) : (
+              <>Parle. <span className="gradient-text">ANZAR</span> répond.</>
+            )}
+          </h1>
+          <p className="text-sm text-text-secondary max-w-sm mx-auto">
+            {mode === 'build'
+              ? 'Décris ton app — ANZAR planifie, code, vérifie et corrige jusqu’au résultat.'
+              : 'Questions, debug, conseils techniques — une conversation classique.'}
+          </p>
         </div>
 
-        <h1 className="text-2xl sm:text-3xl font-bold text-text-primary mb-2">
-          Imagine. <span className="gradient-text">ANZAR</span> construit.
-        </h1>
-        <p className="text-sm text-text-secondary max-w-sm mx-auto">
-          Décris ton app en une phrase, ANZAR la code de A à Z.
-        </p>
-      </div>
+        {/* ── Sélecteur de mode (explicite — plus de devinette d'intention) ── */}
+        <div className="mb-4 p-1 rounded-xl bg-bg-tertiary border border-border-subtle flex items-center gap-1">
+          <button
+            onClick={() => setMode('build')}
+            className={cn(
+              'flex items-center gap-2 px-4 py-1.5 rounded-lg text-[13px] font-semibold transition-all',
+              mode === 'build'
+                ? 'gradient-bg text-white shadow'
+                : 'text-text-muted hover:text-text-primary'
+            )}
+          >
+            <Hammer size={14} />
+            Créer un projet
+          </button>
+          <button
+            onClick={() => setMode('chat')}
+            className={cn(
+              'flex items-center gap-2 px-4 py-1.5 rounded-lg text-[13px] font-semibold transition-all',
+              mode === 'chat'
+                ? 'gradient-bg text-white shadow'
+                : 'text-text-muted hover:text-text-primary'
+            )}
+          >
+            <MessageSquare size={14} />
+            Discuter
+          </button>
+        </div>
 
-      {/* ── Input principal ── */}
-      <div className="w-full max-w-lg mb-6">
+        {/* ── Champ principal ── */}
         <div
           className={cn(
-            'relative rounded-2xl border bg-bg-secondary transition-all duration-200',
+            'w-full max-w-lg relative rounded-2xl border bg-bg-secondary transition-all duration-200',
             'focus-within:border-accent-primary/50 focus-within:shadow-lg focus-within:shadow-accent-primary/5',
-            canSubmit ? 'border-accent-primary/30' : 'border-border-subtle',
+            canSubmit ? 'border-accent-primary/30' : 'border-border-subtle'
           )}
         >
           <textarea
@@ -104,76 +163,68 @@ export default function WelcomeScreen({
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ex : Une app de gestion de stock pour une boutique, avec suivi des produits et alertes de rupture..."
-            rows={3}
+            placeholder={
+              mode === 'build'
+                ? 'Décris ton app : fonctionnalités, style, technos si tu en as…'
+                : 'Pose ta question…'
+            }
+            rows={2}
             disabled={isLoading}
-            className={cn(
-              'w-full px-4 pt-4 pb-12 rounded-2xl text-sm bg-transparent',
-              'text-text-primary placeholder-text-muted/60',
-              'focus:outline-none resize-none',
-              'disabled:opacity-50',
-            )}
+            className="w-full px-4 pt-3.5 pb-12 bg-transparent text-[14px] text-text-primary placeholder-text-muted resize-none focus:outline-none disabled:opacity-50 rounded-2xl"
+            style={{ minHeight: '76px' }}
           />
-          {/* Barre du bas dans le textarea */}
-          <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-            <p className="text-[10px] text-text-muted/50 pl-2">
-              Shift+Enter pour un retour à la ligne
-            </p>
+          <div className="absolute bottom-2.5 left-3 right-3 flex items-center justify-between">
+            {mode === 'build' ? (
+              <button
+                onClick={onImportFolder}
+                disabled={isLoading}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors"
+              >
+                <FolderOpen size={14} />
+                Importer un projet existant
+              </button>
+            ) : (
+              <span />
+            )}
             <button
               onClick={handleSubmit}
               disabled={!canSubmit}
               className={cn(
-                'flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold transition-all',
+                'p-2 rounded-xl transition-all',
                 canSubmit
-                  ? 'gradient-bg text-white hover:opacity-90 shadow-md hover:shadow-lg'
-                  : 'bg-bg-tertiary text-text-muted cursor-not-allowed',
+                  ? 'gradient-bg text-white hover:opacity-90 shadow'
+                  : 'bg-bg-tertiary text-text-muted cursor-not-allowed'
               )}
             >
-              {isLoading ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : (
-                <ArrowUp size={14} />
-              )}
-              {isLoading ? 'Génération...' : 'Générer'}
+              {isLoading ? <Loader2 size={16} className="animate-spin" /> : <ArrowUp size={16} />}
             </button>
           </div>
         </div>
-      </div>
 
-      {/* ── Quick starts ── */}
-      <div className="flex flex-wrap justify-center gap-2 w-full max-w-lg mb-8">
-        {QUICK_STARTS.map((text, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleQuickStart(text)}
-            disabled={isLoading}
-            className={cn(
-              'px-3 py-1.5 rounded-full text-[11px]',
-              'bg-surface-default border border-border-subtle',
-              'text-text-secondary hover:text-text-primary',
-              'hover:bg-surface-hover hover:border-accent-primary/20',
-              'transition-all duration-200',
-              'disabled:opacity-40 disabled:cursor-not-allowed',
-            )}
-          >
-            {text}
-          </button>
-        ))}
-      </div>
+        {/* ── Suggestions ── */}
+        <div className="mt-5 flex flex-wrap justify-center gap-2 max-w-lg">
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => {
+                setPrompt(s);
+                textareaRef.current?.focus();
+              }}
+              disabled={isLoading}
+              className="px-3 py-1.5 rounded-full text-[12px] text-text-secondary bg-bg-tertiary hover:bg-surface-hover hover:text-text-primary transition-colors border border-border-subtle"
+            >
+              {s}
+            </button>
+          ))}
+        </div>
 
-      {/* ── Lien import discret ── */}
-      <button
-        onClick={onImportFolder}
-        disabled={isLoading}
-        className={cn(
-          'flex items-center gap-2 text-xs text-text-muted',
-          'hover:text-text-secondary transition-colors',
-          'disabled:opacity-40 disabled:cursor-not-allowed',
-        )}
-      >
-        <FolderOpen size={14} />
-        <span>ou importer un projet existant</span>
-      </button>
+        {/* ── Pied ── */}
+        <p className="mt-8 text-[11px] text-text-muted/70">
+          {mode === 'build'
+            ? 'Plan → Génération → Vérification automatique → Itération dans le studio'
+            : 'Entrée pour envoyer · Maj+Entrée pour une nouvelle ligne'}
+        </p>
+      </div>
     </div>
   );
 }
