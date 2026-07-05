@@ -1,0 +1,4 @@
+# Shim racine pour Railway/Nixpacks : force la détection du provider Python
+# (le vrai fichier est dans backend/). Sans ce fichier, l'image de build
+# n'installe pas pip → "pip: command not found".
+-r backend/requirements.txt
