@@ -291,7 +291,7 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                     design_context=design_context,
                     arch_summary=arch_summary,
                     desc_summary=desc_summary,
-                    existing_files_list="",
+                    existing_files_context="",
                 )
                 all_files.update(batch_files)
                 total_tokens = coder.tokens_used
@@ -323,7 +323,7 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
             # ── Remaining batches: parallel groups ──
             remaining = batches[1:]
             for group_idx, batch in enumerate(remaining):
-                existing_files_list = ", ".join(sorted(all_files.keys()))
+                existing_files_context = ", ".join(sorted(all_files.keys()))
                 try:
                     batch_files = await coder._generate_batch(
                         batch=batch,
@@ -333,7 +333,7 @@ async def execute_project(project_id: str, body: ExecuteRequest, user: dict = De
                         design_context=design_context,
                         arch_summary=arch_summary,
                         desc_summary=desc_summary,
-                        existing_files_list=existing_files_list,
+                        existing_files_context=existing_files_context,
                     )
                     all_files.update(batch_files)
                     total_tokens = coder.tokens_used

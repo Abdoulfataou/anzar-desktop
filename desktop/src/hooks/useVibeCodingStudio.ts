@@ -145,6 +145,8 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
   const planRef = useRef<PlanResult | null>(null);
   /** Backend project ID (may differ from store projectId) */
   const backendProjectIdRef = useRef<string | undefined>();
+  /** Permet à startGeneration de lancer executePlan automatiquement (flux sans clic) */
+  const executePlanRef = useRef<(() => Promise<void>) | undefined>(undefined);
 
   // Store actions
   const createProject = useProjectStore(s => s.createProject);
@@ -235,8 +237,10 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
         metadata: { ...(project.metadata as any), localPath, backendProjectId: planResult.project_id },
       });
 
-      // → PlanReview
-      setPhase('reviewing');
+      // → Génération AUTOMATIQUE (plus d'écran de validation du plan :
+      //   l'utilisateur décrit, ANZAR construit — le plan reste visible
+      //   dans la todo list pendant la génération)
+      void executePlanRef.current?.();
 
     } catch (err: any) {
       setPhase('error');
@@ -367,6 +371,9 @@ export function useVibeCodingStudio(): [VibeCodingStudioState, VibeCodingStudioA
       setAgents(prev => prev.map(a => a.name === 'coder' ? { ...a, status: 'error', message: err?.message } : a));
     }
   }, [projectId, files.size, setProjectStatus, loadProjectFromDisk]);
+
+  // Toujours pointer sur la dernière version (flux automatique plan → génération)
+  executePlanRef.current = executePlan;
 
   // ══════════════════════════════════════════════════════════════════════════
   // HANDLE SSE EVENTS (for live updates)

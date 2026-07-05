@@ -22,6 +22,48 @@ import type { AgentUpdate, StepEvent } from '@/services/projectGeneration';
 import StudioTodoList from './StudioTodoList';
 import SkillsPanel from './SkillsPanel';
 import AgentPanel from './AgentPanel';
+import { terminalService } from '@/services/terminal';
+
+// ============================================================================
+// COMMANDES DE LANCEMENT — détectées depuis la structure du projet
+// ============================================================================
+
+interface RunCommands {
+  /** Lignes à afficher à l'utilisateur ("cd …", "npm install…") */
+  lines: string[];
+  /** Dossiers npm à vérifier automatiquement (relatifs au projet) */
+  npmDirs: string[];
+}
+
+function detectRunCommands(files: StudioFile[], projectPath?: string): RunCommands {
+  const paths = files.map(f => f.path);
+  const base = projectPath || '<dossier du projet>';
+  const npmDirs = [...new Set(
+    paths
+      .filter(p => p.endsWith('package.json'))
+      .map(p => p.split('/').slice(0, -1).join('/'))
+  )].slice(0, 3);
+  const pyDirs = [...new Set(
+    paths
+      .filter(p => p.endsWith('requirements.txt'))
+      .map(p => p.split('/').slice(0, -1).join('/'))
+  )];
+
+  const lines: string[] = [];
+  for (const dir of npmDirs) {
+    lines.push(`cd ${dir ? `${base}/${dir}` : base}`);
+    const pkgRaw = files.find(f => f.path === (dir ? `${dir}/package.json` : 'package.json'))?.content || '';
+    const hasDev = /"dev"\s*:/.test(pkgRaw);
+    const hasStart = /"start"\s*:/.test(pkgRaw);
+    lines.push(`npm install && npm run ${hasDev ? 'dev' : hasStart ? 'start' : 'build'}`);
+  }
+  for (const dir of pyDirs) {
+    lines.push(`cd ${dir ? `${base}/${dir}` : base}`);
+    const entry = ['main.py', 'app.py', 'run.py'].find(e => paths.includes(dir ? `${dir}/${e}` : e));
+    lines.push(`pip install -r requirements.txt${entry ? ` && python ${entry}` : ''}`);
+  }
+  return { lines, npmDirs };
+}
 
 // ============================================================================
 // TYPES
@@ -214,17 +256,57 @@ const StudioChat: React.FC<StudioChatProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Add system message when generation completes
+  // Génération terminée : message système + commandes terminal + AUTO-VÉRIFICATION
+  const autoCheckDoneRef = useRef(false);
   useEffect(() => {
-    if (phase === 'iterating' && messages.length === 0) {
-      setMessages([{
-        id: 'system-1',
-        role: 'system',
-        content: `Projet "${projectName}" généré avec succès ! ${files.length} fichiers créés. Tu peux maintenant demander des modifications.`,
-        timestamp: Date.now(),
-      }]);
+    if (phase !== 'iterating' || messages.length !== 0 || files.length === 0) return;
+
+    const { lines, npmDirs } = detectRunCommands(files, projectPath);
+
+    let content = `Projet "${projectName}" généré — ${files.length} fichiers écrits sur le disque.`;
+    if (lines.length > 0) {
+      content += `\n\nPour le lancer dans ton terminal :\n${lines.map(l => `  ${l}`).join('\n')}`;
     }
-  }, [phase, files.length, projectName]);
+
+    setMessages([{ id: 'system-1', role: 'system', content, timestamp: Date.now() }]);
+
+    // ── Auto-vérification : ANZAR installe et compile lui-même ──
+    if (!autoCheckDoneRef.current && projectPath && npmDirs.length > 0) {
+      autoCheckDoneRef.current = true;
+      (async () => {
+        const push = (msg: string) => setMessages(prev => [...prev, {
+          id: `system-${Date.now()}-${Math.random()}`,
+          role: 'system',
+          content: msg,
+          timestamp: Date.now(),
+        }]);
+
+        push('🔧 Vérification automatique : installation et compilation en cours…');
+
+        for (const dir of npmDirs.slice(0, 2)) {
+          const cwd = dir ? `${projectPath}/${dir}` : projectPath;
+          const label = dir || 'racine';
+          const install = await terminalService.exec('npm install', { cwd, timeout: 240_000, silent: true });
+          if (!install.success) {
+            push(`❌ ${label} : npm install a échoué.\n${(install.stderr || install.stdout).slice(0, 600)}\n\nDis-moi "corrige les erreurs d'installation" et je m'en occupe.`);
+            continue;
+          }
+          const pkgRaw = files.find(f => f.path === (dir ? `${dir}/package.json` : 'package.json'))?.content || '';
+          const hasBuild = /"build"\s*:/.test(pkgRaw);
+          if (hasBuild) {
+            const build = await terminalService.exec('npm run build', { cwd, timeout: 240_000, silent: true });
+            if (build.success) {
+              push(`✅ ${label} : installation et compilation OK.`);
+            } else {
+              push(`❌ ${label} : la compilation échoue.\n${(build.stderr || build.stdout).slice(0, 600)}\n\nDis-moi "corrige les erreurs de build" et je m'en occupe.`);
+            }
+          } else {
+            push(`✅ ${label} : dépendances installées.`);
+          }
+        }
+      })();
+    }
+  }, [phase, files, projectName, projectPath]);
 
   // React to iteration results from parent
   useEffect(() => {
