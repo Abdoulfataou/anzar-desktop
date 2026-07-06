@@ -104,6 +104,8 @@ Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). 
 
 **Skills modernes (05/07)** : catalogue passé de 16 à 29 skills, 4 nouvelles catégories — **Données** (Base de Données+migrations, API CRUD, Données de Démo), **Déploiement** (Docker, Config Vercel/Railway, CI GitHub Actions), **Sécurité** (Audit OWASP, Validation & Rate Limit), plus Paiements (Stripe + Mobile Money Wave/OM/MoMo), Upload de Fichiers, PWA & Offline, Tests E2E Playwright, Documentation Pro.
 
+**Documents dans Discussion (05/07)** : (1) **drag & drop** de fichiers n'importe où dans la fenêtre (événements natifs Tauri, overlay visuel, même pipeline que le trombone) ; (2) **OCR tesseract.js** (fra+eng) automatique pour les PDF scannés sans couche texte (5 premières pages, rendu 2x) — crucial pour les documents administratifs scannés ; (3) message clair pour les **formats anciens** .doc/.ppt/.xls (au lieu d'un extrait vide) ; (4) pipeline d'extraction unifié `processFilePath()` partagé trombone/drop.
+
 **Reste à faire (épuration profonde, seconde passe)** : dégraisser `ChatInput` (863 l.) et `useChatEngine` (821 l.) du code de routage projet devenu inutile (forceProjectGenerationOnceRef, wizardMetaRef) ; redesign Sidebar (546 l.) ; unifier GenerationPanel dans le studio pour supprimer le doublon d'affichage de génération ; commit des suppressions `.git_broken/`.
 
 ## 6. Fichiers critiques à connaître

@@ -259,9 +259,132 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
     if (doc.numPages > 50) {
       pages.push(`\n[... ${doc.numPages - 50} pages supplémentaires non incluses ...]`);
     }
-    return pages.join('\n\n') || '[PDF sans texte extractible]';
+
+    const extracted = pages.join('\n\n');
+
+    // ── PDF SCANNÉ (photo de document, sans couche texte) → OCR ──
+    // Cas très fréquent pour les documents administratifs scannés.
+    if (extracted.trim().length < 80) {
+      const ocrText = await ocrPdfPages(doc, Math.min(doc.numPages, 5));
+      if (ocrText) {
+        return `[Texte reconnu par OCR — document scanné, la précision peut varier]\n\n${ocrText}`;
+      }
+      return '[PDF scanné sans texte : la reconnaissance OCR a échoué (connexion internet requise au premier usage). Réessaie en ligne, ou envoie une photo/capture du document à la place.]';
+    }
+
+    return extracted || '[PDF sans texte extractible]';
   } catch {
     return '[Erreur lors de la lecture du PDF — essayez un fichier Word (.docx) pour de meilleurs résultats]';
+  }
+}
+
+/**
+ * OCR des pages d'un PDF scanné via tesseract.js (fra+eng).
+ * Best-effort : rend chaque page en canvas puis reconnaît le texte.
+ * Retourne '' si l'OCR est indisponible (offline, worker non chargé…).
+ */
+async function ocrPdfPages(doc: any, maxPages: number): Promise<string> {
+  try {
+    const { createWorker } = await import('tesseract.js');
+    const worker = await createWorker(['fra', 'eng']);
+    const results: string[] = [];
+    try {
+      for (let i = 1; i <= maxPages; i++) {
+        const page = await doc.getPage(i);
+        const viewport = page.getViewport({ scale: 2 }); // 2x pour la précision OCR
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        await page.render({ canvasContext: ctx, viewport }).promise;
+        const { data } = await worker.recognize(canvas);
+        const text = (data?.text || '').trim();
+        if (text) results.push(`— Page ${i} —\n${text}`);
+      }
+    } finally {
+      await worker.terminate();
+    }
+    if (doc.numPages > maxPages && results.length > 0) {
+      results.push(`[... OCR limité aux ${maxPages} premières pages sur ${doc.numPages} ...]`);
+    }
+    return results.join('\n\n');
+  } catch {
+    return '';
+  }
+}
+
+// ============================================================================
+// PIPELINE D'EXTRACTION PARTAGÉ (bouton trombone + drag & drop)
+// ============================================================================
+
+const MAX_BYTES_PDF = 12 * 1024 * 1024;   // 12MB
+const MAX_BYTES_DOCX = 10 * 1024 * 1024;  // 10MB
+const MAX_BYTES_XLSX = 8 * 1024 * 1024;   // 8MB
+const MAX_ATTACH_TEXT = 180000;            // ~45K tokens — assez pour un mémoire entier
+
+/** Formats Office pré-2007 (binaires) : non extractibles côté client */
+const LEGACY_OFFICE_EXTS = ['doc', 'ppt', 'xls'];
+
+/**
+ * Lit et extrait un fichier (par chemin Tauri) en ChatAttachment.
+ * Utilisé par le bouton trombone ET le drag & drop.
+ */
+async function processFilePath(filePath: string): Promise<ChatAttachment> {
+  const name = filePath.split(/[/\\]/).pop() || 'fichier';
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  const kind = detectAttachmentKind(name);
+
+  // ── Formats anciens .doc/.ppt/.xls : message clair au lieu d'un extrait vide ──
+  if (LEGACY_OFFICE_EXTS.includes(ext)) {
+    return {
+      id: generateId(), name, kind,
+      excerpt: `[Format ancien .${ext} non pris en charge. Ouvre le fichier dans Word/Excel/PowerPoint, fais "Enregistrer sous" au format .${ext}x (format moderne), puis rejoins-le.]`,
+    };
+  }
+
+  try {
+    if (kind === 'pdf') {
+      const bytes = await readBinaryFile(filePath);
+      if (bytes.byteLength > MAX_BYTES_PDF) {
+        return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>12MB).]' };
+      }
+      const text = await extractPdfText(bytes);
+      return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) };
+    }
+    if (kind === 'docx') {
+      const bytes = await readBinaryFile(filePath);
+      if (bytes.byteLength > MAX_BYTES_DOCX) {
+        return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' };
+      }
+      const text = await extractDocxText(bytes);
+      return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) };
+    }
+    if (kind === 'pptx') {
+      const bytes = await readBinaryFile(filePath);
+      if (bytes.byteLength > MAX_BYTES_DOCX) {
+        return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' };
+      }
+      const text = await extractPptxText(bytes);
+      return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) };
+    }
+    if (kind === 'xlsx') {
+      const bytes = await readBinaryFile(filePath);
+      if (bytes.byteLength > MAX_BYTES_XLSX) {
+        return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>8MB).]' };
+      }
+      const text = await extractExcelText(bytes);
+      return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) };
+    }
+    if (kind === 'csv' || kind === 'tsv') {
+      const content = await readTextFile(filePath);
+      return { id: generateId(), name, kind, excerpt: truncateMiddle(content, MAX_ATTACH_TEXT) };
+    }
+    // Texte/code — sinon binaire gardé comme pièce jointe simple
+    const content = await readTextFile(filePath);
+    return { id: generateId(), name, kind: kind === 'binary' ? 'text' : kind, excerpt: truncateMiddle(content, 9000) };
+  } catch {
+    return { id: generateId(), name, kind, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' };
   }
 }
 
@@ -470,6 +593,40 @@ export default function ChatInput({
     return () => window.removeEventListener('anzar:compose-with-attachments', onCompose);
   }, [isLoading]);
 
+  // ── DRAG & DROP de fichiers (événements natifs Tauri) ──
+  // L'utilisateur dépose un document n'importe où dans la fenêtre :
+  // même pipeline d'extraction que le trombone (PDF+OCR, Word, Excel…).
+  const [isDropHover, setIsDropHover] = useState(false);
+  useEffect(() => {
+    if (!isTauri()) return;
+    const unsubs: Array<() => void> = [];
+    let mounted = true;
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const u1 = await listen('tauri://file-drop-hover', () => setIsDropHover(true));
+        const u2 = await listen('tauri://file-drop-cancelled', () => setIsDropHover(false));
+        const u3 = await listen<string[]>('tauri://file-drop', async (event) => {
+          setIsDropHover(false);
+          const paths = (event.payload || []).slice(0, 8);
+          if (paths.length === 0) return;
+          const loadingToast = toast.loading('Lecture des fichiers…');
+          const items: ChatAttachment[] = [];
+          for (const p of paths) {
+            items.push(await processFilePath(p));
+          }
+          setAttachments(prev => [...prev, ...items].slice(0, 8));
+          toast.dismiss(loadingToast);
+          toast.success(`${items.length} fichier${items.length > 1 ? 's' : ''} joint${items.length > 1 ? 's' : ''} — pose ta question !`);
+          textareaRef.current?.focus();
+        });
+        if (mounted) unsubs.push(u1, u2, u3);
+        else { u1(); u2(); u3(); }
+      } catch { /* web mode : pas de drop natif */ }
+    })();
+    return () => { mounted = false; unsubs.forEach(u => u()); };
+  }, []);
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
     if (!isOnline) {
@@ -531,14 +688,21 @@ export default function ChatInput({
   };
 
   const hasMessage = message.trim().length > 0 || attachments.length > 0;
-  const MAX_BYTES_PDF = 12 * 1024 * 1024;   // 12MB
-  const MAX_BYTES_DOCX = 10 * 1024 * 1024;  // 10MB
-  const MAX_BYTES_XLSX = 8 * 1024 * 1024;   // 8MB
-  const MAX_ATTACH_TEXT = 180000;            // ~45K tokens — assez pour un mémoire entier (jusqu'à ~90 pages)
 
   return (
     <div className="relative z-40 bg-bg-primary">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-4 pt-2">
+        {/* Overlay drag & drop */}
+        {isDropHover && (
+          <div className="fixed inset-0 z-[100] bg-bg-primary/70 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+            <div className="px-10 py-8 rounded-2xl border-2 border-dashed border-accent-primary bg-surface-default shadow-2xl text-center">
+              <Paperclip className="mx-auto mb-3 text-accent-primary" size={26} />
+              <p className="text-sm font-semibold text-text-primary mb-1">Dépose tes fichiers ici</p>
+              <p className="text-xs text-text-muted">PDF (même scannés), Word, Excel, PowerPoint, images, code…</p>
+            </div>
+          </div>
+        )}
+
         {/* Input container */}
         <div className={cn(
           'rounded-2xl border transition-all duration-300 overflow-hidden',
@@ -634,64 +798,10 @@ export default function ChatInput({
                         const files = Array.isArray(selected) ? selected : [selected];
                         const loadingToast = toast.loading('Lecture des fichiers…');
                         let added = 0;
+                        // Pipeline partagé avec le drag & drop (extraction + legacy + OCR)
                         for (const filePath of files) {
-                          const name = (filePath as string).split(/[/\\]/).pop() || 'fichier';
-                          const kind = detectAttachmentKind(name);
-                          try {
-                            if (kind === 'pdf') {
-                              const bytes = await readBinaryFile(filePath);
-                              if (bytes.byteLength > MAX_BYTES_PDF) {
-                                newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>12MB).]' });
-                                added++;
-                                continue;
-                              }
-                              const text = await extractPdfText(bytes);
-                              newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
-                              added++;
-                            } else if (kind === 'docx') {
-                              const bytes = await readBinaryFile(filePath);
-                              if (bytes.byteLength > MAX_BYTES_DOCX) {
-                                newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' });
-                                added++;
-                                continue;
-                              }
-                              const text = await extractDocxText(bytes);
-                              newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
-                              added++;
-                            } else if (kind === 'pptx') {
-                              const bytes = await readBinaryFile(filePath);
-                              if (bytes.byteLength > MAX_BYTES_DOCX) {
-                                newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>10MB).]' });
-                                added++;
-                                continue;
-                              }
-                              const text = await extractPptxText(bytes);
-                              newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
-                              added++;
-                            } else if (kind === 'xlsx') {
-                              const bytes = await readBinaryFile(filePath);
-                              if (bytes.byteLength > MAX_BYTES_XLSX) {
-                                newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Fichier trop volumineux pour extraction automatique (>8MB).]' });
-                                added++;
-                                continue;
-                              }
-                              const text = await extractExcelText(bytes);
-                              newItems.push({ id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: truncateMiddle(text, MAX_ATTACH_TEXT) });
-                              added++;
-                            } else if (kind === 'csv' || kind === 'tsv') {
-                              const content = await readTextFile(filePath);
-                              newItems.push({ id: generateId(), name, kind, excerpt: truncateMiddle(content, MAX_ATTACH_TEXT) });
-                              added++;
-                            } else {
-                              // Try reading as text file, otherwise keep as binary attachment
-                              const content = await readTextFile(filePath);
-                              newItems.push({ id: generateId(), name, kind: kind === 'binary' ? 'text' : kind, excerpt: truncateMiddle(content, 9000) });
-                              added++;
-                            }
-                          } catch {
-                            newItems.push({ id: generateId(), name, kind, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' });
-                            added++;
-                          }
+                          newItems.push(await processFilePath(filePath as string));
+                          added++;
                         }
                         if (newItems.length > 0) {
                           const merged = [...baseAttachments, ...newItems].slice(0, 8);
