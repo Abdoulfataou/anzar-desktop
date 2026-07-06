@@ -102,6 +102,8 @@ Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). 
 
 **Fix 4e test réel (05/07, 5h)** : (1) **chemins fantômes "Chemin: client"** — sanitisation centrale dans `_extract_code_blocks` (strip Chemin:/Path:/File:/Fichier:, backticks, ./ et / initiaux, anti-traversal) ⚠️ redéployer Railway ; (2) **"Load failed"** — une coupure SSE n'est plus fatale : le client bascule en récupération (poll du statut toutes les 4s jusqu'à 15 min, puis réconciliation download) car le serveur continue de générer en tâche de fond.
 
+**Skills modernes (05/07)** : catalogue passé de 16 à 29 skills, 4 nouvelles catégories — **Données** (Base de Données+migrations, API CRUD, Données de Démo), **Déploiement** (Docker, Config Vercel/Railway, CI GitHub Actions), **Sécurité** (Audit OWASP, Validation & Rate Limit), plus Paiements (Stripe + Mobile Money Wave/OM/MoMo), Upload de Fichiers, PWA & Offline, Tests E2E Playwright, Documentation Pro.
+
 **Reste à faire (épuration profonde, seconde passe)** : dégraisser `ChatInput` (863 l.) et `useChatEngine` (821 l.) du code de routage projet devenu inutile (forceProjectGenerationOnceRef, wizardMetaRef) ; redesign Sidebar (546 l.) ; unifier GenerationPanel dans le studio pour supprimer le doublon d'affichage de génération ; commit des suppressions `.git_broken/`.
 
 ## 6. Fichiers critiques à connaître

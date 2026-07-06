@@ -17,7 +17,10 @@ import type { IterationMode } from './iterationRouter';
 // TYPES
 // ============================================================================
 
-export type SkillCategory = 'ui' | 'perf' | 'quality' | 'feature' | 'fix' | 'test' | 'custom';
+export type SkillCategory =
+  | 'ui' | 'perf' | 'quality' | 'feature' | 'fix' | 'test'
+  | 'data' | 'deploy' | 'security' | 'docs'
+  | 'custom';
 
 export interface StudioSkill {
   id: string;
@@ -213,6 +216,146 @@ const BUILTIN_SKILLS: StudioSkill[] = [
     icon: '🧪',
     builtin: true,
   },
+  {
+    id: 'e2e-tests',
+    name: 'Tests E2E',
+    description: 'Tests end-to-end Playwright sur les parcours critiques',
+    prompt: 'Ajoute des tests end-to-end avec Playwright : installe et configure Playwright, identifie les 3-5 parcours utilisateur critiques du projet (ex: inscription, création, achat), écris un test complet pour chacun avec assertions sur le DOM et les redirections, et ajoute un script "test:e2e" dans package.json.',
+    mode: 'test',
+    category: 'test',
+    icon: '🎭',
+    builtin: true,
+  },
+
+  // ── Données ──
+  {
+    id: 'database',
+    name: 'Base de Données',
+    description: 'Ajouter une vraie DB avec schéma et migrations',
+    prompt: 'Ajoute une vraie base de données au projet : choisis SQLite (via better-sqlite3/Prisma) pour le local ou PostgreSQL si un backend existe. Crée le schéma complet à partir des entités du projet, un système de migrations, une couche d\'accès aux données (repository pattern), et remplace toutes les données mockées/en mémoire par la DB. Ajoute la config par variables d\'environnement.',
+    mode: 'iterate',
+    category: 'data',
+    icon: '🗄️',
+    builtin: true,
+  },
+  {
+    id: 'crud-api',
+    name: 'API CRUD Complète',
+    description: 'Générer une API REST complète pour les entités',
+    prompt: 'Crée une API REST complète pour les entités principales du projet : routes CRUD (GET liste + pagination + filtres, GET détail, POST avec validation, PUT/PATCH, DELETE), codes HTTP corrects, gestion d\'erreurs centralisée, validation des entrées, et branche le frontend dessus (service API + états loading/error).',
+    mode: 'iterate',
+    category: 'data',
+    icon: '🔌',
+    builtin: true,
+  },
+  {
+    id: 'seed-demo',
+    name: 'Données de Démo',
+    description: 'Seed réaliste pour un projet présentable immédiatement',
+    prompt: 'Crée un script de seed avec des données de démonstration RÉALISTES et localisées (noms, produits, prix en FCFA si e-commerce, dates récentes) : au moins 20-50 entrées par entité principale, avec des relations cohérentes entre elles. Ajoute un script "seed" dans package.json et exécute-le au premier lancement si la base est vide.',
+    mode: 'iterate',
+    category: 'data',
+    icon: '🌱',
+    builtin: true,
+  },
+
+  // ── Déploiement ──
+  {
+    id: 'dockerize',
+    name: 'Docker',
+    description: 'Dockerfile + docker-compose prêts pour la prod',
+    prompt: 'Dockerise le projet : Dockerfile multi-stage optimisé (build puis image légère de prod), docker-compose.yml avec tous les services nécessaires (app, DB, cache si utilisé), .dockerignore, variables d\'environnement documentées, et healthchecks. L\'ensemble doit démarrer avec un seul "docker compose up".',
+    mode: 'iterate',
+    category: 'deploy',
+    icon: '🐳',
+    builtin: true,
+  },
+  {
+    id: 'deploy-config',
+    name: 'Config Déploiement',
+    description: 'Prêt à déployer sur Vercel/Netlify/Railway',
+    prompt: 'Prépare le projet pour le déploiement : détecte la meilleure cible (Vercel/Netlify pour front statique ou Next, Railway/Render pour fullstack), crée les fichiers de config nécessaires (vercel.json, netlify.toml ou railway.json), sépare les variables d\'environnement (.env.example documenté), configure le build de production, et ajoute au README les étapes exactes de déploiement.',
+    mode: 'iterate',
+    category: 'deploy',
+    icon: '🚀',
+    builtin: true,
+  },
+  {
+    id: 'ci-github',
+    name: 'CI GitHub Actions',
+    description: 'Pipeline lint + build + tests à chaque push',
+    prompt: 'Ajoute une CI GitHub Actions : workflow .github/workflows/ci.yml qui lance lint, typecheck, build et tests à chaque push et pull request, avec cache des dépendances pour la vitesse, et badge de statut dans le README.',
+    mode: 'iterate',
+    category: 'deploy',
+    icon: '⚙️',
+    builtin: true,
+  },
+
+  // ── Sécurité ──
+  {
+    id: 'security-audit',
+    name: 'Audit Sécurité',
+    description: 'Scan OWASP : XSS, injections, secrets, CORS',
+    prompt: 'Fais un audit de sécurité complet du projet et CORRIGE les problèmes trouvés : injections (SQL, XSS — échappe les entrées utilisateur), secrets hardcodés (déplace en variables d\'environnement), CORS trop permissif, validation des entrées manquante côté serveur, headers de sécurité (CSP, X-Frame-Options), dépendances vulnérables connues. Liste chaque problème corrigé.',
+    mode: 'review',
+    category: 'security',
+    icon: '🛡️',
+    builtin: true,
+  },
+  {
+    id: 'harden-inputs',
+    name: 'Validation & Rate Limit',
+    description: 'Durcir toutes les entrées + rate limiting',
+    prompt: 'Durcis toutes les entrées du projet : validation stricte côté serveur ET client de chaque champ (type, longueur, format), sanitisation systématique, messages d\'erreur sans fuite d\'information, rate limiting sur les endpoints sensibles (login, création), et protection CSRF si formulaires.',
+    mode: 'refactor',
+    category: 'security',
+    icon: '🔒',
+    builtin: true,
+  },
+
+  // ── Features modernes ──
+  {
+    id: 'payments',
+    name: 'Paiements',
+    description: 'Stripe + Mobile Money (Wave, Orange Money, MTN)',
+    prompt: 'Ajoute un système de paiement au projet : architecture avec abstraction provider (interface PaymentProvider), implémentation Stripe (checkout session + webhook de confirmation), et une implémentation Mobile Money adaptée à l\'Afrique de l\'Ouest (Wave/Orange Money/MTN MoMo via API agrégateur type CinetPay ou PayDunya — structure prête, clés en variables d\'environnement). Page de paiement, page de confirmation, gestion des échecs, et enregistrement des transactions en base.',
+    mode: 'iterate',
+    category: 'feature',
+    icon: '💳',
+    builtin: true,
+  },
+  {
+    id: 'file-upload',
+    name: 'Upload de Fichiers',
+    description: 'Upload images/documents avec préviews et validation',
+    prompt: 'Ajoute l\'upload de fichiers : composant drag & drop avec préviews, validation (types autorisés, taille max), compression des images côté client avant envoi, endpoint serveur de réception avec stockage local organisé (ou S3-compatible si config présente), et affichage des fichiers uploadés.',
+    mode: 'iterate',
+    category: 'feature',
+    icon: '📤',
+    builtin: true,
+  },
+  {
+    id: 'pwa-offline',
+    name: 'PWA & Offline',
+    description: 'App installable qui fonctionne hors ligne',
+    prompt: 'Transforme le projet en PWA installable : manifest.json complet (icônes, thème, nom), service worker avec stratégie de cache intelligente (cache-first pour les assets, network-first pour les données avec fallback), page hors-ligne élégante, et détection de la reconnexion pour synchroniser. Crucial pour les connexions instables.',
+    mode: 'iterate',
+    category: 'feature',
+    icon: '📲',
+    builtin: true,
+  },
+
+  // ── Documentation ──
+  {
+    id: 'documentation',
+    name: 'Documentation Pro',
+    description: 'README complet + guide d\'installation + doc API',
+    prompt: 'Rédige une documentation professionnelle : README.md complet (description, captures conceptuelles en ASCII/description, stack, prérequis, installation pas-à-pas, scripts disponibles, structure du projet, variables d\'environnement), doc de l\'API si elle existe (endpoints, paramètres, exemples de réponses), et guide de contribution basique.',
+    mode: 'iterate',
+    category: 'docs',
+    icon: '📚',
+    builtin: true,
+  },
 ];
 
 // ============================================================================
@@ -249,11 +392,15 @@ class StudioSkillsService {
   getCategories(): Array<{ id: SkillCategory; label: string; icon: string }> {
     return [
       { id: 'ui', label: 'Interface', icon: '🎨' },
+      { id: 'feature', label: 'Features', icon: '🚀' },
+      { id: 'data', label: 'Données', icon: '🗄️' },
+      { id: 'deploy', label: 'Déploiement', icon: '🐳' },
+      { id: 'security', label: 'Sécurité', icon: '🛡️' },
       { id: 'perf', label: 'Performance', icon: '⚡' },
       { id: 'quality', label: 'Qualité', icon: '✅' },
-      { id: 'feature', label: 'Features', icon: '🚀' },
       { id: 'fix', label: 'Corrections', icon: '🔧' },
       { id: 'test', label: 'Tests', icon: '🧪' },
+      { id: 'docs', label: 'Docs', icon: '📚' },
       { id: 'custom', label: 'Custom', icon: '⭐' },
     ];
   }
