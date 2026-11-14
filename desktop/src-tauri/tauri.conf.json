@@ -74,47 +74,83 @@
           {
             "name": "node",
             "cmd": "node",
-            "args": [{ "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$" }]
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              }
+            ]
           },
           {
             "name": "npm",
             "cmd": "npm",
-            "args": [{ "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|publish|version|--version|-v)$|^[\\w@./\\-]+$" }]
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^(?!(publish|token|owner|access|adduser|login|team|org|grants?|profile)$)[\\w@./-]+$"
+              }
+            ]
           },
           {
             "name": "npx",
             "cmd": "npx",
-            "args": [{ "validator": "^[\\w@./\\-]+$" }]
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              }
+            ]
           },
           {
             "name": "python3",
             "cmd": "python3",
-            "args": [{ "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$" }]
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              }
+            ]
           },
           {
             "name": "python",
             "cmd": "python",
-            "args": [{ "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$" }]
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              }
+            ]
           },
           {
             "name": "pip",
             "cmd": "pip",
-            "args": [{ "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$" }]
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              }
+            ]
           },
           {
             "name": "pip3",
             "cmd": "pip3",
-            "args": [{ "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$" }]
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              }
+            ]
           },
           {
             "name": "git",
             "cmd": "git",
-            "args": [{ "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\-\"' :@{}]+$" }]
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              }
+            ]
           },
           {
             "name": "cargo",
             "cmd": "cargo",
-            "args": [{ "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|publish|install|--version|-V)$|^[\\w./\\-]+$" }]
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^(?!publish$)[\\w./-]+$"
+              }
+            ]
           }
         ]
       }

@@ -10,6 +10,7 @@
  */
 import React, { useEffect, useRef, useState } from 'react';
 import { Code2, Eye, Copy, Check, AlertTriangle, Loader2 } from 'lucide-react';
+import DOMPurify from 'dompurify';
 import { cn } from '@/lib/utils';
 import CodeBlock from './CodeBlock';
 
@@ -19,14 +20,20 @@ import CodeBlock from './CodeBlock';
 
 let mermaidIdCounter = 0;
 
-/** Sanitisation SVG : retire scripts, handlers d'événements et liens js. */
+/** Sanitisation SVG — DOMPurify profil SVG uniquement.
+ *
+ * Remplace l'ancienne sanitisation par regex (qui laissait passer <iframe>,
+ * <script src>, <embed> et les attributs style onload-adjacents). La source
+ * étant du XML généré par un LLM, on considère qu'elle n'est PAS de confiance.
+ */
+const SVG_SANITIZE_CONFIG = {
+  USE_PROFILES: { svg: true, svgFilters: true },
+  FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'embed', 'object'],
+  FORBID_ATTR: ['style'],
+};
+
 function sanitizeSvg(raw: string): string {
-  return raw
-    .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
-    .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
-    .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
-    .replace(/(href|xlink:href)\s*=\s*"(javascript|data:text\/html)[^"]*"/gi, '$1="#"');
+  return DOMPurify.sanitize(raw, SVG_SANITIZE_CONFIG);
 }
 
 const BlockShell: React.FC<{
