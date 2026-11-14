@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
 import { ToolEventList } from './ToolCallBlock';
+import FileChangesCard from './FileChangesCard';
 import { MermaidBlock, SvgBlock, getVisualKind } from './VisualBlock';
 import { cn } from '@/lib/utils';
 import { openExternalUrl } from '@/services/infra/externalLinks';
@@ -319,6 +320,11 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
               <ExternalLink size={13} className="opacity-60" />
             </button>
           </div>
+        )}
+
+        {/* Fichiers modifiés par l'agent + annulation */}
+        {!message.isStreaming && message.fileChanges && message.fileChanges.length > 0 && (
+          <FileChangesCard messageId={message.id} changes={message.fileChanges} undone={message.changesUndone} />
         )}
 
         {/* Actions bar */}

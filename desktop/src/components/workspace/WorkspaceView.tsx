@@ -29,6 +29,7 @@ import WorkspacePanel from './WorkspacePanel';
 import { claimPendingPrompt } from '@/lib/pendingPrompt';
 import { openWorkspaceFolder, createWorkspaceFolder } from '@/lib/openWorkspace';
 import { terminalService } from '@/services/terminal';
+import { FILES_CHANGED_EVENT } from '@/services/agent/fileChanges';
 
 export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: boolean }) {
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
@@ -61,6 +62,15 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
     setRefreshKey((k) => k + 1);
     if (action !== 'delete') setFocusFile(relativePath);
     if (action !== 'delete') setModifiedCount((n) => n + 1);
+  }, []);
+
+  // ── Carte « fichiers modifiés » : après une annulation, on relit le dossier ──
+  useEffect(() => {
+    const onChanged = () => setRefreshKey((k) => k + 1);
+    window.addEventListener(FILES_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(FILES_CHANGED_EVENT, onChanged);
+    };
   }, []);
 
   // ── Agent chat ──

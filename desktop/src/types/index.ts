@@ -178,6 +178,10 @@ export interface Message {
   /** Étapes de raisonnement (si fournies par le backend/provider) */
   reasoning?: string[];
   tokens?: { prompt: number; completion: number };
+  /** Fichiers modifiés par l'agent pendant cette réponse */
+  fileChanges?: import('@/services/agent/fileChanges').FileChange[];
+  /** Les modifications de cette réponse ont été annulées */
+  changesUndone?: boolean;
   /** Coût réel de la réponse en FCFA (différence de solde serveur) */
   costFCFA?: number;
   isStreaming?: boolean;

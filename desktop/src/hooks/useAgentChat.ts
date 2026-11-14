@@ -18,6 +18,7 @@ import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
+import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
 import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall } from '@/types';
 
 /** Qui décide avant que l'agent agisse. */
@@ -221,6 +222,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     let accContent = '';
     let accReasoning = '';
     const events: ToolEvent[] = [];
+    const snapshots: Snapshots = new Map();
     let promptTokens = 0;
     let completionTokens = 0;
     const t0 = Date.now();
@@ -362,6 +364,11 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             });
           }
 
+          // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)
+          if (allowed && workspacePath && ['write_file', 'edit_file', 'delete_file'].includes(call.function.name)) {
+            await snapshotBeforeChange(snapshots, workspacePath, args.path || args.file_path);
+          }
+
           const result = !allowed
             ? { output: "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.", isError: true }
             : workspacePath
@@ -450,6 +457,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         tokens: { prompt: promptTokens, completion: completionTokens },
         costFCFA,
         toolEvents: [...events],
+        fileChanges: workspacePath ? await collectChanges(assistantId, workspacePath, snapshots) : undefined,
       });
 
       const record = {
@@ -476,6 +484,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         isStreaming: false,
         isError: !aborted,
         toolEvents: [...events],
+        fileChanges: workspacePath ? await collectChanges(assistantId, workspacePath, snapshots).catch(() => undefined) : undefined,
       });
     } finally {
       setIsGenerating(false);
