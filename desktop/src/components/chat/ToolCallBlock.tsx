@@ -36,11 +36,11 @@ export default function ToolCallBlock({ event }: { event: ToolEvent }) {
   const isDone = event.name === 'task_done';
 
   return (
-    <div className="rounded-md border border-border-subtle overflow-hidden my-0.5 bg-bg-secondary/40">
+    <div className="rounded-md overflow-hidden">
       <button
         onClick={() => event.output && setOpen((v) => !v)}
         className={cn(
-          'w-full flex items-center gap-2 px-2.5 py-1.5 text-left transition-colors font-mono text-[11.5px]',
+          'w-full flex items-center gap-2 px-2 h-6 text-left transition-colors font-mono text-[11.5px] rounded-md',
           event.output ? 'hover:bg-surface-hover' : 'cursor-default'
         )}
       >
@@ -90,6 +90,54 @@ export default function ToolCallBlock({ event }: { event: ToolEvent }) {
         <pre className="px-3 py-2 border-t border-border-subtle bg-bg-primary/60 font-mono text-[10.5px] leading-relaxed text-text-tertiary whitespace-pre-wrap break-all max-h-52 overflow-y-auto">
           {event.output}
         </pre>
+      )}
+    </div>
+  );
+}
+
+const VERBS: Record<string, [string, string]> = {
+  read_file: ['fichier lu', 'fichiers lus'],
+  list_dir: ['dossier listé', 'dossiers listés'],
+  search_files: ['recherche', 'recherches'],
+  run_command: ['commande', 'commandes'],
+  edit_file: ['modification', 'modifications'],
+  write_file: ['fichier écrit', 'fichiers écrits'],
+  delete_file: ['fichier supprimé', 'fichiers supprimés'],
+};
+
+/**
+ * Liste d'actions d'un message. Au-delà de 4 actions, elles sont repliées
+ * derrière une ligne de résumé (« 37 fichiers lus · 2 commandes »).
+ * Pendant le travail, les 3 dernières restent visibles.
+ */
+export function ToolEventList({ events, live }: { events: ToolEvent[]; live?: boolean }) {
+  const [open, setOpen] = useState(false);
+  if (events.length <= 4) {
+    return <div className="mb-1.5">{events.map((ev) => <ToolCallBlock key={ev.id} event={ev} />)}</div>;
+  }
+  const counts = new Map<string, number>();
+  for (const ev of events) counts.set(ev.name, (counts.get(ev.name) || 0) + 1);
+  const summary = [...counts.entries()]
+    .filter(([name]) => VERBS[name])
+    .map(([name, n]) => `${n} ${VERBS[name][n > 1 ? 1 : 0]}`)
+    .join(' · ') || `${events.length} actions`;
+  const errors = events.filter((e) => e.status === 'error').length;
+  const shown = open ? events : live ? events.slice(-3) : [];
+  return (
+    <div className="mb-1.5">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 px-2 h-7 rounded-md text-[12.5px] text-text-secondary hover:bg-surface-hover transition-colors"
+      >
+        {live ? <Loader2 size={12} className="animate-spin text-accent-primary" /> : <CheckCircle2 size={12} className="text-text-muted" />}
+        <span>{summary}</span>
+        {errors > 0 && <span className="text-accent-error">· {errors} en erreur</span>}
+        <span className="text-text-muted text-[9px]">{open ? '▲' : '▼'}</span>
+      </button>
+      {shown.length > 0 && (
+        <div className={cn('ml-2 pl-2 border-l border-border-subtle', open && 'max-h-72 overflow-y-auto')}>
+          {shown.map((ev) => <ToolCallBlock key={ev.id} event={ev} />)}
+        </div>
       )}
     </div>
   );

@@ -28,6 +28,10 @@ export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
 3. VÉRIFIE ton travail : après tes modifications, lance la vérification adaptée via run_command (build, lint, tests, exécution du script). Si ça échoue, lis l'erreur et corrige, puis re-vérifie. Boucle jusqu'au succès.
 4. TERMINE avec task_done : appelle-le uniquement quand la tâche est finie et vérifiée, avec un résumé clair en français.
 
+# Questions et explications
+Si l'utilisateur pose une question ou demande d'expliquer le projet (sans modification à faire), n'appelle PAS task_done : réponds directement en texte.
+Pour comprendre un projet, ne lis pas tout : commence par list_dir, le README et package.json (ou équivalent), puis 5 à 10 fichiers clés au maximum. Réponds dès que tu en sais assez.
+
 # Règles
 - Tu travailles UNIQUEMENT dans le dossier du projet. Chemins relatifs à la racine.
 - Commandes shell limitées à une allowlist (node, npm, npx, git, python, pip, cargo...). Pas de sudo, pas de rm.

@@ -14,7 +14,7 @@ import React, { useState, useMemo, useCallback } from 'react';
 import {
   ChevronRight, ChevronDown, Folder, FolderOpen,
   FileCode, FileText, FileJson, File, Image, Settings,
-  Search, Loader2, CheckCircle2, Circle, Pencil,
+  Search, Loader2, Circle, Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { StudioFile } from '@/types/studio';
@@ -193,8 +193,6 @@ const TreeNodeItem: React.FC<{
           <span className="flex-shrink-0 ml-1">
             {node.file.status === 'generating' || isGenerating ? (
               <Loader2 size={12} className="text-accent-primary animate-spin" />
-            ) : node.file.status === 'done' ? (
-              <CheckCircle2 size={12} className="text-emerald-400 opacity-60" />
             ) : node.file.status === 'modified' ? (
               <Pencil size={12} className="text-blue-400 opacity-60" />
             ) : (
@@ -246,7 +244,6 @@ const StudioFileTree: React.FC<StudioFileTreeProps> = ({
   const tree = useMemo(() => buildTree(filteredFiles), [filteredFiles]);
 
   // Stats
-  const doneCount = files.filter(f => f.status === 'done').length;
   const generatingCount = files.filter(f => f.status === 'generating').length;
 
   return (
@@ -258,7 +255,7 @@ const StudioFileTree: React.FC<StudioFileTreeProps> = ({
             Fichiers
           </span>
           <span className="text-[10px] text-text-muted">
-            {doneCount}/{files.length}
+            {files.length}
             {generatingCount > 0 && (
               <span className="text-accent-primary ml-1">
                 ({generatingCount} en cours)

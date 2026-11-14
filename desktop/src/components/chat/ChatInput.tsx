@@ -679,12 +679,14 @@ export default function ChatInput({
         const fileNames = attachments.map((a) => a.name || "fichier").join(", ");
         contentToSend = `Voici mon document (${fileNames}). Analyse-le et propose-moi les options suivantes :\n1) Correction complete (orthographe, grammaire, syntaxe)\n2) Reformulation et amelioration du style\n3) Resume des points cles\n4) Evaluation avec points forts et points faibles\n\nQuelle option souhaites-tu ?`;
       }
-      await onSendMessage(contentToSend, attachments);
+      // On vide le composer tout de suite : l'envoi dure tout le temps de travail de l'agent.
+      const sentAttachments = attachments;
       setMessage('');
       setAttachments([]);
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
+      await onSendMessage(contentToSend, sentAttachments);
     }
   };
 

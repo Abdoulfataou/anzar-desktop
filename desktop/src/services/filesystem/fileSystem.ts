@@ -53,6 +53,7 @@ const IGNORED_PATTERNS = new Set([
   '.next', '.nuxt', 'dist', 'build', 'out', '.cache', '.parcel-cache',
   'target', '.idea', '.vscode', '.DS_Store', 'Thumbs.db',
   'vendor', '.cargo', 'venv', '.env', 'coverage', '.nyc_output',
+  'Pods', 'DerivedData', '.gradle', '.expo', 'xcuserdata',
 ]);
 
 const BINARY_EXTENSIONS = new Set([

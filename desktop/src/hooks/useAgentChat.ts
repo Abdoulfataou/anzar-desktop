@@ -32,7 +32,7 @@ export interface ToolEvent {
   delta?: [number, number];
 }
 
-const MAX_STEPS = 30;
+const MAX_STEPS = 40;
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
 
 function summarizeArgs(name: string, args: Record<string, any>): string {
@@ -186,7 +186,21 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
         };
       }
 
-      apiHistoryRef.current.push(system, { role: 'user', content });
+      if (apiHistoryRef.current.length === 0) {
+        // Reprise d'une conversation existante (redémarrage, changement de tâche) :
+        // on redonne à l'agent les échanges texte précédents.
+        const prior = (useChatStore.getState().conversations.find((c) => c.id === convId)?.messages || [])
+          .filter((m) => m.id !== userMsg.id && m.id !== assistantId)
+          .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
+          .slice(-12)
+          .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }) as APIMessage);
+        apiHistoryRef.current.push(system, ...prior);
+      } else {
+        apiHistoryRef.current[0] = system;
+      }
+      apiHistoryRef.current.push({ role: 'user', content });
+
+      let answered = false;
 
       // ── Boucle agent ──
       for (let step = 0; step < MAX_STEPS; step++) {
@@ -216,12 +230,12 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
 
         // Le texte de chaque étape s'accumule (les étapes tool-only sont vides)
         if (stepContent) {
-          accContent += stepContent;
+          accContent += (accContent ? '\n\n' : '') + stepContent;
           flush();
         }
 
         // ── Pas de tool calls → réponse finale ──
-        if (!assembler.hasCalls) break;
+        if (!assembler.hasCalls) { answered = true; break; }
 
         // ── Exécution des outils ──
         const toolCalls = assembler.finish();
@@ -270,17 +284,45 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
             content: result.output || '(vide)',
           });
 
-          // task_done → fin de session
+          // task_done → son résumé EST la réponse finale
           if (result.isDone) {
-            controller.abort();
+            const summary = String(result.output || '').trim();
+            if (summary && !accContent.includes(summary)) {
+              accContent += (accContent ? '\n\n' : '') + summary;
+            }
+            answered = true;
+            flush();
             break;
           }
         }
+        if (answered) break;
 
         // Le contenu final remplace l'accumulation d'étapes intermédiaires vides
         if (stepContent && step < MAX_STEPS - 1) {
           // l'étape suivante produira la suite (réponse ou nouveaux outils)
         }
+      }
+
+      // ── Limite d'étapes atteinte sans réponse → synthèse forcée, sans outils ──
+      if (!answered && !controller.signal.aborted) {
+        apiHistoryRef.current.push({
+          role: 'user',
+          content:
+            "Limite d'étapes atteinte. N'utilise plus aucun outil. Donne maintenant ta réponse finale complète, " +
+            "en français, à partir de ce que tu as déjà lu. Si le travail est incomplet, dis précisément ce qui reste.",
+        });
+        let finalText = '';
+        for await (const delta of aiService.chatStream(apiHistoryRef.current, { model, signal: controller.signal })) {
+          if (delta.content) {
+            finalText += delta.content;
+            updateMessage(assistantId, {
+              content: accContent + (accContent ? '\n\n' : '') + finalText,
+              isStreaming: true,
+              toolEvents: [...events],
+            });
+          }
+        }
+        if (finalText) accContent += (accContent ? '\n\n' : '') + finalText;
       }
 
       // ── Finalisation ──
@@ -319,9 +361,11 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
     } catch (e: any) {
       const aborted = controller.signal.aborted;
       updateMessage(assistantId, {
-        content: accContent || (aborted ? '_(génération interrompue)_' : `**Erreur** — ${e?.message || 'service indisponible'}`),
+        content: aborted
+          ? (accContent ? `${accContent}\n\n_(interrompu)_` : '_(génération interrompue)_')
+          : `${accContent ? accContent + '\n\n' : ''}**Erreur** — ${e?.message || 'service indisponible'}. L'agent s'est arrêté avant de répondre ; renvoie ton message pour reprendre.`,
         isStreaming: false,
-        isError: !aborted && !accContent,
+        isError: !aborted,
         toolEvents: [...events],
       });
     } finally {

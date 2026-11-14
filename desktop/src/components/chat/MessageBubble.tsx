@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
-import ToolCallBlock from './ToolCallBlock';
+import { ToolEventList } from './ToolCallBlock';
 import { MermaidBlock, SvgBlock, getVisualKind } from './VisualBlock';
 import { cn } from '@/lib/utils';
 import { openExternalUrl } from '@/services/infra/externalLinks';
@@ -188,11 +188,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
         </div>
         {/* Actions d'outils de l'agent — rendu ZCode (read/edit/bash…) */}
         {message.toolEvents && message.toolEvents.length > 0 && (
-          <div className="mb-1 space-y-0.5">
-            {message.toolEvents.map((ev) => (
-              <ToolCallBlock key={ev.id} event={ev} />
-            ))}
-          </div>
+          <ToolEventList events={message.toolEvents} live={message.isStreaming} />
         )}
 
         {/* Thinking section */}
