@@ -613,7 +613,7 @@ export default function ChatInput({
 
         {/* Input container */}
         <div className={cn(
-          'rounded-2xl border transition-all duration-300 overflow-hidden',
+          'rounded-2xl border transition-all duration-300',
           'bg-surface-default/80 backdrop-blur-md',
           isFocused
             ? 'glow-border-active shadow-lg'

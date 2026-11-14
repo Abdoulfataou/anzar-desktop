@@ -3,6 +3,7 @@
  * Handles project lifecycle, file management, and agent coordination
  */
 
+import { safeStorage } from '@/lib/safeStorage';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
@@ -576,8 +577,14 @@ export const useProjectStore = create<ProjectStore>()(
 
     {
       name: 'anzar-project-storage',
+      storage: safeStorage,
+      // Un projet lié à un dossier (localPath) a ses fichiers SUR LE DISQUE :
+      // inutile d'en garder une copie ici, c'est ce qui remplissait le stockage.
+      // Les anciens projets générés sans dossier gardent leurs fichiers (seule copie).
       partialize: (state) => ({
-        projects: state.projects,
+        projects: state.projects.map((p) =>
+          typeof (p.metadata as any)?.localPath === 'string' && p.files.length > 0 ? { ...p, files: [] } : p
+        ),
       }),
       onRehydrateStorage: () => (state) => {
         // After hydration, re-register approved project paths (TerminalService)
@@ -592,6 +599,10 @@ export const useProjectStore = create<ProjectStore>()(
         } catch {
           // ignore
         }
+        // Réécriture immédiate au format allégé → libère l'espace dès le démarrage
+        setTimeout(() => {
+          try { useProjectStore.setState((st) => ({ projects: [...st.projects] })); } catch { /* ignore */ }
+        }, 0);
       },
     }
   )

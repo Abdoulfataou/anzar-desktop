@@ -338,7 +338,7 @@ export default function Sidebar({ className }: { className?: string }) {
               <span className="min-w-0">
                 <span className="block text-[13px] text-text-primary truncate">{user?.name || 'Compte'}</span>
                 <span className={cn('block text-[11px] font-mono tabular-nums', credits.remaining > 0 ? 'text-text-muted' : 'text-accent-error')}>
-                  {credits.remaining.toLocaleString('fr-FR')} FCFA
+                  {Math.round(credits.remaining).toLocaleString('fr-FR')} FCFA
                 </span>
               </span>
             )}

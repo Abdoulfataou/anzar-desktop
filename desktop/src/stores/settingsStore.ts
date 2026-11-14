@@ -7,6 +7,7 @@
  * - L'authentification utilise un JWT signé
  * - Les données sensibles ne sont jamais en localStorage
  */
+import { safeStorage } from '@/lib/safeStorage';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AIModel, AIProvider } from '@/types';
@@ -175,6 +176,7 @@ export const useSettingsStore = create<SettingsStore>()(
     }),
     {
       name: 'anzar-settings',
+      storage: safeStorage,
       // Persist UI settings only (no auth token).
       // Tokens ne doivent pas être stockés en clair dans localStorage.
       partialize: (state) => ({

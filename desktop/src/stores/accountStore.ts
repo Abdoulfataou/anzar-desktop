@@ -5,6 +5,7 @@
  * (Wave, Orange Money, M-Pesa), consomme via les requêtes IA,
  * et recharge quand le solde est à 0.
  */
+import { safeStorage } from '@/lib/safeStorage';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { UserProfile, CreditBalance, Transaction } from '@/types';
@@ -143,10 +144,11 @@ export const useAccountStore = create<AccountStore>()(
     }),
     {
       name: 'anzar-account',
+      storage: safeStorage,
       partialize: (state) => ({
         user: state.user,
         credits: state.credits,
-        transactions: state.transactions,
+        transactions: state.transactions.slice(-200),
         isLoggedIn: state.isLoggedIn,
         hasCompletedOnboarding: state.hasCompletedOnboarding,
       }),

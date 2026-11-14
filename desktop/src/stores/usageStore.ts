@@ -2,6 +2,7 @@
  * Usage Store — Suivi des coûts API par provider
  * Historique d'utilisation, budget, alertes
  */
+import { safeStorage } from '@/lib/safeStorage';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AIProvider, AIModel } from '@/types';
@@ -206,8 +207,9 @@ export const useUsageStore = create<UsageStore>()(
     }),
     {
       name: 'anzar-usage',
+      storage: safeStorage,
       partialize: (state) => ({
-        records: state.records,
+        records: state.records.slice(-500),
       }),
     }
   )

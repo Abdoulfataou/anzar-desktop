@@ -3,6 +3,7 @@
  * Handles conversation lifecycle, message persistence, and streaming state
  */
 
+import { safeStorage } from '@/lib/safeStorage';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
@@ -779,6 +780,7 @@ export const useChatStore = create<ChatStore>()(
 
     {
       name: 'anzar-chat-storage',
+      storage: safeStorage,
       // Only persist conversations, not UI state.
       // Prune to avoid localStorage bloat: keep last 50 conversations,
       // max 100 messages per conversation.
@@ -805,6 +807,16 @@ export const useChatStore = create<ChatStore>()(
             : recentMsgs;
           return { ...c, messages: merged };
         });
+
+        // Les sorties d'outils sont volumineuses : on n'en garde qu'un extrait sur disque.
+        convs = convs.map((c) => ({
+          ...c,
+          messages: c.messages.map((m) =>
+            m.toolEvents && m.toolEvents.length > 0
+              ? { ...m, toolEvents: m.toolEvents.map((e) => ({ ...e, output: e.output?.slice(0, 200) })) }
+              : m
+          ),
+        }));
 
         return {
           conversations: convs,
