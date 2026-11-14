@@ -12,7 +12,7 @@
  * Aucune détection d'intention, aucun pipeline de génération.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FolderOpen, FolderPlus, FileEdit } from 'lucide-react';
+import { Folder, FolderPlus, FileEdit, GitBranch } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useAgentChat } from '@/hooks/useAgentChat';
@@ -24,6 +24,8 @@ import ChatInput from '@/components/chat/ChatInput';
 import ResizableSplit from '@/components/ui/ResizableSplit';
 import WorkspacePanel from './WorkspacePanel';
 import { claimPendingPrompt } from '@/lib/pendingPrompt';
+import { openWorkspaceFolder, createWorkspaceFolder } from '@/lib/openWorkspace';
+import { terminalService } from '@/services/terminal';
 
 export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: boolean }) {
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
@@ -54,51 +56,34 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
     onFileChanged,
   });
 
-  // ── Ouverture de dossier (l'unique "mode" de l'app) ──
+  // ── Ouverture de dossier (point d'entrée unique, sans doublon) ──
   const handleOpenFolder = useCallback(async () => {
-    try {
-      const { open } = await import('@tauri-apps/api/dialog');
-      const selected = await open({ directory: true, multiple: false, title: 'Ouvrir un dossier de travail' });
-      if (!selected || typeof selected !== 'string') return;
-
-      const folderName = selected.split(/[/\\]/).pop() || 'workspace';
-      const store = useProjectStore.getState();
-      const project = store.createProject(folderName, `Workspace: ${selected}`, selectedModel);
-      store.updateProject(project.id, {
-        status: 'complete',
-        metadata: { localPath: selected, imported: true },
-      } as any);
-      store.setActiveProject(project.id);
-      setRefreshKey((k) => k + 1);
-      setModifiedCount(0);
-      toast.success(`Workspace « ${folderName} » ouvert`);
-    } catch (err) {
-      console.error('Open folder failed:', err);
-      toast.error("Impossible d'ouvrir le dossier (fonction desktop).");
-    }
-  }, [selectedModel]);
+    const id = await openWorkspaceFolder();
+    if (!id) return;
+    setRefreshKey((k) => k + 1);
+    setModifiedCount(0);
+  }, []);
 
   const handleNewFolder = useCallback(async () => {
-    try {
-      const { save } = await import('@tauri-apps/api/dialog');
-      const selected = await save({ title: 'Nouveau projet — choisir un emplacement' });
-      if (!selected || typeof selected !== 'string') return;
-      const folderName = selected.split(/[/\\]/).pop() || 'nouveau-projet';
-      const store = useProjectStore.getState();
-      const project = store.createProject(folderName, `Workspace: ${selected}`, selectedModel);
-      store.updateProject(project.id, {
-        status: 'complete',
-        metadata: { localPath: selected, imported: true },
-      } as any);
-      store.setActiveProject(project.id);
-      setRefreshKey((k) => k + 1);
-      setModifiedCount(0);
-      toast.success(`Workspace « ${folderName} » créé — décris ton projet dans le chat`);
-    } catch (err) {
-      console.error('New folder failed:', err);
-      toast.error('Impossible de créer le dossier.');
-    }
-  }, [selectedModel]);
+    const id = await createWorkspaceFolder();
+    if (!id) return;
+    setRefreshKey((k) => k + 1);
+    setModifiedCount(0);
+    toast.success('Dossier prêt — décris ton projet dans le chat');
+  }, []);
+
+  // ── Branche git du workspace (puce d'en-tête) ──
+  const [branch, setBranch] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    setBranch(null);
+    if (!workspacePath) return;
+    terminalService
+      .exec('git rev-parse --abbrev-ref HEAD', { cwd: workspacePath, silent: true })
+      .then((r) => { if (alive && r.success && r.stdout.trim()) setBranch(r.stdout.trim()); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [workspacePath, refreshKey]);
 
   // ── Prompt-first : rejoue l'idée saisie avant login ──
   const replayedRef = useRef(false);
@@ -117,14 +102,20 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
   const createConversation = useChatStore((s) => s.createConversation);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   useEffect(() => {
-    if (!activeConversationId) createConversation(undefined, selectedModel);
-  }, [activeConversationId, createConversation, selectedModel]);
+    if (activeConversationId) return;
+    const conv = createConversation(undefined, selectedModel);
+    if (activeProjectId) {
+      useChatStore.setState((st) => ({
+        conversations: st.conversations.map((c) => (c.id === conv.id ? { ...c, projectId: activeProjectId } : c)),
+      }));
+    }
+  }, [activeConversationId, activeProjectId, createConversation, selectedModel]);
   const messages: Message[] = (activeConversation?.messages || []).filter((m) => m.role !== 'tool');
 
   const workspaceName = activeProject?.name || null;
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col">
+    <div className="h-full min-h-0 flex flex-col">
       {/* ── Split chat | workspace ── */}
       <ResizableSplit
         className="flex-1"
@@ -132,39 +123,38 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
         minLeftPct={24}
         left={
           <div className="h-full min-h-0 flex flex-col border-r border-border-subtle">
-            {/* Bandeau workspace au-dessus du chat */}
-            <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border-subtle bg-bg-secondary/30 flex-shrink-0">
-              {workspacePath ? (
-                <>
-                  <FolderOpen size={12} className="text-text-muted" />
-                  <span className="text-[11px] font-mono text-text-secondary truncate flex-1" title={workspacePath}>
-                    {workspaceName}
-                  </span>
-                  {modifiedCount > 0 && (
-                    <span className="flex items-center gap-1 text-[10px] text-accent-success font-mono">
-                      <FileEdit size={10} />
-                      {modifiedCount}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <span className="text-[11px] text-text-muted flex-1">Aucun dossier — l'agent répond sans outils</span>
-                  <button
-                    onClick={() => void handleOpenFolder()}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
-                  >
-                    <FolderOpen size={11} />
-                    Ouvrir
-                  </button>
-                </>
+            {/* En-tête de tâche : titre · projet · branche */}
+            <div className="flex items-center gap-2 h-11 px-4 border-b border-border-subtle flex-shrink-0">
+              <h1 className="text-[13.5px] font-semibold text-text-primary truncate min-w-0">
+                {activeConversation?.title || 'Nouvelle tâche'}
+              </h1>
+              <button
+                onClick={() => void handleOpenFolder()}
+                title={workspacePath || 'Ouvrir un dossier pour que l\'agent puisse lire et modifier ton code'}
+                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-bg-tertiary text-[12.5px] text-text-secondary hover:text-text-primary transition-colors flex-shrink-0 max-w-[40%]"
+              >
+                <Folder size={12} className="flex-shrink-0" />
+                <span className="truncate">{workspaceName || 'Ouvrir un dossier'}</span>
+              </button>
+              {branch && (
+                <span className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-bg-tertiary text-[12.5px] text-text-secondary flex-shrink-0">
+                  <GitBranch size={12} />
+                  {branch}
+                </span>
+              )}
+              <div className="flex-1" />
+              {modifiedCount > 0 && (
+                <span className="flex items-center gap-1 text-[11px] text-accent-success font-mono flex-shrink-0">
+                  <FileEdit size={11} />
+                  {modifiedCount}
+                </span>
               )}
               <button
                 onClick={() => void handleNewFolder()}
-                className="p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
+                className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors flex-shrink-0"
                 title="Nouveau projet (dossier vierge)"
               >
-                <FolderPlus size={12} />
+                <FolderPlus size={14} />
               </button>
             </div>
 

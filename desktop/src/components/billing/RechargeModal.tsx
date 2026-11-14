@@ -7,6 +7,7 @@
  * est enregistrée (POST /api/payments/initiate) et validée par un admin.
  */
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CreditCard, X, Check, Smartphone, Wallet } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
@@ -96,11 +97,12 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  return (
+  // Portail : la barre de titre a un backdrop-filter, qui piège les éléments `fixed`.
+  return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md mx-4 animate-scale-in">
-        <div className="rounded-2xl border border-border-medium bg-bg-secondary/95 backdrop-blur-xl shadow-2xl overflow-hidden">
+        <div className="rounded-2xl border border-border-medium bg-bg-secondary shadow-2xl overflow-y-auto max-h-[90vh]">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center">
@@ -253,5 +255,7 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+  ,
+    document.body
   );
 }
