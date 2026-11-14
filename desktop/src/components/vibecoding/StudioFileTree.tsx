@@ -17,7 +17,7 @@ import {
   Search, Loader2, CheckCircle2, Circle, Pencil,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { StudioFile } from './VibeCodingStudio';
+import type { StudioFile } from '@/types/studio';
 
 // ============================================================================
 // TYPES

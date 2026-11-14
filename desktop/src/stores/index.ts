@@ -19,7 +19,6 @@ export { useThemeStore } from './themeStore';
 export { useAccountStore } from './accountStore';
 
 // Activity store (generation panel, agent steps)
-export { useActivityStore } from './activityStore';
 
 // Usage store (API usage tracking)
 export { useUsageStore } from './usageStore';

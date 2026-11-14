@@ -1,8 +1,8 @@
 /**
- * Page Chat - Interface principale de conversation IA
+ * Page principale — shell workspace ANZAR (clone ZCode).
  */
-import ChatView from '@/components/chat/ChatView';
+import WorkspaceView from '@/components/workspace/WorkspaceView';
 
 export default function ChatPage() {
-  return <ChatView />;
+  return <WorkspaceView />;
 }

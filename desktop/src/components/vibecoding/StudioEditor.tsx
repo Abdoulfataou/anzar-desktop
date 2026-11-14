@@ -16,7 +16,7 @@ import {
   GitCompare, Undo2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { StudioFile } from './VibeCodingStudio';
+import type { StudioFile } from '@/types/studio';
 
 // ============================================================================
 // SYNTAX HIGHLIGHTING (repris de CodeEditor — version compacte)

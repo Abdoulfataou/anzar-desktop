@@ -3,7 +3,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import MessageBubble from './MessageBubble';
 import StreamingDots from './StreamingDots';
-import ActivityTimeline, { InlineActivity } from './ActivityTimeline';
 import type { Message } from '@/types';
 
 interface MessageListProps {
@@ -138,16 +137,6 @@ export default function MessageList({ messages, isLoading = false, selectedProje
               </div>
             ) : (
               <div>
-                {/* Activity Timeline — shown above AI messages that have a session */}
-                {item.message.role === 'assistant' && item.message.activitySessionId && (
-                  <div className="mb-2 ml-10 px-4">
-                    {item.message.isStreaming ? (
-                      <InlineActivity sessionId={item.message.activitySessionId} />
-                    ) : (
-                      <ActivityTimeline sessionId={item.message.activitySessionId} compact={false} />
-                    )}
-                  </div>
-                )}
                 <MessageBubble
                   message={item.message}
                   onRegenerate={item.message.role === 'assistant' ? () => onRegenerateMessage?.(item.message.id) : undefined}

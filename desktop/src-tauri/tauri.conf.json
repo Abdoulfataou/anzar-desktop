@@ -85,7 +85,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^(?!(publish|token|owner|access|adduser|login|team|org|grants?|profile)$)[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
               }
             ]
           },
@@ -148,7 +148,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^(?!publish$)[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
               }
             ]
           }
