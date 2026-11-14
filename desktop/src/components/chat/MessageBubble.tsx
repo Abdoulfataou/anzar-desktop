@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Presentation, FileCheck, ExternalLink, Play } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, FileDown, FileText, Presentation, FileCheck, ExternalLink, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -20,20 +20,6 @@ interface MessageBubbleProps {
   selectedProjectPath?: string;
 }
 
-
-// ============================================================================
-// REÇU DE COÛT (Blueprint : « Le coût est une information, jamais une alerte »)
-// Pricing de vente ANZAR en FCFA / 1M tokens (cf backend/config.py).
-// ============================================================================
-const PRICE_PER_M_FCFA: Record<string, { input: number; output: number }> = {
-  fast: { input: 250, output: 500 },      // DeepSeek Flash
-  thinking: { input: 400, output: 900 },  // reasoner
-};
-
-function estimateMessageCostFcfa(tokens: { prompt: number; completion: number }, model?: string): number {
-  const p = PRICE_PER_M_FCFA[(model as keyof typeof PRICE_PER_M_FCFA) in PRICE_PER_M_FCFA ? (model as keyof typeof PRICE_PER_M_FCFA) : 'fast'];
-  return Math.round((tokens.prompt / 1_000_000) * p.input + (tokens.completion / 1_000_000) * p.output);
-}
 
 export default function MessageBubble({ message, onCopy, onRegenerate, selectedProjectId = null, selectedProjectPath }: MessageBubbleProps) {
   const navigate = useNavigate();
@@ -152,91 +138,82 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const formatTime = (ts: number) =>
     new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-  // ===== USER MESSAGE =====
+  // ===== USER MESSAGE — style agent IDE (ZCode) : invite terminal ❯, pas de bulle =====
   if (message.role === 'user') {
     return (
-      <div className="flex justify-end gap-3 group px-4">
-        <div className="flex flex-col items-end max-w-[80%] sm:max-w-[70%]">
-          <div className={cn(
-            'rounded-2xl rounded-br-md px-4 py-3 message-enter',
-            'bg-accent-primary/10 border border-accent-primary/20',
-          )}>
-            <p className="text-text-primary text-sm leading-relaxed break-words whitespace-pre-wrap">
+      <div className="group px-4 py-1.5">
+        <div className="max-w-3xl flex items-start gap-2.5">
+          <span className="font-mono text-accent-primary text-[14px] leading-6 mt-px select-none" aria-hidden>❯</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-[14px] leading-6 text-text-primary break-words whitespace-pre-wrap font-mono">
               {message.content}
             </p>
             {message.attachments && message.attachments.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-1.5 flex flex-wrap gap-1.5">
                 {message.attachments.map((a) => (
                   <span
                     key={a.id}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] border border-border-subtle bg-bg-tertiary/60 text-text-secondary"
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono border border-border-subtle bg-bg-tertiary/60 text-text-secondary"
                     title={a.name}
                   >
-                    <span className="font-semibold">{a.ref || ''}</span>
+                    <span className="text-accent-primary font-semibold">{a.ref || ''}</span>
                     <span className="truncate max-w-[220px]">{a.name}</span>
                   </span>
                 ))}
               </div>
             )}
           </div>
-          <span className="text-[11px] text-text-muted mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-[10px] font-mono text-text-muted mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
             {formatTime(message.timestamp)}
           </span>
-        </div>
-
-        {/* User avatar */}
-        <div className="flex-shrink-0 mt-1">
-          <div className="w-7 h-7 rounded-lg bg-bg-tertiary flex items-center justify-center">
-            <User size={14} className="text-text-secondary" />
-          </div>
         </div>
       </div>
     );
   }
 
-  // ===== AI MESSAGE =====
+  // ===== AI MESSAGE — style agent IDE (ZCode) : pleine largeur, en-tête mono =====
   return (
-    <div className="flex gap-3 group px-4">
-      {/* AI Avatar */}
-      <div className="flex-shrink-0 mt-1">
-        <div className="w-7 h-7 rounded-lg gradient-bg flex items-center justify-center shadow-sm">
-          <Sparkles size={14} className="text-white" />
-        </div>
-      </div>
-
+    <div className="group px-4 py-1">
       {/* Content */}
-      <div className="flex-1 max-w-3xl space-y-2 min-w-0">
+      <div className="max-w-3xl min-w-0">
+        {/* En-tête : marque + modèle + heure (mono, discret) */}
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles size={11} className="text-accent-primary" />
+          <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-text-tertiary">anzar</span>
+          {message.model && (
+            <span className="text-[10px] font-mono text-text-muted/70">{message.model}</span>
+          )}
+          <span className="text-[10px] font-mono text-text-muted/50">{formatTime(message.timestamp)}</span>
+        </div>
         {/* Thinking section */}
         {(message.thinking || message.reasoning) && (
-          <div className="rounded-xl border border-border-subtle overflow-hidden bg-surface-default/50">
+          <div className="mb-1 rounded-md border border-border-subtle overflow-hidden">
             <button
               onClick={() => setShowThinking(!showThinking)}
-              className="w-full flex items-center gap-2 px-3 py-2.5 hover:bg-surface-hover transition-colors"
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-surface-hover transition-colors font-mono text-[11px] text-text-tertiary"
             >
-              <Brain size={14} className="text-accent-secondary" />
-              <span className="text-xs font-medium text-text-secondary">Raisonnement</span>
+              <Brain size={12} className="text-text-muted" />
+              <span>{showThinking ? 'masquer le raisonnement' : 'raisonnement'}</span>
               <div className="flex-1" />
-              {showThinking ? <ChevronUp size={14} className="text-text-muted" /> : <ChevronDown size={14} className="text-text-muted" />}
+              {showThinking ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
 
             {showThinking && (
-              <div className="px-3 py-2.5 border-t border-border-subtle space-y-2 bg-bg-primary/50">
+              <div className="px-3 py-2 border-t border-border-subtle space-y-1.5 bg-bg-primary/40">
                 {message.reasoning?.map((step, idx) => (
-                  <p key={`step-${idx}-${step.slice(0, 20)}`} className="text-xs text-text-tertiary leading-relaxed">{step}</p>
+                  <p key={`step-${idx}-${step.slice(0, 20)}`} className="font-mono text-[11px] text-text-tertiary leading-relaxed">{step}</p>
                 )) || (
-                  <p className="text-xs text-text-tertiary leading-relaxed">{message.thinking}</p>
+                  <p className="font-mono text-[11px] text-text-tertiary leading-relaxed">{message.thinking}</p>
                 )}
               </div>
             )}
           </div>
         )}
 
-        {/* Main message */}
+        {/* Main message — pas de bulle (ZCode) ; erreur = filet gauche danger */}
         <div className={cn(
-          'rounded-2xl rounded-tl-md px-4 py-3 message-enter',
-          message.isError
-            ? 'bg-accent-error/10 border border-accent-error/20'
-            : 'bg-surface-default border border-border-subtle'
+          'px-0 py-0.5 message-enter',
+          message.isError && 'border-l-2 border-accent-error/60 pl-3'
         )}>
           <div
             ref={textRef}
@@ -339,19 +316,6 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
         )}
 
         {/* Actions bar */}
-          {/* ── Reçu (Blueprint §Anatomie d'un message) : FCFA · modèle · tokens ── */}
-          {message.role === 'assistant' && message.tokens && !message.isStreaming && (
-            <div className="mt-1.5 pt-1.5 border-t border-border-subtle flex items-center gap-2 text-[11px] text-text-muted font-mono tabular-nums">
-              <span>≈ {estimateMessageCostFcfa(message.tokens, message.model).toLocaleString('fr-FR')} FCFA</span>
-              <span className="text-text-muted/50">·</span>
-              <span className="capitalize">{message.model || 'flash'}</span>
-              <span className="text-text-muted/50">·</span>
-              <span title={`${message.tokens.prompt} entrée / ${message.tokens.completion} sortie`}>
-                {(message.tokens.prompt + message.tokens.completion).toLocaleString('fr-FR')} tokens
-              </span>
-            </div>
-          )}
-
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           {/* Copy — masqué en vibecoding */}
           {!isVibecoding && (
@@ -462,26 +426,6 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
 
           {/* Separator */}
           <div className="w-px h-3 bg-border-subtle mx-1" />
-
-          {/* Feedback */}
-          <button
-            onClick={() => setFeedback(feedback === 'up' ? null : 'up')}
-            className={cn(
-              'p-1 rounded-lg transition-all duration-200',
-              feedback === 'up' ? 'text-accent-success bg-accent-success/10' : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
-            )}
-          >
-            <ThumbsUp size={13} />
-          </button>
-          <button
-            onClick={() => setFeedback(feedback === 'down' ? null : 'down')}
-            className={cn(
-              'p-1 rounded-lg transition-all duration-200',
-              feedback === 'down' ? 'text-accent-error bg-accent-error/10' : 'text-text-muted hover:text-text-secondary hover:bg-surface-hover'
-            )}
-          >
-            <ThumbsDown size={13} />
-          </button>
 
           {/* Timestamp */}
           <span className="ml-auto text-[11px] text-text-muted">

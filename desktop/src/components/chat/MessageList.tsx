@@ -112,7 +112,7 @@ export default function MessageList({ messages, isLoading = false, selectedProje
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
-      className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-8 max-w-4xl mx-auto w-full"
+      className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 py-4 max-w-4xl mx-auto w-full"
     >
       {hasHidden && (
         <div className="flex justify-center mb-4">
@@ -125,7 +125,7 @@ export default function MessageList({ messages, isLoading = false, selectedProje
         </div>
       )}
 
-      <div className="space-y-2">
+      <div className="space-y-1">
         {items.map((item) => (
           <div key={item.key}>
             {item.type === 'sep' ? (
