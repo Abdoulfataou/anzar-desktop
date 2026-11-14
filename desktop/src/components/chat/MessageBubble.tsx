@@ -436,6 +436,9 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
           {/* Timestamp */}
           <span className="ml-auto text-[11px] text-text-muted">
             {formatTime(message.timestamp)}
+            {typeof message.costFCFA === 'number' && !message.isStreaming && (
+              <> · {message.costFCFA < 1 ? '< 1' : Math.round(message.costFCFA).toLocaleString('fr-FR')} FCFA</>
+            )}
           </span>
         </div>
       </div>

@@ -15,7 +15,10 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Folder, FolderPlus, FileEdit, GitBranch } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
-import { useAgentChat } from '@/hooks/useAgentChat';
+import { useAgentChat, type PermissionMode } from '@/hooks/useAgentChat';
+import { useAccountStore } from '@/stores/accountStore';
+import RechargeModal from '@/components/billing/RechargeModal';
+import { LOW_BALANCE_FCFA } from '@/lib/credits';
 import { useChatStore, useActiveConversation } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import type { AIModel, Message } from '@/types';
@@ -29,6 +32,18 @@ import { terminalService } from '@/services/terminal';
 
 export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: boolean }) {
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
+    try {
+      const saved = localStorage.getItem('anzar.permissionMode');
+      return saved === 'ask' || saved === 'auto' || saved === 'plan' || saved === 'full' ? saved : 'full';
+    } catch { return 'full'; }
+  });
+  const changePermission = useCallback((m: PermissionMode) => {
+    setPermissionMode(m);
+    try { localStorage.setItem('anzar.permissionMode', m); } catch { /* stockage indisponible */ }
+  }, []);
+  const balance = useAccountStore((s) => s.credits.remaining);
+  const [showRecharge, setShowRecharge] = useState(false);
 
   // ── Workspace : path depuis le projet actif (persisté) ──
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -49,10 +64,11 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
   }, []);
 
   // ── Agent chat ──
-  const { sendMessage, stop, isGenerating } = useAgentChat({
+  const { sendMessage, stop, isGenerating, approval, resolveApproval } = useAgentChat({
     workspacePath,
     workspaceName: activeProject?.name,
     model: selectedModel,
+    permissionMode,
     onFileChanged,
   });
 
@@ -161,6 +177,47 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             {/* Messages */}
             <MessageList messages={messages} isLoading={isGenerating} />
 
+            {/* Demande d'accord (modes « Demander » et « Modifier automatiquement ») */}
+            {approval && (
+              <div className="mx-4 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl border border-border-medium bg-surface-elevated flex-shrink-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12.5px] text-text-primary">L'agent demande ton accord</p>
+                  <p className="text-[11.5px] font-mono text-text-secondary truncate" title={approval.summary}>
+                    {approval.name === 'run_command' ? '$ ' : `${approval.name}  `}{approval.summary}
+                  </p>
+                </div>
+                <button
+                  onClick={() => resolveApproval(false)}
+                  className="h-7 px-3 rounded-lg text-[12.5px] text-text-secondary hover:bg-surface-hover transition-colors"
+                >
+                  Refuser
+                </button>
+                <button
+                  onClick={() => resolveApproval(true)}
+                  className="h-7 px-3 rounded-lg text-[12.5px] font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
+                >
+                  Autoriser
+                </button>
+              </div>
+            )}
+
+            {/* Solde bas : la seule alerte de coût */}
+            {balance < LOW_BALANCE_FCFA && (
+              <div className="mx-4 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl bg-credit-soft flex-shrink-0">
+                <p className="flex-1 text-[12.5px] text-text-primary">
+                  {balance <= 0 ? 'Solde épuisé' : 'Solde bas'} — il te reste{' '}
+                  <span className="font-mono tabular-nums">{Math.max(0, Math.round(balance)).toLocaleString('fr-FR')} FCFA</span>
+                </p>
+                <button
+                  onClick={() => setShowRecharge(true)}
+                  className="h-7 px-3 rounded-lg text-[12.5px] font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
+                >
+                  Recharger
+                </button>
+              </div>
+            )}
+            {showRecharge && <RechargeModal onClose={() => setShowRecharge(false)} />}
+
             {/* Composer */}
             <div className="flex-shrink-0">
               <ChatInput
@@ -170,6 +227,8 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
                 isOnline={onlineStatus}
                 selectedModel={selectedModel}
                 onModelChange={setSelectedModel}
+                permissionMode={permissionMode}
+                onPermissionChange={workspacePath ? changePermission : undefined}
                 placeholder={workspacePath ? 'Demande à l\'agent de lire, modifier ou exécuter…' : 'Pose une question, ou ouvre un dossier pour coder…'}
               />
             </div>

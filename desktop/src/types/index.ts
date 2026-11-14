@@ -178,6 +178,8 @@ export interface Message {
   /** Étapes de raisonnement (si fournies par le backend/provider) */
   reasoning?: string[];
   tokens?: { prompt: number; completion: number };
+  /** Coût réel de la réponse en FCFA (différence de solde serveur) */
+  costFCFA?: number;
   isStreaming?: boolean;
   /** Marqueur UI: message d'erreur (affichage rouge, etc.) */
   isError?: boolean;

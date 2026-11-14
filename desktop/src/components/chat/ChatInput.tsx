@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   Paperclip, Square, Zap, Brain, ArrowUp,
-  FolderOpen, ChevronDown, Plus, Check,
+  ChevronDown, Plus, Check, Shield,
   X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -23,8 +23,8 @@ interface ChatInputProps {
   isOnline?: boolean;
   selectedModel?: AIModel;
   onModelChange?: (model: AIModel) => void;
-  selectedProjectId?: string | null;
-  onSelectProject?: (projectId: string | null) => void;
+  permissionMode?: PermissionMode;
+  onPermissionChange?: (mode: PermissionMode) => void;
   placeholder?: string;
   maxHeight?: number;
 }
@@ -389,178 +389,80 @@ async function processFilePath(filePath: string): Promise<ChatAttachment> {
 }
 
 /* ===== Project Selector Dropdown ===== */
-function ProjectSelector({
-  selectedProjectId,
-  onSelectProject,
-  projects,
-  onOpenFolder,
-}: {
-  selectedProjectId: string | null;
-  onSelectProject: (id: string | null) => void;
-  projects: Project[];
-  onOpenFolder: () => void;
-}) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectedProject = projects.find((p) => p.id === selectedProjectId);
+/** Modes de permission de l'agent (qui décide avant d'agir). */
+export type PermissionMode = 'ask' | 'auto' | 'plan' | 'full';
 
+const PERMISSIONS: { id: PermissionMode; label: string; hint: string }[] = [
+  { id: 'ask',  label: 'Demander avant de modifier', hint: "Chaque modification et chaque commande attend ton accord" },
+  { id: 'auto', label: 'Modifier automatiquement',   hint: "Les fichiers sont modifiés sans demander ; les commandes attendent ton accord" },
+  { id: 'plan', label: 'Mode plan',                  hint: "L'agent lit et propose un plan, sans rien modifier" },
+  { id: 'full', label: 'Accès complet',              hint: "L'agent modifie et exécute sans demander" },
+];
+
+const MODELS: { id: AIModel; label: string; hint: string }[] = [
+  { id: 'fast',     label: 'Rapide',    hint: 'Réponses rapides, moins cher' },
+  { id: 'thinking', label: 'Réflexion', hint: 'Raisonne plus longtemps, plus cher' },
+];
+
+/** Menu déroulant de la barre du composer (s'ouvre vers le haut). */
+function ToolbarMenu<T extends string>({
+  value, options, onChange, icon, tone, align = 'left',
+}: {
+  value: T;
+  options: { id: T; label: string; hint: string }[];
+  onChange: (v: T) => void;
+  icon: React.ReactNode;
+  tone?: string;
+  align?: 'left' | 'right';
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const current = options.find((o) => o.id === value) ?? options[0];
   return (
-    <div className="relative">
+    <div ref={ref} className="relative">
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
-          'border shadow-sm',
-          'focus:outline-none focus:ring-1 focus:ring-accent-primary/40',
-          selectedProject
-            ? 'bg-accent-primary/15 border-accent-primary/30 text-accent-primary hover:bg-accent-primary/20'
-            : 'bg-surface-default/80 border-border-medium text-text-secondary hover:text-text-primary hover:bg-surface-hover'
+          'flex items-center gap-1.5 h-8 px-2 rounded-lg text-[13px] transition-colors hover:bg-bg-tertiary',
+          tone ?? 'text-text-secondary'
         )}
       >
-        <FolderOpen size={13} />
-        <span className="max-w-[120px] truncate">
-          {selectedProject ? selectedProject.name : 'Projet'}
-        </span>
-        <ChevronDown size={12} className={cn('transition-transform', isOpen && 'rotate-180')} />
+        {icon}
+        <span className="whitespace-nowrap">{current.label}</span>
+        <ChevronDown size={12} className="opacity-60" />
       </button>
-
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute bottom-full mb-2 left-0 w-56 bg-bg-secondary border border-border-medium rounded-xl shadow-2xl z-50 overflow-hidden py-1">
-            {/* No project option */}
+      {open && (
+        <div
+          className={cn(
+            'absolute bottom-full mb-1.5 w-72 p-1 rounded-xl border border-border-medium bg-surface-elevated shadow-lg z-50',
+            align === 'right' ? 'right-0' : 'left-0'
+          )}
+        >
+          {options.map((o) => (
             <button
-              onClick={() => { onSelectProject(null); setIsOpen(false); }}
-              className={cn(
-                'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors text-left',
-                !selectedProjectId
-                  ? 'bg-accent-primary/10 text-accent-primary'
-                  : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-              )}
+              key={o.id}
+              type="button"
+              onClick={() => { onChange(o.id); setOpen(false); }}
+              className="w-full flex items-start gap-2 px-2.5 py-2 rounded-lg text-left hover:bg-surface-hover transition-colors"
             >
-              {!selectedProjectId && <Check size={12} className="flex-shrink-0" />}
-              {selectedProjectId && <div className="w-3" />}
-              <span>Aucun projet</span>
+              <span className="flex-1 min-w-0">
+                <span className="block text-[13px] text-text-primary">{o.label}</span>
+                <span className="block text-[11.5px] text-text-muted leading-snug">{o.hint}</span>
+              </span>
+              {o.id === value && <Check size={14} className="text-text-primary mt-0.5 flex-shrink-0" />}
             </button>
-
-            {projects.length > 0 && (
-              <div className="h-px bg-border-subtle mx-2 my-1" />
-            )}
-
-            {/* Project list */}
-            <div className="max-h-48 overflow-y-auto">
-              {projects.map((project) => (
-                <button
-                  key={project.id}
-                  onClick={() => { onSelectProject(project.id); setIsOpen(false); }}
-                  className={cn(
-                    'w-full flex items-center gap-2 px-3 py-2 text-xs transition-colors text-left',
-                    selectedProjectId === project.id
-                      ? 'bg-accent-primary/10 text-accent-primary'
-                      : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'
-                  )}
-                >
-                  {selectedProjectId === project.id ? <Check size={12} className="flex-shrink-0" /> : <div className="w-3" />}
-                  <FolderOpen size={12} className="text-accent-secondary flex-shrink-0" />
-                  <span className="truncate flex-1">{project.name}</span>
-                  <span className={cn(
-                    'w-1.5 h-1.5 rounded-full flex-shrink-0',
-                    project.status === 'complete' ? 'bg-accent-success' :
-                    project.status === 'generating' ? 'bg-accent-info' :
-                    'bg-accent-warning'
-                  )} />
-                </button>
-              ))}
-            </div>
-
-            <div className="h-px bg-border-subtle mx-2 my-1" />
-
-            {/* Add folder */}
-            <button
-              onClick={() => { onOpenFolder(); setIsOpen(false); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors text-left"
-            >
-              <div className="w-3" />
-              <Plus size={12} />
-              <span>Ajouter un dossier...</span>
-            </button>
-          </div>
-        </>
+          ))}
+        </div>
       )}
     </div>
   );
-}
-
-/* ===== Model Toggle (visible pill) ===== */
-function ModelToggle({
-  selectedModel,
-  onModelChange,
-}: {
-  selectedModel: AIModel;
-  onModelChange: (model: AIModel) => void;
-}) {
-  return (
-    <div className="flex items-center gap-0.5 p-0.5 rounded-lg bg-bg-tertiary/80 border border-border-subtle">
-      <button
-        onClick={() => onModelChange('fast')}
-        className={cn(
-          'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200',
-          selectedModel === 'fast'
-            ? 'bg-accent-primary text-white shadow-sm'
-            : 'text-text-muted hover:text-text-secondary'
-        )}
-      >
-        <Zap size={13} />
-        Rapide
-      </button>
-      <button
-        onClick={() => onModelChange('thinking')}
-        className={cn(
-          'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all duration-200',
-          selectedModel === 'thinking'
-            ? 'bg-accent-secondary text-white shadow-sm'
-            : 'text-text-muted hover:text-text-secondary'
-        )}
-      >
-        <Brain size={13} />
-        Réflexion
-      </button>
-    </div>
-  );
-}
-
-/* ===== Main ChatInput ===== */
-
-// ============================================================================
-// ESTIMATION DE COÛT (Blueprint : toujours une fourchette, caption text-2,
-// « une information, jamais une alerte »). Debounce 300 ms après la frappe.
-// Approximation UI : tokens ≈ 0.3 mot ; contexte projet moyen 4k–20k tokens.
-// ============================================================================
-const EST_PRICE_PER_M_FCFA: Record<AIModel, { input: number; output: number }> = {
-  fast: { input: 250, output: 500 },      // DeepSeek Flash
-  thinking: { input: 400, output: 900 },  // reasoner (réflexion, plus de sortie)
-};
-
-function estimateCostRangeFcfa(prompt: string, model: AIModel): [number, number] | null {
-  const trimmed = prompt.trim();
-  if (!trimmed) return null;
-  const p = EST_PRICE_PER_M_FCFA[model] ?? EST_PRICE_PER_M_FCFA.fast;
-  if (!p) return null;
-  const promptTokens = Math.ceil(trimmed.length / 4);
-  const inMin = promptTokens + 4_000;                 // contexte projet faible
-  const inMax = promptTokens + 20_000;                // contexte projet élevé
-  const outMin = Math.max(400, promptTokens * 0.6);
-  const outMax = Math.max(2_000, promptTokens * 2.5);
-  const cost = (i: number, o: number) => (i / 1_000_000) * p.input + (o / 1_000_000) * p.output;
-  return [Math.max(1, Math.round(cost(inMin, outMin))), Math.max(2, Math.round(cost(inMax, outMax)))];
-}
-
-function useDebouncedValue<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
 }
 
 export default function ChatInput({
@@ -570,22 +472,18 @@ export default function ChatInput({
   isOnline = true,
   selectedModel = 'fast',
   onModelChange,
-  selectedProjectId = null,
-  onSelectProject,
+  permissionMode = 'full',
+  onPermissionChange,
   placeholder = 'Décris ta tâche, ANZAR s\'en occupe...',
   maxHeight = MAX_HEIGHT,
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
-  // Estimation de coût — debounced 300 ms après la dernière frappe
-  const debouncedMessage = useDebouncedValue(message, 300);
-  const costEstimate = estimateCostRangeFcfa(debouncedMessage, selectedModel);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachButtonRef = useRef<HTMLButtonElement>(null);
   const pendingAutoSendRef = useRef(false);
   const pendingAutoSendTextRef = useRef<string>('');
-  const projects = useProjectStore((s) => s.projects);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -697,35 +595,6 @@ export default function ChatInput({
     }
   };
 
-  const handleOpenFolder = async () => {
-    try {
-      const { open } = await import('@tauri-apps/api/dialog');
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        title: 'Ajouter un projet',
-      });
-      if (selected && typeof selected === 'string') {
-        const allowed = await isAllowedProjectRoot(selected);
-        if (!allowed) {
-          toast.error('Dossier non autorisé. Choisis un dossier dans ton répertoire personnel.');
-          return;
-        }
-        const folderName = selected.split(/[/\\]/).pop() || 'Projet';
-        const { createProject, updateProject } = useProjectStore.getState();
-        const project = createProject(folderName, `Projet: ${selected}`, 'fast');
-        updateProject(project.id, {
-          status: 'complete',
-          metadata: { localPath: selected, imported: true },
-        });
-        onSelectProject?.(project.id);
-      }
-    } catch (err) {
-      console.error('Failed to open folder:', err);
-      toast.error('Impossible d\'ouvrir le dossier — vérifie les permissions');
-    }
-  };
-
   const hasMessage = message.trim().length > 0 || attachments.length > 0;
 
   return (
@@ -800,18 +669,9 @@ export default function ChatInput({
           )}
 
           {/* Bottom toolbar */}
-          <div className="flex items-center justify-between px-3 py-2 border-t border-border-subtle/50">
+          <div className="flex items-center justify-between px-3 py-2">
             {/* Left side: Project selector + attachment */}
-            <div className="flex items-center gap-2">
-              <ProjectSelector
-                selectedProjectId={selectedProjectId}
-                onSelectProject={onSelectProject || (() => {})}
-                projects={projects}
-                onOpenFolder={handleOpenFolder}
-              />
-
-              <div className="w-px h-4 bg-border-subtle" />
-
+            <div className="flex items-center gap-1">
               <button
                 ref={attachButtonRef}
                 disabled={isLoading}
@@ -962,27 +822,30 @@ export default function ChatInput({
                 )}
                 title="Joindre un fichier"
               >
-                <Paperclip size={15} />
+                <Plus size={16} />
               </button>
+
+              {onPermissionChange && (
+                <ToolbarMenu
+                  value={permissionMode}
+                  options={PERMISSIONS}
+                  onChange={onPermissionChange}
+                  icon={<Shield size={14} />}
+                  tone={permissionMode === 'full' ? 'text-credit' : undefined}
+                />
+              )}
             </div>
 
             {/* Right side: Model selector + send */}
             <div className="flex items-center gap-2">
               {onModelChange && (
-                <ModelToggle
-                  selectedModel={selectedModel}
-                  onModelChange={onModelChange}
+                <ToolbarMenu
+                  value={selectedModel}
+                  options={MODELS}
+                  onChange={onModelChange}
+                  icon={selectedModel === 'thinking' ? <Brain size={14} /> : <Zap size={14} />}
+                  align="right"
                 />
-              )}
-
-              {/* Estimation de coût (Blueprint : fourchette, caption discrète) */}
-              {costEstimate && !isLoading && (
-                <span
-                  className="hidden sm:flex items-center text-[11px] text-text-muted font-mono tabular-nums"
-                  title="Estimation. Vous payez seulement ce qui est réellement consommé."
-                >
-                  ≈ {costEstimate[0].toLocaleString('fr-FR')}–{costEstimate[1].toLocaleString('fr-FR')} FCFA
-                </span>
               )}
 
               {/* Send / Stop */}
@@ -1003,9 +866,9 @@ export default function ChatInput({
                   onClick={() => handleSubmit()}
                 disabled={!hasMessage || !isOnline}
                   className={cn(
-                    'p-2 rounded-xl transition-all duration-200',
+                    'p-2 rounded-full transition-all duration-200',
                   hasMessage && isOnline
-                      ? 'gradient-bg text-white shadow-md hover:opacity-90 active:scale-95'
+                      ? 'bg-primary-btn text-primary-btn-fg hover:opacity-90 active:scale-95'
                       : 'bg-bg-tertiary text-text-muted cursor-not-allowed'
                   )}
                 title={isOnline ? 'Envoyer' : 'Hors ligne'}

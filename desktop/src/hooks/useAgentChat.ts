@@ -17,7 +17,35 @@ import { buildAgentSystemPrompt, type AgentPromptContext } from '@/services/agen
 import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
+import { refreshCredits } from '@/lib/credits';
 import type { AIModel, APIMessage, Message, ToolCall } from '@/types';
+
+/** Qui décide avant que l'agent agisse. */
+export type PermissionMode = 'ask' | 'auto' | 'plan' | 'full';
+
+/** Demande d'accord en attente (modes « ask » et « auto »). */
+export interface ApprovalRequest {
+  id: string;
+  name: string;
+  summary: string;
+}
+
+const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember']);
+const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents']);
+const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files']);
+
+function needsApproval(mode: PermissionMode, tool: string): boolean {
+  if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);
+  if (mode === 'auto') return COMMAND_TOOLS.has(tool);
+  return false;
+}
+
+const PLAN_MODE_PROMPT = `
+
+# MODE PLAN (actif)
+Tu ne peux RIEN modifier ni exécuter : seuls read_file, list_dir et search_files sont disponibles.
+Explore ce qu'il faut, puis réponds avec un plan d'action numéroté et concret (fichiers concernés, changements prévus, vérifications).
+Termine en demandant à l'utilisateur de valider le plan.`;
 
 /** Événement d'outil affichable dans le message (rendu ZCode). */
 export interface ToolEvent {
@@ -85,12 +113,25 @@ interface UseAgentChatParams {
   workspacePath: string | null;
   workspaceName?: string;
   model: AIModel;
+  /** Mode de permission (défaut : accès complet). */
+  permissionMode?: PermissionMode;
   /** Appelé quand un outil modifie un fichier (refresh explorateur/éditeur). */
   onFileChanged?: (relativePath: string, action: 'create' | 'edit' | 'delete') => void;
 }
 
-export function useAgentChat({ workspacePath, workspaceName, model, onFileChanged }: UseAgentChatParams) {
+export function useAgentChat({ workspacePath, workspaceName, model, permissionMode = 'full', onFileChanged }: UseAgentChatParams) {
   const [isGenerating, setIsGenerating] = useState(false);
+  // Le mode peut changer pendant que l'agent travaille : on lit toujours la valeur courante.
+  const modeRef = useRef(permissionMode);
+  modeRef.current = permissionMode;
+  const [approval, setApproval] = useState<ApprovalRequest | null>(null);
+  const approvalResolver = useRef<((ok: boolean) => void) | null>(null);
+
+  const resolveApproval = useCallback((ok: boolean) => {
+    approvalResolver.current?.(ok);
+    approvalResolver.current = null;
+    setApproval(null);
+  }, []);
   const abortRef = useRef<AbortController | null>(null);
   // Historique API complet de la conversation (tool exchanges inclus), par conversation
   const apiHistoryRef = useRef<APIMessage[]>([]);
@@ -102,6 +143,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
   const updateMessage = useChatStore((s) => s.updateMessage);
   const setStoreGenerating = useChatStore((s) => s.setIsGenerating);
   const addUsage = useUsageStore((s) => s.addRecordAndDeduct);
+  const addUsageRecord = useUsageStore((s) => s.addRecord);
 
   const ensureConversation = useCallback((): string => {
     if (activeConversationId) return activeConversationId;
@@ -110,7 +152,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
-  }, []);
+    resolveApproval(false);
+  }, [resolveApproval]);
 
   const sendMessage = useCallback(async (content: string) => {
     if (!content.trim() || isGenerating) return;
@@ -152,6 +195,12 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
     let promptTokens = 0;
     let completionTokens = 0;
     const t0 = Date.now();
+    // Solde serveur avant la tâche : la différence à la fin = coût réel facturé.
+    const balanceBefore = await refreshCredits();
+    const priceIn = model === 'thinking' ? 400 : 250;
+    const priceOut = model === 'thinking' ? 900 : 500;
+    const historyTokens = () =>
+      Math.ceil(apiHistoryRef.current.reduce((n, m) => n + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0) / 4);
 
     const flush = () => {
       updateMessage(assistantId, {
@@ -175,7 +224,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
           memory: ctx?.memory,
           platform: navigator.platform.toLowerCase().includes('win') ? 'windows' : 'macos',
         };
-        system = { role: 'system', content: buildAgentSystemPrompt(promptCtx) };
+        system = {
+          role: 'system',
+          content: buildAgentSystemPrompt(promptCtx) + (modeRef.current === 'plan' ? PLAN_MODE_PROMPT : ''),
+        };
       } else {
         system = {
           role: 'system',
@@ -210,9 +262,17 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
         let stepContent = '';
         let stepFinish: string | null = null;
 
+        // Chaque étape renvoie tout l'historique au modèle : on le compte à chaque fois.
+        promptTokens += historyTokens();
+        const tools = !workspacePath
+          ? undefined
+          : modeRef.current === 'plan'
+            ? AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name))
+            : AGENT_TOOLS;
+
         const stream = aiService.chatStream(apiHistoryRef.current, {
           model,
-          tools: workspacePath ? AGENT_TOOLS : undefined,
+          tools,
           signal: controller.signal,
         });
 
@@ -233,6 +293,9 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
           accContent += (accContent ? '\n\n' : '') + stepContent;
           flush();
         }
+        completionTokens += Math.ceil((stepContent.length + JSON.stringify(assembler.finish()).length) / 4);
+        // Le serveur vient de facturer cette étape : on rafraîchit la pilule de solde.
+        void refreshCredits();
 
         // ── Pas de tool calls → réponse finale ──
         if (!assembler.hasCalls) { answered = true; break; }
@@ -259,7 +322,20 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
           events.push(ev);
           flush();
 
-          const result = workspacePath
+          // Accord de l'utilisateur selon le mode de permission
+          let allowed = true;
+          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && call.function.name !== 'task_done') {
+            allowed = false;
+          } else if (needsApproval(modeRef.current, call.function.name)) {
+            allowed = await new Promise<boolean>((resolve) => {
+              approvalResolver.current = resolve;
+              setApproval({ id: call.id, name: call.function.name, summary: ev.argsSummary });
+            });
+          }
+
+          const result = !allowed
+            ? { output: "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.", isError: true }
+            : workspacePath
             ? await executeToolCall(call, {
                 projectRoot: workspacePath,
                 signal: controller.signal,
@@ -305,6 +381,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
 
       // ── Limite d'étapes atteinte sans réponse → synthèse forcée, sans outils ──
       if (!answered && !controller.signal.aborted) {
+        promptTokens += historyTokens();
         apiHistoryRef.current.push({
           role: 'user',
           content:
@@ -323,31 +400,31 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
           }
         }
         if (finalText) accContent += (accContent ? '\n\n' : '') + finalText;
+        completionTokens += Math.ceil(finalText.length / 4);
       }
 
       // ── Finalisation ──
-      promptTokens = Math.ceil(apiHistoryRef.current.reduce((s, m) => s + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0) / 4);
-      completionTokens = Math.ceil(accContent.length / 4);
-
       // Réponse finale dans l'historique API
       apiHistoryRef.current.push({ role: 'assistant', content: accContent });
+
+      // ── Coût réel : différence de solde serveur (le backend facture chaque appel) ──
+      const estimate = Math.round((promptTokens / 1_000_000) * priceIn + (completionTokens / 1_000_000) * priceOut);
+      await new Promise((r) => setTimeout(r, 600)); // laisse le serveur enregistrer le dernier appel
+      const balanceAfter = await refreshCredits();
+      const fromServer = balanceBefore !== null && balanceAfter !== null;
+      const costFCFA = fromServer ? Math.max(0, Math.round((balanceBefore - balanceAfter) * 100) / 100) : estimate;
 
       updateMessage(assistantId, {
         content: accContent,
         reasoning: accReasoning ? [accReasoning] : undefined,
         isStreaming: false,
         tokens: { prompt: promptTokens, completion: completionTokens },
+        costFCFA,
         toolEvents: [...events],
       });
 
-      // Coût FCFA (pricing de vente : 250 F/1M in, 500 F/1M out ; thinking 400/900)
-      const priceIn = model === 'thinking' ? 400 : 250;
-      const priceOut = model === 'thinking' ? 900 : 500;
-      const costFCFA = Math.round(
-        (promptTokens / 1_000_000) * priceIn + (completionTokens / 1_000_000) * priceOut
-      );
-      addUsage({
-        provider: 'deepseek',
+      const record = {
+        provider: 'deepseek' as const,
         model,
         taskType: 'agent_chat',
         inputTokens: promptTokens,
@@ -357,7 +434,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
         wasFallback: false,
         timestamp: Date.now(),
         durationMs: Date.now() - t0,
-      });
+      };
+      // Solde déjà synchronisé depuis le serveur → on journalise sans redébiter.
+      if (fromServer) addUsageRecord(record);
+      else addUsage(record);
     } catch (e: any) {
       const aborted = controller.signal.aborted;
       updateMessage(assistantId, {
@@ -372,8 +452,11 @@ export function useAgentChat({ workspacePath, workspaceName, model, onFileChange
       setIsGenerating(false);
       setStoreGenerating(false);
       abortRef.current = null;
+      approvalResolver.current = null;
+      setApproval(null);
+      void refreshCredits();
     }
-  }, [isGenerating, ensureConversation, addMessage, updateMessage, setStoreGenerating, model, workspacePath, workspaceName, onFileChanged, addUsage]);
+  }, [isGenerating, ensureConversation, addMessage, updateMessage, setStoreGenerating, model, workspacePath, workspaceName, onFileChanged, addUsage, addUsageRecord]);
 
-  return { sendMessage, stop, isGenerating };
+  return { sendMessage, stop, isGenerating, approval, resolveApproval };
 }
