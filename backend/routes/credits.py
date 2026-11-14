@@ -5,10 +5,9 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from security import get_current_user
-from database import (
-    get_credits, add_credits, get_transactions,
+from db import (
+    get_credits, get_transactions,
     get_usage_history, get_usage_stats,
-    has_credits,
     create_payment_intent,
 )
 
@@ -16,12 +15,6 @@ router = APIRouter(tags=["credits"])
 
 
 # ── Models ──
-
-class RechargeRequest(BaseModel):
-    amount_fcfa: float = Field(..., gt=0, le=1_000_000)
-    payment_ref: str = Field(default="", max_length=255)
-    payment_method: str = Field(default="manual", max_length=50)
-
 
 class PaymentInitiateRequest(BaseModel):
     amount: float = Field(..., gt=0, le=1_000_000)
@@ -42,38 +35,20 @@ async def get_user_credits(user: dict = Depends(get_current_user)):
     }
 
 
-@router.post("/api/credits/recharge")
-async def recharge_credits(body: RechargeRequest, user: dict = Depends(get_current_user)):
+@router.post("/api/credits/recharge", include_in_schema=False)
+async def recharge_credits():
     """
-    Add credits to user balance.
-    SECURITY: Requires a valid payment_ref. In production, this should only be
-    called by the payment webhook or admin. Self-service without payment_ref is blocked.
+    Endpoint désactivé (faille financière : self-crédit sur simple référence non vérifiée).
+    Les crédits sont ajoutés UNIQUEMENT via :
+      - POST /api/admin/users/{email}/credits       (admin, rôle owner/admin)
+      - POST /api/admin/payments/{intent_id}/mark-paid (validation d'un paiement)
+      - un futur webhook signé du provider Mobile Money
     """
-    # Block self-service recharge without a verified payment reference
-    if not body.payment_ref or len(body.payment_ref.strip()) < 6:
-        raise HTTPException(
-            403,
-            "Recharge directe non autorisée. Utilisez le flux de paiement (Wave, Orange Money, etc.) pour recharger vos crédits.",
-        )
-
-    email = user["sub"]
-    description = f"Recharge {body.payment_method}"
-    description += f" (ref: {body.payment_ref})"
-
-    creds = await add_credits(
-        email,
-        body.amount_fcfa,
-        description,
-        tx_type="recharge",
-        external_ref=body.payment_ref,
+    raise HTTPException(
+        403,
+        "Recharge directe désactivée. Utilisez le flux de paiement (Wave, Orange Money, etc.) ; "
+        "la validation est faite par un admin ou le webhook du provider.",
     )
-
-    return {
-        "status": "ok",
-        "balance_fcfa": creds.get("balance_fcfa", 0),
-        "total_recharged": creds.get("total_recharged", 0),
-        "amount_added": body.amount_fcfa,
-    }
 
 
 @router.get("/api/credits/transactions")

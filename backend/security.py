@@ -11,6 +11,7 @@ import json
 import secrets
 import logging
 import base64
+import ipaddress
 from collections import defaultdict
 from typing import Optional
 
@@ -224,20 +225,41 @@ async def get_current_user(
 # IP RESOLUTION
 # ============================================================================
 
-# Railway and most PaaS set X-Forwarded-For automatically
-TRUSTED_PROXIES = {"127.0.0.1", "::1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"}
+# Railway and most PaaS set X-Forwarded-For automatically.
+# On ne fait confiance à X-Forwarded-For QUE si la connexion directe vient
+# d'un proxy interne (loopback/RFC1918). Sinon l'header est spoofable et
+# permet de contourner le rate limiting.
+TRUSTED_PROXY_NETWORKS = ("127.0.0.0/8", "::1/128", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")
+
+
+def _is_trusted_proxy(ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    return any(addr in ipaddress.ip_network(net) for net in TRUSTED_PROXY_NETWORKS)
 
 
 def get_client_ip(request: Request) -> str:
-    """Get real client IP. Trusts X-Forwarded-For behind Railway/PaaS."""
-    # On Railway/PaaS, the request always comes from an internal proxy
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    if forwarded:
-        ip = forwarded.split(",")[0].strip()
-        if ip:
-            return ip
+    """Get real client IP.
 
-    return request.client.host if request.client else "unknown"
+    Prend l'IP la plus à droite NON gérée par un proxy de confiance dans
+    X-Forwarded-For (la plus à gauche est contrôlée par le client et donc
+    spoofable), et seulement si la connexion directe provient d'un proxy interne.
+    """
+    direct = request.client.host if request.client else ""
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded and _is_trusted_proxy(direct):
+        # Le proxy ajoute l'IP du client à la fin ; on remonte depuis la droite
+        # en ignorant les hops proxies connus.
+        for ip in reversed([x.strip() for x in forwarded.split(",")]):
+            if ip and not _is_trusted_proxy(ip):
+                return ip
+        # Chaîne XFF composée uniquement de proxies internes
+        if forwarded.strip():
+            return forwarded.split(",")[-1].strip()
+
+    return direct or "unknown"
 
 
 # ============================================================================

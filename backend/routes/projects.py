@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from security import get_current_user, calculate_cost_fcfa
-from database import (
+from db import (
     has_credits, deduct_credits, record_usage,
     create_project, update_project, get_project, get_user_projects, delete_project,
     get_memory_as_profile,

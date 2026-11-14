@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
 
 from security import get_current_user
-from database import (
+from db import (
     get_user_by_email, verify_password,
     update_user_profile, change_user_password, deactivate_user,
     get_credits,

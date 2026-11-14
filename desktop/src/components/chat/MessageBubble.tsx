@@ -1,11 +1,10 @@
-'use client';
-
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, ThumbsUp, ThumbsDown, User, FileDown, FileText, Presentation, FileCheck, ExternalLink, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import CodeBlock from './CodeBlock';
+import { MermaidBlock, SvgBlock, getVisualKind } from './VisualBlock';
 import { cn } from '@/lib/utils';
 import { openExternalUrl } from '@/services/infra/externalLinks';
 import { exportToDocx, exportToPdf, isCorrection, cleanCorrectionForExport } from '@/services/export/documentExport';
@@ -31,11 +30,15 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const [expandedLong, setExpandedLong] = useState(false);
   const textRef = useRef<HTMLDivElement>(null);
 
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
     setCopied(true);
     onCopy?.(message.content);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyTimer.current) clearTimeout(copyTimer.current);
+    copyTimer.current = setTimeout(() => setCopied(false), 2000);
   };
 
   const LONG_THRESHOLD = 25000;
@@ -261,6 +264,11 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                   }
 
                   const raw = String(children).replace(/\n$/, '');
+
+                  // ── Visuels : les blocs mermaid/svg sont DESSINÉS, pas affichés en code ──
+                  const visualKind = getVisualKind(language, raw);
+                  if (visualKind === 'mermaid') return <MermaidBlock code={raw} />;
+                  if (visualKind === 'svg') return <SvgBlock code={raw} />;
 
                   return (
                     <CodeBlock

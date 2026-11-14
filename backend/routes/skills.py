@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from security import get_current_user
-from database import (
+from db import (
     publish_skill, get_skill, list_public_skills,
     get_user_published_skills, install_skill, uninstall_skill,
     get_installed_skills, rate_skill, delete_skill,

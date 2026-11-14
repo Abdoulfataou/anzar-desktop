@@ -15,7 +15,7 @@ from security import (
     rate_limiter, get_client_ip,
     create_token, verify_token,
 )
-from database import (
+from db import (
     get_user_by_email, create_user,
     verify_password, update_last_login,
     get_credits,

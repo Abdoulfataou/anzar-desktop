@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 
 from security import get_current_user
-from database import (
+from db import (
     get_user_memory, get_memory_as_profile,
     upsert_memory, batch_upsert_memory,
     delete_memory, clear_user_memory,

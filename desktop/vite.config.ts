@@ -35,7 +35,9 @@ export default defineConfig(() => {
   clearScreen: false,
   server: {
     port: 1420,
-    strictPort: false,
+    // Tauri charge localhost:1420 — si le port est pris, il faut échouer
+    // plutôt que de prendre 1421 et d'afficher une fenêtre blanche.
+    strictPort: true,
   },
   envPrefix: ['VITE_', 'TAURI_'],
   // SECURITY: define() overrides prevent accidental API key leaks in bundle

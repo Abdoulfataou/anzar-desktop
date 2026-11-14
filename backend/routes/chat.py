@@ -13,7 +13,7 @@ import httpx
 
 from config import settings
 from security import get_current_user, validate_messages, calculate_cost_fcfa
-from database import (
+from db import (
     has_credits, deduct_credits, record_usage,
     get_rate_limit_count, record_rate_limit_hit,
 )

@@ -16,7 +16,7 @@ from fastapi.responses import JSONResponse
 
 from config import settings
 from security import rate_limiter, get_client_ip, validate_config
-from database import (
+from db import (
     init_db, create_default_admin,
     cleanup_rate_limits, cleanup_expired_otps, cleanup_old_projects,
 )
@@ -136,7 +136,7 @@ async def health():
     checks = {"database": "ok", "deepseek": "configured", "kimi": "configured"}
 
     try:
-        from database import db_ping
+        from db import db_ping
         await db_ping()
     except Exception as e:
         checks["database"] = "error"

@@ -1,7 +1,7 @@
 """
 db/ — Database package for ANZAR backend.
 
-Re-exports all public symbols so that `from database import X` continues to work
+Re-exports all public symbols so that `from db import X` continues to work
 via the backward-compatible shim in database.py.
 """
 
