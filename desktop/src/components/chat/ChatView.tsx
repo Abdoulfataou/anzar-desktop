@@ -24,6 +24,7 @@ import { VibeCodingStudio } from '@/components/vibecoding';
 import { useVibeCodingStudio } from '@/hooks/useVibeCodingStudio';
 import { useChatEngine } from '@/hooks/useChatEngine';
 import { useProjectPipeline } from '@/hooks/useProjectPipeline';
+import { claimPendingPrompt } from '@/lib/pendingPrompt';
 
 interface ChatViewProps {
   onlineStatus?: boolean;
@@ -143,6 +144,23 @@ export default function ChatView({ onlineStatus = true, showWelcome = true }: Ch
     setGenerationPanelSessionId,
     setSelectedProjectId,
   });
+
+  // ── Onboarding prompt-first : rejoue l'idée saisie avant login ──
+  // (claim unique : le prompt est retiré du sessionStorage dès lecture)
+  const replayedPromptRef = useRef(false);
+  useEffect(() => {
+    if (replayedPromptRef.current) return;
+    const pending = claimPendingPrompt();
+    if (!pending) return;
+    replayedPromptRef.current = true;
+    if (pending.mode === 'build') {
+      chatEngine.quickStart(pending.prompt);
+    } else {
+      void chatEngine.sendMessage(pending.prompt);
+    }
+    // chatEngine est stable par ref ; on ne rejoue qu'au premier montage
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ══════════════════════════════════════════════════════════════
   // RENDER

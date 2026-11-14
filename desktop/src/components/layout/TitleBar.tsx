@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { cn, isTauri } from '@/lib/utils';
 import { appWindow } from '@tauri-apps/api/window';
 import { type } from '@tauri-apps/api/os';
+import CreditBadge from '@/components/billing/CreditBadge';
+import { useAccountStore } from '@/stores/accountStore';
 
 interface TitleBarProps {
   className?: string;
@@ -11,6 +13,7 @@ export default function TitleBar({ className }: TitleBarProps) {
   const [tauriReady, setTauriReady] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
   const [platform, setPlatform] = useState<'darwin' | 'windows' | 'linux'>('darwin');
+  const isLoggedIn = useAccountStore((s) => s.isLoggedIn);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -80,6 +83,13 @@ export default function TitleBar({ className }: TitleBarProps) {
 
       {tauriReady && isMac && (
         <div data-tauri-drag-region className="w-[60px] h-full" />
+      )}
+
+      {/* Pilule de crédits persistante (wallet prépayé FCFA) — seulement connecté */}
+      {isLoggedIn && (
+        <div data-tauri-drag-region className="flex items-center h-full pl-2">
+          <CreditBadge />
+        </div>
       )}
 
       {tauriReady && !isMac && (

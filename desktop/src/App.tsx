@@ -16,6 +16,7 @@ import { autoCheckOncePerDay } from '@/services/infra/updateService';
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
+const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
 
 function LoadingFallback() {
   return (
@@ -31,10 +32,10 @@ function LoadingFallback() {
   );
 }
 
-/** Auth guard — redirects to /login if not logged in */
+/** Auth guard — renvoie vers l'accueil prompt-first (idée d'abord, login ensuite) */
 function RequireAuth() {
   const isLoggedIn = useAccountStore((s) => s.isLoggedIn);
-  if (!isLoggedIn) return <Navigate to="/login" replace />;
+  if (!isLoggedIn) return <Navigate to="/welcome" replace />;
   return <Outlet />;
 }
 
@@ -63,7 +64,8 @@ export default function App() {
     <ErrorBoundary>
       <Suspense fallback={<LoadingFallback />}>
         <Routes>
-          {/* Public route */}
+          {/* Public routes — accueil prompt-first (idée saisie avant auth) + login */}
+          <Route path="welcome" element={<WelcomePage />} />
           <Route path="login" element={<LoginPage />} />
 
           {/* Protected routes */}

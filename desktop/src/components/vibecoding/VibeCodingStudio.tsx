@@ -1,12 +1,16 @@
 /**
  * VibeCodingStudio — Le cœur du vibecoding dans ANZAR.
  *
- * Layout 4 panneaux (preview optionnel) :
- *   ┌──────────┬──────────────┬──────────────┬───────────┐
- *   │ FileTree │  Code Editor │ Live Preview │   Chat    │
- *   │ (240px)  │  (flexible)  │  (flexible)  │  (360px)  │
- *   │          │  + tabs      │  iframe app  │  itératif │
- *   └──────────┴──────────────┴──────────────┴───────────┘
+ * Layout 2 panneaux redimensionnables (divider draggable) :
+ *   ┌────────────────┬──────────────────────────────────┐
+ *   │      Chat      │  Preview │ Code │ Diff │ Console │
+ *   │  (itération,   │  ─ puces de fichiers (Δ +/−) ─   │
+ *   │   Design→Code) │  éditeur + filetree / diff /     │
+ *   │   (36%, drag)  │  preview iframe / console build  │
+ *   └────────────────┴──────────────────────────────────┘
+ *
+ * Progression : étapes d'agents nommées et validées en direct
+ * (Analyse → Plan → Écriture des fichiers → Review), pas de spinners.
  *
  * S'affiche inline dans le chat quand une génération démarre.
  * Reste ouvert pour l'itération après la génération.
@@ -30,6 +34,10 @@ import StudioPreview from './StudioPreview';
 import PlanReview from './PlanReview';
 import DesignToCodePanel from './DesignToCodePanel';
 import StudioGitHistory from './StudioGitHistory';
+import StudioDiff from './StudioDiff';
+import AgentSteps from './AgentSteps';
+import FileChips from './FileChips';
+import ResizableSplit from '@/components/ui/ResizableSplit';
 import { terminalService, onDevServerUrl } from '@/services/terminal';
 import { open as shellOpen } from '@tauri-apps/api/shell';
 
@@ -130,75 +138,6 @@ export interface VibeCodingStudioProps {
 // PLANNING PROGRESS — étapes visibles une à une + annulation
 // ============================================================================
 
-const PLANNING_STEPS = [
-  'Analyse de ta demande',
-  'Choix de la stack technique',
-  'Architecture des fichiers',
-  'Découpage en étapes de génération',
-];
-
-const PlanningProgress: React.FC<{ onCancel: () => void }> = ({ onCancel }) => {
-  const [currentIdx, setCurrentIdx] = useState(0);
-
-  // Progression indicative (le plan est une seule requête serveur) :
-  // chaque étape s'active progressivement pour montrer l'avancement.
-  useEffect(() => {
-    const timers = [
-      setTimeout(() => setCurrentIdx(1), 4000),
-      setTimeout(() => setCurrentIdx(2), 12000),
-      setTimeout(() => setCurrentIdx(3), 22000),
-    ];
-    return () => timers.forEach(clearTimeout);
-  }, []);
-
-  return (
-    <div className="flex-1 flex items-center justify-center">
-      <div className="w-full max-w-sm px-6">
-        <div className="text-center mb-6">
-          <div className="relative mx-auto w-14 h-14 mb-3">
-            <div className="absolute inset-0 rounded-full border-2 border-accent-primary/20" />
-            <div className="absolute inset-0 rounded-full border-2 border-accent-primary border-t-transparent animate-spin" />
-          </div>
-          <p className="text-sm font-semibold text-text-primary">Préparation du plan</p>
-        </div>
-
-        <div className="space-y-2.5 mb-8">
-          {PLANNING_STEPS.map((label, i) => (
-            <div key={label} className="flex items-center gap-2.5">
-              {i < currentIdx ? (
-                <CheckCircle2 size={15} className="text-emerald-400 flex-shrink-0" />
-              ) : i === currentIdx ? (
-                <Loader2 size={15} className="text-accent-primary animate-spin flex-shrink-0" />
-              ) : (
-                <div className="w-[15px] h-[15px] rounded-full border border-border-subtle flex-shrink-0" />
-              )}
-              <span
-                className={cn(
-                  'text-[13px]',
-                  i < currentIdx ? 'text-text-secondary line-through decoration-text-muted/40'
-                    : i === currentIdx ? 'text-text-primary font-medium'
-                    : 'text-text-muted'
-                )}
-              >
-                {label}
-              </span>
-            </div>
-          ))}
-        </div>
-
-        <div className="text-center">
-          <button
-            onClick={onCancel}
-            className="px-5 py-2 rounded-xl text-[13px] text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors border border-border-subtle"
-          >
-            Annuler
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
   projectId,
   projectName,
@@ -236,6 +175,7 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
   const [showDesignToCode, setShowDesignToCode] = useState(false);
   const [showGitHistory, setShowGitHistory] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [rightTab, setRightTab] = useState<'preview' | 'code' | 'diff' | 'console'>('code');
   const [installStatus, setInstallStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
   const [runStatus, setRunStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
 
@@ -244,6 +184,7 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
     const unsub = onDevServerUrl((url) => {
       setPreviewUrl(url);
       setShowPreview(true);
+      setRightTab('preview');
     });
     return unsub;
   }, []);
@@ -361,10 +302,15 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
     }
   }, [phase, plan, filesList, currentStep, activeGeneratingFile, errorMessage]);
 
-  // ── Callback sélection fichier ──
+  // ── Callback sélection fichier (puces : un modifié ouvre le Diff) ──
   const handleSelectFile = useCallback((path: string) => {
     setSelectedFile(path);
   }, []);
+  const handleChipSelectFile = useCallback((path: string) => {
+    setSelectedFile(path);
+    const f = files.get(path);
+    setRightTab(f?.status === 'modified' && f.previousContent !== undefined ? 'diff' : 'code');
+  }, [files]);
 
   return (
     <div
@@ -543,7 +489,7 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
             <FolderOpen size={16} />
           </button>
           <button
-            onClick={() => setShowPreview(!showPreview)}
+            onClick={() => { setShowPreview(!showPreview); if (!showPreview) setRightTab('preview'); }}
             className={cn(
               'p-1.5 rounded-lg transition-colors',
               showPreview ? 'text-emerald-400 bg-emerald-500/10' : 'text-text-muted hover:bg-surface-hover'
@@ -670,83 +616,17 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
           />
         )}
 
-        {/* ── Phases generating / iterating : layout 3 panneaux ── */}
+        {/* ── Phases generating / iterating / error : 2 panneaux redimensionnables ──
+              Gauche : Chat d'itération (ou Design→Code)
+              Droite : onglets Preview | Code | Diff | Console + puces de fichiers ── */}
         {(phase === 'generating' || phase === 'iterating' || phase === 'error') && (
-          <>
-            {/* File Tree */}
-            {showFileTree && !showGitHistory && (
-              <div className="w-[240px] flex-shrink-0 border-r border-border-subtle overflow-hidden">
-                <StudioFileTree
-                  files={filesList}
-                  selectedFile={selectedFile}
-                  activeGeneratingFile={activeGeneratingFile}
-                  onSelectFile={handleSelectFile}
-                />
-              </div>
-            )}
-
-            {/* Git History Panel */}
-            {showGitHistory && projectPath && git?.initialized && (
-              <div className="w-[280px] flex-shrink-0 border-r border-border-subtle overflow-hidden">
-                <StudioGitHistory
-                  projectPath={projectPath}
-                  commitCount={git.commitCount}
-                  onRollbackToCommit={onRollback ? async () => { await onRollback(); } : undefined}
-                />
-              </div>
-            )}
-
-            {/* Editor */}
-            <div className="flex-1 min-w-0 overflow-hidden">
-              {currentFile ? (
-                <StudioEditor
-                  files={filesList}
-                  selectedFile={selectedFile}
-                  onSelectFile={handleSelectFile}
-                  isGenerating={phase === 'generating'}
-                  onFileChange={onFileChange}
-                  onFileRevert={onFileRevert}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-text-muted">
-                  <div className="text-center">
-                    {phase === 'generating' ? (
-                      <>
-                        <Loader2 size={32} className="mx-auto mb-3 animate-spin text-accent-primary" />
-                        <p className="text-sm font-medium text-text-primary mb-1">
-                          Génération en cours...
-                        </p>
-                        <p className="text-xs text-text-muted">
-                          Les fichiers apparaîtront ici au fur et à mesure
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <FolderOpen size={32} className="mx-auto mb-3 opacity-30" />
-                        <p className="text-sm">Sélectionne un fichier pour l'éditer</p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Live Preview */}
-            {showPreview && (
-              <div className="flex-1 min-w-[300px] border-l border-border-subtle overflow-hidden">
-                <StudioPreview
-                  previewUrl={previewUrl}
-                  onOpenExternal={() => {
-                    if (previewUrl) shellOpen(previewUrl).catch(() => {});
-                  }}
-                />
-              </div>
-            )}
-
-            {/* Chat / Design-to-Code */}
-            {showChat && (
-              <div className="w-[360px] flex-shrink-0 border-l border-border-subtle overflow-hidden">
-                {showDesignToCode ? (
+          <ResizableSplit
+            className="flex-1"
+            initialLeftPct={36}
+            minLeftPct={22}
+            left={
+              showChat ? (
+                showDesignToCode ? (
                   <DesignToCodePanel
                     projectId={projectId}
                     projectName={projectName}
@@ -777,15 +657,241 @@ const VibeCodingStudio: React.FC<VibeCodingStudioProps> = ({
                     projectPath={projectPath}
                     onFileChange={onFileChange}
                   />
-                )}
+                )
+              ) : (
+                <div className="flex items-center justify-center h-full text-text-muted text-xs border-r border-border-subtle">
+                  Chat masqué
+                </div>
+              )
+            }
+            right={
+              <div className="flex flex-col h-full min-h-0">
+                {/* ── Onglets ── */}
+                <div className="flex items-center px-2 pt-1.5 gap-0.5 border-b border-border-subtle bg-bg-secondary/30 flex-shrink-0">
+                  {([
+                    ['code', 'Code'],
+                    ['diff', 'Diff'],
+                    ['preview', 'Preview'],
+                    ['console', 'Console'],
+                  ] as const).map(([id, label]) => (
+                    <button
+                      key={id}
+                      onClick={() => setRightTab(id)}
+                      className={cn(
+                        'px-3 py-1.5 rounded-t-lg text-[11px] font-semibold transition-all',
+                        rightTab === id
+                          ? 'bg-surface-default text-text-primary border border-b-0 border-border-subtle'
+                          : 'text-text-muted hover:text-text-primary'
+                      )}
+                    >
+                      {label}
+                      {id === 'diff' && filesList.some(f => f.status === 'modified') && (
+                        <span className="ml-1.5 w-1.5 h-1.5 rounded-full bg-accent-primary inline-block" />
+                      )}
+                    </button>
+                  ))}
+                  {/* Étapes agents compactes à droite des onglets */}
+                  <div className="ml-auto pr-1 pb-1">
+                    <AgentSteps
+                      orientation="compact"
+                      phase={phase}
+                      planFileCount={plan?.files?.length || 0}
+                      files={filesList}
+                      currentStep={currentStep}
+                      activeGeneratingFile={activeGeneratingFile}
+                      agents={agents}
+                      errorMessage={errorMessage}
+                    />
+                  </div>
+                </div>
+
+                {/* ── Puces de fichiers modifiés (deltas +/−) ── */}
+                <FileChips
+                  files={filesList}
+                  selectedFile={selectedFile}
+                  onSelectFile={handleChipSelectFile}
+                />
+
+                {/* ── Contenu de l'onglet actif ── */}
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  {rightTab === 'code' && (
+                    <div className="flex h-full min-h-0">
+                      {/* File Tree (dans l'onglet Code) */}
+                      {showFileTree && !showGitHistory && (
+                        <div className="w-[220px] flex-shrink-0 border-r border-border-subtle overflow-hidden">
+                          <StudioFileTree
+                            files={filesList}
+                            selectedFile={selectedFile}
+                            activeGeneratingFile={activeGeneratingFile}
+                            onSelectFile={handleSelectFile}
+                          />
+                        </div>
+                      )}
+                      {/* Git History (dans l'onglet Code) */}
+                      {showGitHistory && projectPath && git?.initialized && (
+                        <div className="w-[280px] flex-shrink-0 border-r border-border-subtle overflow-hidden">
+                          <StudioGitHistory
+                            projectPath={projectPath}
+                            commitCount={git.commitCount}
+                            onRollbackToCommit={onRollback ? async () => { await onRollback(); } : undefined}
+                          />
+                        </div>
+                      )}
+                      {/* Editor */}
+                      <div className="flex-1 min-w-0 overflow-hidden">
+                        {currentFile ? (
+                          <StudioEditor
+                            files={filesList}
+                            selectedFile={selectedFile}
+                            onSelectFile={handleSelectFile}
+                            isGenerating={phase === 'generating'}
+                            onFileChange={onFileChange}
+                            onFileRevert={onFileRevert}
+                          />
+                        ) : (
+                          <div className="flex items-center justify-center h-full text-text-muted px-6">
+                            <div className="text-center max-w-xs">
+                              {phase === 'generating' ? (
+                                <>
+                                  <p className="text-sm font-medium text-text-primary mb-3">
+                                    Génération en cours...
+                                  </p>
+                                  <AgentSteps
+                                    orientation="vertical"
+                                    phase={phase}
+                                    planFileCount={plan?.files?.length || 0}
+                                    files={filesList}
+                                    currentStep={currentStep}
+                                    activeGeneratingFile={activeGeneratingFile}
+                                    agents={agents}
+                                  />
+                                </>
+                              ) : (
+                                <>
+                                  <FolderOpen size={32} className="mx-auto mb-3 opacity-30" />
+                                  <p className="text-sm">Sélectionne un fichier pour l'éditer</p>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {rightTab === 'diff' && (
+                    <StudioDiff
+                      files={filesList}
+                      selectedFile={selectedFile}
+                      onSelectFile={handleSelectFile}
+                    />
+                  )}
+
+                  {rightTab === 'preview' && (
+                    showPreview ? (
+                      <StudioPreview
+                        previewUrl={previewUrl}
+                        onOpenExternal={() => {
+                          if (previewUrl) shellOpen(previewUrl).catch(() => {});
+                        }}
+                      />
+                    ) : (
+                      <div className="flex-1 flex items-center justify-center text-center px-6">
+                        <div>
+                          <Eye size={28} className="mx-auto mb-3 text-text-muted/40" />
+                          <p className="text-sm text-text-secondary mb-1">Preview non activé</p>
+                          <p className="text-xs text-text-muted">
+                            Clique l'icône œil dans l'en-tête, puis Run pour lancer le serveur de dev.
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  )}
+
+                  {rightTab === 'console' && (
+                    <div className="h-full overflow-y-auto font-mono text-[11px] leading-relaxed p-3 space-y-3">
+                      {/* Statut pipeline */}
+                      <div className="text-text-secondary">
+                        <span className="text-text-muted">$ </span>anzar · {statusText}
+                      </div>
+                      {/* Install / Run */}
+                      {installStatus !== 'idle' && (
+                        <div className={cn(
+                          installStatus === 'error' ? 'text-accent-error' : installStatus === 'done' ? 'text-accent-success' : 'text-accent-warning'
+                        )}>
+                          <span className="text-text-muted">$ </span>npm install — {installStatus}
+                        </div>
+                      )}
+                      {runStatus !== 'idle' && (
+                        <div className={cn(
+                          runStatus === 'error' ? 'text-accent-error' : 'text-accent-success'
+                        )}>
+                          <span className="text-text-muted">$ </span>npm run dev — {runStatus}
+                          {previewUrl && <span className="text-text-muted"> → {previewUrl}</span>}
+                        </div>
+                      )}
+                      {/* Auto-fix */}
+                      {autoFix?.isRunning && (
+                        <div className="text-accent-warning">
+                          <span className="text-text-muted">$ </span>auto-fix {autoFix.attempt}/{autoFix.maxAttempts} — {autoFix.lastError ?? 'correction en cours'}
+                        </div>
+                      )}
+                      {/* Sortie du build */}
+                      {deploy?.output && (
+                        <div>
+                          <div className="text-text-secondary mb-1">
+                            <span className="text-text-muted">$ </span>npm run build
+                          </div>
+                          <pre className="whitespace-pre-wrap text-text-muted/80 border-l-2 border-border-subtle pl-2">
+                            {deploy.output.split('\n').slice(-40).join('\n')}
+                          </pre>
+                        </div>
+                      )}
+                      {/* Erreur pipeline */}
+                      {phase === 'error' && errorMessage && (
+                        <div className="text-accent-error">
+                          <span className="text-text-muted">$ </span>erreur : {errorMessage}
+                        </div>
+                      )}
+                      {installStatus === 'idle' && runStatus === 'idle' && !deploy?.output && phase !== 'error' && (
+                        <p className="text-text-muted/60">Console — install, run et build s'afficheront ici.</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
-          </>
+            }
+          />
         )}
 
-        {/* ── Phase planning : étapes visibles + annulation ── */}
+        {/* ── Phase planning : étapes agents réelles + annulation ── */}
         {phase === 'planning' && (
-          <PlanningProgress onCancel={onCancel} />
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-full max-w-sm px-6">
+              <div className="text-center mb-6">
+                <p className="text-sm font-semibold text-text-primary">Préparation du plan</p>
+              </div>
+              <div className="mb-8">
+                <AgentSteps
+                  phase={phase}
+                  planFileCount={plan?.files?.length || 0}
+                  files={filesList}
+                  currentStep={currentStep}
+                  activeGeneratingFile={activeGeneratingFile}
+                  agents={agents}
+                  errorMessage={errorMessage}
+                />
+              </div>
+              <div className="text-center">
+                <button
+                  onClick={onCancel}
+                  className="px-5 py-2 rounded-xl text-[13px] text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors border border-border-subtle"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

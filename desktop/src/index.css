@@ -9,44 +9,45 @@
     color-scheme: dark;
 
     /* Backgrounds - deeper, richer */
-    --color-bg-primary: #09090B;
-    --color-bg-secondary: #111113;
-    --color-bg-tertiary: #1A1A1F;
+    --color-bg-primary: #0A0A0C;
+    --color-bg-secondary: #101013;
+    --color-bg-tertiary: #17171B;
 
     /* Surfaces */
-    --color-surface-default: #16161A;
-    --color-surface-elevated: #1E1E24;
-    --color-surface-hover: #26262E;
+    --color-surface-default: #151518;
+    --color-surface-elevated: #1B1B20;
+    --color-surface-hover: #232329;
 
-    /* Accent - vibrant gradient palette */
-    --color-accent-primary: #6366F1;
-    --color-accent-secondary: #8B5CF6;
-    --color-accent-tertiary: #A78BFA;
-    --color-accent-success: #10B981;
-    --color-accent-warning: #F59E0B;
-    --color-accent-error: #EF4444;
-    --color-accent-info: #06B6D4;
+    /* Accent - palette tonale calme : un seul indigo désaturé,
+       déclinaisons tonales (pas de saut de teinte), glows atténués */
+    --color-accent-primary: #818CF8;
+    --color-accent-secondary: #9BA3F5;
+    --color-accent-tertiary: #B7BCF8;
+    --color-accent-success: #34B391;
+    --color-accent-warning: #D9A03F;
+    --color-accent-error: #D96A6A;
+    --color-accent-info: #5FA8B8;
 
-    /* Gradient stops */
-    --gradient-start: #6366F1;
-    --gradient-mid: #8B5CF6;
-    --gradient-end: #EC4899;
+    /* Gradient stops - subtil, quasi monochrome */
+    --gradient-start: #818CF8;
+    --gradient-mid: #9498EE;
+    --gradient-end: #A5A3E8;
 
     /* Text */
-    --color-text-primary: #FAFAFA;
-    --color-text-secondary: #A1A1AA;
-    --color-text-tertiary: #71717A;
-    --color-text-muted: #52525B;
+    --color-text-primary: #F4F4F5;
+    --color-text-secondary: #A6A6AE;
+    --color-text-tertiary: #78787F;
+    --color-text-muted: #57575E;
 
-    /* Borders */
+    /* Borders - subtil 6%, médium ~9%, fort 14% */
     --color-border-subtle: rgba(255, 255, 255, 0.06);
-    --color-border-medium: rgba(255, 255, 255, 0.10);
-    --color-border-strong: rgba(255, 255, 255, 0.16);
+    --color-border-medium: rgba(255, 255, 255, 0.09);
+    --color-border-strong: rgba(255, 255, 255, 0.14);
 
     /* Shadows */
     --color-shadow: rgba(0, 0, 0, 0.5);
-    --glow-accent: rgba(99, 102, 241, 0.15);
-    --glow-accent-strong: rgba(99, 102, 241, 0.3);
+    --glow-accent: rgba(129, 140, 248, 0.10);
+    --glow-accent-strong: rgba(129, 140, 248, 0.22);
   }
 
   /* ===== LIGHT THEME ===== */
@@ -61,17 +62,17 @@
     --color-surface-elevated: #F9FAFB;
     --color-surface-hover: #F0F0F3;
 
-    --color-accent-primary: #4F46E5;
-    --color-accent-secondary: #7C3AED;
-    --color-accent-tertiary: #8B5CF6;
-    --color-accent-success: #059669;
-    --color-accent-warning: #D97706;
-    --color-accent-error: #DC2626;
-    --color-accent-info: #0891B2;
+    --color-accent-primary: #6366F1;
+    --color-accent-secondary: #7A7CE8;
+    --color-accent-tertiary: #8E8FEC;
+    --color-accent-success: #0E9271;
+    --color-accent-warning: #C08A2D;
+    --color-accent-error: #C64F4F;
+    --color-accent-info: #3E8FA0;
 
-    --gradient-start: #4F46E5;
-    --gradient-mid: #7C3AED;
-    --gradient-end: #DB2777;
+    --gradient-start: #6366F1;
+    --gradient-mid: #7677E6;
+    --gradient-end: #8B8BEB;
 
     --color-text-primary: #09090B;
     --color-text-secondary: #52525B;
@@ -79,12 +80,12 @@
     --color-text-muted: #A1A1AA;
 
     --color-border-subtle: rgba(0, 0, 0, 0.06);
-    --color-border-medium: rgba(0, 0, 0, 0.10);
-    --color-border-strong: rgba(0, 0, 0, 0.15);
+    --color-border-medium: rgba(0, 0, 0, 0.09);
+    --color-border-strong: rgba(0, 0, 0, 0.14);
 
     --color-shadow: rgba(0, 0, 0, 0.06);
-    --glow-accent: rgba(79, 70, 229, 0.08);
-    --glow-accent-strong: rgba(79, 70, 229, 0.15);
+    --glow-accent: rgba(99, 102, 241, 0.06);
+    --glow-accent-strong: rgba(99, 102, 241, 0.12);
   }
 
   /* ===== Base Styles ===== */
