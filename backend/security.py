@@ -11,7 +11,6 @@ import ipaddress
 from datetime import datetime, timedelta, timezone
 
 import jwt as pyjwt
-from collections import defaultdict
 from typing import Optional
 
 from fastapi import Request, HTTPException, Depends, status
@@ -67,53 +66,47 @@ def validate_config():
 # ============================================================================
 
 class RateLimiter:
-    """Sliding-window rate limiter keyed by user_id or IP."""
+    """Sliding-window rate limiter keyed by user_id or IP.
 
-    def __init__(self):
-        self._requests: dict[str, list[float]] = defaultdict(list)
+    État en base (table rate_limits) → limites partagées entre tous les
+    workers (l'ancienne version in-memory multipliait les limites par le
+    nombre de workers Railway). Purge des entrées > 24 h par le housekeeping.
+    """
 
-    def check(self, key: str, max_per_minute: Optional[int] = None, max_per_day: Optional[int] = None) -> bool:
-        """Check rate limit. Raises HTTPException if exceeded."""
-        now = time.time()
-        window_minute = now - 60
-        window_day = now - 86400
+    async def check(
+        self,
+        key: str,
+        max_per_minute: Optional[int] = None,
+        max_per_day: Optional[int] = None,
+        endpoint: str = "api",
+    ) -> bool:
+        """Check rate limit. Raises HTTPException(429) if exceeded."""
+        from db.rate_limits import check_and_record
 
         per_min = max_per_minute or settings.rate_limit_per_minute
         per_day = max_per_day or settings.rate_limit_per_day
 
-        # Clean old entries
-        timestamps = [t for t in self._requests[key] if t > window_day]
-        self._requests[key] = timestamps
-
-        # Per-minute check
-        recent = [t for t in timestamps if t > window_minute]
-        if len(recent) >= per_min:
+        try:
+            await check_and_record(key, endpoint, per_min, per_day)
+        except ValueError as e:
+            if str(e) == "day":
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail="Limite quotidienne atteinte.",
+                )
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Trop de requêtes. Réessaie dans quelques secondes."
+                detail="Trop de requêtes. Réessaie dans quelques secondes.",
             )
-
-        # Per-day check
-        if len(timestamps) >= per_day:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Limite quotidienne atteinte."
-            )
-
-        self._requests[key].append(now)
-
-        # Periodic cleanup (every ~5000 entries total)
-        total_entries = sum(len(v) for v in self._requests.values())
-        if total_entries > 5000:
-            stale = [k for k, v in self._requests.items() if not v or v[-1] < window_day]
-            for k in stale:
-                del self._requests[k]
+        except Exception as e:  # fail-open : une panne DB ne doit pas 500 toute l'API
+            logger.warning(f"Rate limiter DB error (fail-open): {type(e).__name__}: {e}")
+            return True
 
         return True
 
-    def check_auth(self, key: str) -> bool:
+    async def check_auth(self, key: str) -> bool:
         """Tighter rate limit for auth endpoints: 5/min, 30/day per IP."""
-        return self.check(f"auth:{key}", max_per_minute=5, max_per_day=30)
+        return await self.check(f"auth:{key}", max_per_minute=5, max_per_day=30, endpoint="auth")
 
 
 rate_limiter = RateLimiter()

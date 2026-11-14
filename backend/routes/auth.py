@@ -51,7 +51,7 @@ class VerifyCodeRequest(BaseModel):
 @router.post("/register")
 async def register(body: AuthRequest, request: Request):
     """Register a new user account. Initializes credits at 0 FCFA."""
-    rate_limiter.check_auth(get_client_ip(request))
+    await rate_limiter.check_auth(get_client_ip(request))
     email = body.email.strip().lower()
     password = body.password
 
@@ -88,7 +88,7 @@ async def register(body: AuthRequest, request: Request):
 @router.post("/login")
 async def login(body: AuthRequest, request: Request):
     """Login with email + password. Returns JWT + credit balance."""
-    rate_limiter.check_auth(get_client_ip(request))
+    await rate_limiter.check_auth(get_client_ip(request))
     email = body.email.strip().lower()
     password = body.password
 

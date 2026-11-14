@@ -98,7 +98,7 @@ async def security_middleware(request: Request, call_next):
     client_ip = get_client_ip(request)
 
     if request.url.path.startswith("/api/"):
-        rate_limiter.check(client_ip)
+        await rate_limiter.check(client_ip, endpoint="api")
 
     start = time.time()
     response = await call_next(request)

@@ -124,7 +124,7 @@ def audit_log(admin_email: str, action: str, target: str = "", details: str = ""
 @router.post("/login")
 async def admin_login(body: AdminLoginRequest, request: Request):
     """Login as admin. Returns JWT with is_admin=True."""
-    rate_limiter.check_auth(get_client_ip(request))
+    await rate_limiter.check_auth(get_client_ip(request))
     email = body.email.strip().lower()
     admin = await get_admin_by_email(email)
     if not admin:
