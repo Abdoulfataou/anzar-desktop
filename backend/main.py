@@ -18,7 +18,7 @@ from config import settings
 from security import rate_limiter, get_client_ip, validate_config
 from db import (
     init_db, create_default_admin,
-    cleanup_rate_limits, cleanup_expired_otps, cleanup_old_projects,
+    cleanup_rate_limits, cleanup_expired_otps, cleanup_old_projects, cleanup_revoked_tokens,
 )
 from routes import include_routers
 from routes._state import _cleanup_project_states
@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI):
             try:
                 await cleanup_expired_otps()
                 await cleanup_rate_limits(max_age_seconds=86400)
+                await cleanup_revoked_tokens()
                 _cleanup_project_states()
                 await cleanup_old_projects(max_age_days=90)
             except Exception as e:

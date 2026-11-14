@@ -5,13 +5,12 @@ Hardened for production deployment (Railway / Docker).
 import os
 import re
 import time
-import hashlib
-import hmac
-import json
 import secrets
 import logging
-import base64
 import ipaddress
+from datetime import datetime, timedelta, timezone
+
+import jwt as pyjwt
 from collections import defaultdict
 from typing import Optional
 
@@ -45,14 +44,15 @@ def validate_config():
         logger.info("✓ JWT_SECRET is set to a custom value")
 
     # ── Admin default password ──
-    if settings.admin_default_password == "Anzar2024!":
+    if settings.admin_default_password and len(settings.admin_default_password) < 12:
         if is_prod_env:
             raise RuntimeError(
-                "FATAL: ADMIN_DEFAULT_PASSWORD is still the default 'Anzar2024!'. "
-                "Set ADMIN_DEFAULT_PASSWORD to a secure value before deploying (min 12 chars)."
+                "FATAL: ADMIN_DEFAULT_PASSWORD is too weak (min 12 chars)."
             )
         else:
-            logger.warning("⚠️  Admin password is default — change after first login")
+            logger.warning("⚠️  ADMIN_DEFAULT_PASSWORD faible (< 12 chars)")
+    elif not settings.admin_default_password:
+        logger.info("ADMIN_DEFAULT_PASSWORD non défini — un mot de passe aléatoire sera généré au premier démarrage")
 
     # ── API Keys ──
     if not settings.deepseek_api_key:
@@ -120,76 +120,74 @@ rate_limiter = RateLimiter()
 
 
 # ============================================================================
-# JWT TOKEN (HMAC-SHA256, constant-time comparison)
+# JWT TOKEN (pyjwt — HS256, algorithme épinglé)
 # ============================================================================
 
+# Algorithms explicitly pinned: prevents algorithm-confusion attacks
+# (e.g. alg:none / HS256-vs-RS512 key confusion).
+_JWT_ALGORITHM = "HS256"
+_JWT_AUDIENCE = "anzar-api"
+
+
 def create_token(user_id: str, expires_in: Optional[int] = None, extra_claims: Optional[dict] = None) -> str:
-    """Create HMAC-SHA256 signed token with optional extra claims."""
+    """Create HS256-signed JWT with optional extra claims."""
     if expires_in is None:
         expires_in = settings.jwt_expiry_hours * 3600
 
+    now = datetime.now(timezone.utc)
     payload = {
         "sub": user_id,
-        "iat": int(time.time()),
-        "exp": int(time.time()) + expires_in,
-        "jti": secrets.token_hex(8),
+        "iat": now,
+        "exp": now + timedelta(seconds=expires_in),
+        "jti": secrets.token_hex(16),
+        "aud": _JWT_AUDIENCE,
     }
     if extra_claims:
         payload.update(extra_claims)
 
-    payload_b64 = _b64encode(json.dumps(payload, separators=(",", ":")))
-    signature = hmac.new(
-        settings.jwt_secret.encode("utf-8"),
-        payload_b64.encode("utf-8"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"{payload_b64}.{signature}"
+    return pyjwt.encode(payload, settings.jwt_secret, algorithm=_JWT_ALGORITHM)
 
 
-def verify_token(token: str) -> Optional[dict]:
-    """Verify and decode token. Returns payload or None."""
+def verify_token(token: str, verify_exp: bool = True) -> Optional[dict]:
+    """Verify signature + expiry (+ audience). Returns payload dict or None.
+
+    verify_exp=False sert uniquement au refresh (fenêtre de grâce) : la
+    signature reste vérifiée dans tous les cas.
+    """
     try:
-        if not token or "." not in token:
+        if not token:
             return None
-
-        parts = token.split(".", 1)
-        if len(parts) != 2:
-            return None
-
-        payload_b64, signature = parts
-
-        expected_sig = hmac.new(
-            settings.jwt_secret.encode("utf-8"),
-            payload_b64.encode("utf-8"),
-            hashlib.sha256,
-        ).hexdigest()
-
-        if not hmac.compare_digest(signature, expected_sig):
-            return None
-
-        payload = json.loads(_b64decode(payload_b64))
-
-        if payload.get("exp", 0) < time.time():
-            return None
-
+        payload = pyjwt.decode(
+            token,
+            settings.jwt_secret,
+            algorithms=[_JWT_ALGORITHM],
+            audience=_JWT_AUDIENCE,
+            options={"verify_exp": verify_exp},
+        )
         if not payload.get("sub"):
             return None
-
         return payload
-
-    except Exception:
+    except pyjwt.ExpiredSignatureError:
+        return None
+    except pyjwt.InvalidTokenError:
         return None
 
 
-def _b64encode(data: str) -> str:
-    return base64.urlsafe_b64encode(data.encode()).decode().rstrip("=")
+async def verify_token_checked(token: str) -> Optional[dict]:
+    """verify_token + vérification de révocation (jti) en base.
 
+    À utiliser dans les dépendances FastAPI ; le check DB est un simple
+    index lookup unique (jti indexé).
+    """
+    from db import is_token_revoked
 
-def _b64decode(data: str) -> str:
-    padding = 4 - len(data) % 4
-    if padding < 4:
-        data += "=" * padding
-    return base64.urlsafe_b64decode(data).decode()
+    payload = verify_token(token)
+    if payload is None:
+        return None
+    if await is_token_revoked(payload.get("jti", "")):
+        logger.warning(f"Revoked token used: jti={payload.get('jti')} sub={payload.get('sub')}")
+        return None
+    return payload
 
 
 # ============================================================================
@@ -210,11 +208,11 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    payload = verify_token(credentials.credentials)
+    payload = await verify_token_checked(credentials.credentials)
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token invalide ou expiré",
+            detail="Token invalide, expiré ou révoqué",
             headers={"WWW-Authenticate": "Bearer"},
         )
 

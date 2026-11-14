@@ -4,8 +4,6 @@ Register, login, verify, refresh, OTP send-code, verify-code.
 """
 import time
 import secrets
-import base64
-import json as _json
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -13,8 +11,9 @@ from pydantic import BaseModel, Field
 from config import settings
 from security import (
     rate_limiter, get_client_ip,
-    create_token, verify_token,
+    create_token, verify_token, verify_token_checked,
 )
+from db import is_token_revoked
 from db import (
     get_user_by_email, create_user,
     verify_password, update_last_login,
@@ -143,26 +142,25 @@ async def refresh_token(request: Request):
         raise HTTPException(401, "Missing authorization token")
 
     raw_token = auth[7:]
-    payload = verify_token(raw_token)
 
+    # Signature toujours vérifiée ; l'expiration est acceptée dans une
+    # fenêtre de grâce de 7 jours (le client desktop refresh toutes les 6 h).
+    payload = verify_token(raw_token, verify_exp=False)
     if not payload:
-        try:
-            payload_b64 = raw_token.split(".")[0]
-            padded = payload_b64 + "=" * (-len(payload_b64) % 4)
-            decoded = _json.loads(base64.urlsafe_b64decode(padded))
-            exp = decoded.get("exp", 0)
-            grace_seconds = 7 * 24 * 3600  # 7 days
-            if int(time.time()) - exp > grace_seconds:
-                raise HTTPException(401, "Token expired beyond refresh window")
-            user_id = decoded.get("sub")
-            if not user_id:
-                raise HTTPException(401, "Invalid token payload")
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(401, "Invalid token")
-    else:
-        user_id = payload.get("sub")
+        raise HTTPException(401, "Invalid token")
+
+    exp = payload.get("exp", 0)
+    grace_seconds = 7 * 24 * 3600  # 7 days
+    if int(time.time()) - int(exp) > grace_seconds:
+        raise HTTPException(401, "Token expired beyond refresh window")
+
+    user_id = payload.get("sub")
+    if not user_id:
+        raise HTTPException(401, "Invalid token payload")
+
+    # Un jti révoqué ne peut pas servir à obtenir un nouveau token
+    if await is_token_revoked(payload.get("jti", "")):
+        raise HTTPException(401, "Token revoked")
 
     new_token = create_token(user_id=user_id)
     return {"token": new_token, "user_id": user_id}

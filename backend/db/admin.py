@@ -29,7 +29,17 @@ async def create_default_admin():
         async with session.begin():
             cnt = await session.scalar(select(func.count(Admin.id)))
             if int(cnt or 0) == 0:
-                pw_hash, salt = hash_password(settings.admin_default_password)
+                # Aucun mot de passe par défaut en dur : si ADMIN_DEFAULT_PASSWORD
+                # n'est pas fourni via l'env, on génère un secret aléatoire
+                # affiché UNE fois au démarrage.
+                import secrets as _secrets
+                pw = settings.admin_default_password or _secrets.token_urlsafe(16)
+                if not settings.admin_default_password:
+                    logging.getLogger("anzar").warning(
+                        "ADMIN_DEFAULT_PASSWORD non défini — mot de passe admin initial : %s "
+                        "(changez-le immédiatement)", pw
+                    )
+                pw_hash, salt = hash_password(pw)
                 session.add(
                     Admin(
                         email=settings.admin_default_email,

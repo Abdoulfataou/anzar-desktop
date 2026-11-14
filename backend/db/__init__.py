@@ -79,6 +79,13 @@ from db.rate_limits import (
     cleanup_rate_limits,
 )
 
+# Tokens (révocation jti)
+from db.tokens import (
+    revoke_token_jti,
+    is_token_revoked,
+    cleanup_revoked_tokens,
+)
+
 # OTP
 from db.otp import (
     create_otp,
@@ -143,7 +150,7 @@ __all__ = [
     # Models
     "User", "OtpCode", "Credits", "Transaction", "UsageRecord",
     "Project", "Admin", "PaymentIntent",
-    "UserMemory", "CommunitySkill", "InstalledSkill", "RateLimit",
+    "UserMemory", "CommunitySkill", "InstalledSkill", "RateLimit", "RevokedToken",
     # Password
     "hash_password", "verify_password",
     # Users
@@ -158,6 +165,8 @@ __all__ = [
     "delete_project", "cleanup_old_projects",
     # Rate Limits
     "record_rate_limit_hit", "get_rate_limit_count", "cleanup_rate_limits",
+    # Tokens
+    "revoke_token_jti", "is_token_revoked", "cleanup_revoked_tokens",
     # OTP
     "create_otp", "verify_otp", "get_recent_otp_count", "cleanup_expired_otps",
     # Admin

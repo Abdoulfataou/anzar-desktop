@@ -280,6 +280,19 @@ class RateLimit(Base):
 
 
 # ============================================================================
+# REVOKED TOKENS (logout / compromission — révocation par jti)
+# ============================================================================
+
+class RevokedToken(Base):
+    __tablename__ = "revoked_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    jti: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    revoked_at: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)  # epoch seconds
+    expires_at: Mapped[float] = mapped_column(Float, nullable=False, index=True)  # epoch seconds — pour le purge
+
+
+# ============================================================================
 # COMPOSITE INDEXES
 # ============================================================================
 

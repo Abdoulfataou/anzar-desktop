@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 from config import settings
 from security import (
     rate_limiter, get_client_ip,
-    create_token, verify_token,
+    create_token, verify_token_checked,
 )
 from db import (
     verify_password,
@@ -79,7 +79,7 @@ async def get_current_admin(
     """FastAPI dependency: verify admin JWT. Returns admin payload with 'admin_id'."""
     if not credentials:
         raise HTTPException(401, "Token admin requis")
-    payload = verify_token(credentials.credentials)
+    payload = await verify_token_checked(credentials.credentials)
     if not payload:
         raise HTTPException(401, "Token admin invalide ou expiré")
     if not payload.get("is_admin"):

@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     # ─── Security ───
     jwt_secret: str = "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
-    jwt_expiry_hours: int = 720  # Token valid for 30 days
+    jwt_expiry_hours: int = 24  # Court : le client refresh toutes les 6h (grâce refresh : 7 jours)
     cors_origins: str = "http://localhost:1420,http://localhost:5173,tauri://localhost,https://tauri.localhost,https://endearing-exploration-production.up.railway.app,https://anzar-desktop-production.up.railway.app"
     rate_limit_per_minute: int = 30
     rate_limit_per_day: int = 500
@@ -153,7 +153,7 @@ class Settings(BaseSettings):
 
     # ─── Admin Panel ───
     admin_default_email: str = "admin@anzar.app"
-    admin_default_password: str = "Anzar2024!"
+    admin_default_password: str = ""  # Fourni via ADMIN_DEFAULT_PASSWORD (env) uniquement
     admin_jwt_expiry_hours: int = 24
 
     # ─── App ───
