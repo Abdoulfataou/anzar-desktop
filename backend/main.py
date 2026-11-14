@@ -64,7 +64,9 @@ async def lifespan(app: FastAPI):
     housekeeping_task.cancel()
     try:
         await housekeeping_task
-    except Exception:
+    except (asyncio.CancelledError, Exception):
+        # CancelledError hérite de BaseException (py>=3.8) : il faut l'attraper
+        # explicitement, sinon il remonte dans le shutdown de l'app.
         pass
     logger.info("ANZAR Backend stopped")
 

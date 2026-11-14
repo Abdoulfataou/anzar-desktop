@@ -127,7 +127,7 @@ async def verify_auth(request: Request):
     if not auth.startswith("Bearer "):
         raise HTTPException(401, "Missing authorization token")
 
-    payload = verify_token(auth[7:])
+    payload = await verify_token_checked(auth[7:])
     if not payload:
         raise HTTPException(401, "Invalid or expired token")
 
