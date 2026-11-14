@@ -18,7 +18,7 @@ import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
-import type { AIModel, APIMessage, Message, ToolCall } from '@/types';
+import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall } from '@/types';
 
 /** Qui décide avant que l'agent agisse. */
 export type PermissionMode = 'ask' | 'auto' | 'plan' | 'full';
@@ -62,6 +62,29 @@ export interface ToolEvent {
 
 const MAX_STEPS = 40;
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
+// Le contenu joint est renvoyé au modèle à CHAQUE étape : on le borne pour maîtriser le coût.
+const MAX_ATTACHMENT_CHARS = 40_000;
+const MAX_ATTACHMENTS_TOTAL_CHARS = 100_000;
+
+/** Ajoute le contenu des pièces jointes au message envoyé au modèle. */
+function withAttachments(content: string, attachments: ChatAttachment[]): string {
+  if (attachments.length === 0) return content;
+  let budget = MAX_ATTACHMENTS_TOTAL_CHARS;
+  const blocks = attachments.map((a) => {
+    const label = `[${a.ref}] ${a.name} (${a.kind})`;
+    if (a.kind === 'image') {
+      return `${label}\n(Image jointe : son contenu visuel n'est pas lisible ici. Dis-le à l'utilisateur si sa demande en dépend.)`;
+    }
+    const full = (a.excerpt || '').trim();
+    if (!full) return `${label}\n(Contenu illisible ou vide.)`;
+    const take = Math.max(0, Math.min(full.length, MAX_ATTACHMENT_CHARS, budget));
+    budget -= take;
+    if (take === 0) return `${label}\n(Non inclus : limite de taille des pièces jointes atteinte.)`;
+    const cut = take < full.length;
+    return `${label}\n\`\`\`\n${full.slice(0, take)}\n\`\`\`${cut ? `\n(Tronqué : ${take.toLocaleString('fr-FR')} caractères sur ${full.length.toLocaleString('fr-FR')}. Préviens l'utilisateur si la suite est nécessaire.)` : ''}`;
+  });
+  return `${content}\n\n# Pièces jointes\n\n${blocks.join('\n\n')}`;
+}
 
 function summarizeArgs(name: string, args: Record<string, any>): string {
   switch (name) {
@@ -155,8 +178,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     resolveApproval(false);
   }, [resolveApproval]);
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, rawAttachments: ChatAttachment[] = []) => {
     if (!content.trim() || isGenerating) return;
+    const attachments = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
+    const apiContent = withAttachments(content, attachments);
     const convId = ensureConversation();
 
     // Reset de l'historique API si on change de conversation
@@ -175,6 +200,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       role: 'user',
       content,
       timestamp: Date.now(),
+      // Affichage : nom et type seulement (le contenu part au modèle, pas dans l'historique local)
+      attachments: attachments.length
+        ? attachments.map(({ excerpt: _excerpt, ...rest }) => rest)
+        : undefined,
     };
     addMessage(userMsg);
 
@@ -250,7 +279,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       } else {
         apiHistoryRef.current[0] = system;
       }
-      apiHistoryRef.current.push({ role: 'user', content });
+      apiHistoryRef.current.push({ role: 'user', content: apiContent });
 
       let answered = false;
 

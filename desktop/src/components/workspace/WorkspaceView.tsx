@@ -221,7 +221,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             {/* Composer */}
             <div className="flex-shrink-0">
               <ChatInput
-                onSendMessage={async (msg) => { await sendMessage(msg); }}
+                onSendMessage={async (msg, attachments) => { await sendMessage(msg, attachments); }}
                 onStopGeneration={stop}
                 isLoading={isGenerating}
                 isOnline={onlineStatus}
