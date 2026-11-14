@@ -20,6 +20,21 @@ interface MessageBubbleProps {
   selectedProjectPath?: string;
 }
 
+
+// ============================================================================
+// REÇU DE COÛT (Blueprint : « Le coût est une information, jamais une alerte »)
+// Pricing de vente ANZAR en FCFA / 1M tokens (cf backend/config.py).
+// ============================================================================
+const PRICE_PER_M_FCFA: Record<string, { input: number; output: number }> = {
+  fast: { input: 250, output: 500 },      // DeepSeek Flash
+  thinking: { input: 400, output: 900 },  // reasoner
+};
+
+function estimateMessageCostFcfa(tokens: { prompt: number; completion: number }, model?: string): number {
+  const p = PRICE_PER_M_FCFA[(model as keyof typeof PRICE_PER_M_FCFA) in PRICE_PER_M_FCFA ? (model as keyof typeof PRICE_PER_M_FCFA) : 'fast'];
+  return Math.round((tokens.prompt / 1_000_000) * p.input + (tokens.completion / 1_000_000) * p.output);
+}
+
 export default function MessageBubble({ message, onCopy, onRegenerate, selectedProjectId = null, selectedProjectPath }: MessageBubbleProps) {
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
@@ -324,6 +339,19 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
         )}
 
         {/* Actions bar */}
+          {/* ── Reçu (Blueprint §Anatomie d'un message) : FCFA · modèle · tokens ── */}
+          {message.role === 'assistant' && message.tokens && !message.isStreaming && (
+            <div className="mt-1.5 pt-1.5 border-t border-border-subtle flex items-center gap-2 text-[11px] text-text-muted font-mono tabular-nums">
+              <span>≈ {estimateMessageCostFcfa(message.tokens, message.model).toLocaleString('fr-FR')} FCFA</span>
+              <span className="text-text-muted/50">·</span>
+              <span className="capitalize">{message.model || 'flash'}</span>
+              <span className="text-text-muted/50">·</span>
+              <span title={`${message.tokens.prompt} entrée / ${message.tokens.completion} sortie`}>
+                {(message.tokens.prompt + message.tokens.completion).toLocaleString('fr-FR')} tokens
+              </span>
+            </div>
+          )}
+
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
           {/* Copy — masqué en vibecoding */}
           {!isVibecoding && (

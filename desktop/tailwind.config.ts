@@ -43,6 +43,15 @@ const config: Config = {
           medium: 'var(--color-border-medium)',
           strong: 'var(--color-border-strong)',
         },
+        // Tokens Blueprint : ambre réservé aux crédits, bouton principal inversé
+        credit: {
+          DEFAULT: 'var(--color-credit)',
+          soft: 'var(--color-credit-soft)',
+        },
+        'primary-btn': {
+          DEFAULT: 'var(--color-primary)',
+          fg: 'var(--color-primary-fg)',
+        },
       },
       borderRadius: {
         DEFAULT: '8px',

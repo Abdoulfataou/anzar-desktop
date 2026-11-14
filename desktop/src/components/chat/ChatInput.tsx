@@ -529,6 +529,40 @@ function ModelToggle({
 }
 
 /* ===== Main ChatInput ===== */
+
+// ============================================================================
+// ESTIMATION DE COÛT (Blueprint : toujours une fourchette, caption text-2,
+// « une information, jamais une alerte »). Debounce 300 ms après la frappe.
+// Approximation UI : tokens ≈ 0.3 mot ; contexte projet moyen 4k–20k tokens.
+// ============================================================================
+const EST_PRICE_PER_M_FCFA: Record<AIModel, { input: number; output: number }> = {
+  fast: { input: 250, output: 500 },      // DeepSeek Flash
+  thinking: { input: 400, output: 900 },  // reasoner (réflexion, plus de sortie)
+};
+
+function estimateCostRangeFcfa(prompt: string, model: AIModel): [number, number] | null {
+  const trimmed = prompt.trim();
+  if (!trimmed) return null;
+  const p = EST_PRICE_PER_M_FCFA[model] ?? EST_PRICE_PER_M_FCFA.fast;
+  if (!p) return null;
+  const promptTokens = Math.ceil(trimmed.length / 4);
+  const inMin = promptTokens + 4_000;                 // contexte projet faible
+  const inMax = promptTokens + 20_000;                // contexte projet élevé
+  const outMin = Math.max(400, promptTokens * 0.6);
+  const outMax = Math.max(2_000, promptTokens * 2.5);
+  const cost = (i: number, o: number) => (i / 1_000_000) * p.input + (o / 1_000_000) * p.output;
+  return [Math.max(1, Math.round(cost(inMin, outMin))), Math.max(2, Math.round(cost(inMax, outMax)))];
+}
+
+function useDebouncedValue<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function ChatInput({
   onSendMessage,
   onStopGeneration,
@@ -543,6 +577,9 @@ export default function ChatInput({
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
+  // Estimation de coût — debounced 300 ms après la dernière frappe
+  const debouncedMessage = useDebouncedValue(message, 300);
+  const costEstimate = estimateCostRangeFcfa(debouncedMessage, selectedModel);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const attachButtonRef = useRef<HTMLButtonElement>(null);
@@ -934,6 +971,16 @@ export default function ChatInput({
                   selectedModel={selectedModel}
                   onModelChange={onModelChange}
                 />
+              )}
+
+              {/* Estimation de coût (Blueprint : fourchette, caption discrète) */}
+              {costEstimate && !isLoading && (
+                <span
+                  className="hidden sm:flex items-center text-[11px] text-text-muted font-mono tabular-nums"
+                  title="Estimation. Vous payez seulement ce qui est réellement consommé."
+                >
+                  ≈ {costEstimate[0].toLocaleString('fr-FR')}–{costEstimate[1].toLocaleString('fr-FR')} FCFA
+                </span>
               )}
 
               {/* Send / Stop */}

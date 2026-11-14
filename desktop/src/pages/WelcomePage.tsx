@@ -30,8 +30,13 @@ export default function WelcomePage() {
           onChat={(prompt) => handleIdea(prompt, 'chat')}
           onImportFolder={() => navigate('/login')}
         />
+        {/* Promesse Blueprint : « Payez à l'usage. Sans abonnement. Crédits offerts. » */}
         <p className="pb-5 text-center text-[11px] text-text-muted">
-          Connexion requise après la première idée — code OTP par email, sans mot de passe.
+          Payez à l'usage en FCFA. Sans abonnement.{' '}
+          <span className="text-credit font-medium">1 000 FCFA offerts</span> pour démarrer.
+        </p>
+        <p className="pb-5 -mt-3 text-center text-[10px] text-text-muted/70">
+          Connexion par code email après votre première idée — aucune carte bancaire.
         </p>
       </main>
     </div>

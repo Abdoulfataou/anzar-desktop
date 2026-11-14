@@ -3,89 +3,99 @@
 @tailwind utilities;
 
 @layer base {
-  /* ===== DARK THEME (Default) ===== */
+  /* ===== DARK THEME (Default) — Blueprint UI/UX (nov 2026) ===== */
   :root,
   html.dark {
     color-scheme: dark;
 
-    /* Backgrounds - deeper, richer */
-    --color-bg-primary: #0A0A0C;
-    --color-bg-secondary: #101013;
-    --color-bg-tertiary: #17171B;
+    /* Backgrounds */
+    --color-bg-primary: #0B0B0C;
+    --color-bg-secondary: #131315;
+    --color-bg-tertiary: #1A1A1D;
 
     /* Surfaces */
-    --color-surface-default: #151518;
-    --color-surface-elevated: #1B1B20;
-    --color-surface-hover: #232329;
+    --color-surface-default: #131315;
+    --color-surface-elevated: #1A1A1D;
+    --color-surface-hover: #222226;
 
-    /* Accent - palette tonale calme : un seul indigo désaturé,
-       déclinaisons tonales (pas de saut de teinte), glows atténués */
-    --color-accent-primary: #818CF8;
-    --color-accent-secondary: #9BA3F5;
-    --color-accent-tertiary: #B7BCF8;
-    --color-accent-success: #34B391;
-    --color-accent-warning: #D9A03F;
-    --color-accent-error: #D96A6A;
-    --color-accent-info: #5FA8B8;
+    /* Accent — iris = activité IA / focus uniquement (pas de gradient) */
+    --color-accent-primary: #6E7BFF;
+    --color-accent-secondary: #8A94FF;
+    --color-accent-tertiary: #A8AEFF;
+    --color-accent-success: #3DD68C;
+    --color-accent-warning: #F5B544; /* = credit : l'ambre appartient aux crédits */
+    --color-accent-error: #FF6B70;
+    --color-accent-info: #6E7BFF;
 
-    /* Gradient stops - subtil, quasi monochrome */
-    --gradient-start: #818CF8;
-    --gradient-mid: #9498EE;
-    --gradient-end: #A5A3E8;
+    /* Gradient stops — neutralisés (solide accent) : plus de dégradés */
+    --gradient-start: #6E7BFF;
+    --gradient-mid: #6E7BFF;
+    --gradient-end: #6E7BFF;
 
     /* Text */
-    --color-text-primary: #F4F4F5;
-    --color-text-secondary: #A6A6AE;
-    --color-text-tertiary: #78787F;
+    --color-text-primary: #EDEDEF;
+    --color-text-secondary: #A1A1AA;
+    --color-text-tertiary: #7D7D88;
     --color-text-muted: #57575E;
 
-    /* Borders - subtil 6%, médium ~9%, fort 14% */
+    /* Borders — 6% / 10% / 16% */
     --color-border-subtle: rgba(255, 255, 255, 0.06);
-    --color-border-medium: rgba(255, 255, 255, 0.09);
-    --color-border-strong: rgba(255, 255, 255, 0.14);
+    --color-border-medium: rgba(255, 255, 255, 0.10);
+    --color-border-strong: rgba(255, 255, 255, 0.16);
 
-    /* Shadows */
+    /* Tokens dédiés crédits (ambre) et bouton principal (inversé monochrome) */
+    --color-credit: #F5B544;
+    --color-credit-soft: rgba(245, 181, 68, 0.12);
+    --color-primary: #EDEDEF;
+    --color-primary-fg: #0B0B0C;
+
+    /* Shadows — bordures uniquement, sauf modales/menus */
     --color-shadow: rgba(0, 0, 0, 0.5);
-    --glow-accent: rgba(129, 140, 248, 0.10);
-    --glow-accent-strong: rgba(129, 140, 248, 0.22);
+    --glow-accent: rgba(110, 123, 255, 0.14);
+    --glow-accent-strong: rgba(110, 123, 255, 0.28);
   }
 
-  /* ===== LIGHT THEME ===== */
+  /* ===== LIGHT THEME — Blueprint UI/UX ===== */
   html.light {
     color-scheme: light;
 
-    --color-bg-primary: #FAFAFA;
-    --color-bg-secondary: #F4F4F5;
-    --color-bg-tertiary: #E4E4E7;
+    --color-bg-primary: #FAFAF9;
+    --color-bg-secondary: #FFFFFF;
+    --color-bg-tertiary: #F4F4F2;
 
     --color-surface-default: #FFFFFF;
-    --color-surface-elevated: #F9FAFB;
-    --color-surface-hover: #F0F0F3;
+    --color-surface-elevated: #F4F4F2;
+    --color-surface-hover: #ECEBE8;
 
-    --color-accent-primary: #6366F1;
-    --color-accent-secondary: #7A7CE8;
-    --color-accent-tertiary: #8E8FEC;
-    --color-accent-success: #0E9271;
-    --color-accent-warning: #C08A2D;
-    --color-accent-error: #C64F4F;
-    --color-accent-info: #3E8FA0;
+    --color-accent-primary: #4F5BD5;
+    --color-accent-secondary: #6270DB;
+    --color-accent-tertiary: #7A85E2;
+    --color-accent-success: #1A7F4B;
+    --color-accent-warning: #8A5A00;
+    --color-accent-error: #C62B32;
+    --color-accent-info: #4F5BD5;
 
-    --gradient-start: #6366F1;
-    --gradient-mid: #7677E6;
-    --gradient-end: #8B8BEB;
+    --gradient-start: #4F5BD5;
+    --gradient-mid: #4F5BD5;
+    --gradient-end: #4F5BD5;
 
-    --color-text-primary: #09090B;
-    --color-text-secondary: #52525B;
-    --color-text-tertiary: #71717A;
-    --color-text-muted: #A1A1AA;
+    --color-text-primary: #1A1A1C;
+    --color-text-secondary: #5C5C66;
+    --color-text-tertiary: #6E6E78;
+    --color-text-muted: #8E8E96;
 
-    --color-border-subtle: rgba(0, 0, 0, 0.06);
-    --color-border-medium: rgba(0, 0, 0, 0.09);
-    --color-border-strong: rgba(0, 0, 0, 0.14);
+    --color-border-subtle: #EFEDEA;
+    --color-border-medium: #E7E5E1;
+    --color-border-strong: #D4D2CD;
 
-    --color-shadow: rgba(0, 0, 0, 0.06);
-    --glow-accent: rgba(99, 102, 241, 0.06);
-    --glow-accent-strong: rgba(99, 102, 241, 0.12);
+    --color-credit: #8A5A00;
+    --color-credit-soft: #FFF4D6;
+    --color-primary: #1A1A1C;
+    --color-primary-fg: #FFFFFF;
+
+    --color-shadow: rgba(0, 0, 0, 0.08);
+    --glow-accent: rgba(79, 91, 213, 0.12);
+    --glow-accent-strong: rgba(79, 91, 213, 0.24);
   }
 
   /* ===== Base Styles ===== */
@@ -137,6 +147,27 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: transparent; }
   * { scrollbar-width: none; scrollbar-color: transparent transparent; }
+
+  /* Puce « −n » du badge de crédits : monte de 10px en fondu (600 ms) */
+  @keyframes debit-float {
+    0%   { opacity: 0; transform: translateY(4px); }
+    20%  { opacity: 1; transform: translateY(0); }
+    100% { opacity: 0; transform: translateY(-10px); }
+  }
+  .animate-debit-float {
+    animation: debit-float 600ms cubic-bezier(0.2, 0, 0, 1) forwards;
+  }
+
+  /* Blueprint : prefers-reduced-motion → fondus de 120 ms, sans déplacement */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 120ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 120ms !important;
+    }
+    .animate-debit-float { animation: fade-only 120ms forwards; }
+    @keyframes fade-only { from { opacity: 0; } to { opacity: 1; } }
+  }
 }
 
 @layer components {
@@ -172,17 +203,23 @@
                 0 0 60px -10px var(--glow-accent);
   }
 
-  /* Gradient text */
+  /* Ancien "gradient text" → accent solide (plus de dégradés) */
   .gradient-text {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    background: none;
+    -webkit-text-fill-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
   }
 
-  /* Gradient background */
+  /* Ancien "gradient background" → bouton principal MONOCHROME inversé
+   * (Blueprint : actions principales monochromes, pas de dégradés.
+   * On garde le nom de classe pour ne rien casser, le rendu est solide.)
+   * !important sur la couleur pour contrer les text-white des composants. */
   .gradient-bg {
-    background: linear-gradient(135deg, var(--gradient-start), var(--gradient-mid), var(--gradient-end));
+    background: var(--color-primary);
+    color: var(--color-primary-fg) !important;
+  }
+  .gradient-bg:hover {
+    background: color-mix(in srgb, var(--color-primary) 90%, transparent);
   }
 
   /* Shimmer animation for loading */
