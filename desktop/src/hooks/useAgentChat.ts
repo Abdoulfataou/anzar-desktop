@@ -112,6 +112,61 @@ export interface ToolEvent {
 
 const MAX_STEPS = 40;
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
+
+// ── Économie de crédits ─────────────────────────────────────────────────────
+// À chaque étape, TOUT l'historique est renvoyé au modèle (et facturé). Les
+// anciens résultats d'outils (fichiers lus, sorties de commandes) en sont la
+// plus grosse part et ne servent plus après quelques étapes : on les raccourcit.
+// La modification est faite une fois, sur place : le début de l'historique reste
+// identique d'une étape à l'autre (meilleur cache côté fournisseur).
+const KEEP_RECENT_TOOL_RESULTS = 6;   // derniers résultats gardés en entier
+const SMALL_RESULT_CHARS = 1_500;     // un résultat court n'est jamais raccourci
+const STUB_CHARS = 600;               // ce qu'on garde d'un ancien résultat
+const SOFT_LIMIT_CHARS = 140_000;     // au-delà, on serre davantage (~35k tokens)
+const SHRUNK_MARK = '[ancien résultat raccourci';
+
+function shrinkText(text: string, keep: number): string {
+  if (text.length <= keep + 200 || text.includes(SHRUNK_MARK)) return text;
+  return `${text.slice(0, keep)}\n… ${SHRUNK_MARK} : ${text.length.toLocaleString('fr-FR')} caractères au total — relance l'outil si tu as besoin du détail]`;
+}
+
+/** Raccourcit les longs arguments (contenu écrit par write_file/edit_file) d'un ancien appel d'outil. */
+function shrinkToolCallArgs(call: ToolCall): ToolCall {
+  const raw = call.function.arguments || '';
+  if (raw.length <= SMALL_RESULT_CHARS) return call;
+  try {
+    const args = JSON.parse(raw);
+    for (const k of Object.keys(args)) {
+      if (typeof args[k] === 'string' && args[k].length > 400) {
+        args[k] = `${args[k].slice(0, 200)}… [${args[k].length} caractères, raccourci]`;
+      }
+    }
+    return { ...call, function: { ...call.function, arguments: JSON.stringify(args) } };
+  } catch {
+    return call;
+  }
+}
+
+/**
+ * Raccourcit sur place tout ce qui précède les `keepRecent` derniers résultats d'outils :
+ * leurs résultats longs et les longs arguments des appels correspondants.
+ */
+function compactHistory(history: APIMessage[], keepRecent: number, stubChars: number): void {
+  const toolIdx: number[] = [];
+  history.forEach((m, i) => { if (m.role === 'tool') toolIdx.push(i); });
+  const cutoff = keepRecent > 0 ? toolIdx[toolIdx.length - keepRecent] ?? 0 : history.length;
+  for (let i = 0; i < cutoff; i++) {
+    const m = history[i];
+    if (m.role === 'tool' && (m.content?.length || 0) > SMALL_RESULT_CHARS) {
+      history[i] = { ...m, content: shrinkText(m.content || '', stubChars) };
+    } else if (m.role === 'assistant' && m.tool_calls?.length) {
+      history[i] = { ...m, tool_calls: m.tool_calls.map(shrinkToolCallArgs) };
+    }
+  }
+}
+
+const historyChars = (history: APIMessage[]) =>
+  history.reduce((n, m) => n + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0);
 // Le contenu joint est renvoyé au modèle à CHAQUE étape : on le borne pour maîtriser le coût.
 const MAX_ATTACHMENT_CHARS = 40_000;
 const MAX_ATTACHMENTS_TOTAL_CHARS = 100_000;
@@ -379,6 +434,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           // Si la réponse précédente a été coupée, l'historique doit rester valide pour « continue »
           closeDanglingToolCalls(apiHistoryRef.current);
         }
+        // Les résultats d'outils des demandes précédentes ne servent plus qu'en résumé
+        compactHistory(apiHistoryRef.current, 0, 300);
         apiHistoryRef.current.push({ role: 'user', content: apiContent });
       }
 
@@ -392,6 +449,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         let stepContent = '';
 
         // Chaque étape renvoie tout l'historique au modèle : on le compte à chaque fois.
+        compactHistory(apiHistoryRef.current, KEEP_RECENT_TOOL_RESULTS, STUB_CHARS);
+        if (historyChars(apiHistoryRef.current) > SOFT_LIMIT_CHARS) {
+          compactHistory(apiHistoryRef.current, 2, 300);
+        }
         promptTokens += historyTokens();
         const tools = !workspacePath
           ? undefined

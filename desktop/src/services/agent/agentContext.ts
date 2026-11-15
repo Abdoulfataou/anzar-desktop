@@ -34,9 +34,9 @@ export interface AgentProjectContext {
 
 export const MEMORY_FILENAME = 'ANZAR.md';
 
-const MAX_CODE_MAP_CHARS = 9_000;
-const MAX_HINTS_CHARS = 4_000;
-const MAX_MEMORY_CHARS = 8_000;
+const MAX_CODE_MAP_CHARS = 6_000;   // renvoyé à chaque étape : l'agent complète avec list_dir
+const MAX_HINTS_CHARS = 2_500;
+const MAX_MEMORY_CHARS = 5_000;
 const MAX_INDEXED_FILES = 400;
 const MAX_FILE_SIZE_TO_INDEX = 120_000;
 

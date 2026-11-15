@@ -41,7 +41,7 @@ export interface ToolResult {
 // LIMITES
 // ============================================================================
 
-const MAX_FILE_READ_CHARS = 48_000;      // ~12k tokens par lecture
+const MAX_FILE_READ_CHARS = 32_000;      // ~8k tokens par lecture (relire par tranches avec offset/limit)
 const MAX_COMMAND_OUTPUT_CHARS = 12_000;
 const MAX_SEARCH_RESULTS = 40;
 const MAX_LIST_ENTRIES = 300;
@@ -263,7 +263,12 @@ async function execReadFile(args: any, ctx: ToolExecutionContext): Promise<ToolR
     const count = args.limit ?? lines.length;
     content = lines.slice(start, start + count).join('\n');
   }
-  return { output: truncate(content, MAX_FILE_READ_CHARS, 'lecture') };
+  const out = truncate(content, MAX_FILE_READ_CHARS, 'lecture');
+  return {
+    output: out.length < content.length
+      ? `${out}\n(Fichier long : lis la suite avec offset/limit, par exemple offset=${content.slice(0, MAX_FILE_READ_CHARS).split('\n').length} limit=300.)`
+      : out,
+  };
 }
 
 async function execWriteFile(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
