@@ -3,6 +3,7 @@
  * Navigation rapide et actions depuis le clavier
  */
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { startNewTask } from '@/lib/newTask';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -16,9 +17,6 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useThemeStore } from '@/stores/themeStore';
-import { useChatStore } from '@/stores/chatStore';
-import { useProjectStore } from '@/stores/projectStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 
 interface CommandItem {
   id: string;
@@ -47,9 +45,7 @@ export default function CommandPalette() {
       icon: Plus,
       shortcut: '⌘N',
       action: () => {
-        const model = useSettingsStore.getState().settings.model;
-        useProjectStore.getState().setActiveProject(null);
-        useChatStore.getState().createConversation(undefined, model);
+        startNewTask();
         navigate('/');
         setIsOpen(false);
       },
@@ -137,9 +133,7 @@ export default function CommandPalette() {
         case ',': e.preventDefault(); navigate('/settings'); break;
         case 'n': {
           e.preventDefault();
-          const model = useSettingsStore.getState().settings.model;
-          useProjectStore.getState().setActiveProject(null);
-          useChatStore.getState().createConversation(undefined, model);
+          startNewTask();
           navigate('/');
           break;
         }

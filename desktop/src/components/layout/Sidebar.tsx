@@ -14,10 +14,10 @@ import { useThemeStore } from '@/stores/themeStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useAccountStore } from '@/stores/accountStore';
-import { useSettingsStore } from '@/stores/settingsStore';
 import { useAutomationStore } from '@/stores/automationStore';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import { openWorkspaceFolder } from '@/lib/openWorkspace';
+import { startNewTask } from '@/lib/newTask';
 import type { Conversation } from '@/types';
 
 /** Âge compact : now, 5m, 3h, 76d */
@@ -50,27 +50,19 @@ export default function Sidebar({ className }: { className?: string }) {
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const renameConversation = useChatStore((s) => s.renameConversation);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
-  const createConversation = useChatStore((s) => s.createConversation);
   const projects = useProjectStore((s) => s.projects);
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const setActiveProject = useProjectStore((s) => s.setActiveProject);
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const user = useAccountStore((s) => s.user);
   const credits = useAccountStore((s) => s.credits);
-  const model = useSettingsStore((s) => s.settings.model);
   const { confirm, ConfirmDialog } = useConfirmModal();
 
   const goHome = () => { if (location.pathname !== '/') navigate('/'); };
 
   /** Nouvelle tâche, rattachée au projet donné (ou hors projet). */
   const newTask = (projectId: string | null) => {
-    setActiveProject(projectId);
-    const conv = createConversation(undefined, model);
-    if (projectId) {
-      useChatStore.setState((s) => ({
-        conversations: s.conversations.map((c) => (c.id === conv.id ? { ...c, projectId } : c)),
-      }));
-    }
+    startNewTask(projectId);
     goHome();
   };
 

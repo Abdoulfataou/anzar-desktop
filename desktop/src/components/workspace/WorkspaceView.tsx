@@ -28,6 +28,7 @@ import ResizableSplit from '@/components/ui/ResizableSplit';
 import WorkspacePanel from './WorkspacePanel';
 import { claimPendingPrompt } from '@/lib/pendingPrompt';
 import { openWorkspaceFolder, createWorkspaceFolder } from '@/lib/openWorkspace';
+import ProjectPicker from './ProjectPicker';
 import { terminalService } from '@/services/terminal';
 import { FILES_CHANGED_EVENT } from '@/services/agent/fileChanges';
 import { APPROVE_PLAN_EVENT } from '@/components/chat/PlanView';
@@ -130,21 +131,38 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
     onFileChanged,
   });
 
-  // ── Ouverture de dossier (point d'entrée unique, sans doublon) ──
-  const handleOpenFolder = useCallback(async () => {
-    const id = await openWorkspaceFolder();
-    if (!id) return;
+  // ── Projet de la tâche affichée ──
+  // Tant que la tâche est vide, on choisit librement son projet ; après le premier message il est figé.
+  const attachActiveTask = useCallback((projectId: string | null) => {
+    const st = useChatStore.getState();
+    const conv = st.conversations.find((c) => c.id === st.activeConversationId);
+    if (conv && (!conv.messages.length || !conv.projectId)) {
+      useChatStore.setState((s) => ({
+        conversations: s.conversations.map((c) => {
+          if (c.id !== conv.id) return c;
+          const { projectId: _old, ...rest } = c;
+          return projectId ? { ...rest, projectId } : rest;
+        }),
+      }));
+    }
+    useProjectStore.getState().setActiveProject(projectId);
     setRefreshKey((k) => k + 1);
     setModifiedCount(0);
   }, []);
 
+  // ── Ouverture de dossier (point d'entrée unique, sans doublon) ──
+  const handleOpenFolder = useCallback(async () => {
+    const id = await openWorkspaceFolder();
+    if (!id) return;
+    attachActiveTask(id);
+  }, [attachActiveTask]);
+
   const handleNewFolder = useCallback(async () => {
     const id = await createWorkspaceFolder();
     if (!id) return;
-    setRefreshKey((k) => k + 1);
-    setModifiedCount(0);
+    attachActiveTask(id);
     toast.success('Dossier prêt — décris ton projet dans le chat');
-  }, []);
+  }, [attachActiveTask]);
 
   // ── Branche git du workspace (puce d'en-tête) ──
   const [branch, setBranch] = useState<string | null>(null);
@@ -257,6 +275,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
   const taskProject = activeConversation?.projectId
     ? projects.find((p) => p.id === activeConversation.projectId) || null
     : null;
+  const taskStarted = (activeConversation?.messages.length || 0) > 0;
   const taskNeedsFolder = !!taskProject || (activeConversation?.messages || []).some((m) => (m.toolEvents?.length || 0) > 0);
 
   /** Rouvre le dossier de la tâche (ou en choisit un) et y rattache la tâche. */
@@ -298,8 +317,13 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
                 {activeConversation?.title || 'Nouvelle tâche'}
               </h1>
               <button
-                onClick={() => void handleOpenFolder()}
-                title={workspacePath || 'Ouvrir un dossier pour que l\'agent puisse lire et modifier ton code'}
+                onClick={() => {
+                  if (taskStarted && taskProject) attachActiveTask(taskProject.id);
+                  else void handleOpenFolder();
+                }}
+                title={taskStarted && taskProject
+                  ? `${String(taskProject.metadata?.localPath || '')} — le projet d'une tâche commencée ne change plus`
+                  : workspacePath || 'Ouvrir un dossier pour que l\'agent puisse lire et modifier ton code'}
                 className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors flex-shrink-0 max-w-[40%]"
               >
                 <Folder size={12} className="flex-shrink-0" />
@@ -387,8 +411,16 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             )}
             {showRecharge && <RechargeModal onClose={() => setShowRecharge(false)} />}
 
-            {/* Composer */}
+            {/* Composer (+ choix du projet tant que la tâche est vide) */}
             <div className="flex-shrink-0">
+              {!taskStarted && (
+                <ProjectPicker
+                  currentProjectId={activeProjectId}
+                  onPick={attachActiveTask}
+                  onOpenFolder={() => void handleOpenFolder()}
+                  onNewFolder={() => void handleNewFolder()}
+                />
+              )}
               <ChatInput
                 onSendMessage={async (msg, attachments) => { await sendMessage(msg, await withMentionedFiles(msg, attachments || [])); }}
                 mentionFiles={mentionFiles}
