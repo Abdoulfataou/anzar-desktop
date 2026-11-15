@@ -4,7 +4,9 @@ Résultat : `https://anzar-api.issalanhub.com`, servi par le **même VPS** que S
 
 - ANZAR a sa **propre pile Docker** dans `/root/anzar` : sa base PostgreSQL 18 (jamais exposée) et son API.
 - Le **Caddy de ShagoStore** reçoit le HTTPS (certificat Let's Encrypt automatique) et transmet
-  `anzar-api.issalanhub.com` à l'API d'ANZAR, qui rejoint son réseau Docker sous le nom `anzar-api`.
+  `anzar-api.issalanhub.com` à l'API d'ANZAR, qui rejoint le réseau Docker `issalan_passerelle` sous le nom
+  `anzar-api`. Sur ce réseau il n'y a que ce Caddy : ANZAR ne voit ni la base ni l'API ShagoStore, et
+  inversement (contrôle : `bash /root/shagostore/deploy/audit-serveur.sh`, partie « Cloison »).
 - Sauvegarde quotidienne gardée 14 jours, copiée chiffrée sur Telegram comme ShagoStore.
 
 Durée : 20 à 30 minutes. Prérequis : ShagoStore tourne déjà sur le VPS (`/root/shagostore`).
@@ -72,7 +74,9 @@ nano .env
 Dans `.env`, remplis :
 - `DEEPSEEK_API_KEY` : ta clé DeepSeek (platform.deepseek.com → API keys) ;
 - `BREVO_API_KEY` : la même clé Brevo que ShagoStore (codes de connexion par e-mail) ;
-- `TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID` : les mêmes que dans `/root/shagostore/deploy/.env` (sauvegardes).
+- `TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID` : de préférence un bot à part (créé avec @BotFather), pour pouvoir
+  couper l'un sans l'autre. Même conseil pour `BREVO_API_KEY` : une clé Brevo par projet. Ne jamais reprendre
+  un mot de passe, `JWT_SECRET` ou `CLE_SAUVEGARDE` de ShagoStore.
 
 Les mots de passe sont générés tout seuls. **Garde une copie de `.env`** dans ton gestionnaire de mots de passe :
 `cat .env`. `ADMIN_DEFAULT_PASSWORD` est le mot de passe du compte administrateur `abdul@issalanhub.com`.
@@ -126,7 +130,7 @@ Après chaque `git push` depuis le Mac :
 
 | Symptôme | Cause probable | Solution |
 |---|---|---|
-| `network shagostore_default not found` | ShagoStore pas lancé ou nommé autrement | `docker network ls` ; lancer ShagoStore d'abord |
+| `network issalan_passerelle not found` | ShagoStore pas encore à jour (c'est lui qui crée ce réseau) | mettre ShagoStore à jour d'abord : `/root/shagostore/deploy/mettre-a-jour.sh` |
 | `502` sur l'adresse ANZAR | API d'ANZAR arrêtée ou en erreur | `docker compose ps` puis `docker compose logs api` |
 | Erreur de certificat | DNS pas encore propagé | attendre, puis `docker compose restart caddy` dans `/root/shagostore/deploy` |
 | `FATAL: JWT_SECRET…` au démarrage | `.env` absent ou vide | relancer `./initialiser.sh` (seulement si la base est vide) |

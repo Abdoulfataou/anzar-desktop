@@ -1,6 +1,9 @@
 # ANZAR en production sur le VPS Hetzner partagé avec ShagoStore : PostgreSQL + API.
 # Pas de Caddy ici : celui de ShagoStore reçoit le HTTPS et transmet anzar-api.issalanhub.com
-# à ce service (réseau Docker « shagostore_default », nom « anzar-api »).
+# à ce service (réseau Docker « issalan_passerelle », nom « anzar-api »).
+# Cloison avec ShagoStore : ANZAR ne rejoint que la passerelle, où il n'y a que le Caddy de ShagoStore ;
+# il ne voit ni la base ni l'API ShagoStore, et ShagoStore ne voit pas sa base. Conteneurs sans droits
+# système et limités en mémoire, processeur et processus : ANZAR ne peut pas étouffer ShagoStore.
 # Lancement : ./initialiser.sh   puis   docker compose up -d --build
 name: anzar
 
@@ -20,8 +23,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-    networks: [interne]
-    # Aucun port publié : la base n'est joignable que par l'API.
+    networks: [donnees]
+    # Aucun port publié : la base n'est joignable que par l'API (réseau interne, sans Internet).
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
 
   api:
     build: ../backend
@@ -46,9 +53,15 @@ services:
       # Accès strictement payant : aucun crédit offert à l'inscription.
       WELCOME_BONUS_FCFA: ${WELCOME_BONUS_FCFA:-0}
     networks:
-      interne: {}
-      shago:
+      donnees: {}
+      sortie: {}          # Internet : DeepSeek, Kimi, Brevo
+      passerelle:
         aliases: [anzar-api]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 1g
+    cpus: 1.5
+    pids_limit: 256
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
@@ -61,17 +74,26 @@ services:
         VITE_BACKEND_URL: https://anzar-api.issalanhub.com
     restart: unless-stopped
     networks:
-      shago:
+      passerelle:
         aliases: [anzar-admin]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]   # écouter sur le port 80
+    mem_limit: 128m
+    pids_limit: 64
     logging:
       driver: json-file
       options: { max-size: "5m", max-file: "3" }
 
 networks:
-  interne: {}
-  # Réseau créé par ShagoStore (docker compose de /root/shagostore/deploy) : son Caddy y joint l'API.
-  shago:
-    name: shagostore_default
+  # Base + API, sans Internet.
+  donnees:
+    internal: true
+  # Sortie vers Internet pour l'API seulement.
+  sortie: {}
+  # Réseau créé par ShagoStore (/root/shagostore/deploy) : son Caddy y joint l'API et le panneau, rien d'autre.
+  passerelle:
+    name: issalan_passerelle
     external: true
 
 volumes:

@@ -7,8 +7,11 @@
 # Restaurer :  docker compose exec -T db pg_restore -U anzar -d anzar --clean --if-exists < sauvegardes/FICHIER.dump
 # Copie hors serveur : voir README.md, « Sauvegardes hors du serveur ».
 set -eu
+# Sauvegardes lisibles par root seulement.
+umask 077
 cd "$(dirname "$0")"
 mkdir -p sauvegardes
+chmod 700 sauvegardes
 f="sauvegardes/anzar-$(date +%Y%m%d-%H%M).dump"
 docker compose exec -T db pg_dump -U anzar -d anzar -Fc > "$f.tmp"
 mv "$f.tmp" "$f"
@@ -54,10 +57,13 @@ if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
     n=$((n + 1))
     legende="ANZAR · sauvegarde du $(date '+%d/%m/%Y %H:%M') · $(du -h "$f" | cut -f1)"
     [ "$morceaux" -gt 1 ] && legende="$legende · morceau $n/$morceaux"
-    if ! sortie="$(curl -sS --retry 5 --retry-delay 10 --max-time 600 \
+    # L'adresse (qui contient le jeton du bot) passe par l'entrée standard : absente de ps et des erreurs.
+    if ! sortie="$(printf 'url = "https://api.telegram.org/bot%s/sendDocument"\n' "$TELEGRAM_BOT_TOKEN" | curl -sS -K - \
+        --retry 5 --retry-delay 10 --max-time 600 \
         -F chat_id="$TELEGRAM_CHAT_ID" -F caption="$legende" \
-        -F document=@"$m;filename=$(basename "$f").enc$([ "$morceaux" -gt 1 ] && echo ".$(printf '%02d' $((n - 1)))")" \
-        "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" 2>&1)" || ! printf '%s' "$sortie" | grep -q '"ok":true'; then
+        -F document=@"$m;filename=$(basename "$f").enc$([ "$morceaux" -gt 1 ] && echo ".$(printf '%02d' $((n - 1)))")" 2>&1)" \
+        || ! printf '%s' "$sortie" | grep -q '"ok":true'; then
+      sortie="$(printf '%s' "$sortie" | sed "s|$TELEGRAM_BOT_TOKEN|<jeton>|g")"
       message="$(printf '%s' "$sortie" | sed -n 's/.*"description":"\([^"]*\)".*/\1/p')"
       ecrire_etat ECHEC telegram "" "${message:-$sortie}"
       echo "$(date '+%F %T') ✖ copie Telegram : ${message:-$sortie}"

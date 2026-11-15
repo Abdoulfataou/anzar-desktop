@@ -23,7 +23,7 @@ SENDER_EMAIL=no-reply@issalanhub.com
 SENDER_NAME=ANZAR
 # Marge sur le coût réel DeepSeek (3 = prix de vente = 3 × coût)
 DEEPSEEK_MARGIN=3.0
-# Sauvegardes hors serveur par Telegram (mêmes valeurs que ShagoStore possible)
+# Sauvegardes hors serveur par Telegram (de préférence un bot à part de celui de ShagoStore)
 TELEGRAM_BOT_TOKEN=
 TELEGRAM_CHAT_ID=
 CLE_SAUVEGARDE=$(alea 32)
