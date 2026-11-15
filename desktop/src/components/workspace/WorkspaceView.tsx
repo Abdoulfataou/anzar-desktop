@@ -31,6 +31,7 @@ import { claimPendingPrompt } from '@/lib/pendingPrompt';
 import { openWorkspaceFolder, createWorkspaceFolder } from '@/lib/openWorkspace';
 import ProjectPicker from './ProjectPicker';
 import { OPEN_GIT_EVENT } from './GitPanel';
+import { NewWorktreeDialog } from './WorktreesDialog';
 import { terminalService } from '@/services/terminal';
 import { FILES_CHANGED_EVENT } from '@/services/agent/fileChanges';
 import { APPROVE_PLAN_EVENT } from '@/components/chat/PlanView';
@@ -156,6 +157,9 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
     setRefreshKey((k) => k + 1);
     setModifiedCount(0);
   }, []);
+
+  // ── Nouvelle worktree pour la tâche vide (sélecteur de projet) ──
+  const [worktreeRepo, setWorktreeRepo] = useState<string | null>(null);
 
   // ── Ouverture de dossier (point d'entrée unique, sans doublon) ──
   const handleOpenFolder = useCallback(async () => {
@@ -321,6 +325,13 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
 
   return (
     <div className="h-full min-h-0 flex flex-col">
+      {worktreeRepo && (
+        <NewWorktreeDialog
+          repoPath={worktreeRepo}
+          onClose={() => setWorktreeRepo(null)}
+          onCreated={(id) => { setWorktreeRepo(null); attachActiveTask(id); }}
+        />
+      )}
       {/* ── Split chat | workspace ── */}
       <ResizableSplit
         className="flex-1"
@@ -440,6 +451,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
                   onPick={attachActiveTask}
                   onOpenFolder={() => void handleOpenFolder()}
                   onNewFolder={() => void handleNewFolder()}
+                  onNewWorktree={setWorktreeRepo}
                 />
               )}
               <ChatInput

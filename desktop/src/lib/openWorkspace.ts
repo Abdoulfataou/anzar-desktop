@@ -63,3 +63,20 @@ export async function createWorkspaceFolder(): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Projet ANZAR d'une worktree : « dépôt · branche », rattaché au projet du dépôt.
+ * Réutilisé s'il existe déjà pour ce dossier. Retourne son id.
+ */
+export function activateWorktree(path: string, repoName: string, branch: string, parentProjectId: string | null): string {
+  const id = activateWorkspace(path);
+  useProjectStore.getState().updateProject(id, {
+    name: `${repoName} · ${branch}`,
+    metadata: {
+      ...(useProjectStore.getState().projects.find((p) => p.id === id)?.metadata || {}),
+      localPath: path,
+      worktree: { branch, parentProjectId },
+    },
+  } as any);
+  return id;
+}

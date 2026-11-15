@@ -3,19 +3,22 @@
  * pré-rempli avec le dernier projet utilisé, modifiable en un clic tant que rien n'est envoyé.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Folder, FolderOpen, FolderPlus, ChevronDown, Check, Ban } from 'lucide-react';
+import { Folder, FolderOpen, FolderPlus, ChevronDown, Check, Ban, GitBranch } from 'lucide-react';
+import { terminalService } from '@/services/terminal';
 import { useProjectStore } from '@/stores/projectStore';
 import { useChatStore } from '@/stores/chatStore';
 
 const MAX_RECENT = 5;
 
 export default function ProjectPicker({
-  currentProjectId, onPick, onOpenFolder, onNewFolder,
+  currentProjectId, onPick, onOpenFolder, onNewFolder, onNewWorktree,
 }: {
   currentProjectId: string | null;
   onPick: (projectId: string | null) => void;
   onOpenFolder: () => void;
   onNewFolder: () => void;
+  /** Créer la tâche dans une nouvelle worktree du projet (dépôt Git seulement) */
+  onNewWorktree?: (repoPath: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -44,6 +47,17 @@ export default function ProjectPicker({
   }, [projects, conversations]);
 
   const current = projects.find((p) => p.id === currentProjectId) || null;
+  const currentPath = (current?.metadata?.localPath as string | undefined) || null;
+
+  // Le projet affiché est-il un dépôt Git ? (vérifié à l'ouverture du menu)
+  const [isRepo, setIsRepo] = useState(false);
+  useEffect(() => {
+    if (!open || !currentPath || !onNewWorktree) { setIsRepo(false); return; }
+    let alive = true;
+    void terminalService.execArgs('git', ['rev-parse', '--is-inside-work-tree'], { cwd: currentPath })
+      .then((r) => { if (alive) setIsRepo(r.success && r.stdout.includes('true')); });
+    return () => { alive = false; };
+  }, [open, currentPath, onNewWorktree]);
   // Le projet affiché reste dans la liste même s'il n'est pas parmi les plus récents
   const list = current && !recent.some((p) => p.id === current.id) ? [current, ...recent.slice(0, MAX_RECENT - 1)] : recent;
 
@@ -72,6 +86,12 @@ export default function ProjectPicker({
             </button>
           ))}
           {list.length > 0 && <div className="my-0.5 h-px bg-border-subtle" />}
+          {isRepo && current && currentPath && onNewWorktree && (
+            <button type="button" className={item} onClick={() => { setOpen(false); onNewWorktree(currentPath); }}>
+              <GitBranch size={13} className="flex-shrink-0 text-text-secondary" />
+              <span className="flex-1 min-w-0 truncate text-text-primary">Nouvelle worktree de {current.name}…</span>
+            </button>
+          )}
           <button type="button" className={item} onClick={() => { setOpen(false); onOpenFolder(); }}>
             <FolderOpen size={13} className="flex-shrink-0 text-text-secondary" />
             <span className="text-text-primary">Ouvrir un dossier…</span>

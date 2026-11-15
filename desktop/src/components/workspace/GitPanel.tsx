@@ -9,14 +9,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   GitBranch, RefreshCw, Loader2, ArrowUp, ArrowDown, Undo2, Sparkles, Check, ChevronRight, ChevronDown,
-  Plus, Minus, Search, X, GitCommitHorizontal, FileText, Copy, AlertTriangle,
+  Plus, Minus, Search, X, GitCommitHorizontal, FileText, Copy, AlertTriangle, FolderTree, List, Folder, Layers,
 } from 'lucide-react';
+import WorktreesDialog from './WorktreesDialog';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import { terminalService } from '@/services/terminal';
 import {
   readGitState, listChanges, fileDiff, initRepo, stage, unstage, discardChange, commit, push, pull,
+  stageMany, unstageMany, discardMany,
   hasIdentity, suggestCommitMessage, listBranches, switchBranch, createBranch, isValidBranchName,
   type GitChange, type GitState, type GitSource,
 } from '@/services/git';
@@ -65,6 +67,10 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
   const [dialog, setDialog] = useState<null | 'commit' | 'push'>(null);
   const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
   const [log, setLog] = useState<{ hash: string; subject: string; when: string }[]>([]);
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [tree, setTree] = useState<boolean>(() => { try { return localStorage.getItem('anzar.git.tree') === '1'; } catch { return false; } });
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [showWorktrees, setShowWorktrees] = useState(false);
   const { confirm, ConfirmDialog } = useConfirmModal();
   const lastTurnKey = lastTurnPaths.join('\n');
 
@@ -74,7 +80,9 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
       const s = await readGitState(workspacePath);
       setState(s);
       if (!s.isRepo) { setChanges([]); return; }
-      setChanges(await listChanges(workspacePath, s, source, lastTurnKey ? lastTurnKey.split('\n') : []));
+      const list = await listChanges(workspacePath, s, source, lastTurnKey ? lastTurnKey.split('\n') : []);
+      setChanges(list);
+      setSelection((prev) => new Set([...prev].filter((p) => list.some((c) => c.path === p))));
       if (s.hasCommits) {
         const r = await terminalService.execArgs('git', ['log', '-n', '8', '--format=%h%x09%s%x09%cr'], { cwd: workspacePath });
         setLog(r.stdout.split('\n').filter(Boolean).map((l) => { const [hash, subject, when] = l.split('\t'); return { hash, subject, when }; }));
@@ -122,6 +130,20 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
     });
     if (ok) await run(`discard:${c.path}`, () => discardChange(workspacePath, c));
   };
+
+  const selectedChanges = changes.filter((c) => selection.has(c.path));
+  const toggleSelect = (path: string) => setSelection((prev) => { const n = new Set(prev); n.has(path) ? n.delete(path) : n.add(path); return n; });
+  const discardSelected = async () => {
+    const list = selectedChanges.filter((c) => c.status !== 'U');
+    const ok = await confirm({
+      title: 'Annuler les modifications',
+      message: `Annuler les modifications de ${list.length} fichier${list.length > 1 ? 's' : ''} ? Les nouveaux fichiers seront supprimés. C'est irréversible.`,
+      confirmLabel: 'Annuler les modifications',
+      variant: 'danger',
+    });
+    if (ok && await run('bulk', () => discardMany(workspacePath, list))) setSelection(new Set());
+  };
+  const toggleTree = () => setTree((v) => { try { localStorage.setItem('anzar.git.tree', v ? '0' : '1'); } catch { /* ignore */ } return !v; });
 
   if (!state) {
     return <div className="flex flex-1 items-center justify-center text-text-muted text-ui-caption"><Loader2 size={14} className="animate-spin mr-2" /> Lecture de Git…</div>;
@@ -172,6 +194,11 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
             {busy === 'pull' ? <Loader2 size={12} className="animate-spin" /> : <ArrowDown size={12} />} Récupérer
           </button>
         )}
+        {state.hasCommits && (
+          <button onClick={() => setShowWorktrees(true)} className={iconBtn} title="Worktrees de ce dépôt">
+            <Layers size={13} />
+          </button>
+        )}
         <button onClick={() => void refresh()} className={iconBtn} title="Actualiser">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
         </button>
@@ -206,7 +233,41 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
           />
           {filter && <button onClick={() => setFilter('')} className="text-text-muted hover:text-text-primary" title="Effacer le filtre"><X size={12} /></button>}
         </div>
+        <button onClick={toggleTree} className={iconBtn} title={tree ? 'Afficher en liste' : 'Grouper par dossier'}>
+          {tree ? <List size={13} /> : <FolderTree size={13} />}
+        </button>
       </div>
+
+      {/* Sélection multiple */}
+      {selection.size > 0 && (
+        <div className="flex items-center gap-1 px-2 h-9 border-b border-border-subtle bg-hover-fill flex-shrink-0 text-ui-sm">
+          <span className="px-1 text-text-primary">{selection.size} sélectionné{selection.size > 1 ? 's' : ''}</span>
+          <button onClick={() => setSelection(new Set(shown.map((c) => c.path)))} className={toolBtn}>Tout</button>
+          <button onClick={() => setSelection(new Set())} className={toolBtn}>Aucun</button>
+          <div className="flex-1" />
+          {source === 'unstaged' && (
+            <>
+              <button onClick={() => void discardSelected()} disabled={!!busy} className={cn(toolBtn, 'hover:text-accent-error')}><Undo2 size={12} /> Annuler</button>
+              <button
+                onClick={() => void run('bulk', () => stageMany(workspacePath, selectedChanges.map((c) => c.path))).then((ok) => ok && setSelection(new Set()))}
+                disabled={!!busy}
+                className={toolBtn}
+              >
+                {busy === 'bulk' ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />} Indexer
+              </button>
+            </>
+          )}
+          {source === 'staged' && (
+            <button
+              onClick={() => void run('bulk', () => unstageMany(workspacePath, selectedChanges.map((c) => c.path), state.hasCommits)).then((ok) => ok && setSelection(new Set()))}
+              disabled={!!busy}
+              className={toolBtn}
+            >
+              {busy === 'bulk' ? <Loader2 size={12} className="animate-spin" /> : <Minus size={12} />} Désindexer
+            </button>
+          )}
+        </div>
+      )}
 
       {source === 'branch' && state.base && (
         <div className="px-3 py-1.5 text-ui-sm text-text-muted border-b border-border-subtle">Comparaison avec {state.base}, modifications non commitées comprises.</div>
@@ -220,7 +281,20 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
         {shown.length === 0 ? (
           <EmptyState source={source} filtered={!!filter.trim() && changes.length > 0} log={source === 'unstaged' && dirtyCount === 0 ? log : []} />
         ) : (
-          shown.map((c) => (
+          groupByDir(shown, tree).map((g) => (
+            <div key={g.dir || '·'} className="space-y-1.5">
+              {tree && (
+                <button
+                  onClick={() => setCollapsed((prev) => { const n = new Set(prev); n.has(g.dir) ? n.delete(g.dir) : n.add(g.dir); return n; })}
+                  className="flex items-center gap-1.5 w-full h-6 px-1 text-left text-ui-sm text-text-secondary hover:text-text-primary"
+                >
+                  {collapsed.has(g.dir) ? <ChevronRight size={12} /> : <ChevronDown size={12} />}
+                  <Folder size={12} />
+                  <span className="truncate">{g.dir || '(racine)'}</span>
+                  <span className="text-text-muted">{g.items.length}</span>
+                </button>
+              )}
+              {!(tree && collapsed.has(g.dir)) && g.items.map((c) => (
             <ChangeCard
               key={c.path}
               cwd={workspacePath}
@@ -235,7 +309,12 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
               onUnstage={() => void run(`unstage:${c.path}`, () => unstage(workspacePath, c.path, state.hasCommits))}
               onDiscard={() => void discard(c)}
               onOpenFile={onOpenFile && c.status !== 'D' ? () => onOpenFile(c.path) : undefined}
+              selected={selection.has(c.path)}
+              onSelect={source === 'unstaged' || source === 'staged' ? () => toggleSelect(c.path) : undefined}
+              indent={tree}
             />
+              ))}
+            </div>
           ))
         )}
       </div>
@@ -267,6 +346,9 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
           }}
         />
       )}
+      {showWorktrees && (
+        <WorktreesDialog cwd={workspacePath} onClose={() => setShowWorktrees(false)} />
+      )}
       {dialog === 'push' && (
         <PushDialog cwd={workspacePath} state={state} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void refresh(); }} />
       )}
@@ -277,10 +359,11 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
 /* ── Carte d'un fichier : en-tête + diff dépliable ── */
 
 function ChangeCard({
-  cwd, change, source, state, refreshKey, expanded, busy, onToggle, onStage, onUnstage, onDiscard, onOpenFile,
+  cwd, change, source, state, refreshKey, expanded, busy, onToggle, onStage, onUnstage, onDiscard, onOpenFile, selected, onSelect, indent,
 }: {
   cwd: string; change: GitChange; source: GitSource; state: GitState; refreshKey: number; expanded: boolean; busy: string | null;
   onToggle: () => void; onStage: () => void; onUnstage: () => void; onDiscard: () => void; onOpenFile?: () => void;
+  selected?: boolean; onSelect?: () => void; indent?: boolean;
 }) {
   const [diff, setDiff] = useState<string | null>(null);
   useEffect(() => {
@@ -302,12 +385,22 @@ function ChangeCard({
   const binary = !!diff && /^Binary files .* differ$/m.test(diff);
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border-medium bg-surface-default">
+    <div className={cn('overflow-hidden rounded-lg border bg-surface-default', selected ? 'border-text-secondary' : 'border-border-medium', indent && 'ml-4')}>
       <div onClick={onToggle} className="group flex items-center gap-2 h-8 px-2 cursor-pointer text-ui-sm hover:bg-hover-fill">
+        {onSelect && (
+          <input
+            type="checkbox"
+            checked={!!selected}
+            onClick={(e) => e.stopPropagation()}
+            onChange={onSelect}
+            title={`Sélectionner ${change.path}`}
+            className={cn('flex-shrink-0 cursor-pointer', !selected && 'opacity-0 group-hover:opacity-100')}
+          />
+        )}
         {expanded ? <ChevronDown size={13} className="text-text-muted flex-shrink-0" /> : <ChevronRight size={13} className="text-text-muted flex-shrink-0" />}
         <span className={cn('w-3 font-mono font-semibold flex-shrink-0', st.cls)} title={st.title}>{st.label}</span>
         <span className="truncate text-text-primary">{slash >= 0 ? change.path.slice(slash + 1) : change.path}</span>
-        {slash >= 0 && <span className="truncate text-text-muted">{change.path.slice(0, slash)}</span>}
+        {slash >= 0 && !indent && <span className="truncate text-text-muted">{change.path.slice(0, slash)}</span>}
         <span className="ml-auto flex items-center gap-1 flex-shrink-0 tabular-nums">
           {isBusy && <Loader2 size={12} className="animate-spin text-text-muted" />}
           <span className="hidden group-hover:flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
@@ -357,6 +450,18 @@ function ChangeCard({
       )}
     </div>
   );
+}
+
+/** Liste → groupes par dossier (un seul groupe sans dossier en mode liste) */
+function groupByDir(changes: GitChange[], tree: boolean): { dir: string; items: GitChange[] }[] {
+  if (!tree) return [{ dir: '', items: changes }];
+  const map = new Map<string, GitChange[]>();
+  for (const c of changes) {
+    const i = c.path.lastIndexOf('/');
+    const dir = i >= 0 ? c.path.slice(0, i) : '';
+    map.set(dir, [...(map.get(dir) || []), c]);
+  }
+  return [...map.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([dir, items]) => ({ dir, items }));
 }
 
 function EmptyState({ source, filtered, log }: { source: GitSource; filtered: boolean; log: { hash: string; subject: string; when: string }[] }) {

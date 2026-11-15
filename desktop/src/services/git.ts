@@ -58,6 +58,8 @@ export function gitError(stderr: string, fallback = 'Erreur git'): string {
   if (/would be overwritten by checkout|Please commit your changes or stash them/i.test(s)) {
     return 'Des modifications non commitées seraient écrasées : committe-les avant de changer de branche.';
   }
+  if (/contains modified or untracked files/i.test(s)) return 'La worktree contient des modifications non commitées.';
+  if (/is already (checked out|used by worktree)/i.test(s)) return 'Cette branche est déjà ouverte dans une autre worktree.';
   if (/already exists/i.test(s)) return 'Une branche porte déjà ce nom.';
   return (s.split('\n').filter(Boolean).slice(-2).join(' ') || fallback).slice(0, 300);
 }
@@ -244,6 +246,17 @@ export async function unstage(cwd: string, path: string, hasCommits: boolean) {
     ? await git(cwd, 'reset', '-q', 'HEAD', '--', path)
     : await git(cwd, 'rm', '--cached', '-q', '--', path);
   if (!r.success) throw new Error(gitError(r.stderr, 'Impossible de désindexer ce fichier'));
+}
+
+/** Indexe / désindexe / annule plusieurs fichiers (un appel par fichier : 8 arguments au plus) */
+export async function stageMany(cwd: string, paths: string[]) {
+  for (const p of paths) await stage(cwd, p);
+}
+export async function unstageMany(cwd: string, paths: string[], hasCommits: boolean) {
+  for (const p of paths) await unstage(cwd, p, hasCommits);
+}
+export async function discardMany(cwd: string, changes: GitChange[]) {
+  for (const c of changes) await discardChange(cwd, c);
 }
 
 /** Annule les modifications d'un fichier (un fichier nouveau est supprimé) */
