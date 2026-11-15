@@ -207,6 +207,11 @@ export const useSettingsStore = create<SettingsStore>()(
           autoCleanFinishedCommands: state.settings.autoCleanFinishedCommands,
         },
       }),
+      // ANZAR est 100 % DeepSeek : un ancien réglage (Kimi, OpenRouter) revient à DeepSeek.
+      merge: (persisted, current) => {
+        const saved = (persisted as { settings?: Partial<Settings> } | undefined)?.settings ?? {}
+        return { ...current, settings: { ...current.settings, ...saved, provider: 'deepseek' } }
+      },
     }
   )
 );

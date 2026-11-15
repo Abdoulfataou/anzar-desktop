@@ -13,18 +13,11 @@ class Settings(BaseSettings):
 
     # ─── API Keys (SERVER ONLY — never sent to client) ───
     deepseek_api_key: str = ""
-    kimi_api_key: str = ""
-    openrouter_api_key: str = ""  # Accès Claude/GPT/etc. via OpenRouter (optionnel)
     serper_api_key: str = ""  # Google Search via Serper (2500 free, then $0.30/1000)
 
     # ─── API Base URLs ───
     deepseek_base_url: str = "https://api.deepseek.com"
-    kimi_base_url: str = "https://api.moonshot.cn"
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
 
-    # ─── OpenRouter pricing (FCFA / million tokens — estimation prudente, à ajuster) ───
-    openrouter_input_cost_per_million: float = 2000.0
-    openrouter_output_cost_per_million: float = 10000.0
 
     # ─── Server ───
     server_host: str = "0.0.0.0"
@@ -87,7 +80,6 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-flash"
     deepseek_pro_model: str = "deepseek-v4-pro"  # Pour projets complexes (optionnel)
     deepseek_reasoner: str = "deepseek-flash"  # la réflexion se règle par paramètre
-    kimi_model: str = "moonshot-v1-8k"
 
     # ─── Pricing DeepSeek — COÛT RÉEL (USD par 1M tokens, tarif HEURES PLEINES) ───
     # Source : api-docs.deepseek.com/quick_start/pricing (novembre 2026).
@@ -105,9 +97,6 @@ class Settings(BaseSettings):
     deepseek_margin: float = 3.0
     # Search / Fetch DeepSeek : 0,75 $ les 1 000 appels réussis
     deepseek_web_tool_usd_per_call: float = 0.00075
-    # Kimi K2.5: coût réel $0.60/$2.50 → 336/1400 F. Vente: marge x3
-    kimi_input_cost_per_million: float = 1000.0
-    kimi_output_cost_per_million: float = 4000.0
     # USD to FCFA exchange rate (avril 2026)
     usd_to_fcfa: float = 560.0
 

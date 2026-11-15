@@ -87,9 +87,9 @@ export const getProfile = async () => {
 
 export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
 
-export const chat = async (messages: ChatMessage[], provider: 'deepseek' | 'kimi' = 'deepseek') => {
-  const { data } = await api.post(`/api/${provider}/chat/completions`, {
-    model: provider === 'kimi' ? 'kimi' : 'deepseek-chat',
+export const chat = async (messages: ChatMessage[]) => {
+  const { data } = await api.post('/api/deepseek/chat/completions', {
+    model: 'deepseek-flash',
     messages,
     stream: false,
   })

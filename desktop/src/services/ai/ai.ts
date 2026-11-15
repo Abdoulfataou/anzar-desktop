@@ -307,11 +307,6 @@ class AIService {
       body.response_format = options.responseFormat;
     }
 
-    // Provider vision: include usage in stream
-    if (provider === 'kimi') {
-      body.stream_options = { include_usage: true };
-    }
-
     // Set up fetch timeout controller
     // Use a longer timeout when messages contain attachments/large content
     const totalContentLength = messages.reduce((sum, m) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0);

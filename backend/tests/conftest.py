@@ -23,7 +23,6 @@ os.environ["RATE_LIMIT_PER_MINUTE"] = "500"
 os.environ["RATE_LIMIT_PER_DAY"] = "5000"
 os.environ["BREVO_API_KEY"] = ""  # pas d'envoi d'email en test
 os.environ["DEEPSEEK_API_KEY"] = ""
-os.environ["KIMI_API_KEY"] = ""
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

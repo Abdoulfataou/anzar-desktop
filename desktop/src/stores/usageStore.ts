@@ -29,7 +29,6 @@ export interface UsageRecord {
 export interface DailyUsage {
   date: string;           // YYYY-MM-DD
   deepseek: { requests: number; tokens: number; costUSD: number };
-  kimi:     { requests: number; tokens: number; costUSD: number };
   totalCostUSD: number;
   totalCostFCFA: number;
 }
@@ -49,8 +48,7 @@ interface UsageStore {
 
   // Selectors
   getTodayUsage: () => DailyUsage;
-  getMonthUsage: () => { totalCostUSD: number; totalCostFCFA: number; deepseekPercent: number; kimiPercent: number; totalRequests: number };
-  getProviderSplit: () => { deepseekPercent: number; kimiPercent: number };
+  getMonthUsage: () => { totalCostUSD: number; totalCostFCFA: number; totalRequests: number };
 
   /** Vérifie si le solde prépayé est épuisé */
   hasCredit: () => boolean;
@@ -118,69 +116,29 @@ export const useUsageStore = create<UsageStore>()(
 
       getTodayUsage: () => {
         const today = getDateKey(Date.now());
-        const todayRecords = get().records.filter((r) => getDateKey(r.timestamp) === today);
-
         const deepseek = { requests: 0, tokens: 0, costUSD: 0 };
-        const kimi = { requests: 0, tokens: 0, costUSD: 0 };
-
-        for (const r of todayRecords) {
-          const bucket = r.provider === 'deepseek' ? deepseek : kimi;
-          bucket.requests++;
-          bucket.tokens += r.inputTokens + r.outputTokens;
-          bucket.costUSD += r.costUSD;
+        for (const r of get().records) {
+          if (getDateKey(r.timestamp) !== today) continue;
+          deepseek.requests++;
+          deepseek.tokens += r.inputTokens + r.outputTokens;
+          deepseek.costUSD += r.costUSD;
         }
-
-        const totalCostUSD = deepseek.costUSD + kimi.costUSD;
-
         return {
           date: today,
           deepseek,
-          kimi,
-          totalCostUSD,
-          totalCostFCFA: Math.round(totalCostUSD * USD_TO_FCFA),
+          totalCostUSD: deepseek.costUSD,
+          totalCostFCFA: Math.round(deepseek.costUSD * USD_TO_FCFA),
         };
       },
 
       getMonthUsage: () => {
         const thisMonth = getMonthKey(Date.now());
         const monthRecords = get().records.filter((r) => getMonthKey(r.timestamp) === thisMonth);
-
-        let deepseekCost = 0;
-        let kimiCost = 0;
-        let deepseekReqs = 0;
-        let kimiReqs = 0;
-
-        for (const r of monthRecords) {
-          if (r.provider === 'deepseek') {
-            deepseekCost += r.costUSD;
-            deepseekReqs++;
-          } else {
-            kimiCost += r.costUSD;
-            kimiReqs++;
-          }
-        }
-
-        const total = deepseekReqs + kimiReqs;
-        const totalCostUSD = deepseekCost + kimiCost;
-
+        const totalCostUSD = monthRecords.reduce((sum, r) => sum + r.costUSD, 0);
         return {
           totalCostUSD,
           totalCostFCFA: Math.round(totalCostUSD * USD_TO_FCFA),
-          deepseekPercent: total > 0 ? Math.round((deepseekReqs / total) * 100) : 0,
-          kimiPercent: total > 0 ? Math.round((kimiReqs / total) * 100) : 0,
-          totalRequests: total,
-        };
-      },
-
-      getProviderSplit: () => {
-        const { records } = get();
-        const total = records.length;
-        if (total === 0) return { deepseekPercent: 80, kimiPercent: 20 };
-
-        const deepseek = records.filter((r) => r.provider === 'deepseek').length;
-        return {
-          deepseekPercent: Math.round((deepseek / total) * 100),
-          kimiPercent: Math.round(((total - deepseek) / total) * 100),
+          totalRequests: monthRecords.length,
         };
       },
 

@@ -7,7 +7,6 @@ Agents principaux (cloud — DeepSeek):
   - CodeReviewAgent   : Audit complet de projets
 
 Agents spéciaux:
-  - VisionAgent       : Analyse d'images (cloud — Kimi/Moonshot)
 
 Base:
   - BaseAgent         : Classe abstraite commune
@@ -16,7 +15,6 @@ Base:
 from .base import BaseAgent
 from .coder import CoderAgent
 from .planner import PlannerAgent
-from .vision import VisionAgent
 from .code_review import CodeReviewAgent
 
 __all__ = [
@@ -25,6 +23,5 @@ __all__ = [
     # Principaux
     "CoderAgent",
     "PlannerAgent",
-    "VisionAgent",
     "CodeReviewAgent",
 ]

@@ -1,14 +1,14 @@
 /**
  * Core type definitions for ANZAR application
- * Multi-provider AI (proxy backend) + Project CRUD
+ * IA DeepSeek (via le serveur ANZAR) + Project CRUD
  */
 
 // ============================================================================
 // AI PROVIDER & MODEL TYPES
 // ============================================================================
 
-/** AI Providers supported by ANZAR */
-export type AIProvider = 'deepseek' | 'kimi' | 'openrouter';
+/** Fournisseur IA d'ANZAR : 100 % DeepSeek (via le serveur ANZAR) */
+export type AIProvider = 'deepseek';
 
 /** User-facing mode names (white-labeled) */
 /** Rapide = réflexion courte · Réflexion = effort standard des agents · Max = tâches difficiles */
@@ -64,35 +64,6 @@ export const AI_MODELS: ProviderModel[] = [
     supportsStreaming: true,
     description: 'Raisonnement avancé, résolution de problèmes complexes',
   },
-  // Provider B (vision)
-  {
-    id: 'kimi-k2.6',
-    name: 'ANZAR Vision',
-    provider: 'kimi',
-    mode: 'fast',
-    maxContext: 262144,
-    maxOutput: 262144,
-    supportsTools: true,
-    supportsVision: true,
-    supportsJSON: true,
-    supportsFIM: false,
-    supportsStreaming: true,
-    description: 'Contexte ultra-long, code avancé et agents',
-  },
-  {
-    id: 'kimi-k2.5',
-    name: 'ANZAR Vision (Raisonnement)',
-    provider: 'kimi',
-    mode: 'thinking',
-    maxContext: 131072,
-    maxOutput: 131072,
-    supportsTools: true,
-    supportsVision: true,
-    supportsJSON: true,
-    supportsFIM: false,
-    supportsStreaming: true,
-    description: 'Multimodal avec raisonnement, vision et tool calling',
-  },
 ];
 
 /** Provider configuration */
@@ -120,25 +91,6 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
     reasoningEffort: { fast: 'low', thinking: 'high', max: 'max' },
     defaultTemperature: { fast: 1.0, thinking: 1.0, max: 1.0 },
     features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'FIM', 'Raisonnement'],
-  },
-  kimi: {
-    provider: 'kimi',
-    label: 'ANZAR Vision',
-    // NOTE: les requêtes passent par le backend ANZAR (proxy). Ne pas exposer de vendor URL ici.
-    baseUrl: 'proxy',
-    models: { fast: 'kimi-k2.6', thinking: 'kimi-k2.5', max: 'kimi-k2.5' },
-    defaultTemperature: { fast: 0.7, thinking: 0.7, max: 0.7 },
-    features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'Vision', '262K Context'],
-  },
-  openrouter: {
-    provider: 'openrouter',
-    label: 'ANZAR Pro+ (Claude/GPT)',
-    // NOTE: proxy backend — nécessite OPENROUTER_API_KEY côté serveur.
-    // IDs de modèles OpenRouter — à ajuster selon le catalogue (openrouter.ai/models).
-    baseUrl: 'proxy',
-    models: { fast: 'openai/gpt-4o-mini', thinking: 'anthropic/claude-sonnet-4', max: 'anthropic/claude-sonnet-4' },
-    defaultTemperature: { fast: 0.7, thinking: 0.7, max: 0.7 },
-    features: ['Chat', 'Streaming', 'Tool Calling', 'Claude', 'GPT'],
   },
 };
 

@@ -138,7 +138,7 @@ async def root():
 @app.get("/health")
 async def health():
     """Health check — verifies DB connectivity and provider status."""
-    checks = {"database": "ok", "deepseek": "configured", "kimi": "configured"}
+    checks = {"database": "ok", "deepseek": "configured"}
 
     try:
         from db import db_ping
@@ -149,8 +149,6 @@ async def health():
 
     if not settings.deepseek_api_key:
         checks["deepseek"] = "not_configured"
-    if not settings.kimi_api_key:
-        checks["kimi"] = "not_configured"
 
     all_ok = checks["database"] == "ok"
     return {

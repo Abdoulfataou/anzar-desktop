@@ -43,7 +43,6 @@ export default defineConfig(() => {
   // SECURITY: define() overrides prevent accidental API key leaks in bundle
   define: {
     'import.meta.env.VITE_DEEPSEEK_API_KEY': 'undefined',
-    'import.meta.env.VITE_KIMI_API_KEY': 'undefined',
     __APP_VERSION__: JSON.stringify(pkg.version),
     __SENTRY_RELEASE__: JSON.stringify(RELEASE),
   },

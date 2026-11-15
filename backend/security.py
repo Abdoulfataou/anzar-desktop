@@ -57,8 +57,6 @@ def validate_config():
     if not settings.deepseek_api_key:
         logger.warning("⚠️  DEEPSEEK_API_KEY not set — DeepSeek provider unavailable")
 
-    if not settings.kimi_api_key:
-        logger.warning("⚠️  KIMI_API_KEY not set — Kimi provider unavailable")
 
 
 # ============================================================================
@@ -392,40 +390,19 @@ def calculate_cost_fcfa(
     Returns (cost_usd, cost_fcfa).
     DeepSeek : barème réel (cache / hors cache / sortie, heures pleines ou creuses) × marge.
     """
-    if provider == "deepseek":
-        is_pro = "pro" in (model or "").lower()
-        hit, miss, out = (
-            (settings.deepseek_pro_hit_usd, settings.deepseek_pro_miss_usd, settings.deepseek_pro_output_usd)
-            if is_pro else
-            (settings.deepseek_flash_hit_usd, settings.deepseek_flash_miss_usd, settings.deepseek_flash_output_usd)
-        )
-        factor = 1.0 if deepseek_is_peak(at) else settings.deepseek_offpeak_factor
-        cached = max(0, min(cached_input_tokens, input_tokens))
-        real_usd = factor * (
-            cached * hit + (input_tokens - cached) * miss + output_tokens * out
-        ) / 1_000_000
-        cost_fcfa = real_usd * settings.usd_to_fcfa * settings.deepseek_margin
-        cost_usd = cost_fcfa / settings.usd_to_fcfa
-    elif provider == "kimi":
-        cost_usd = (
-            (input_tokens / 1_000_000) * (settings.kimi_input_cost_per_million / settings.usd_to_fcfa)
-            + (output_tokens / 1_000_000) * (settings.kimi_output_cost_per_million / settings.usd_to_fcfa)
-        )
-        cost_fcfa = (
-            (input_tokens / 1_000_000) * settings.kimi_input_cost_per_million
-            + (output_tokens / 1_000_000) * settings.kimi_output_cost_per_million
-        )
-    elif provider == "openrouter":
-        cost_usd = (
-            (input_tokens / 1_000_000) * (settings.openrouter_input_cost_per_million / settings.usd_to_fcfa)
-            + (output_tokens / 1_000_000) * (settings.openrouter_output_cost_per_million / settings.usd_to_fcfa)
-        )
-        cost_fcfa = (
-            (input_tokens / 1_000_000) * settings.openrouter_input_cost_per_million
-            + (output_tokens / 1_000_000) * settings.openrouter_output_cost_per_million
-        )
-    else:
-        cost_usd = 0.0
-        cost_fcfa = 0.0
+    # ANZAR est 100 % DeepSeek : tout appel est facturé au barème DeepSeek (jamais gratuit).
+    is_pro = "pro" in (model or "").lower()
+    hit, miss, out = (
+        (settings.deepseek_pro_hit_usd, settings.deepseek_pro_miss_usd, settings.deepseek_pro_output_usd)
+        if is_pro else
+        (settings.deepseek_flash_hit_usd, settings.deepseek_flash_miss_usd, settings.deepseek_flash_output_usd)
+    )
+    factor = 1.0 if deepseek_is_peak(at) else settings.deepseek_offpeak_factor
+    cached = max(0, min(cached_input_tokens, input_tokens))
+    real_usd = factor * (
+        cached * hit + (input_tokens - cached) * miss + output_tokens * out
+    ) / 1_000_000
+    cost_fcfa = real_usd * settings.usd_to_fcfa * settings.deepseek_margin
+    cost_usd = cost_fcfa / settings.usd_to_fcfa
 
     return round(cost_usd, 6), round(cost_fcfa, 2)

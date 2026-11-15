@@ -21,7 +21,7 @@ from services import billing
 from services.deepseek_client import DeepSeekClient
 from services.web_search import search_web, format_search_results, WEB_SEARCH_TOOL
 from routes._state import (
-    get_provider_config, _disable_provider, _provider_unavailable_message,
+    get_provider_config,
 )
 
 logger = logging.getLogger("anzar")
@@ -69,14 +69,8 @@ async def _proxy_request_with_billing(
             try:
                 resp = await client.post(url, headers=headers, json=body)
             except httpx.TimeoutException:
-                if provider == "kimi":
-                    _disable_provider("kimi", 300, "timeout")
-                    raise HTTPException(503, _provider_unavailable_message("kimi"))
                 raise HTTPException(504, "AI provider timeout")
             except httpx.ConnectError:
-                if provider == "kimi":
-                    _disable_provider("kimi", 300, "connect_error")
-                    raise HTTPException(503, _provider_unavailable_message("kimi"))
                 raise HTTPException(502, "Cannot reach AI provider")
     except BaseException:
         billing.release_now(reservation)
@@ -84,9 +78,6 @@ async def _proxy_request_with_billing(
 
     if resp.status_code != 200:
         billing.release_now(reservation)  # requête refusée par le fournisseur : rien n'est facturé
-        if provider == "kimi" and resp.status_code in (401, 402, 403, 429):
-            _disable_provider("kimi", 3600, f"provider_status={resp.status_code}")
-            raise HTTPException(503, _provider_unavailable_message("kimi"))
         try:
             error_data = resp.json()
         except Exception:
@@ -139,10 +130,6 @@ async def _proxy_stream_with_billing(
         try:
             async with client.stream("POST", url, headers=headers, json=body) as resp:
                 if resp.status_code != 200:
-                    if provider == "kimi" and resp.status_code in (401, 402, 403, 429):
-                        _disable_provider("kimi", 3600, f"provider_status={resp.status_code}")
-                        yield f"data: {json.dumps({'error': {'message': _provider_unavailable_message('kimi')}})}\n\n"
-                        return
                     yield f"data: {json.dumps({'error': {'message': f'Provider error: {resp.status_code}'}})}\n\n"
                     return
                 upstream_ok = True
@@ -175,11 +162,7 @@ async def _proxy_stream_with_billing(
                                 pass
 
         except httpx.TimeoutException:
-            if provider == "kimi":
-                _disable_provider("kimi", 300, "timeout_stream")
-                yield f"data: {json.dumps({'error': {'message': _provider_unavailable_message('kimi')}})}\n\n"
-            else:
-                yield f"data: {json.dumps({'error': {'message': 'Provider timeout'}})}\n\n"
+            yield f"data: {json.dumps({'error': {'message': 'Provider timeout'}})}\n\n"
         except Exception as e:
             logger.error("Stream error: %s", e)
             yield f"data: {json.dumps({'error': {'message': 'Erreur interne. Réessaie.'}})}\n\n"
@@ -226,7 +209,7 @@ def _require_legacy_routes():
 @router.post("/api/{provider}/chat/completions")
 async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_current_user)):
     """
-    Proxy AI chat requests to DeepSeek or Kimi.
+    Proxy des requêtes chat vers DeepSeek (seul fournisseur d'ANZAR).
     Le coût maximal est réservé sur le solde AVANT l'appel ; le coût réel est débité après.
     Aucun quota gratuit : sans solde suffisant, 402.
     """
@@ -243,12 +226,9 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
     body["messages"] = validate_messages(body.get("messages") or [])
 
     # Modèle verrouillé côté serveur (le prix en dépend) : seuls les identifiants connus passent.
-    if provider == "deepseek":
-        allowed = {settings.deepseek_model, settings.deepseek_pro_model}
-        if body.get("model") not in allowed:
-            body["model"] = settings.deepseek_model
-    elif provider == "kimi":
-        body["model"] = settings.kimi_model
+    allowed = {settings.deepseek_model, settings.deepseek_pro_model}
+    if body.get("model") not in allowed:
+        body["model"] = settings.deepseek_model
 
     # Une seule réponse par requête (n>1 multiplierait le coût de sortie réservé)
     body.pop("n", None)

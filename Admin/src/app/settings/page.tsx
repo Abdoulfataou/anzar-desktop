@@ -153,7 +153,6 @@ function Platform() {
         </Panel>
         <Panel title="Services">
           <Row k="DeepSeek" v={ok(d.providers.deepseek)} />
-          <Row k="Kimi" v={ok(d.providers.kimi)} />
           <Row k="E-mails (Brevo)" v={ok(d.providers.email)} />
           <Row k="Anciennes routes IA" v={<Badge variant={d.legacy_ai_routes ? 'warning' : 'success'}>{d.legacy_ai_routes ? 'Activées' : 'Désactivées'}</Badge>} />
           <Row k="Version du serveur" v={d.version} />

@@ -435,7 +435,7 @@ async def admin_platform_settings(admin: dict = Depends(get_current_admin)):
         "rate_limit": {"per_minute": s.rate_limit_per_minute, "per_day": s.rate_limit_per_day},
         "jwt_expiry_hours": s.jwt_expiry_hours,
         "admin_jwt_expiry_hours": s.admin_jwt_expiry_hours,
-        "providers": {"deepseek": bool(s.deepseek_api_key), "kimi": bool(s.kimi_api_key),
+        "providers": {"deepseek": bool(s.deepseek_api_key),
                       "email": bool(getattr(s, "brevo_api_key", ""))},
         "legacy_ai_routes": s.legacy_ai_routes,
     }

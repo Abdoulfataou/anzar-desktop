@@ -22,15 +22,6 @@ PROVIDERS: Dict[str, Dict[str, str]] = {
         "base_url": settings.deepseek_base_url,
         "api_key": settings.deepseek_api_key,
     },
-    "kimi": {
-        "base_url": settings.kimi_base_url,
-        "api_key": settings.kimi_api_key,
-    },
-    # OpenRouter — accès optionnel Claude/GPT/Gemini via une seule clé (API OpenAI-compatible)
-    "openrouter": {
-        "base_url": settings.openrouter_base_url,
-        "api_key": settings.openrouter_api_key,
-    },
 }
 
 _provider_disabled_until: Dict[str, float] = {}
@@ -55,8 +46,6 @@ def _is_provider_disabled(provider: str) -> bool:
 
 
 def _provider_unavailable_message(provider: str) -> str:
-    if provider == "kimi":
-        return "Vision indisponible pour le moment. Réessaie sans image."
     return "Service IA indisponible pour le moment. Réessaie plus tard."
 
 

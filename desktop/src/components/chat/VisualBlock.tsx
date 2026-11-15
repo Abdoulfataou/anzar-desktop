@@ -1,7 +1,7 @@
 /**
  * VisualBlock — Rendu inline des visuels générés par l'IA (chaînon manquant).
  *
- * Le prompt "visuel" (routé vers Kimi) fait générer du Mermaid/SVG au modèle,
+ * Le prompt "visuel" fait générer du Mermaid/SVG au modèle,
  * mais l'utilisateur voyait le CODE BRUT. Ces composants dessinent réellement :
  *  - MermaidBlock : flowcharts, séquences, ER, Gantt, camemberts, mindmaps…
  *  - SvgBlock     : illustrations/infographies SVG (sanitisées)
