@@ -81,26 +81,21 @@ export default function ResizableSplit({
         }}
         title="Glisser pour redimensionner · double-clic pour réinitialiser"
         className={cn(
-          'w-px flex-shrink-0 relative z-10 group outline-none',
-          'bg-border-subtle transition-colors',
-          isDragging && 'bg-accent-primary cursor-col-resize'
+          'w-1 flex-shrink-0 relative z-10 group outline-none cursor-col-resize'
         )}
       >
         {/* Zone de hit confortable (8px) invisible */}
         <div
           className={cn(
-            'absolute inset-y-0 -left-[3.5px] w-2 cursor-col-resize',
-            'group-hover:bg-accent-primary/20',
-            isDragging && 'bg-accent-primary/25'
+            'absolute inset-y-3 left-1/2 -translate-x-1/2 w-0.5 rounded-full transition-colors',
+            'group-hover:bg-text-muted group-focus-visible:bg-text-muted',
+            isDragging && 'bg-text-muted'
           )}
         />
         {/* Poignée centrale */}
         <div
           className={cn(
-            'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
-            'w-[3px] h-7 rounded-full bg-border-strong',
-            'opacity-0 group-hover:opacity-100 transition-opacity',
-            isDragging && 'opacity-100 bg-accent-primary'
+            'hidden'
           )}
         />
       </div>

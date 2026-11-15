@@ -430,7 +430,7 @@ function ToolbarMenu<T extends string>({
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex items-center gap-1.5 h-8 px-2 rounded-lg text-[13px] transition-colors hover:bg-bg-tertiary',
+          'flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base transition-colors hover:bg-surface-hover',
           tone ?? 'text-text-secondary'
         )}
       >
@@ -441,7 +441,7 @@ function ToolbarMenu<T extends string>({
       {open && (
         <div
           className={cn(
-            'absolute bottom-full mb-1.5 w-72 p-1 rounded-xl border border-border-medium bg-surface-elevated shadow-lg z-50',
+            'absolute bottom-full mb-1.5 w-72 p-1 flex flex-col gap-0.5 rounded-lg border border-border-medium bg-surface-elevated shadow-md z-50',
             align === 'right' ? 'right-0' : 'left-0'
           )}
         >
@@ -450,11 +450,11 @@ function ToolbarMenu<T extends string>({
               key={o.id}
               type="button"
               onClick={() => { onChange(o.id); setOpen(false); }}
-              className="w-full flex items-start gap-2 px-2.5 py-2 rounded-lg text-left hover:bg-surface-hover transition-colors"
+              className="w-full flex items-start gap-2 px-2 py-1.5 rounded-md text-left hover:bg-surface-hover transition-colors"
             >
               <span className="flex-1 min-w-0">
-                <span className="block text-[13px] text-text-primary">{o.label}</span>
-                <span className="block text-[11.5px] text-text-muted leading-snug">{o.hint}</span>
+                <span className="block text-ui-base text-text-primary">{o.label}</span>
+                <span className="block text-ui-sm text-text-muted leading-snug">{o.hint}</span>
               </span>
               {o.id === value && <Check size={14} className="text-text-primary mt-0.5 flex-shrink-0" />}
             </button>
@@ -599,7 +599,7 @@ export default function ChatInput({
 
   return (
     <div className="relative z-40 bg-bg-primary">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pb-4 pt-2">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-4 pt-2">
         {/* Overlay drag & drop */}
         {isDropHover && (
           <div className="fixed inset-0 z-[100] bg-bg-primary/70 backdrop-blur-sm flex items-center justify-center pointer-events-none">
@@ -613,11 +613,11 @@ export default function ChatInput({
 
         {/* Input container */}
         <div className={cn(
-          'rounded-2xl border transition-all duration-300',
-          'bg-surface-default/80 backdrop-blur-md',
+          'rounded-2xl border transition-colors',
+          'bg-surface-default',
           isFocused
-            ? 'glow-border-active shadow-lg'
-            : 'border-border-subtle hover:border-border-medium'
+            ? 'border-border-strong'
+            : 'border-border-medium hover:border-border-strong'
         )}>
           {/* Textarea area */}
           <div className="flex items-end gap-2 px-4 pt-4 pb-2">

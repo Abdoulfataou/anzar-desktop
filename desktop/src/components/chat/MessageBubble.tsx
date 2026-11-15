@@ -145,8 +145,8 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     return (
       <div className="group px-4 py-2">
         <div className="max-w-3xl mx-auto flex flex-col items-end">
-          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-bg-tertiary px-4 py-2.5">
-            <p className="text-[14px] leading-relaxed text-text-primary break-words whitespace-pre-wrap">
+          <div className="max-w-xl rounded-xl rounded-tr-[4px] border border-border-medium bg-bg-tertiary px-4 py-3">
+            <p className="text-ui-base leading-relaxed text-text-primary break-words whitespace-pre-wrap">
               {message.content}
             </p>
             {message.attachments && message.attachments.length > 0 && (
@@ -154,7 +154,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                 {message.attachments.map((a) => (
                   <span
                     key={a.id}
-                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono border border-border-subtle bg-bg-primary/60 text-text-secondary"
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-ui-sm font-mono border border-border-subtle bg-bg-primary/60 text-text-secondary"
                     title={a.name}
                   >
                     <span className="text-accent-primary font-semibold">{a.ref || ''}</span>
@@ -164,7 +164,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
               </div>
             )}
           </div>
-          <span className="text-[10.5px] text-text-muted mt-1 mr-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span className="text-ui-xs text-text-muted mt-1 mr-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {formatTime(message.timestamp)}
           </span>
         </div>
@@ -180,11 +180,11 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
         {/* En-tête : marque + modèle + heure (mono, discret) */}
         <div className="flex items-center gap-2 mb-1">
           <Sparkles size={11} className="text-accent-primary" />
-          <span className="text-[10px] font-mono font-semibold uppercase tracking-wider text-text-tertiary">anzar</span>
+          <span className="text-ui-xs font-mono font-semibold uppercase tracking-wider text-text-tertiary">anzar</span>
           {message.model && (
-            <span className="text-[10px] font-mono text-text-muted/70">{message.model}</span>
+            <span className="text-ui-xs font-mono text-text-muted/70">{message.model}</span>
           )}
-          <span className="text-[10px] font-mono text-text-muted/50">{formatTime(message.timestamp)}</span>
+          <span className="text-ui-xs font-mono text-text-muted/50">{formatTime(message.timestamp)}</span>
         </div>
         {/* Actions d'outils de l'agent — rendu ZCode (read/edit/bash…) */}
         {message.toolEvents && message.toolEvents.length > 0 && (
@@ -196,7 +196,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
           <div className="mb-1 rounded-md border border-border-subtle overflow-hidden">
             <button
               onClick={() => setShowThinking(!showThinking)}
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-surface-hover transition-colors font-mono text-[11px] text-text-tertiary"
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-surface-hover transition-colors font-mono text-ui-sm text-text-tertiary"
             >
               <Brain size={12} className="text-text-muted" />
               <span>{showThinking ? 'masquer le raisonnement' : 'raisonnement'}</span>
@@ -207,9 +207,9 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             {showThinking && (
               <div className="px-3 py-2 border-t border-border-subtle space-y-1.5 bg-bg-primary/40">
                 {message.reasoning?.map((step, idx) => (
-                  <p key={`step-${idx}-${step.slice(0, 20)}`} className="font-mono text-[11px] text-text-tertiary leading-relaxed">{step}</p>
+                  <p key={`step-${idx}-${step.slice(0, 20)}`} className="font-mono text-ui-sm text-text-tertiary leading-relaxed">{step}</p>
                 )) || (
-                  <p className="font-mono text-[11px] text-text-tertiary leading-relaxed">{message.thinking}</p>
+                  <p className="font-mono text-ui-sm text-text-tertiary leading-relaxed">{message.thinking}</p>
                 )}
               </div>
             )}
@@ -235,7 +235,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                p: ({ children }) => <p className="text-[14px] leading-[1.65] mb-3 last:mb-0">{children}</p>,
+                p: ({ children }) => <p className="text-ui-base leading-[1.65] mb-3 last:mb-0">{children}</p>,
                 a: ({ href, children }) => (
                   <a
                     href={href}
@@ -276,25 +276,25 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                     />
                   );
                 },
-                ul: ({ children }) => <ul className="list-disc pl-5 text-[14px] mb-3 space-y-1.5 marker:text-text-muted [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ol]:mt-1.5 [&_ol]:mb-0">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-5 text-[14px] mb-3 space-y-1.5 marker:text-text-muted [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ol]:mt-1.5 [&_ol]:mb-0">{children}</ol>,
-                li: ({ children }) => <li className="text-[14px] leading-[1.65] pl-1 [&>p]:mb-1">{children}</li>,
+                ul: ({ children }) => <ul className="list-disc pl-5 text-ui-base mb-3 space-y-1.5 marker:text-text-muted [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ol]:mt-1.5 [&_ol]:mb-0">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-5 text-ui-base mb-3 space-y-1.5 marker:text-text-muted [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ol]:mt-1.5 [&_ol]:mb-0">{children}</ol>,
+                li: ({ children }) => <li className="text-ui-base leading-[1.65] pl-1 [&>p]:mb-1">{children}</li>,
                 hr: () => <hr className="my-4 border-border-subtle" />,
                 strong: ({ children }) => <strong className="font-semibold text-text-primary">{children}</strong>,
                 blockquote: ({ children }) => (
                   <blockquote className="border-l-2 border-accent-primary pl-3 my-2 text-sm italic text-text-secondary">{children}</blockquote>
                 ),
-                h1: ({ children }) => <h1 className="text-[18px] font-semibold text-text-primary mb-3 mt-6 first:mt-0">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-[16px] font-semibold text-text-primary mb-2.5 mt-6 first:mt-0">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-[14.5px] font-semibold text-text-primary mb-2 mt-4 first:mt-0">{children}</h3>,
-                h4: ({ children }) => <h4 className="text-[14px] font-semibold text-text-primary mb-1.5 mt-3 first:mt-0">{children}</h4>,
+                h1: ({ children }) => <h1 className="text-ui-xl font-semibold text-text-primary mb-3 mt-6 first:mt-0">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-ui-lg font-semibold text-text-primary mb-2.5 mt-6 first:mt-0">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-ui-base font-semibold text-text-primary mb-2 mt-4 first:mt-0">{children}</h3>,
+                h4: ({ children }) => <h4 className="text-ui-base font-semibold text-text-primary mb-1.5 mt-3 first:mt-0">{children}</h4>,
                 table: ({ children }) => (
                   <div className="overflow-x-auto my-3 rounded-lg border border-border-subtle">
-                    <table className="text-[13.5px] border-collapse w-full">{children}</table>
+                    <table className="text-ui-base border-collapse w-full">{children}</table>
                   </div>
                 ),
                 td: ({ children }) => <td className="border-t border-border-subtle px-3 py-2 align-top leading-[1.55]">{children}</td>,
-                th: ({ children }) => <th className="px-3 py-2 bg-bg-tertiary font-semibold text-left text-[12.5px] text-text-secondary whitespace-nowrap">{children}</th>,
+                th: ({ children }) => <th className="px-3 py-2 bg-bg-tertiary font-semibold text-left text-ui-caption text-text-secondary whitespace-nowrap">{children}</th>,
               }}
             >
               {displayContent}
@@ -326,14 +326,14 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
 
         {/* État temporaire (nouvelle tentative réseau) */}
         {message.isStreaming && message.notice && (
-          <p className="mt-1 text-[12px] text-text-muted">{message.notice}</p>
+          <p className="mt-1 text-ui-sm text-text-muted">{message.notice}</p>
         )}
 
         {/* Erreur : reprise là où l'agent s'est arrêté (ou nouvel essai) */}
         {message.isError && !message.isStreaming && onRegenerate && (
           <button
             onClick={onRegenerate}
-            className="mt-2 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
+            className="mt-2 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
           >
             <RefreshCw size={13} />
             {message.resumable ? 'Reprendre' : 'Réessayer'}
@@ -447,7 +447,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
           <div className="w-px h-3 bg-border-subtle mx-1" />
 
           {/* Timestamp */}
-          <span className="ml-auto text-[11px] text-text-muted">
+          <span className="ml-auto text-ui-sm text-text-muted">
             {formatTime(message.timestamp)}
             {typeof message.costFCFA === 'number' && !message.isStreaming && (
               <> · {message.costFCFA < 1 ? '< 1' : Math.round(message.costFCFA).toLocaleString('fr-FR')} FCFA</>

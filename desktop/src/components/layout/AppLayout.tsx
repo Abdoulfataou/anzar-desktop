@@ -3,7 +3,7 @@
  * TitleBar + Sidebar + Content + CommandPalette
  * Interface unifiée sans onglets séparés
  */
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { useEffect } from 'react';
 import { WifiOff } from 'lucide-react';
 import TitleBar from './TitleBar';
@@ -26,6 +26,8 @@ export default function AppLayout({ className }: AppLayoutProps) {
   const setTheme = useThemeStore((s) => s.setTheme);
   const { isOnline, isSlowConnection } = useOffline();
   const hasCompletedOnboarding = useAccountStore((s) => s.hasCompletedOnboarding);
+  // L'espace de travail dessine ses propres panneaux ; les autres pages reçoivent un cadre unique.
+  const framed = useLocation().pathname.startsWith('/settings');
 
   useEffect(() => {
     // Applique le thème persistant dès que settingsStore est hydraté.
@@ -37,7 +39,7 @@ export default function AppLayout({ className }: AppLayoutProps) {
   return (
     <div
       className={cn(
-        'h-screen w-screen flex flex-col bg-bg-primary text-text-primary min-h-0',
+        'h-screen w-screen flex flex-col bg-window text-text-primary min-h-0',
         className
       )}
     >
@@ -72,8 +74,14 @@ export default function AppLayout({ className }: AppLayoutProps) {
               </p>
             </div>
           )}
-          <main className="flex-1 overflow-hidden min-h-0">
-            <Outlet />
+          <main className="flex-1 overflow-hidden min-h-0 pr-1 pb-1">
+            {framed ? (
+              <div className="h-full overflow-hidden rounded-xl border border-border-medium bg-bg-primary">
+                <Outlet />
+              </div>
+            ) : (
+              <Outlet />
+            )}
           </main>
         </div>
       </div>

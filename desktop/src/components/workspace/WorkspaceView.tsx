@@ -159,29 +159,29 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
         initialLeftPct={38}
         minLeftPct={24}
         left={
-          <div className="h-full min-h-0 flex flex-col border-r border-border-subtle">
+          <div className="h-full min-h-0 flex flex-col overflow-hidden rounded-xl border border-border-medium bg-bg-primary">
             {/* En-tête de tâche : titre · projet · branche */}
-            <div className="flex items-center gap-2 h-11 px-4 border-b border-border-subtle flex-shrink-0">
-              <h1 className="text-[13.5px] font-semibold text-text-primary truncate min-w-0">
+            <div className="flex items-center gap-2 h-12 px-4 border-b border-border-subtle flex-shrink-0">
+              <h1 className="text-ui-base font-semibold text-text-primary truncate min-w-0">
                 {activeConversation?.title || 'Nouvelle tâche'}
               </h1>
               <button
                 onClick={() => void handleOpenFolder()}
                 title={workspacePath || 'Ouvrir un dossier pour que l\'agent puisse lire et modifier ton code'}
-                className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-bg-tertiary text-[12.5px] text-text-secondary hover:text-text-primary transition-colors flex-shrink-0 max-w-[40%]"
+                className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors flex-shrink-0 max-w-[40%]"
               >
                 <Folder size={12} className="flex-shrink-0" />
                 <span className="truncate">{workspaceName || 'Ouvrir un dossier'}</span>
               </button>
               {branch && (
-                <span className="flex items-center gap-1.5 h-7 px-2.5 rounded-lg bg-bg-tertiary text-[12.5px] text-text-secondary flex-shrink-0">
+                <span className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-secondary flex-shrink-0">
                   <GitBranch size={12} />
                   {branch}
                 </span>
               )}
               <div className="flex-1" />
               {modifiedCount > 0 && (
-                <span className="flex items-center gap-1 text-[11px] text-accent-success font-mono flex-shrink-0">
+                <span className="flex items-center gap-1 text-ui-sm text-accent-success font-mono flex-shrink-0">
                   <FileEdit size={11} />
                   {modifiedCount}
                 </span>
@@ -202,20 +202,20 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             {approval && (
               <div className="mx-4 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl border border-border-medium bg-surface-elevated flex-shrink-0">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[12.5px] text-text-primary">L'agent demande ton accord</p>
-                  <p className="text-[11.5px] font-mono text-text-secondary truncate" title={approval.summary}>
+                  <p className="text-ui-caption text-text-primary">L'agent demande ton accord</p>
+                  <p className="text-ui-sm font-mono text-text-secondary truncate" title={approval.summary}>
                     {approval.name === 'run_command' ? '$ ' : `${approval.name}  `}{approval.summary}
                   </p>
                 </div>
                 <button
                   onClick={() => resolveApproval(false)}
-                  className="h-7 px-3 rounded-lg text-[12.5px] text-text-secondary hover:bg-surface-hover transition-colors"
+                  className="h-7 px-3 rounded-lg text-ui-caption text-text-secondary hover:bg-surface-hover transition-colors"
                 >
                   Refuser
                 </button>
                 <button
                   onClick={() => resolveApproval(true)}
-                  className="h-7 px-3 rounded-lg text-[12.5px] font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
+                  className="h-7 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
                 >
                   Autoriser
                 </button>
@@ -225,13 +225,13 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             {/* Solde bas : la seule alerte de coût */}
             {balance < LOW_BALANCE_FCFA && (
               <div className="mx-4 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl bg-credit-soft flex-shrink-0">
-                <p className="flex-1 text-[12.5px] text-text-primary">
+                <p className="flex-1 text-ui-caption text-text-primary">
                   {balance <= 0 ? 'Solde épuisé' : 'Solde bas'} — il te reste{' '}
                   <span className="font-mono tabular-nums">{Math.max(0, Math.round(balance)).toLocaleString('fr-FR')} FCFA</span>
                 </p>
                 <button
                   onClick={() => setShowRecharge(true)}
-                  className="h-7 px-3 rounded-lg text-[12.5px] font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
+                  className="h-7 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
                 >
                   Recharger
                 </button>
@@ -265,16 +265,6 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
         }
       />
 
-      {/* ── StatusBar (ZCode) ── */}
-      <div className="h-6 flex items-center gap-4 px-3 border-t border-border-subtle bg-bg-secondary/50 text-[10.5px] font-mono text-text-muted flex-shrink-0 select-none">
-        <span className="truncate max-w-[280px]" title={workspacePath || ''}>
-          {workspacePath ? workspacePath.split('/').pop() : 'aucun workspace'}
-        </span>
-        <span className={cn('w-1.5 h-1.5 rounded-full', isGenerating ? 'bg-accent-primary animate-pulse' : 'bg-accent-success')} />
-        <span>{isGenerating ? 'agent au travail…' : 'prêt'}</span>
-        {modifiedCount > 0 && <span className="text-accent-success">{modifiedCount} fichiers modifiés</span>}
-        <span className="ml-auto capitalize">{selectedModel}</span>
-      </div>
     </div>
   );
 }

@@ -148,7 +148,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
   // ── Aucun workspace : état vide ──
   if (!workspacePath) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-bg-primary">
+      <div className="h-full flex items-center justify-center rounded-xl border border-border-medium bg-bg-primary">
         <div className="text-center max-w-xs">
           <FolderOpen size={32} className="mx-auto mb-3 text-text-muted/40" />
           <p className="text-sm text-text-secondary mb-1">Aucun dossier ouvert</p>
@@ -157,7 +157,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
           </p>
           <button
             onClick={onOpenFolder}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-medium bg-primary-btn text-primary-btn-fg transition-all hover:opacity-90 active:scale-[0.98]"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-ui-base font-medium bg-primary-btn text-primary-btn-fg transition-all hover:opacity-90 active:scale-[0.98]"
           >
             <FolderOpen size={14} />
             Ouvrir un dossier
@@ -168,9 +168,9 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
   }
 
   return (
-    <div className="flex flex-col h-full min-h-0 bg-bg-primary">
+    <div className="flex flex-col h-full min-h-0 overflow-hidden rounded-xl border border-border-medium bg-bg-primary">
       {/* ── Barre d'onglets ── */}
-      <div className="flex items-center h-11 px-2 gap-1 border-b border-border-subtle flex-shrink-0">
+      <div className="flex items-center h-12 px-2 gap-1 border-b border-border-subtle flex-shrink-0">
         <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
           {tabs.map((t) => {
             const label =
@@ -183,7 +183,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
                 onClick={() => setActiveId(t.id)}
                 title={t.kind === 'file' ? t.path : undefined}
                 className={cn(
-                  'group flex items-center gap-1.5 h-8 pl-2.5 rounded-lg text-[12.5px] cursor-pointer flex-shrink-0 max-w-[180px] transition-colors',
+                  'group flex items-center gap-1.5 h-8 pl-2.5 rounded-lg text-ui-caption cursor-pointer flex-shrink-0 max-w-[180px] transition-colors',
                   t.kind === 'files' ? 'pr-2.5' : 'pr-1',
                   isActive
                     ? 'bg-bg-tertiary text-text-primary border border-border-medium'
@@ -219,13 +219,13 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
             <div className="absolute top-full left-0 mt-1 w-44 p-1 rounded-xl border border-border-medium bg-surface-elevated shadow-lg z-50">
               <button
                 onClick={() => openTab({ id: 'terminal', kind: 'terminal' })}
-                className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-[13px] text-text-primary hover:bg-surface-hover"
+                className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
               >
                 <TerminalIcon size={13} /> Terminal
               </button>
               <button
                 onClick={() => openTab({ id: 'preview', kind: 'preview' })}
-                className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-[13px] text-text-primary hover:bg-surface-hover"
+                className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
               >
                 <Eye size={13} /> Aperçu
               </button>
@@ -265,7 +265,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
                 onFileChange={(p, c) => { void handleFileChange(p, c); }}
               />
             ) : (
-              <div className="flex items-center justify-center h-full text-text-muted text-[12.5px]">
+              <div className="flex items-center justify-center h-full text-text-muted text-ui-caption">
                 Ce fichier n'existe plus sur le disque.
               </div>
             )}
@@ -274,7 +274,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
 
         {/* Terminal */}
         {active.kind === 'terminal' && (
-          <div className="flex-1 flex flex-col min-h-0 font-mono text-[11.5px]">
+          <div className="flex-1 flex flex-col min-h-0 font-mono text-ui-sm">
             <div className="flex-1 overflow-y-auto px-3 py-2 leading-relaxed">
               {termLines.length === 0 && (
                 <p className="text-text-muted/60">Terminal — les commandes s'exécutent dans {workspacePath.split('/').pop()} (allowlist : node, npm, git, python…).</p>

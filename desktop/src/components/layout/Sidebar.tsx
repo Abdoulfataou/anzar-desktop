@@ -149,8 +149,8 @@ export default function Sidebar({ className }: { className?: string }) {
         key={c.id}
         className={cn(
           'group flex items-center gap-2 h-8 rounded-lg cursor-pointer transition-colors',
-          nested ? 'pl-9 pr-2' : 'px-2',
-          active ? 'bg-surface-hover text-text-primary' : 'text-text-secondary hover:bg-surface-hover/60'
+          nested ? 'pl-9 pr-2' : 'pl-2.5 pr-2',
+          active ? 'bg-border-medium text-text-primary' : 'text-text-secondary hover:bg-surface-hover/60'
         )}
         onClick={() => selectTask(c)}
         onDoubleClick={() => { setEditingId(c.id); setEditingName(c.title || ''); }}
@@ -163,12 +163,12 @@ export default function Sidebar({ className }: { className?: string }) {
             onBlur={finishRename}
             onKeyDown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') setEditingId(null); }}
             onClick={(e) => e.stopPropagation()}
-            className="flex-1 min-w-0 bg-transparent text-[13px] outline-none border-b border-border-medium"
+            className="flex-1 min-w-0 bg-transparent text-ui-base outline-none border-b border-border-medium"
           />
         ) : (
-          <span className="flex-1 min-w-0 truncate text-[13px]">{c.title || 'Sans titre'}</span>
+          <span className="flex-1 min-w-0 truncate text-ui-base">{c.title || 'Sans titre'}</span>
         )}
-        <span className="text-[11px] text-text-muted tabular-nums group-hover:hidden">{age(c.updatedAt)}</span>
+        <span className="text-ui-sm text-text-muted tabular-nums group-hover:hidden">{age(c.updatedAt)}</span>
         <button
           onClick={(e) => { e.stopPropagation(); void removeTask(c); }}
           className="hidden group-hover:block p-0.5 rounded text-text-muted hover:text-accent-error"
@@ -188,7 +188,7 @@ export default function Sidebar({ className }: { className?: string }) {
       disabled={disabled}
       title={!expanded ? label : undefined}
       className={cn(
-        'w-full flex items-center gap-2.5 h-9 rounded-lg text-[13.5px] transition-colors',
+        'w-full flex items-center gap-2 h-8 rounded-lg text-ui-base transition-colors',
         expanded ? 'px-2.5' : 'justify-center',
         disabled
           ? 'text-text-muted cursor-default'
@@ -197,7 +197,7 @@ export default function Sidebar({ className }: { className?: string }) {
     >
       <Icon size={16} className="flex-shrink-0 text-text-secondary" />
       {expanded && <span className="flex-1 text-left truncate">{label}</span>}
-      {expanded && hint && <span className="text-[10.5px] text-text-muted">{hint}</span>}
+      {expanded && hint && <span className="text-ui-xs text-text-muted">{hint}</span>}
     </button>
   );
 
@@ -206,7 +206,7 @@ export default function Sidebar({ className }: { className?: string }) {
       {ConfirmDialog}
       <aside
         className={cn(
-          'h-full flex flex-col border-r border-border-subtle bg-bg-secondary/50 overflow-hidden',
+          'h-full flex flex-col bg-transparent overflow-hidden',
           'transition-[width] duration-200',
           className
         )}
@@ -234,7 +234,7 @@ export default function Sidebar({ className }: { className?: string }) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Filtrer projets et tâches…"
-                className="flex-1 min-w-0 bg-transparent text-[12.5px] text-text-primary placeholder:text-text-muted outline-none"
+                className="flex-1 min-w-0 bg-transparent text-ui-caption text-text-primary placeholder:text-text-muted outline-none"
               />
               <button onClick={() => { setSearching(false); setQuery(''); }} className="text-text-muted hover:text-text-primary">
                 <X size={12} />
@@ -253,7 +253,7 @@ export default function Sidebar({ className }: { className?: string }) {
                     key={id}
                     onClick={() => setMode(id)}
                     className={cn(
-                      'flex items-center gap-1.5 h-7 px-2.5 rounded-md text-[12.5px] transition-colors',
+                      'flex items-center gap-1.5 h-7 px-2.5 rounded-md text-ui-caption transition-colors',
                       mode === id
                         ? 'bg-bg-primary text-text-primary shadow-sm'
                         : 'text-text-muted hover:text-text-secondary'
@@ -278,9 +278,9 @@ export default function Sidebar({ className }: { className?: string }) {
             <div className="flex-1 min-h-0 overflow-y-auto px-2 pb-2">
               {mode === 'project' ? (
                 <>
-                  <p className="px-2 pt-2 pb-1 text-[12px] text-text-muted">Projets</p>
+                  <p className="px-2 pt-2 pb-1 text-ui-sm text-text-muted">Projets</p>
                   {shownProjects.length === 0 && (
-                    <p className="px-2 py-1.5 text-[12.5px] text-text-muted">Aucun projet</p>
+                    <p className="px-2 py-1.5 text-ui-caption text-text-muted">Aucun projet</p>
                   )}
                   {shownProjects.map((p) => {
                     const tasks = visible.filter((c) => c.projectId === p.id);
@@ -291,13 +291,13 @@ export default function Sidebar({ className }: { className?: string }) {
                           onClick={() => selectProject(p.id)}
                           title={(p.metadata?.localPath as string | undefined) || p.name}
                           className={cn(
-                            'group flex items-center gap-2 h-8 px-2 rounded-lg cursor-pointer transition-colors',
+                            'group flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-lg cursor-pointer transition-colors',
                             active ? 'text-text-primary' : 'text-text-secondary',
                             'hover:bg-surface-hover/60'
                           )}
                         >
-                          {active ? <FolderOpen size={14} className="flex-shrink-0" /> : <Folder size={14} className="flex-shrink-0" />}
-                          <span className="flex-1 min-w-0 truncate text-[13.5px]">{p.name}</span>
+                          {active ? <FolderOpen size={16} className="flex-shrink-0" /> : <Folder size={16} className="flex-shrink-0" />}
+                          <span className="flex-1 min-w-0 truncate text-ui-base">{p.name}</span>
                           <button
                             onClick={(e) => { e.stopPropagation(); newTask(p.id); }}
                             className="hidden group-hover:block p-0.5 rounded text-text-muted hover:text-text-primary"
@@ -319,18 +319,18 @@ export default function Sidebar({ className }: { className?: string }) {
                   })}
 
                   <div className="flex items-center px-2 pt-4 pb-1">
-                    <p className="flex-1 text-[12px] text-text-muted">Tâches</p>
+                    <p className="flex-1 text-ui-sm text-text-muted">Tâches</p>
                     {looseTasks.length > 0 && (
                       <button
                         onClick={() => void removeTasks(looseTasks, 'hors projet')}
-                        className="text-[11.5px] text-text-muted hover:text-accent-error transition-colors"
+                        className="text-ui-sm text-text-muted hover:text-accent-error transition-colors"
                       >
                         Tout supprimer
                       </button>
                     )}
                   </div>
                   {looseTasks.length === 0 ? (
-                    <p className="px-2 py-1.5 text-[12.5px] text-text-muted">Aucune tâche</p>
+                    <p className="px-2 py-1.5 text-ui-caption text-text-muted">Aucune tâche</p>
                   ) : (
                     looseTasks.map((c) => renderTask(c))
                   )}
@@ -338,18 +338,18 @@ export default function Sidebar({ className }: { className?: string }) {
               ) : (
                 <>
                   <div className="flex items-center px-2 pt-2 pb-1">
-                    <p className="flex-1 text-[12px] text-text-muted">Toutes les tâches</p>
+                    <p className="flex-1 text-ui-sm text-text-muted">Toutes les tâches</p>
                     {visible.length > 0 && (
                       <button
                         onClick={() => void removeTasks(visible, 'toutes')}
-                        className="text-[11.5px] text-text-muted hover:text-accent-error transition-colors"
+                        className="text-ui-sm text-text-muted hover:text-accent-error transition-colors"
                       >
                         Tout supprimer
                       </button>
                     )}
                   </div>
                   {visible.length === 0 ? (
-                    <p className="px-2 py-1.5 text-[12.5px] text-text-muted">Aucune tâche</p>
+                    <p className="px-2 py-1.5 text-ui-caption text-text-muted">Aucune tâche</p>
                   ) : (
                     visible.map((c) => renderTask(c))
                   )}
@@ -362,19 +362,19 @@ export default function Sidebar({ className }: { className?: string }) {
         )}
 
         {/* ── Compte ── */}
-        <div className={cn('flex items-center gap-2 p-2.5 border-t border-border-subtle flex-shrink-0', !expanded && 'flex-col')}>
+        <div className={cn('flex items-center gap-2 p-2.5 flex-shrink-0', !expanded && 'flex-col')}>
           <button
             onClick={() => navigate('/settings')}
             className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
             title="Compte et paramètres"
           >
-            <span className="w-8 h-8 rounded-full bg-credit-soft text-credit flex items-center justify-center text-[13px] font-semibold flex-shrink-0">
+            <span className="w-8 h-8 rounded-full bg-credit-soft text-credit flex items-center justify-center text-ui-base font-semibold flex-shrink-0">
               {(user?.name || 'A').charAt(0).toUpperCase()}
             </span>
             {expanded && (
               <span className="min-w-0">
-                <span className="block text-[13px] text-text-primary truncate">{user?.name || 'Compte'}</span>
-                <span className={cn('block text-[11px] font-mono tabular-nums', credits.remaining > 0 ? 'text-text-muted' : 'text-accent-error')}>
+                <span className="block text-ui-base text-text-primary truncate">{user?.name || 'Compte'}</span>
+                <span className={cn('block text-ui-sm font-mono tabular-nums', credits.remaining > 0 ? 'text-text-muted' : 'text-accent-error')}>
                   {Math.round(credits.remaining).toLocaleString('fr-FR')} FCFA
                 </span>
               </span>

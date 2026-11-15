@@ -54,7 +54,7 @@ export default function TitleBar({ className }: TitleBarProps) {
   return (
     <div
       className={cn(
-        'h-11 bg-bg-primary/80 backdrop-blur-md border-b border-border-subtle/50',
+        'h-10 bg-transparent',
         'flex items-center select-none flex-shrink-0',
         isMac ? 'px-4 gap-4' : 'pl-4 pr-0 gap-0',
         className

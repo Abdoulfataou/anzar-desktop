@@ -12,7 +12,17 @@ const config: Config = {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'Fira Code', 'Menlo', 'monospace'],
       },
+      // Échelle typographique d'interface (base 14 px, réglable via --ui-font-size)
+      fontSize: {
+        'ui-xl': ['calc(var(--ui-font-size) + 4px)', { lineHeight: '1.4' }],
+        'ui-lg': ['calc(var(--ui-font-size) + 2px)', { lineHeight: '1.45' }],
+        'ui-base': ['var(--ui-font-size)', { lineHeight: '1.5' }],
+        'ui-caption': ['calc(var(--ui-font-size) - 1px)', { lineHeight: '1.5' }],
+        'ui-sm': ['calc(var(--ui-font-size) - 2px)', { lineHeight: '1.45' }],
+        'ui-xs': ['calc(var(--ui-font-size) - 4px)', { lineHeight: '1.4' }],
+      },
       colors: {
+        window: 'var(--color-window)',
         bg: {
           primary: 'var(--color-bg-primary)',
           secondary: 'var(--color-bg-secondary)',

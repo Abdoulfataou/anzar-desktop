@@ -8,23 +8,25 @@
   html.dark {
     color-scheme: dark;
 
-    /* Backgrounds */
-    --color-bg-primary: #0B0B0C;
-    --color-bg-secondary: #131315;
-    --color-bg-tertiary: #1A1A1D;
+    /* Backgrounds — fenêtre (barre latérale, interstices) puis panneaux */
+    --color-window: #161616;
+    --ui-font-size: 14px;
+    --color-bg-primary: #202020;
+    --color-bg-secondary: #262626;
+    --color-bg-tertiary: #2B2B2B;
 
     /* Surfaces */
-    --color-surface-default: #131315;
-    --color-surface-elevated: #1A1A1D;
-    --color-surface-hover: #222226;
+    --color-surface-default: #2B2B2B;
+    --color-surface-elevated: #2B2B2B;
+    --color-surface-hover: #363636;
 
     /* Accent — iris = activité IA / focus uniquement (pas de gradient) */
     --color-accent-primary: #6E7BFF;
     --color-accent-secondary: #8A94FF;
     --color-accent-tertiary: #A8AEFF;
-    --color-accent-success: #3DD68C;
+    --color-accent-success: #46BF72;
     --color-accent-warning: #F5B544; /* = credit : l'ambre appartient aux crédits */
-    --color-accent-error: #FF6B70;
+    --color-accent-error: #FF5C5C;
     --color-accent-info: #6E7BFF;
 
     /* Gradient stops — neutralisés (solide accent) : plus de dégradés */
@@ -33,21 +35,21 @@
     --gradient-end: #6E7BFF;
 
     /* Text */
-    --color-text-primary: #EDEDEF;
-    --color-text-secondary: #A1A1AA;
-    --color-text-tertiary: #7D7D88;
-    --color-text-muted: #57575E;
+    --color-text-primary: #F5F5F5;
+    --color-text-secondary: rgba(212, 212, 212, 0.72);
+    --color-text-tertiary: rgba(212, 212, 212, 0.58);
+    --color-text-muted: rgba(212, 212, 212, 0.44);
 
     /* Borders — 6% / 10% / 16% */
-    --color-border-subtle: rgba(255, 255, 255, 0.06);
+    --color-border-subtle: rgba(255, 255, 255, 0.08);
     --color-border-medium: rgba(255, 255, 255, 0.10);
-    --color-border-strong: rgba(255, 255, 255, 0.16);
+    --color-border-strong: rgba(255, 255, 255, 0.15);
 
     /* Tokens dédiés crédits (ambre) et bouton principal (inversé monochrome) */
     --color-credit: #F5B544;
     --color-credit-soft: rgba(245, 181, 68, 0.12);
-    --color-primary: #EDEDEF;
-    --color-primary-fg: #0B0B0C;
+    --color-primary: #FFFFFF;
+    --color-primary-fg: #000000;
 
     /* Shadows — bordures uniquement, sauf modales/menus */
     --color-shadow: rgba(0, 0, 0, 0.5);
@@ -59,38 +61,39 @@
   html.light {
     color-scheme: light;
 
-    --color-bg-primary: #FAFAF9;
-    --color-bg-secondary: #FFFFFF;
-    --color-bg-tertiary: #F4F4F2;
+    --color-window: #F0F0F0;
+    --color-bg-primary: #FFFFFF;
+    --color-bg-secondary: #F8F8F8;
+    --color-bg-tertiary: #F2F2F2;
 
     --color-surface-default: #FFFFFF;
-    --color-surface-elevated: #F4F4F2;
-    --color-surface-hover: #ECEBE8;
+    --color-surface-elevated: #FFFFFF;
+    --color-surface-hover: #ECECEC;
 
     --color-accent-primary: #4F5BD5;
     --color-accent-secondary: #6270DB;
     --color-accent-tertiary: #7A85E2;
-    --color-accent-success: #1A7F4B;
+    --color-accent-success: #1E8A3E;
     --color-accent-warning: #8A5A00;
-    --color-accent-error: #C62B32;
+    --color-accent-error: #E03131;
     --color-accent-info: #4F5BD5;
 
     --gradient-start: #4F5BD5;
     --gradient-mid: #4F5BD5;
     --gradient-end: #4F5BD5;
 
-    --color-text-primary: #1A1A1C;
-    --color-text-secondary: #5C5C66;
-    --color-text-tertiary: #6E6E78;
-    --color-text-muted: #8E8E96;
+    --color-text-primary: #171717;
+    --color-text-secondary: rgba(23, 23, 23, 0.72);
+    --color-text-tertiary: rgba(23, 23, 23, 0.60);
+    --color-text-muted: rgba(23, 23, 23, 0.48);
 
-    --color-border-subtle: #EFEDEA;
-    --color-border-medium: #E7E5E1;
-    --color-border-strong: #D4D2CD;
+    --color-border-subtle: rgba(13, 13, 13, 0.08);
+    --color-border-medium: rgba(13, 13, 13, 0.10);
+    --color-border-strong: rgba(13, 13, 13, 0.15);
 
     --color-credit: #8A5A00;
     --color-credit-soft: #FFF4D6;
-    --color-primary: #1A1A1C;
+    --color-primary: #000000;
     --color-primary-fg: #FFFFFF;
 
     --color-shadow: rgba(0, 0, 0, 0.08);
@@ -110,7 +113,7 @@
   }
 
   body {
-    background-color: var(--color-bg-primary);
+    background-color: var(--color-window);
     color: var(--color-text-primary);
     overflow: hidden;
     margin: 0;
