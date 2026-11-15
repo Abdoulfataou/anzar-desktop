@@ -10,6 +10,7 @@
  * (sécurité Tauri allowlist + anti-traversal), buildAgentSystemPrompt/context,
  * usageStore (débit FCFA), chatStore (persistance conversation).
  */
+import { loadPersonalInstructions, personalInstructionsSection } from '@/services/personalInstructions';
 import { useCallback, useRef, useState } from 'react';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
@@ -432,6 +433,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
     // Skills du projet et personnelles : la liste va dans le prompt, le contenu via load_skill
     const skills: Skill[] = workspacePath ? await listSkills(workspacePath).catch(() => []) : [];
+    const personal = personalInstructionsSection(await loadPersonalInstructions().catch(() => ''));
 
     try {
       if (resumeFrom) {
@@ -451,7 +453,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           };
           system = {
             role: 'system',
-            content: buildAgentSystemPrompt(promptCtx) + skillsPromptSection(skills) + (modeRef.current === 'plan' ? PLAN_MODE_PROMPT : ''),
+            content: buildAgentSystemPrompt(promptCtx) + skillsPromptSection(skills) + personal + (modeRef.current === 'plan' ? PLAN_MODE_PROMPT : ''),
           };
         } else {
           system = {
@@ -463,7 +465,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               "montre que tu le faisais avant : n'invente aucun résultat de commande, de build ou de test. " +
               "Si la demande exige d'agir sur un projet, dis-le en une phrase et demande d'ouvrir le dossier " +
               "(bouton « Ouvrir un dossier » en haut de la conversation).\n\n" +
-              FORMATTING_GUIDE,
+              FORMATTING_GUIDE + personal,
           };
         }
 

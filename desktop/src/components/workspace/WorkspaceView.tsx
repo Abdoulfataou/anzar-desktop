@@ -11,6 +11,7 @@
  * Un seul flux : l'utilisateur parle, l'agent agit avec ses outils.
  * Aucune détection d'intention, aucun pipeline de génération.
  */
+import { useSettingsStore } from '@/stores/settingsStore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Folder, FolderPlus, FileEdit, GitBranch, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -38,7 +39,12 @@ import { fileSystemService } from '@/services/filesystem/fileSystem';
 import type { ChatAttachment } from '@/types';
 
 export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: boolean }) {
-  const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
+  // Modèle : celui des Paramètres, et un changement dans la saisie devient le nouveau défaut
+  const [selectedModel, setSelectedModelState] = useState<AIModel>(() => useSettingsStore.getState().settings.model || 'fast');
+  const setSelectedModel = useCallback((m: AIModel) => {
+    setSelectedModelState(m);
+    useSettingsStore.getState().updateSettings({ model: m });
+  }, []);
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
     try {
       const saved = localStorage.getItem('anzar.permissionMode');
