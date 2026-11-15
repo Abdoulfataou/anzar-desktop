@@ -47,11 +47,17 @@ function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/** Morceau d'une réponse, dans l'ordre produit : du texte ou un groupe d'actions. */
+export type TimelineItem =
+  | { kind: 'text'; text: string }
+  | { kind: 'tools'; ids: string[] };
+
 /** Tout ce qu'il faut pour reprendre une réponse là où elle s'est arrêtée. */
 interface ResumeState {
   convId: string;
   assistantId: string;
   accContent: string;
+  timeline: TimelineItem[];
   events: ToolEvent[];
   snapshots: Snapshots;
   promptTokens: number;
@@ -258,6 +264,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       // Reprise : on continue DANS la même réponse, sans le message d'erreur
       updateMessage(assistantId, {
         content: resumeFrom.accContent,
+        timeline: resumeFrom.timeline.map((t) => ({ ...t })),
         isStreaming: true,
         isError: false,
         resumable: false,
@@ -289,13 +296,39 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     const historyTokens = () =>
       Math.ceil(apiHistoryRef.current.reduce((n, m) => n + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0) / 4);
 
-    const flush = () => {
+    // Chronologie affichée : texte et actions dans l'ordre où l'agent les produit
+    const timeline: TimelineItem[] = resumeFrom ? resumeFrom.timeline.map((t) => ({ ...t })) : [];
+    const addText = (text: string) => {
+      if (text.trim()) timeline.push({ kind: 'text', text });
+    };
+    const addToolToTimeline = (id: string) => {
+      const last = timeline[timeline.length - 1];
+      if (last?.kind === 'tools') last.ids = [...last.ids, id];
+      else timeline.push({ kind: 'tools', ids: [id] });
+    };
+    const snapshotTimeline = (liveText = ''): TimelineItem[] => {
+      const copy = timeline.map((t) => (t.kind === 'tools' ? { kind: 'tools' as const, ids: [...t.ids] } : { ...t }));
+      if (liveText.trim()) copy.push({ kind: 'text', text: liveText });
+      return copy;
+    };
+
+    /** Met à jour l'affichage ; `liveText` = texte en cours d'écriture de l'étape. */
+    const flush = (liveText = '') => {
       updateMessage(assistantId, {
-        content: accContent,
+        content: liveText ? accContent + (accContent ? '\n\n' : '') + liveText : accContent,
+        timeline: snapshotTimeline(liveText),
         reasoning: accReasoning ? [accReasoning] : undefined,
         isStreaming: true,
         toolEvents: [...events],
       });
+    };
+    // Texte en direct, au plus ~16 rafraîchissements par seconde
+    let lastLiveFlush = 0;
+    const flushLive = (liveText: string) => {
+      const now = Date.now();
+      if (now - lastLiveFlush < 60) return;
+      lastLiveFlush = now;
+      flush(liveText);
     };
 
     try {
@@ -373,7 +406,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           try {
             const stream = aiService.chatStream(apiHistoryRef.current, { model, tools, signal: controller.signal });
             for await (const delta of stream) {
-              if (delta.content) stepContent += delta.content;
+              if (delta.content) {
+                stepContent += delta.content;
+                flushLive(stepContent);
+              }
               if (delta.reasoning_content) stepReasoning += delta.reasoning_content;
               if (delta.tool_calls) assembler.add(delta.tool_calls);
             }
@@ -396,6 +432,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         // Le texte de chaque étape s'accumule (les étapes tool-only sont vides)
         if (stepContent) {
           accContent += (accContent ? '\n\n' : '') + stepContent;
+          addText(stepContent);
           flush();
         }
         completionTokens += Math.ceil((stepContent.length + JSON.stringify(assembler.finish()).length) / 4);
@@ -425,6 +462,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             status: 'running',
           };
           events.push(ev);
+          addToolToTimeline(ev.id);
           flush();
 
           // Accord de l'utilisateur selon le mode de permission
@@ -475,6 +513,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             const summary = String(result.output || '').trim();
             if (summary && !accContent.includes(summary)) {
               accContent += (accContent ? '\n\n' : '') + summary;
+              addText(summary);
             }
             answered = true;
             flush();
@@ -502,14 +541,13 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         for await (const delta of aiService.chatStream(apiHistoryRef.current, { model, signal: controller.signal })) {
           if (delta.content) {
             finalText += delta.content;
-            updateMessage(assistantId, {
-              content: accContent + (accContent ? '\n\n' : '') + finalText,
-              isStreaming: true,
-              toolEvents: [...events],
-            });
+            flushLive(finalText);
           }
         }
-        if (finalText) accContent += (accContent ? '\n\n' : '') + finalText;
+        if (finalText) {
+          accContent += (accContent ? '\n\n' : '') + finalText;
+          addText(finalText);
+        }
         completionTokens += Math.ceil(finalText.length / 4);
       }
 
@@ -526,6 +564,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
       updateMessage(assistantId, {
         content: accContent,
+        timeline: snapshotTimeline(),
         reasoning: accReasoning ? [accReasoning] : undefined,
         isStreaming: false,
         tokens: { prompt: promptTokens, completion: completionTokens },
@@ -556,13 +595,17 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       // On garde de quoi reprendre exactement ici (bouton « Reprendre »)
       resumeRef.current = aborted
         ? null
-        : { convId, assistantId, accContent, events, snapshots, promptTokens, completionTokens, balanceBefore };
+        : { convId, assistantId, accContent, timeline: snapshotTimeline(), events, snapshots, promptTokens, completionTokens, balanceBefore };
+      const errorText = aborted
+        ? '_(interrompu)_'
+        : `**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`;
       updateMessage(assistantId, {
         notice: undefined,
         resumable: !aborted,
         content: aborted
           ? (accContent ? `${accContent}\n\n_(interrompu)_` : '_(génération interrompue)_')
           : `${accContent ? accContent + '\n\n' : ''}**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`,
+        timeline: [...snapshotTimeline(), { kind: 'text', text: errorText }],
         isStreaming: false,
         isError: !aborted,
         toolEvents: [...events],

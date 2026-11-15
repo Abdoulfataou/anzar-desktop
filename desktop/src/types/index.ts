@@ -205,6 +205,8 @@ export interface Message {
   toolCallId?: string;         // For tool response messages
   /** Pièces jointes associées au message (surtout côté user) */
   attachments?: ChatAttachment[];
+  /** Ordre d'affichage : morceaux de texte et groupes d'actions, dans l'ordre produit */
+  timeline?: import('@/hooks/useAgentChat').TimelineItem[];
   /** Événements d'outils de l'agent (rendu ZCode : read/edit/bash…) */
   toolEvents?: import('@/hooks/useAgentChat').ToolEvent[];
   /** If set, show an "Open & Run" action button for this project */
