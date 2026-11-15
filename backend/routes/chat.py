@@ -17,6 +17,7 @@ from db import (
     has_credits, deduct_credits, record_usage,
     get_rate_limit_count, record_rate_limit_hit,
 )
+from services import billing
 from services.deepseek_client import DeepSeekClient
 from services.web_search import search_web, format_search_results, WEB_SEARCH_TOOL
 from routes._state import (
@@ -60,23 +61,29 @@ async def _proxy_request(url: str, headers: dict, body: dict) -> JSONResponse:
 async def _proxy_request_with_billing(
     url: str, headers: dict, body: dict,
     email: str, provider: str, start_time: float,
+    reservation: billing.Reservation,
 ) -> JSONResponse:
-    """Forward request, then bill the user based on token usage."""
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        try:
-            resp = await client.post(url, headers=headers, json=body)
-        except httpx.TimeoutException:
-            if provider == "kimi":
-                _disable_provider("kimi", 300, "timeout")
-                raise HTTPException(503, _provider_unavailable_message("kimi"))
-            raise HTTPException(504, "AI provider timeout")
-        except httpx.ConnectError:
-            if provider == "kimi":
-                _disable_provider("kimi", 300, "connect_error")
-                raise HTTPException(503, _provider_unavailable_message("kimi"))
-            raise HTTPException(502, "Cannot reach AI provider")
+    """Forward request, then bill the user on real token usage (réservation libérée dans tous les cas)."""
+    try:
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            try:
+                resp = await client.post(url, headers=headers, json=body)
+            except httpx.TimeoutException:
+                if provider == "kimi":
+                    _disable_provider("kimi", 300, "timeout")
+                    raise HTTPException(503, _provider_unavailable_message("kimi"))
+                raise HTTPException(504, "AI provider timeout")
+            except httpx.ConnectError:
+                if provider == "kimi":
+                    _disable_provider("kimi", 300, "connect_error")
+                    raise HTTPException(503, _provider_unavailable_message("kimi"))
+                raise HTTPException(502, "Cannot reach AI provider")
+    except BaseException:
+        billing.release_now(reservation)
+        raise
 
     if resp.status_code != 200:
+        billing.release_now(reservation)  # requête refusée par le fournisseur : rien n'est facturé
         if provider == "kimi" and resp.status_code in (401, 402, 403, 429):
             _disable_provider("kimi", 3600, f"provider_status={resp.status_code}")
             raise HTTPException(503, _provider_unavailable_message("kimi"))
@@ -86,59 +93,45 @@ async def _proxy_request_with_billing(
             error_data = {"error": {"message": f"Provider error: {resp.status_code}"}}
         return JSONResponse(status_code=resp.status_code, content=error_data)
 
-    data = resp.json()
+    try:
+        data = resp.json()
+    except Exception:
+        data = {}
     duration_ms = int((time.time() - start_time) * 1000)
-
-    input_tokens, output_tokens, cached_tokens = usage_tokens(data.get("usage"))
     model_name = data.get("model") or body.get("model", "unknown")
-
-    if input_tokens > 0 or output_tokens > 0:
-        cost_usd, cost_fcfa = calculate_cost_fcfa(
-            provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
-        )
-
-        try:
-            is_paid = await has_credits(email)
-            await record_usage(
-                email,
-                provider,
-                body.get("model", "unknown"),
-                input_tokens,
-                output_tokens,
-                cost_usd,
-                cost_fcfa,
-                duration_ms,
-                task_type="free_chat" if not is_paid else "chat",
-            )
-            if is_paid and cost_fcfa > 0:
-                await deduct_credits(
-                    email,
-                    cost_fcfa,
-                    f"Chat {provider}/{body.get('model', '?')}",
-                    provider,
-                    body.get("model", ""),
-                    input_tokens,
-                    output_tokens,
-                )
-        except ValueError:
-            logger.warning(f"Insufficient credits for {email} during billing")
-        except Exception as e:
-            logger.error(f"Billing error: {e}")
-
+    input_tokens, output_tokens, cached_tokens = usage_tokens(data.get("usage"))
+    task_type = "chat"
+    if input_tokens == 0 and output_tokens == 0:
+        # Réponse servie sans usage : facturée sur estimation, jamais offerte
+        task_type = "chat_estimated"
+        input_tokens = billing.estimate_input_tokens(body)
+        text = json.dumps(data.get("choices") or [], ensure_ascii=False)
+        output_tokens = max(len(text) // 4, 1)
+    cost_usd, cost_fcfa = calculate_cost_fcfa(
+        provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
+    )
+    await billing.settle(
+        reservation, cost_fcfa, cost_usd, f"Chat {provider}/{model_name}", provider, model_name,
+        input_tokens, output_tokens, duration_ms, task_type,
+    )
+    if isinstance(data, dict):
+        data["anzar"] = {"cost_fcfa": cost_fcfa}
     return JSONResponse(content=data)
 
 
 async def _proxy_stream_with_billing(
     url: str, headers: dict, body: dict,
     email: str, provider: str, start_time: float,
+    reservation: billing.Reservation,
 ) -> StreamingResponse:
-    """Forward streaming SSE request, then bill at the end."""
+    """Forward streaming SSE request, then bill at the end (même si le client coupe le flux)."""
 
     async def stream_generator():
         input_tokens = 0
         output_tokens = 0
         cached_tokens = 0
         output_chars = 0  # repli si le fournisseur ne renvoie pas l'usage
+        upstream_ok = False  # faux : le fournisseur a refusé la requête → rien n'est facturé
         priced = None     # (cost_usd, cost_fcfa) calculé une seule fois : affiché = débité
         model_name = body.get("model", "unknown")
         client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
@@ -152,6 +145,7 @@ async def _proxy_stream_with_billing(
                         return
                     yield f"data: {json.dumps({'error': {'message': f'Provider error: {resp.status_code}'}})}\n\n"
                     return
+                upstream_ok = True
 
                 async for line in resp.aiter_lines():
                     if line.strip():
@@ -177,7 +171,7 @@ async def _proxy_stream_with_billing(
                                         output_chars += len(((tc or {}).get("function") or {}).get("arguments") or "")
                                 if chunk.get("model"):
                                     model_name = chunk["model"]
-                            except (json.JSONDecodeError, KeyError):
+                            except (json.JSONDecodeError, KeyError, AttributeError, TypeError):
                                 pass
 
         except httpx.TimeoutException:
@@ -190,60 +184,29 @@ async def _proxy_stream_with_billing(
             logger.error("Stream error: %s", e)
             yield f"data: {json.dumps({'error': {'message': 'Erreur interne. Réessaie.'}})}\n\n"
         finally:
-            await client.aclose()
-
-            duration_ms = int((time.time() - start_time) * 1000)
-
-            estimated = False
-            if input_tokens == 0 and output_tokens == 0:
-                # Usage absent (coupure, fournisseur muet) : estimation sur le texte réellement échangé
-                estimated = True
-                input_chars = sum(
-                    len(m.get("content", "")) for m in body.get("messages", []) if isinstance(m.get("content"), str)
-                )
-                input_tokens = max(input_chars // 4, 1)
-                output_tokens = max(output_chars // 4, 1)
-                logger.warning("USAGE_MISSING: user=%s provider=%s model=%s — coût estimé", email, provider, model_name)
-
-            if input_tokens > 0 or output_tokens > 0:
-                cost_usd, cost_fcfa = priced or calculate_cost_fcfa(
-                    provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
-                )
-                try:
-                    is_paid = await has_credits(email)
-                    await record_usage(
-                        email,
-                        provider,
-                        model_name,
-                        input_tokens,
-                        output_tokens,
-                        cost_usd,
-                        cost_fcfa,
-                        duration_ms,
-                        task_type=("free_chat_stream" if not is_paid else "chat_stream") + ("_estimated" if estimated else ""),
+            try:
+                # Débit d'abord : si le client a coupé, la requête est en cours d'annulation et
+                # chaque « await » peut s'interrompre. settle() lance le débit dans une tâche protégée.
+                duration_ms = int((time.time() - start_time) * 1000)
+                if not upstream_ok:
+                    billing.release_now(reservation)
+                else:
+                    task_type = "chat_stream"
+                    if input_tokens == 0 and output_tokens == 0:
+                        # Usage absent (coupure, client déconnecté) : estimation sur ce qui a été échangé
+                        task_type = "chat_stream_estimated"
+                        input_tokens = billing.estimate_input_tokens(body)
+                        output_tokens = max(output_chars // 4, 1)
+                        logger.warning("USAGE_MISSING: user=%s provider=%s model=%s — coût estimé", email, provider, model_name)
+                    cost_usd, cost_fcfa = priced or calculate_cost_fcfa(
+                        provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
                     )
-                    if is_paid and cost_fcfa > 0:
-                        await deduct_credits(
-                            email,
-                            cost_fcfa,
-                            f"Stream {provider}/{model_name}",
-                            provider,
-                            model_name,
-                            input_tokens,
-                            output_tokens,
-                        )
-                except Exception as e:
-                    logger.error(f"BILLING_FAILED: user={email} provider={provider} model={model_name} "
-                                 f"tokens_in={input_tokens} tokens_out={output_tokens} "
-                                 f"cost_fcfa={cost_fcfa} error={e}")
-                    try:
-                        await record_usage(
-                            email, provider, model_name,
-                            input_tokens, output_tokens, cost_usd, cost_fcfa,
-                            duration_ms, task_type="billing_failed",
-                        )
-                    except Exception:
-                        pass
+                    await billing.settle(
+                        reservation, cost_fcfa, cost_usd, f"Stream {provider}/{model_name}", provider, model_name,
+                        input_tokens, output_tokens, duration_ms, task_type,
+                    )
+            finally:
+                await client.aclose()
 
     return StreamingResponse(
         stream_generator(),
@@ -252,70 +215,51 @@ async def _proxy_stream_with_billing(
     )
 
 
+def _require_legacy_routes():
+    """Anciennes routes IA : désactivées (404) tant que LEGACY_AI_ROUTES n'est pas activé."""
+    if not settings.legacy_ai_routes:
+        raise HTTPException(404, "Not Found")
+
+
 # ── Routes ──
 
 @router.post("/api/{provider}/chat/completions")
 async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_current_user)):
     """
     Proxy AI chat requests to DeepSeek or Kimi.
-    Checks credit balance before proxying.
-    Deducts credits after successful response.
+    Le coût maximal est réservé sur le solde AVANT l'appel ; le coût réel est débité après.
+    Aucun quota gratuit : sans solde suffisant, 402.
     """
     email = user["sub"]
     config = get_provider_config(provider)
-
-    has_paid_credits = await has_credits(email)
-    is_free_chat = False
-    if not has_paid_credits:
-        quota = int(getattr(settings, "free_daily_chat_requests", 0) or 0)
-        if quota <= 0:
-            raise HTTPException(status_code=402, detail="Solde épuisé. Rechargez pour continuer à utiliser ANZAR.")
-
-        free_key = f"free_chat:{email}"
-        used = await get_rate_limit_count(free_key, window_seconds=86400)
-        if used >= quota:
-            raise HTTPException(
-                status_code=402,
-                detail=f"Quota gratuit atteint ({quota} chats/24h). Rechargez pour continuer."
-            )
-        await record_rate_limit_hit(free_key, "free-chat")
-        is_free_chat = True
 
     try:
         body = await request.json()
     except Exception:
         raise HTTPException(400, "Invalid JSON body")
+    if not isinstance(body, dict):
+        raise HTTPException(400, "Invalid JSON body")
 
-    if "messages" in body:
-        body["messages"] = validate_messages(body["messages"])
+    body["messages"] = validate_messages(body.get("messages") or [])
 
-    # Modèles DeepSeek : seuls les identifiants actuels passent ; les anciens noms (versions
-    # de l'app déjà installées) sont convertis, sinon DeepSeek répondrait par une erreur.
+    # Modèle verrouillé côté serveur (le prix en dépend) : seuls les identifiants connus passent.
     if provider == "deepseek":
         allowed = {settings.deepseek_model, settings.deepseek_pro_model}
         if body.get("model") not in allowed:
             body["model"] = settings.deepseek_model
+    elif provider == "kimi":
+        body["model"] = settings.kimi_model
 
-    if is_free_chat:
-        if provider == "deepseek":
-            body["model"] = settings.deepseek_model
-        elif provider == "kimi":
-            body["model"] = settings.kimi_model
+    # Une seule réponse par requête (n>1 multiplierait le coût de sortie réservé)
+    body.pop("n", None)
 
-    max_tokens = body.get("max_completion_tokens", body.get("max_tokens", 4096))
-    if is_free_chat:
-        if max_tokens > 512:
-            body["max_completion_tokens"] = 512
-    else:
-        if max_tokens > 16384:
-            body["max_completion_tokens"] = 16384
-
-    is_stream = body.get("stream", False)
-    if is_free_chat and is_stream:
-        raise HTTPException(400, "Streaming indisponible en quota gratuit. Désactive stream ou recharge.")
+    is_stream = bool(body.get("stream", False))
     if is_stream:
         # Sans cette option, le flux ne contient pas la consommation réelle : on facturerait une estimation.
         body["stream_options"] = {**(body.get("stream_options") or {}), "include_usage": True}
+
+    # Réserve le coût maximal et plafonne max_tokens à ce que le solde peut payer (402 sinon)
+    reservation = await billing.reserve_for_chat(email, provider, body["model"], body)
 
     headers = {
         "Content-Type": "application/json",
@@ -327,15 +271,14 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
 
     if is_stream:
         return await _proxy_stream_with_billing(
-            target_url, headers, body, email, provider, start_time
+            target_url, headers, body, email, provider, start_time, reservation
         )
-    else:
-        return await _proxy_request_with_billing(
-            target_url, headers, body, email, provider, start_time
-        )
+    return await _proxy_request_with_billing(
+        target_url, headers, body, email, provider, start_time, reservation
+    )
 
 
-@router.post("/api/chat/smart")
+@router.post("/api/chat/smart", dependencies=[Depends(_require_legacy_routes)])
 async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
     """
     Smart chat endpoint with automatic web search via tool calling.
@@ -478,7 +421,7 @@ async def smart_chat(request: Request, user: dict = Depends(get_current_user)):
         raise HTTPException(500, err_str)
 
 
-@router.post("/api/{provider}/beta/completions")
+@router.post("/api/{provider}/beta/completions", dependencies=[Depends(_require_legacy_routes)])
 async def proxy_fim(provider: str, request: Request, user: dict = Depends(get_current_user)):
     """Proxy FIM (Fill-In-Middle) completions — DeepSeek beta."""
     email = user["sub"]
@@ -506,7 +449,7 @@ async def proxy_fim(provider: str, request: Request, user: dict = Depends(get_cu
 
 # ── DeepSeek Files / Batches ──
 
-@router.post("/api/deepseek/files")
+@router.post("/api/deepseek/files", dependencies=[Depends(_require_legacy_routes)])
 async def deepseek_upload_file(
     user: dict = Depends(get_current_user),
     file: UploadFile = File(...),
@@ -539,7 +482,7 @@ class DeepSeekBatchCreateRequest(BaseModel):
     completion_window: str = Field(default="24h", max_length=20)
 
 
-@router.post("/api/deepseek/batches")
+@router.post("/api/deepseek/batches", dependencies=[Depends(_require_legacy_routes)])
 async def deepseek_create_batch(body: DeepSeekBatchCreateRequest, user: dict = Depends(get_current_user)):
     """Cree un batch DeepSeek (asynchrone)."""
     email = user["sub"]
@@ -562,7 +505,7 @@ async def deepseek_create_batch(body: DeepSeekBatchCreateRequest, user: dict = D
     return JSONResponse(content=resp.json())
 
 
-@router.get("/api/deepseek/batches/{batch_id}")
+@router.get("/api/deepseek/batches/{batch_id}", dependencies=[Depends(_require_legacy_routes)])
 async def deepseek_get_batch(batch_id: str, user: dict = Depends(get_current_user)):
     """Recupere le statut d'un batch DeepSeek."""
     email = user["sub"]
@@ -580,7 +523,7 @@ async def deepseek_get_batch(batch_id: str, user: dict = Depends(get_current_use
     return JSONResponse(content=resp.json())
 
 
-@router.get("/api/deepseek/files/{file_id}/content")
+@router.get("/api/deepseek/files/{file_id}/content", dependencies=[Depends(_require_legacy_routes)])
 async def deepseek_get_file_content(file_id: str, user: dict = Depends(get_current_user)):
     """Recupere le contenu d'un fichier DeepSeek (souvent output JSONL d'un batch)."""
     email = user["sub"]

@@ -117,11 +117,15 @@ class Settings(BaseSettings):
     # Ex: recharge 5000 F → +15% = 5750 F crédités
     recharge_bonus_tiers: str = "5000:15,15000:25,50000:35"
 
-    # ─── Growth / Freemium ───
-    # Bonus de bienvenue crédité à la création de compte (en FCFA)
-    welcome_bonus_fcfa: float = 1000.0
-    # Quota gratuit quotidien (quand solde = 0) — nombre de requêtes chat (fenêtre 24h)
-    free_daily_chat_requests: int = 10
+    # ─── Accès payant uniquement ───
+    # Bonus de bienvenue à la création de compte (FCFA). 0 : personne n'utilise l'IA sans crédit
+    # (un bonus > 0 permettrait de créer des comptes jetables pour consommer gratuitement).
+    welcome_bonus_fcfa: float = 0.0
+    # Requêtes IA simultanées max par utilisateur (chaque requête réserve son coût maximal).
+    max_concurrent_ai_per_user: int = 4
+    # Anciennes routes IA (smart chat, FIM, batch, génération de projets côté serveur) : non
+    # utilisées par l'app, désactivées par défaut pour réduire la surface d'attaque.
+    legacy_ai_routes: bool = False
 
     # Aliases used by deepseek_client.py
     @property

@@ -209,7 +209,28 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # Les jetons admin ne donnent pas accès aux routes utilisateur (et inversement).
+    if payload.get("is_admin"):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Jeton admin non valable pour l'application")
+
+    # Compte supprimé ou désactivé par l'admin : le jeton déjà émis cesse de marcher tout de suite.
+    await ensure_user_active(payload.get("sub") or "")
     return payload
+
+
+async def ensure_user_active(email: str) -> dict:
+    """401 si le compte n'existe plus, 403 s'il est désactivé. Retourne l'utilisateur."""
+    from db import get_user_by_email  # import local : db importe security
+    user = await get_user_by_email(email) if email else None
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Compte introuvable. Reconnecte-toi.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.get("is_active", True):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Compte désactivé. Contacte le support.")
+    return user
 
 
 # ============================================================================

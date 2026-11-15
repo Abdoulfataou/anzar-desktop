@@ -13,12 +13,15 @@ def _client(monkeypatch, handler, credits=True):
     monkeypatch.setattr(wt, "get_provider_config", lambda p: {"api_key": "k", "base_url": "x"})
     billed = []
 
-    async def has_credits(email): return credits
+    import db
+    from services import billing
+
+    async def balance(email): return 100.0 if credits else 0.0
     async def record_usage(*a, **kw): pass
     async def deduct_credits(email, cost, *a, **kw): billed.append(cost)
-    monkeypatch.setattr(wt, "has_credits", has_credits)
-    monkeypatch.setattr(wt, "record_usage", record_usage)
-    monkeypatch.setattr(wt, "deduct_credits", deduct_credits)
+    monkeypatch.setattr(billing, "_balance", balance)
+    monkeypatch.setattr(db, "record_usage", record_usage)
+    monkeypatch.setattr(db, "deduct_credits", deduct_credits)
     app.dependency_overrides[get_current_user] = lambda: {"sub": "a@b.c"}
     return TestClient(app), billed, app
 

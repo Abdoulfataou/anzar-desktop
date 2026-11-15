@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from config import settings
 from security import get_current_user
-from db import has_credits, deduct_credits, record_usage
+from services import billing
 from routes._state import get_provider_config
 
 logger = logging.getLogger("anzar")
@@ -72,34 +72,38 @@ async def _call(path: str, payload: dict) -> dict:
     return resp.json()
 
 
-async def _bill(email: str, kind: str, start: float) -> float:
+async def _bill(res: billing.Reservation, kind: str, start: float) -> float:
+    """Débite l'appel réussi (le solde peut devenir négatif : jamais offert)."""
     cost = web_tool_cost_fcfa()
-    try:
-        await record_usage(email, "deepseek", f"web-{kind}", 0, 0, round(cost / settings.usd_to_fcfa, 6), cost,
-                           int((time.time() - start) * 1000), task_type=f"web_{kind}")
-        if cost > 0:
-            await deduct_credits(email, cost, f"Web {kind}", "deepseek", f"web-{kind}")
-    except Exception as e:  # la réponse est déjà obtenue : on journalise sans bloquer
-        logger.error("WEB_TOOL_BILLING_FAILED user=%s kind=%s error=%s", email, kind, e)
+    await billing.settle(res, cost, round(cost / settings.usd_to_fcfa, 6), f"Web {kind}", "deepseek",
+                         f"web-{kind}", 0, 0, int((time.time() - start) * 1000), f"web_{kind}")
     return cost
 
 
-async def _require_credits(email: str):
-    if not await has_credits(email):
-        raise HTTPException(402, "Solde épuisé : recharge pour utiliser la recherche web.")
+async def _reserve(email: str) -> billing.Reservation:
+    try:
+        return await billing.reserve(email, web_tool_cost_fcfa())
+    except HTTPException as e:
+        if e.status_code == 402:
+            raise HTTPException(402, "Solde épuisé : recharge pour utiliser la recherche web.")
+        raise
 
 
 @router.post("/api/deepseek/tools/search")
 async def web_search(body: SearchBody, user: dict = Depends(get_current_user)):
     email = user["sub"]
-    await _require_credits(email)
+    res = await _reserve(email)
     start = time.time()
-    data = await _call("search", {
-        "query": body.query.strip(),
-        "count": body.count,
-        "need_content": True,
-        **({"ori_question": body.ori_question.strip()} if body.ori_question and body.ori_question.strip() else {}),
-    })
+    try:
+        data = await _call("search", {
+            "query": body.query.strip(),
+            "count": body.count,
+            "need_content": True,
+            **({"ori_question": body.ori_question.strip()} if body.ori_question and body.ori_question.strip() else {}),
+        })
+    except BaseException:
+        billing.release_now(res)
+        raise
     results = []
     for r in (data.get("results") or [])[: body.count]:
         if not isinstance(r, dict) or not r.get("url"):
@@ -110,7 +114,9 @@ async def web_search(body: SearchBody, user: dict = Depends(get_current_user)):
             "content": (r.get("content") or r.get("snippet") or "")[:MAX_RESULT_CONTENT],
             "score": r.get("score"),
         })
-    cost = await _bill(email, "search", start) if results else 0.0
+    if not results:
+        billing.release_now(res)
+    cost = await _bill(res, "search", start) if results else 0.0
     return {"results": results, "anzar": {"cost_fcfa": cost}}
 
 
@@ -120,11 +126,17 @@ async def web_fetch(body: FetchBody, user: dict = Depends(get_current_user)):
     parsed = urlparse(body.url.strip())
     if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
         raise HTTPException(422, "Adresse invalide : seules les URL http(s) sans identifiants sont acceptées.")
-    await _require_credits(email)
+    res = await _reserve(email)
     start = time.time()
-    data = await _call("fetch", {"url": body.url.strip()})
+    try:
+        data = await _call("fetch", {"url": body.url.strip()})
+    except BaseException:
+        billing.release_now(res)
+        raise
     content = data.get("content") or ""
-    cost = await _bill(email, "fetch", start) if content.strip() else 0.0
+    if not content.strip():
+        billing.release_now(res)
+    cost = await _bill(res, "fetch", start) if content.strip() else 0.0
     return {
         "title": (data.get("title") or "")[:300],
         "content": content[:MAX_FETCH_CHARS],

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from config import settings
 from security import (
     rate_limiter, get_client_ip,
-    create_token, verify_token, verify_token_checked,
+    create_token, verify_token, verify_token_checked, ensure_user_active,
 )
 from db import is_token_revoked
 from db import (
@@ -101,6 +101,9 @@ async def login(body: AuthRequest, request: Request):
         logger.warning(f"Login failed: wrong password for {email}")
         raise HTTPException(401, "Email ou mot de passe incorrect")
 
+    if not user.get("is_active", True):
+        raise HTTPException(403, "Compte désactivé. Contacte le support.")
+
     await update_last_login(email)
 
     token = create_token(user_id=email)
@@ -130,6 +133,9 @@ async def verify_auth(request: Request):
     payload = await verify_token_checked(auth[7:])
     if not payload:
         raise HTTPException(401, "Invalid or expired token")
+    if payload.get("is_admin"):
+        raise HTTPException(403, "Jeton admin non valable pour l'application")
+    await ensure_user_active(payload.get("sub") or "")
 
     return {"valid": True, "user_id": payload.get("sub")}
 
@@ -161,6 +167,9 @@ async def refresh_token(request: Request):
     # Un jti révoqué ne peut pas servir à obtenir un nouveau token
     if await is_token_revoked(payload.get("jti", "")):
         raise HTTPException(401, "Token revoked")
+    if payload.get("is_admin"):
+        raise HTTPException(403, "Jeton admin non valable pour l'application")
+    await ensure_user_active(user_id)
 
     new_token = create_token(user_id=user_id)
     return {"token": new_token, "user_id": user_id}
@@ -175,6 +184,9 @@ async def send_code(body: SendCodeRequest, request: Request):
     Cree le compte automatiquement si l'email est nouveau.
     Rate limited: max 3 codes par 5 minutes par email.
     """
+    # Par adresse IP aussi : sinon on pourrait envoyer des codes à des milliers d'adresses
+    # (abus du quota Brevo, réputation du domaine d'envoi).
+    await rate_limiter.check(f"otp_send:{get_client_ip(request)}", max_per_minute=3, max_per_day=20, endpoint="otp")
     email = body.email.strip().lower()
 
     if "@" not in email or "." not in email.split("@")[-1]:
@@ -216,6 +228,7 @@ async def verify_code(body: VerifyCodeRequest, request: Request):
     email = body.email.strip().lower()
     code = body.code.strip()
 
+    await rate_limiter.check(f"otp_verify_ip:{get_client_ip(request)}", max_per_minute=10, max_per_day=100, endpoint="otp")
     verify_key = f"otp_verify:{email}"
     recent_attempts = await get_rate_limit_count(verify_key, window_seconds=300)
     if recent_attempts >= 10:
@@ -229,7 +242,11 @@ async def verify_code(body: VerifyCodeRequest, request: Request):
 
     user = await get_user_by_email(email)
     if not user:
-        user = await create_user(email)
+        try:
+            user = await create_user(email)
+        except Exception:
+            # L'adresse existe déjà mais le compte est désactivé (get_user_by_email l'ignore)
+            raise HTTPException(403, "Compte désactivé. Contacte le support.")
         logger.info(f"New user auto-created via OTP: {email}")
 
     await update_last_login(email)

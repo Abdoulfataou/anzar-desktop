@@ -24,15 +24,16 @@ def test_stream_sends_exact_cost_before_done(monkeypatch):
     monkeypatch.setattr(chat.httpx, "AsyncClient", lambda **kw: real_client(transport=_fake_upstream(upstream)))
     billed = {}
 
-    async def has_credits(email): return True
+    import db
+    from services import billing
     async def record_usage(*a, **kw): billed["record"] = a
-    async def deduct_credits(email, cost, *a, **kw): billed["deduct"] = cost
-    monkeypatch.setattr(chat, "has_credits", has_credits)
-    monkeypatch.setattr(chat, "record_usage", record_usage)
-    monkeypatch.setattr(chat, "deduct_credits", deduct_credits)
+    async def deduct_credits(email, cost, *a, **kw): billed["deduct"] = cost; billed["kw"] = kw
+    monkeypatch.setattr(db, "record_usage", record_usage)
+    monkeypatch.setattr(db, "deduct_credits", deduct_credits)
 
     async def run():
-        resp = await chat._proxy_stream_with_billing("http://x/chat/completions", {}, {"model": "deepseek-chat", "messages": []}, "a@b.c", "deepseek", 0.0)
+        res = billing.Reservation("a@b.c", 1.0)
+        resp = await chat._proxy_stream_with_billing("http://x/chat/completions", {}, {"model": "deepseek-chat", "messages": []}, "a@b.c", "deepseek", 0.0, res)
         return [chunk async for chunk in resp.body_iterator]
 
     chunks = asyncio.run(run())
@@ -45,6 +46,7 @@ def test_stream_sends_exact_cost_before_done(monkeypatch):
     expected = calculate_cost_fcfa("deepseek", 1_000_000, 0, model="deepseek-chat", cached_input_tokens=1_000_000)[1]
     assert sent == expected
     assert billed["deduct"] == expected  # le montant affiché est exactement le montant débité
+    assert billed["kw"].get("allow_negative") is True  # un coût réel n'est jamais offert
 
 
 def test_legacy_deepseek_models_are_converted(monkeypatch):
@@ -55,14 +57,15 @@ def test_legacy_deepseek_models_are_converted(monkeypatch):
     from config import settings
     seen = {}
 
-    async def fake_proxy(url, headers, body, email, provider, start):
+    async def fake_proxy(url, headers, body, email, provider, start, reservation):
         seen["model"] = body["model"]
+        chat.billing.release_now(reservation)
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": True})
 
-    async def has_credits(email): return True
+    async def balance(email): return 1000.0
     monkeypatch.setattr(chat, "_proxy_request_with_billing", fake_proxy)
-    monkeypatch.setattr(chat, "has_credits", has_credits)
+    monkeypatch.setattr(chat.billing, "_balance", balance)
     monkeypatch.setattr(chat, "get_provider_config", lambda p: {"api_key": "test", "base_url": "http://x"})
     app.dependency_overrides[get_current_user] = lambda: {"sub": "a@b.c"}
     try:

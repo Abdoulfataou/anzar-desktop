@@ -21,7 +21,11 @@ def include_routers(app: FastAPI) -> None:
     app.include_router(user_router)
     app.include_router(credits_router)
     app.include_router(chat_router)
-    app.include_router(projects_router)
+    # Génération de projets côté serveur : ancienne fonction, inutilisée par l'app (coûts IA
+    # estimés au lieu de réels). Activable avec LEGACY_AI_ROUTES=true.
+    from config import settings
+    if settings.legacy_ai_routes:
+        app.include_router(projects_router)
     app.include_router(admin_router)
     app.include_router(memory_router)
     app.include_router(skills_router)
