@@ -355,9 +355,12 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           system = {
             role: 'system',
             content:
-              'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct. ' +
-              "Aucun dossier de travail n'est ouvert : si l'utilisateur demande à créer ou modifier un projet, " +
-              "propose-lui d'ouvrir un dossier (bouton « Ouvrir un dossier ») pour que tu puisses agir avec tes outils.\n\n" +
+              'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct.\n\n' +
+              "AUCUN DOSSIER N'EST OUVERT : tu n'as aucun outil. Tu ne peux ni lire un fichier, ni lancer une commande, " +
+              "ni modifier quoi que ce soit. Ne prétends JAMAIS l'avoir fait, même si l'historique de la conversation " +
+              "montre que tu le faisais avant : n'invente aucun résultat de commande, de build ou de test. " +
+              "Si la demande exige d'agir sur un projet, dis-le en une phrase et demande d'ouvrir le dossier " +
+              "(bouton « Ouvrir un dossier » en haut de la conversation).\n\n" +
               FORMATTING_GUIDE,
           };
         }

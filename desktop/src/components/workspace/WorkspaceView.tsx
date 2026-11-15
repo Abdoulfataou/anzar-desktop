@@ -125,6 +125,16 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
 
   // ── Conversation ──
   const activeConversation = useActiveConversation();
+
+  // La tâche affichée appartient à un projet : son dossier doit être ouvert,
+  // sinon l'agent répondrait sans outils (redémarrage, changement de tâche…).
+  const taskProjectId = activeConversation?.projectId;
+  useEffect(() => {
+    if (!taskProjectId || taskProjectId === activeProjectId) return;
+    if (useProjectStore.getState().projects.some((p) => p.id === taskProjectId)) {
+      useProjectStore.getState().setActiveProject(taskProjectId);
+    }
+  }, [taskProjectId, activeProjectId]);
   const createConversation = useChatStore((s) => s.createConversation);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   useEffect(() => {

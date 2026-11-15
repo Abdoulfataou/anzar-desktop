@@ -585,6 +585,8 @@ export const useProjectStore = create<ProjectStore>()(
         projects: state.projects.map((p) =>
           typeof (p.metadata as any)?.localPath === 'string' && p.files.length > 0 ? { ...p, files: [] } : p
         ),
+        // Dossier actif conservé au redémarrage : sinon la tâche rouverte n'a plus d'outils
+        activeProjectId: state.activeProjectId,
       }),
       onRehydrateStorage: () => (state) => {
         // After hydration, re-register approved project paths (TerminalService)
