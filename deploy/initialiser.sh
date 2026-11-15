@@ -13,7 +13,7 @@ cat > .env <<FIN
 PG_PASSWORD=$(alea 24)
 JWT_SECRET=$(alea 48)
 OTP_SECRET=$(alea 32)
-ADMIN_DEFAULT_EMAIL=admin@issalanhub.com
+ADMIN_DEFAULT_EMAIL=abdul@issalanhub.com
 ADMIN_DEFAULT_PASSWORD=$(alea 12)
 # ── À REMPLIR ──
 DEEPSEEK_API_KEY=

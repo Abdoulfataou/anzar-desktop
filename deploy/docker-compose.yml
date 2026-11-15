@@ -35,7 +35,7 @@ services:
       DATABASE_URL: postgresql://anzar:${PG_PASSWORD}@db:5432/anzar
       JWT_SECRET: ${JWT_SECRET:?à définir dans .env}
       OTP_SECRET: ${OTP_SECRET:?à définir dans .env}
-      ADMIN_DEFAULT_EMAIL: ${ADMIN_DEFAULT_EMAIL:-admin@issalanhub.com}
+      ADMIN_DEFAULT_EMAIL: ${ADMIN_DEFAULT_EMAIL:-abdul@issalanhub.com}
       ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:?à définir dans .env}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?clé DeepSeek à mettre dans .env}
       KIMI_API_KEY: ${KIMI_API_KEY:-}

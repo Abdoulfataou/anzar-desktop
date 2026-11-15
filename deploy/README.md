@@ -75,7 +75,7 @@ Dans `.env`, remplis :
 - `TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID` : les mêmes que dans `/root/shagostore/deploy/.env` (sauvegardes).
 
 Les mots de passe sont générés tout seuls. **Garde une copie de `.env`** dans ton gestionnaire de mots de passe :
-`cat .env`. `ADMIN_DEFAULT_PASSWORD` est le mot de passe du compte administrateur `admin@issalanhub.com`.
+`cat .env`. `ADMIN_DEFAULT_PASSWORD` est le mot de passe du compte administrateur `abdul@issalanhub.com`.
 
 ```bash
 docker compose up -d --build
