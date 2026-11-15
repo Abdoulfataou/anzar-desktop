@@ -54,7 +54,9 @@
           "$HOME/Downloads/**",
           "$HOME/Projects/**",
           "$HOME/projects/**",
-          "$HOME/Developer/**"
+          "$HOME/Developer/**",
+          "$APPDATA",
+          "$APPDATA/**"
         ]
       },
       "dialog": {

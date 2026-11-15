@@ -3,7 +3,7 @@
  * Handles project lifecycle, file management, and agent coordination
  */
 
-import { safeStorage } from '@/lib/safeStorage';
+import { createJsonFileStorage } from '@/lib/fileStore';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
@@ -577,7 +577,7 @@ export const useProjectStore = create<ProjectStore>()(
 
     {
       name: 'anzar-project-storage',
-      storage: safeStorage,
+      storage: createJsonFileStorage('projects.json') as any,
       // Un projet lié à un dossier (localPath) a ses fichiers SUR LE DISQUE :
       // inutile d'en garder une copie ici, c'est ce qui remplissait le stockage.
       // Les anciens projets générés sans dossier gardent leurs fichiers (seule copie).

@@ -63,7 +63,7 @@ export default function FileChangesCard({
           <button
             onClick={() => void undo()}
             disabled={!undoable || busy}
-            title={undoable ? 'Remettre les fichiers dans leur état précédent' : "Annulation indisponible : l'app a été redémarrée depuis"}
+            title={undoable ? "Remettre les fichiers dans leur état précédent" : "Annulation indisponible pour cette réponse"}
             className={cn(
               'flex items-center gap-1.5 h-7 px-2 rounded-lg text-[12.5px] transition-colors',
               undoable && !busy ? 'text-text-secondary hover:bg-surface-hover hover:text-text-primary' : 'text-text-muted/50 cursor-not-allowed'

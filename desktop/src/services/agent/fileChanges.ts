@@ -4,10 +4,11 @@
  * Avant la première modification d'un fichier, on garde son contenu d'origine.
  * À la fin, on compare avec le disque pour produire la carte « fichiers modifiés ».
  * L'annulation réécrit le contenu d'origine (ou supprime un fichier créé).
- * Les contenus d'origine restent en mémoire : l'annulation n'est plus possible
- * après un redémarrage de l'app.
+ * Les contenus d'origine sont aussi écrits sur le disque (store/undo/) :
+ * l'annulation reste possible après un redémarrage de l'app.
  */
 import { fileSystemService } from '@/services/filesystem/fileSystem';
+import { listDir, readText, removeEntry, storeRoot, writeText } from '@/lib/fileStore';
 
 export interface FileChange {
   path: string;
@@ -20,6 +21,23 @@ export interface FileChange {
 export type Snapshots = Map<string, string | null>;
 
 const snapshotsByMessage = new Map<string, { root: string; files: Snapshots }>();
+/** Messages dont les originaux sont sur le disque. */
+const onDisk = new Set<string>();
+const MAX_UNDO_BYTES = 5 * 1024 * 1024;
+const MAX_UNDO_FILES = 200;
+const undoFile = (messageId: string) => `undo/${messageId.replace(/[^\w-]/g, '_')}.json`;
+
+/** Au démarrage : recense les annulations disponibles et supprime les plus anciennes. */
+export async function initUndoIndex(): Promise<void> {
+  try {
+    if (!(await storeRoot())) return;
+    // Les identifiants contiennent l'heure de création : le tri par nom est chronologique
+    const names = (await listDir('undo')).filter((n) => n.endsWith('.json')).sort();
+    const excess = names.slice(0, Math.max(0, names.length - MAX_UNDO_FILES));
+    for (const n of excess) await removeEntry(`undo/${n}`);
+    for (const n of names.slice(excess.length)) onDisk.add(n.replace(/\.json$/, ''));
+  } catch { /* l'annulation restera limitée à la session */ }
+}
 
 function abs(root: string, rel: string): string | null {
   const clean = rel.replace(/\\/g, '/').replace(/^\/+/, '').trim();
@@ -78,17 +96,35 @@ export async function collectChanges(messageId: string, root: string, snapshots:
       changes.push({ path: rel, kind: 'modified', added, removed });
     }
   }
-  if (kept.size > 0) snapshotsByMessage.set(messageId, { root, files: kept });
+  if (kept.size > 0) {
+    snapshotsByMessage.set(messageId, { root, files: kept });
+    // Copie sur disque pour survivre à un redémarrage (sauf si trop volumineux)
+    const entries = [...kept.entries()];
+    const bytes = entries.reduce((n, [, before]) => n + (before?.length || 0), 0);
+    if (bytes <= MAX_UNDO_BYTES && (await storeRoot())) {
+      try {
+        await writeText(undoFile(messageId), JSON.stringify({ root, files: entries }));
+        onDisk.add(messageId.replace(/[^\w-]/g, '_'));
+      } catch { /* annulation disponible pour cette session seulement */ }
+    }
+  }
   return changes.sort((a, b) => a.path.localeCompare(b.path));
 }
 
 export function canUndo(messageId: string): boolean {
-  return snapshotsByMessage.has(messageId);
+  return snapshotsByMessage.has(messageId) || onDisk.has(messageId.replace(/[^\w-]/g, '_'));
 }
 
 /** Remet chaque fichier dans son état d'avant la réponse. Retourne le nombre de fichiers restaurés. */
 export async function undoChanges(messageId: string): Promise<number> {
-  const entry = snapshotsByMessage.get(messageId);
+  let entry = snapshotsByMessage.get(messageId);
+  if (!entry) {
+    try {
+      const raw = await readText(undoFile(messageId));
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (parsed?.root && Array.isArray(parsed.files)) entry = { root: parsed.root, files: new Map(parsed.files) };
+    } catch { /* fichier illisible */ }
+  }
   if (!entry) return 0;
   let restored = 0;
   for (const [rel, before] of entry.files) {
@@ -102,6 +138,8 @@ export async function undoChanges(messageId: string): Promise<number> {
     restored++;
   }
   snapshotsByMessage.delete(messageId);
+  onDisk.delete(messageId.replace(/[^\w-]/g, '_'));
+  await removeEntry(undoFile(messageId));
   return restored;
 }
 
