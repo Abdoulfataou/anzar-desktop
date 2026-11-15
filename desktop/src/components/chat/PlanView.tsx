@@ -22,26 +22,29 @@ const approvePlan = (messageId: string) => window.dispatchEvent(new CustomEvent(
 function StatusChip({ status }: { status: Plan['status'] }) {
   if (status === 'approved') {
     return (
-      <span className="inline-flex items-center gap-1 text-ui-sm text-accent-success">
+      <span className="inline-flex items-center gap-1 text-ui-sm text-accent-success whitespace-nowrap">
         <CheckCircle2 size={13} /> Validé
       </span>
     );
   }
-  return <span className="text-ui-sm text-text-muted">En attente de validation</span>;
+  return <span className="text-ui-sm text-text-muted whitespace-nowrap">En attente de validation</span>;
 }
 
 export function PlanCard({ messageId, plan, disabled }: { messageId: string; plan: Plan; disabled?: boolean }) {
   return (
     <div className="mt-3 rounded-xl border border-border-medium bg-surface-default overflow-hidden">
-      <div className="flex items-center gap-3 px-3 py-2.5">
-        <ListChecks size={16} className="flex-shrink-0 text-text-secondary" />
-        <div className="flex-1 min-w-0">
-          <p className="text-ui-base font-medium text-text-primary truncate">{plan.title}</p>
-          <StatusChip status={plan.status} />
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2.5">
+        <div className="flex items-start gap-2.5 basis-full min-w-0">
+          <ListChecks size={16} className="flex-shrink-0 mt-0.5 text-text-secondary" />
+          <div className="min-w-0">
+            <p className="text-ui-base font-medium text-text-primary">{plan.title}</p>
+            <StatusChip status={plan.status} />
+          </div>
         </div>
+        <div className="flex-1" />
         <button
           onClick={() => openPlan(messageId)}
-          className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-secondary hover:text-text-primary hover:bg-hover-fill transition-colors"
+          className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-secondary hover:text-text-primary hover:bg-hover-fill transition-colors whitespace-nowrap"
         >
           <PanelRight size={14} /> Ouvrir
         </button>
@@ -49,7 +52,7 @@ export function PlanCard({ messageId, plan, disabled }: { messageId: string; pla
           <button
             onClick={() => approvePlan(messageId)}
             disabled={disabled}
-            className="flex items-center gap-1.5 h-7 px-3 rounded-lg text-ui-base font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity disabled:opacity-50"
+            className="flex items-center gap-1.5 h-7 px-3 rounded-lg text-ui-base font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity disabled:opacity-50 whitespace-nowrap"
           >
             <Play size={13} /> Valider et exécuter
           </button>
@@ -57,6 +60,11 @@ export function PlanCard({ messageId, plan, disabled }: { messageId: string; pla
       </div>
     </div>
   );
+}
+
+/** Retire le titre Markdown de tête : l'onglet affiche déjà le titre du plan. */
+function withoutLeadingHeading(markdown: string): string {
+  return markdown.replace(/^\s*#{1,3}\s+[^\n]*\n+/, '');
 }
 
 export function PlanPanel({ messageId, plan, disabled }: { messageId: string; plan: Plan; disabled?: boolean }) {
@@ -67,7 +75,7 @@ export function PlanPanel({ messageId, plan, disabled }: { messageId: string; pl
         <div className="mb-4"><StatusChip status={plan.status} /></div>
         <div className="text-ui-base text-text-primary break-words">
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents()}>
-            {plan.markdown}
+            {withoutLeadingHeading(plan.markdown)}
           </ReactMarkdown>
         </div>
       </div>
