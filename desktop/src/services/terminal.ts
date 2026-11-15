@@ -399,6 +399,10 @@ class TerminalService {
       this.emitOutput(processId, 'system', `$ ${parsed.cmdName} ${parsed.args.join(' ')}`.trim());
     }
     this.eventBus.emit({ type: 'process-start', process });
+    // Aperçu live : guette une URL localhost dans la sortie de CHAQUE process
+    // (lancé depuis l'onglet Terminal OU par l'agent via run_command) et
+    // l'émet aux listeners de preview (onDevServerUrl → onglet Aperçu).
+    this.watchForUrl(processId);
 
     try {
       // Direct allowlisted command (no sh -c)
