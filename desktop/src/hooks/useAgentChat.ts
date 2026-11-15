@@ -10,6 +10,7 @@
  * (sécurité Tauri allowlist + anti-traversal), buildAgentSystemPrompt/context,
  * usageStore (débit FCFA), chatStore (persistance conversation).
  */
+import { commandRisk, noteAgentWrite } from '@/services/agent/commandGuard';
 import { loadPersonalInstructions, personalInstructionsSection } from '@/services/personalInstructions';
 import { useCallback, useRef, useState } from 'react';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
@@ -31,6 +32,10 @@ export interface ApprovalRequest {
   id: string;
   name: string;
   summary: string;
+  /** Pourquoi l'accord est demandé alors que le mode ne l'exige pas (commande à risque) */
+  reason?: string;
+  /** Ce qui va réellement s'exécuter (corps d'un script npm) */
+  detail?: string;
 }
 
 /** Attente avant chaque nouvelle tentative quand une étape est coupée (ms). */
@@ -583,19 +588,31 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           addToolToTimeline(ev.id);
           flush();
 
+          // Commande qui exécute du code écrit par l'agent, ou script npm sensible :
+          // accord demandé même en « Accès complet » (garde S3)
+          const risk = call.function.name === 'run_command' && workspacePath && modeRef.current !== 'plan'
+            ? await commandRisk(convId, workspacePath, String(args.command || '')).catch(() => null)
+            : null;
+
           // Accord de l'utilisateur selon le mode de permission
           let allowed = true;
+          let refusal = "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
           if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !['task_done', 'propose_plan', 'load_skill'].includes(call.function.name)) {
             allowed = false;
-          } else if (needsApproval(modeRef.current, call.function.name)) {
+          } else if (risk && background) {
+            // Automatisation : personne pour valider → refus, expliqué à l'agent
+            allowed = false;
+            refusal = `Refusé automatiquement : ${risk.reason}. Personne n'est là pour valider pendant une automatisation. Ne contourne pas ce refus ; signale-le dans ta réponse.`;
+          } else if (needsApproval(modeRef.current, call.function.name) || risk) {
             allowed = await new Promise<boolean>((resolve) => {
               approvalResolver.current = resolve;
-              setApproval({ id: call.id, name: call.function.name, summary: ev.argsSummary });
+              setApproval({ id: call.id, name: call.function.name, summary: ev.argsSummary, reason: risk?.reason, detail: risk?.detail });
             });
           }
 
           // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)
           if (allowed && workspacePath && ['write_file', 'edit_file', 'delete_file'].includes(call.function.name)) {
+            await noteAgentWrite(convId, workspacePath, args.path || args.file_path).catch(() => {});
             await snapshotBeforeChange(snapshots, workspacePath, args.path || args.file_path);
           }
 
@@ -632,7 +649,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           }
 
           const result = !allowed
-            ? { output: "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.", isError: true }
+            ? { output: refusal, isError: true }
             : workspacePath
             ? await executeToolCall(call, {
                 projectRoot: workspacePath,

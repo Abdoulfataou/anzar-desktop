@@ -399,6 +399,12 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                   <p className="text-ui-sm font-mono text-text-secondary truncate" title={approval.summary}>
                     {approval.name === 'run_command' ? '$ ' : `${approval.name}  `}{approval.summary}
                   </p>
+                  {approval.reason && (
+                    <p className="mt-0.5 text-ui-sm text-accent-warning">Vérifie avant d'autoriser : {approval.reason}.</p>
+                  )}
+                  {approval.detail && (
+                    <pre className="mt-1 max-h-24 overflow-auto rounded-md bg-hover-fill px-2 py-1 font-mono text-ui-sm text-text-primary whitespace-pre-wrap break-all">{approval.detail}</pre>
+                  )}
                 </div>
                 <button
                   onClick={() => resolveApproval(false)}
