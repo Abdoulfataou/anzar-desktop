@@ -80,32 +80,42 @@ async def admin_mark_payment_intent_paid(
 
     Session = get_sessionmaker()
     async with Session() as session:
+        intent = await session.scalar(select(PaymentIntent).where(PaymentIntent.id == intent_id))
+        if not intent:
+            raise ValueError("Demande introuvable")
+        if intent.status == "paid":
+            return _model_to_dict(intent)
+        if intent.status != "pending":
+            raise ValueError(f"Cette demande est « {intent.status} » : seule une demande en attente peut être validée")
+        if provider_ref:
+            # Une même référence Orange Money / Wave ne peut valider qu'une seule demande
+            dup = await session.scalar(select(PaymentIntent.id).where(
+                PaymentIntent.provider_ref == provider_ref, PaymentIntent.id != intent_id))
+            if dup:
+                raise ValueError("Cette référence de paiement a déjà servi pour une autre demande")
+        user_email, amount = intent.user_email, float(intent.amount_fcfa)
+
+    # 1) Crédit d'abord, idempotent (external_ref) : un double clic ou une reprise après
+    #    panne ne crédite jamais deux fois. 2) Puis la demande passe à « payée ».
+    from config import settings as _cfg
+    bonus_pct = _cfg.get_recharge_bonus_percent(amount)
+    bonus_amount = round(amount * bonus_pct / 100) if bonus_pct > 0 else 0
+    total_credited = amount + bonus_amount
+    bonus_label = f" (+{bonus_pct}% bonus = {total_credited} F)" if bonus_pct > 0 else ""
+    await add_credits(
+        user_email,
+        total_credited,
+        description=f"Paiement validé ({admin_email}): {description}{bonus_label}",
+        tx_type="recharge",
+        external_ref=f"payment:{intent_id}",
+    )
+
+    async with Session() as session:
         async with session.begin():
             intent = await session.scalar(select(PaymentIntent).where(PaymentIntent.id == intent_id).with_for_update())
-            if not intent:
-                raise ValueError("Demande introuvable")
-            if intent.status == "paid":
-                return _model_to_dict(intent)
-
             intent.status = "paid"
             intent.provider_ref = provider_ref
             intent.updated_at = _utcnow()
-
-        # Apply bonus based on recharge amount
-        from config import settings as _cfg
-        bonus_pct = _cfg.get_recharge_bonus_percent(intent.amount_fcfa)
-        bonus_amount = round(intent.amount_fcfa * bonus_pct / 100) if bonus_pct > 0 else 0
-        total_credited = intent.amount_fcfa + bonus_amount
-
-        external_ref = provider_ref or intent_id
-        bonus_label = f" (+{bonus_pct}% bonus = {total_credited} F)" if bonus_pct > 0 else ""
-        await add_credits(
-            intent.user_email,
-            total_credited,
-            description=f"Paiement validé ({admin_email}): {description}{bonus_label}",
-            tx_type="recharge",
-            external_ref=external_ref,
-        )
 
     # Reload latest
     Session = get_sessionmaker()

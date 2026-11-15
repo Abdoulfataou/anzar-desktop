@@ -133,8 +133,18 @@ async def admin_list_all_users(search: str = "", status: str = "all", limit: int
             where.append(User.is_active.is_(True))
         elif status == "disabled":
             where.append(User.is_active.is_(False))
+        balance = func.coalesce(Credits.balance_fcfa, 0)
+        if status == "debt":
+            where.append(balance < 0)
+        elif status == "zero":
+            where.append(balance == 0)
+        elif status == "funded":
+            where.append(balance > 0)
 
-        total_q = await session.execute(select(func.count(User.id)).where(*where))
+        total_q = await session.execute(
+            select(func.count(User.id)).select_from(User)
+            .outerjoin(Credits, Credits.user_email == User.email).where(*where)
+        )
         total = int(total_q.scalar() or 0)
 
         proj_cnt = (

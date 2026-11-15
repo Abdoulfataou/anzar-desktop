@@ -170,6 +170,19 @@ class Admin(Base):
     )
 
 
+class AdminAudit(Base):
+    """Journal des actions des admins (connexions, crédits, paiements, comptes)."""
+    __tablename__ = "admin_audit"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    admin_email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    target: Mapped[str] = mapped_column(String(255), default="")
+    details: Mapped[str] = mapped_column(Text, default="")
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
+
+
 # ============================================================================
 # PAYMENT INTENT
 # ============================================================================
