@@ -1,5 +1,15 @@
 import type { Config } from 'tailwindcss';
 
+/**
+ * Couleur pilotée par une variable CSS, compatible avec les modificateurs
+ * d'opacité de Tailwind (`bg-bg-tertiary/60`, `text-text-muted/50`…).
+ * Sans ce relais, Tailwind ne génère aucune règle pour ces classes : elles
+ * étaient silencieusement sans effet. color-mix fonctionne quel que soit le
+ * format de la variable (hex ou rgba).
+ */
+const withAlpha = (variable: string) =>
+  `color-mix(in srgb, var(${variable}) calc(<alpha-value> * 100%), transparent)`;
+
 const config: Config = {
   darkMode: 'class',
   content: [
@@ -22,60 +32,60 @@ const config: Config = {
         'ui-xs': ['calc(var(--ui-font-size) - 4px)', { lineHeight: '1.4' }],
       },
       colors: {
-        window: 'var(--color-window)',
-        'user-bubble': 'var(--color-user-bubble)',
-        selected: 'var(--color-selected)',
-        'hover-fill': 'var(--color-hover-fill)',
-        link: 'var(--color-link)',
-        tag: 'var(--color-tag)',
-        'inline-code': 'var(--color-inline-code)',
+        window: withAlpha('--color-window'),
+        'user-bubble': withAlpha('--color-user-bubble'),
+        selected: withAlpha('--color-selected'),
+        'hover-fill': withAlpha('--color-hover-fill'),
+        link: withAlpha('--color-link'),
+        tag: withAlpha('--color-tag'),
+        'inline-code': withAlpha('--color-inline-code'),
         input: {
-          DEFAULT: 'var(--color-input)',
-          border: 'var(--color-input-border)',
-          'border-hover': 'var(--color-input-border-hover)',
+          DEFAULT: withAlpha('--color-input'),
+          border: withAlpha('--color-input-border'),
+          'border-hover': withAlpha('--color-input-border-hover'),
         },
         diff: {
-          added: 'var(--color-diff-added)',
-          removed: 'var(--color-diff-removed)',
+          added: withAlpha('--color-diff-added'),
+          removed: withAlpha('--color-diff-removed'),
         },
         bg: {
-          primary: 'var(--color-bg-primary)',
-          secondary: 'var(--color-bg-secondary)',
-          tertiary: 'var(--color-bg-tertiary)',
+          primary: withAlpha('--color-bg-primary'),
+          secondary: withAlpha('--color-bg-secondary'),
+          tertiary: withAlpha('--color-bg-tertiary'),
         },
         surface: {
-          default: 'var(--color-surface-default)',
-          elevated: 'var(--color-surface-elevated)',
-          hover: 'var(--color-surface-hover)',
+          default: withAlpha('--color-surface-default'),
+          elevated: withAlpha('--color-surface-elevated'),
+          hover: withAlpha('--color-surface-hover'),
         },
         accent: {
-          primary: 'var(--color-accent-primary)',
-          secondary: 'var(--color-accent-secondary)',
-          tertiary: 'var(--color-accent-tertiary)',
-          success: 'var(--color-accent-success)',
-          warning: 'var(--color-accent-warning)',
-          error: 'var(--color-accent-error)',
-          info: 'var(--color-accent-info)',
+          primary: withAlpha('--color-accent-primary'),
+          secondary: withAlpha('--color-accent-secondary'),
+          tertiary: withAlpha('--color-accent-tertiary'),
+          success: withAlpha('--color-accent-success'),
+          warning: withAlpha('--color-accent-warning'),
+          error: withAlpha('--color-accent-error'),
+          info: withAlpha('--color-accent-info'),
         },
         text: {
-          primary: 'var(--color-text-primary)',
-          secondary: 'var(--color-text-secondary)',
-          tertiary: 'var(--color-text-tertiary)',
-          muted: 'var(--color-text-muted)',
+          primary: withAlpha('--color-text-primary'),
+          secondary: withAlpha('--color-text-secondary'),
+          tertiary: withAlpha('--color-text-tertiary'),
+          muted: withAlpha('--color-text-muted'),
         },
         border: {
-          subtle: 'var(--color-border-subtle)',
-          medium: 'var(--color-border-medium)',
-          strong: 'var(--color-border-strong)',
+          subtle: withAlpha('--color-border-subtle'),
+          medium: withAlpha('--color-border-medium'),
+          strong: withAlpha('--color-border-strong'),
         },
         // Tokens Blueprint : ambre réservé aux crédits, bouton principal inversé
         credit: {
-          DEFAULT: 'var(--color-credit)',
-          soft: 'var(--color-credit-soft)',
+          DEFAULT: withAlpha('--color-credit'),
+          soft: withAlpha('--color-credit-soft'),
         },
         'primary-btn': {
-          DEFAULT: 'var(--color-primary)',
-          fg: 'var(--color-primary-fg)',
+          DEFAULT: withAlpha('--color-primary'),
+          fg: withAlpha('--color-primary-fg'),
         },
       },
       borderRadius: {
