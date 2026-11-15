@@ -1,0 +1,18 @@
+# Sert le panneau admin (application d'une seule page) derrière le Caddy du VPS.
+:80 {
+	root * /srv
+	encode zstd gzip
+	try_files {path} /index.html
+	file_server
+	header {
+		X-Frame-Options DENY
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; connect-src 'self' https://anzar-api.issalanhub.com; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+	@html path / /index.html
+	header @html Cache-Control "no-store"
+}

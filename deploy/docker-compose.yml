@@ -43,8 +43,8 @@ services:
       SENDER_EMAIL: ${SENDER_EMAIL:-no-reply@issalanhub.com}
       SENDER_NAME: ${SENDER_NAME:-ANZAR}
       DEEPSEEK_MARGIN: ${DEEPSEEK_MARGIN:-3.0}
-      WELCOME_BONUS_FCFA: ${WELCOME_BONUS_FCFA:-1000}
-      FREE_DAILY_CHAT_REQUESTS: ${FREE_DAILY_CHAT_REQUESTS:-10}
+      # Accès strictement payant : aucun crédit offert à l'inscription.
+      WELCOME_BONUS_FCFA: ${WELCOME_BONUS_FCFA:-0}
     networks:
       interne: {}
       shago:
@@ -52,6 +52,20 @@ services:
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "5" }
+
+  # Panneau admin (fichiers statiques) : le Caddy de ShagoStore le sert sur anzar-admin.issalanhub.com
+  admin:
+    build:
+      context: ../Admin
+      args:
+        VITE_BACKEND_URL: https://anzar-api.issalanhub.com
+    restart: unless-stopped
+    networks:
+      shago:
+        aliases: [anzar-admin]
+    logging:
+      driver: json-file
+      options: { max-size: "5m", max-file: "3" }
 
 networks:
   interne: {}
