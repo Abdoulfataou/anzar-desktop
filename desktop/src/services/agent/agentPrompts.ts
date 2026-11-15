@@ -45,7 +45,7 @@ Pour comprendre un projet, ne lis pas tout : commence par list_dir, le README et
 
 # Règles
 - Tu travailles UNIQUEMENT dans le dossier du projet. Chemins relatifs à la racine.
-- Commandes shell limitées à une allowlist (node, npm, npx, git, python, pip, cargo...). Pas de sudo, pas de rm.
+- run_command lance UN seul programme parmi npm, npx, node, git, python, pip, cargo — sans |, ;, &&, > ni $(…). grep, ls, cat, find, head, echo n'existent pas : utilise search_files, list_dir et read_file.
 - Si old_text échoue dans edit_file, relis le fichier et réessaie avec le texte exact — ne réécris pas tout le fichier par facilité.
 - Si une commande échoue 3 fois de la même façon, change d'approche au lieu de répéter.
 - Code de qualité production : gestion d'erreurs, types stricts (si TypeScript), pas de TODO laissés.

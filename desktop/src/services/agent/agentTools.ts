@@ -154,11 +154,13 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'run_command',
       description:
-        "Exécute une commande shell dans le projet (allowlist: node, npm, npx, git, pip, python, cargo…). Utilise-la pour installer des dépendances, lancer build/lint/tests et VÉRIFIER ton travail. Renvoie stdout/stderr + code de sortie.",
+        "Exécute UNE commande dans le projet. Programmes autorisés : npm, npx, node, git, python, pip, cargo — rien d'autre (pas de grep, ls, cat, find, head, echo). " +
+        "Interdits : |, ;, &&, ||, >, <, $(…) et chemins absolus. Pour chercher dans le code utilise search_files, pour lister list_dir, pour lire read_file. " +
+        "Sert à installer des dépendances, lancer build/lint/tests et VÉRIFIER ton travail. Renvoie stdout/stderr + code de sortie.",
       parameters: {
         type: 'object',
         properties: {
-          command: { type: 'string', description: "Commande complète, ex: 'npm run build'" },
+          command: { type: 'string', description: "Une seule commande, ex: 'npm run build' ou 'git log --oneline -5'" },
           cwd: { type: 'string', description: 'Sous-dossier relatif (optionnel, défaut: racine du projet)' },
         },
         required: ['command'],
@@ -363,7 +365,34 @@ async function execSearchFiles(args: any, ctx: ToolExecutionContext): Promise<To
   return { output: truncate(results.join('\n'), MAX_COMMAND_OUTPUT_CHARS, 'recherche') };
 }
 
+const RUNNABLE = new Set(['npm', 'npx', 'node', 'git', 'cargo', 'python', 'python3', 'pip', 'pip3']);
+const READ_INSTEAD: Record<string, string> = {
+  grep: 'search_files', rg: 'search_files', find: 'search_files ou list_dir', ls: 'list_dir', tree: 'list_dir',
+  cat: 'read_file', head: 'read_file', tail: 'read_file', less: 'read_file', wc: 'read_file',
+};
+
+/**
+ * Refuse tôt, avec une consigne utile, ce que le terminal bloquerait de toute façon :
+ * l'agent comprend quoi faire à la place au lieu de réessayer la même erreur.
+ */
+function precheckCommand(command: string): string | null {
+  const cmd = String(command || '').trim();
+  if (/[|;<>]|&&|\$\(|`/.test(cmd)) {
+    return "Refusé : un seul programme par appel, sans |, ;, &&, >, < ni $(…). Découpe en plusieurs appels run_command, ou utilise search_files / list_dir / read_file.";
+  }
+  const exe = (cmd.split(/\s+/)[0] || '').toLowerCase();
+  if (!RUNNABLE.has(exe)) {
+    const alt = READ_INSTEAD[exe];
+    return alt
+      ? `Refusé : « ${exe} » n'est pas disponible. Utilise l'outil ${alt}.`
+      : `Refusé : « ${exe} » n'est pas autorisé. Programmes possibles : ${[...RUNNABLE].join(', ')}.`;
+  }
+  return null;
+}
+
 async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const refused = precheckCommand(args.command);
+  if (refused) return { output: refused, isError: true };
   const cwd = resolvePath(ctx.projectRoot, args.cwd);
   const result = await terminalService.exec(args.command, {
     cwd,
