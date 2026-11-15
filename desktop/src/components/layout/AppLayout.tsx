@@ -60,7 +60,7 @@ export default function AppLayout({ className }: AppLayoutProps) {
             <div className="flex items-center gap-2 px-4 py-2 bg-accent-error/10 border-b border-accent-error/20 flex-shrink-0">
               <WifiOff size={14} className="text-accent-error flex-shrink-0" />
               <p className="text-xs font-medium text-accent-error">
-                Hors ligne — les fonctionnalites reseau sont desactivees
+                Hors ligne — les fonctionnalités réseau sont désactivées
               </p>
             </div>
           )}
@@ -68,7 +68,7 @@ export default function AppLayout({ className }: AppLayoutProps) {
             <div className="flex items-center gap-2 px-4 py-1.5 bg-accent-warning/10 border-b border-accent-warning/20 flex-shrink-0">
               <WifiOff size={12} className="text-accent-warning flex-shrink-0" />
               <p className="text-[11px] font-medium text-accent-warning">
-                Connexion lente — les reponses peuvent prendre plus de temps
+                Connexion lente — les réponses peuvent prendre plus de temps
               </p>
             </div>
           )}

@@ -154,6 +154,14 @@ async def _proxy_stream_with_billing(
 
                 async for line in resp.aiter_lines():
                     if line.strip():
+                        if line.strip() == "data: [DONE]" and (input_tokens or output_tokens):
+                            # Coût exact de cet appel, envoyé à l'app avant la fin du flux :
+                            # l'app additionne ces montants au lieu de comparer le solde
+                            # (faux si une autre session consomme en même temps).
+                            _, call_cost = calculate_cost_fcfa(
+                                provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
+                            )
+                            yield f"data: {json.dumps({'anzar': {'cost_fcfa': call_cost}})}\n\n"
                         yield f"{line}\n\n"
 
                         if line.startswith("data: ") and line != "data: [DONE]":

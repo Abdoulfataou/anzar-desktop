@@ -21,6 +21,7 @@ export interface FileChange {
 export type Snapshots = Map<string, string | null>;
 
 const snapshotsByMessage = new Map<string, { root: string; files: Snapshots }>();
+const MAX_MEMORY_SNAPSHOTS = 20;
 /** Messages dont les originaux sont sur le disque. */
 const onDisk = new Set<string>();
 const MAX_UNDO_BYTES = 5 * 1024 * 1024;
@@ -105,7 +106,13 @@ export async function collectChanges(messageId: string, root: string, snapshots:
       try {
         await writeText(undoFile(messageId), JSON.stringify({ root, files: entries }));
         onDisk.add(messageId.replace(/[^\w-]/g, '_'));
+        // Copie disque disponible : inutile de garder le contenu en mémoire (P4)
+        snapshotsByMessage.delete(messageId);
       } catch { /* annulation disponible pour cette session seulement */ }
+    }
+    // Mémoire bornée : seules les dernières réponses non sauvegardées sur disque restent annulables
+    while (snapshotsByMessage.size > MAX_MEMORY_SNAPSHOTS) {
+      snapshotsByMessage.delete(snapshotsByMessage.keys().next().value as string);
     }
   }
   return changes.sort((a, b) => a.path.localeCompare(b.path));

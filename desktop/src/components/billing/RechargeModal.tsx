@@ -90,7 +90,7 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
       throw new Error(text || 'Erreur serveur');
     } catch (e) {
       const msg =
-        e instanceof Error ? e.message : "Paiement indisponible pour le moment. Reessaie plus tard.";
+        e instanceof Error ? e.message : "Paiement indisponible pour le moment. Réessaie plus tard.";
       toast.error(msg);
     } finally {
       setIsSubmitting(false);

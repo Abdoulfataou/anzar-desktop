@@ -73,7 +73,7 @@ export default function LoginPage() {
       // If email sending fails (Brevo not configured), offer password fallback
       const msg = err instanceof Error ? err.message : '';
       if (msg.includes('envoyer') || msg.includes('email') || msg.includes('503')) {
-        setError('Service email indisponible. Utilise le mot de passe.');
+        setError('Service e-mail indisponible. Utilise le mot de passe.');
         setStep('password');
       } else {
         setError(msg || "Impossible d'envoyer le code");
@@ -202,8 +202,8 @@ export default function LoginPage() {
             <h1 className="text-3xl font-bold gradient-text mb-2">ANZAR</h1>
             <p className="text-sm text-text-muted">
               {step === 'email' && 'Entre ton email pour continuer'}
-              {step === 'otp' && (isNewUser ? 'Bienvenue ! Verifie ton email' : 'Entre le code recu par email')}
-              {step === 'password' && (authMode === 'login' ? 'Connecte-toi pour continuer' : 'Cree ton compte')}
+              {step === 'otp' && (isNewUser ? 'Bienvenue ! Vérifie ton e-mail' : 'Entre le code reçu par e-mail')}
+              {step === 'password' && (authMode === 'login' ? 'Connecte-toi pour continuer' : 'Crée ton compte')}
             </p>
           </div>
 
@@ -269,7 +269,7 @@ export default function LoginPage() {
 
               <p className="text-xs text-text-muted text-center mt-3">
                 Un code a 6 chiffres sera envoyé à ton email.
-                Si tu n'as pas de compte, il sera cree automatiquement.
+                Si tu n'as pas de compte, il sera créé automatiquement.
               </p>
 
               {/* Fallback: go to password mode */}
@@ -339,7 +339,7 @@ export default function LoginPage() {
                 )}
               >
                 {loading ? <Loader2 size={18} className="animate-spin" /> : (
-                  <><CheckCircle size={18} /> Verifier le code</>
+                  <><CheckCircle size={18} /> Vérifier le code</>
                 )}
               </button>
 
@@ -416,7 +416,7 @@ export default function LoginPage() {
                 ) : authMode === 'login' ? (
                   <><LogIn size={18} /> Se connecter</>
                 ) : (
-                  <><UserPlus size={18} /> Creer un compte</>
+                  <><UserPlus size={18} /> Créer un compte</>
                 )}
               </button>
 
@@ -426,7 +426,7 @@ export default function LoginPage() {
                   onClick={() => { setAuthMode(authMode === 'login' ? 'register' : 'login'); setError(null); }}
                   className="text-sm text-accent-primary hover:underline"
                 >
-                  {authMode === 'login' ? "Pas de compte ? S'inscrire" : 'Deja un compte ? Connexion'}
+                  {authMode === 'login' ? "Pas de compte ? S'inscrire" : 'Déjà un compte ? Connexion'}
                 </button>
                 <button
                   type="button"
@@ -456,7 +456,7 @@ export default function LoginPage() {
               </button>
             </div>
             <p className="text-[10px] text-text-muted/60">
-              {"© "}{new Date().getFullYear()} IssalanHub · USA · Niger · Tous droits reserves
+              {"© "}{new Date().getFullYear()} IssalanHub · USA · Niger · Tous droits réservés
             </p>
           </div>
         </div>

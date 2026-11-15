@@ -208,10 +208,10 @@ class AIService {
           continue;
         }
         if (!this.isOnline()) {
-          throw new Error('Pas de connexion internet. Verifie ton reseau.');
+          throw new Error('Pas de connexion internet. Vérifie ton réseau.');
         }
         if (/abort/i.test(String(err?.message || '')) && !options.signal?.aborted) {
-          throw new Error('Le serveur met trop de temps a repondre. Reessaie.');
+          throw new Error('Le serveur met trop de temps à répondre. Réessaie.');
         }
         throw err;
       }
@@ -368,6 +368,12 @@ class AIService {
               continue; // chunk malformé — on l'ignore
             }
 
+            // Coût exact de cet appel, calculé et débité par le serveur (B6)
+            if (json.anzar && typeof json.anzar.cost_fcfa === 'number') {
+              yield { serverCostFCFA: json.anzar.cost_fcfa };
+              continue;
+            }
+
             if (json.error) {
               // Erreur réelle du serveur, au milieu du stream : NE PAS l'avaler.
               throw new StreamAPIError(json.error.message || 'Erreur API dans le stream');
@@ -408,7 +414,7 @@ class AIService {
           continue;
         }
         if (!this.isOnline()) {
-          throw new Error('Pas de connexion internet. Verifie ton reseau.');
+          throw new Error('Pas de connexion internet. Vérifie ton réseau.');
         }
         throw err;
       } finally {

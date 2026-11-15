@@ -531,6 +531,8 @@ export interface StreamDelta {
   reasoning_content?: string;
   tool_calls?: Partial<ToolCall>[];
   finish_reason?: string | null;
+  /** Coût exact de l'appel, envoyé par le serveur juste avant la fin du flux (FCFA) */
+  serverCostFCFA?: number;
 }
 
 export interface APIError {

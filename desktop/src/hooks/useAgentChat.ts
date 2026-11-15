@@ -70,7 +70,11 @@ interface ResumeState {
   promptTokens: number;
   completionTokens: number;
   balanceBefore: number | null;
+  cost: ServerCost;
 }
+
+/** Coûts exacts envoyés par le serveur pour chaque appel au modèle (B6) */
+interface ServerCost { sum: number; reports: number; calls: number }
 
 /** Après une coupure, chaque appel d'outil annoncé doit avoir une réponse, sinon l'API refuse l'historique. */
 function closeDanglingToolCalls(history: APIMessage[]): void {
@@ -400,6 +404,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     const t0 = Date.now();
     // Solde serveur avant la tâche : la différence à la fin = coût réel facturé.
     const balanceBefore = resumeFrom ? resumeFrom.balanceBefore : await refreshCredits();
+    const cost: ServerCost = resumeFrom?.cost ?? { sum: 0, reports: 0, calls: 0 };
     const priceIn = model === 'thinking' ? 400 : 250;
     const priceOut = model === 'thinking' ? 900 : 500;
     const historyTokens = () =>
@@ -529,6 +534,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           try {
             const stream = aiService.chatStream(apiHistoryRef.current, { model, tools, signal: controller.signal });
             for await (const delta of stream) {
+              if (delta.serverCostFCFA !== undefined) { cost.sum += delta.serverCostFCFA; cost.reports++; continue; }
               if (delta.content) {
                 stepContent += delta.content;
                 flushLive(stepContent);
@@ -536,6 +542,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               if (delta.reasoning_content) stepReasoning += delta.reasoning_content;
               if (delta.tool_calls) assembler.add(delta.tool_calls);
             }
+            cost.calls++;
             break;
           } catch (e: any) {
             if (controller.signal.aborted) break;
@@ -721,11 +728,13 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         });
         let finalText = '';
         for await (const delta of aiService.chatStream(apiHistoryRef.current, { model, signal: controller.signal })) {
+          if (delta.serverCostFCFA !== undefined) { cost.sum += delta.serverCostFCFA; cost.reports++; continue; }
           if (delta.content) {
             finalText += delta.content;
             flushLive(finalText);
           }
         }
+        cost.calls++;
         if (finalText) {
           accContent += (accContent ? '\n\n' : '') + finalText;
           addText(finalText);
@@ -761,10 +770,16 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       try {
         // ── Coût réel : différence de solde serveur (le backend facture chaque appel) ──
         const estimate = Math.round((promptTokens / 1_000_000) * priceIn + (completionTokens / 1_000_000) * priceOut);
-        await new Promise((r) => setTimeout(r, 600)); // laisse le serveur enregistrer le dernier appel
+        // Sans coûts exacts du serveur, on lui laisse le temps d'enregistrer le dernier appel
+        if (!(cost.reports > 0 && cost.reports >= cost.calls)) await new Promise((r) => setTimeout(r, 600));
         const balanceAfter = await refreshCredits();
-        const fromServer = balanceBefore !== null && balanceAfter !== null;
-        const costFCFA = fromServer ? Math.max(0, Math.round((balanceBefore - balanceAfter) * 100) / 100) : estimate;
+        // 1) Coûts exacts envoyés par le serveur pour chaque appel : justes même si une
+        //    automatisation consomme en parallèle. 2) Sinon (ancien serveur) : écart de solde.
+        const exact = cost.reports > 0 && cost.reports >= cost.calls;
+        const fromServer = exact || (balanceBefore !== null && balanceAfter !== null);
+        const costFCFA = exact
+          ? Math.round(cost.sum * 100) / 100
+          : fromServer ? Math.max(0, Math.round((balanceBefore! - balanceAfter!) * 100) / 100) : estimate;
         updateMessage(assistantId, { costFCFA });
 
         const record = {
@@ -790,7 +805,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       // On garde de quoi reprendre exactement ici (bouton « Reprendre »)
       resumeRef.current = aborted
         ? null
-        : { convId, assistantId, accContent, timeline: snapshotTimeline(), events, snapshots, promptTokens, completionTokens, balanceBefore };
+        : { convId, assistantId, accContent, timeline: snapshotTimeline(), events, snapshots, promptTokens, completionTokens, balanceBefore, cost };
       const errorText = aborted
         ? '_(interrompu)_'
         : `**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`;

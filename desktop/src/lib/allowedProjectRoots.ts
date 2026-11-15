@@ -40,12 +40,12 @@ export async function showPathNotAllowedMessage(): Promise<void> {
   try {
     const { message } = await import('@tauri-apps/api/dialog')
     await message(
-      "Dossier non autorise. Verifie que le dossier est dans ton repertoire personnel (Documents, Bureau, etc.).",
-      { title: 'Dossier non autorise', type: 'warning' }
+      "Dossier non autorisé. Vérifie que le dossier est dans ton répertoire personnel (Documents, Bureau, etc.).",
+      { title: 'Dossier non autorisé', type: 'warning' }
     )
   } catch {
     alert(
-      "Dossier non autorise. Verifie que le dossier est dans ton repertoire personnel."
+      "Dossier non autorisé. Vérifie que le dossier est dans ton répertoire personnel."
     )
   }
 }
