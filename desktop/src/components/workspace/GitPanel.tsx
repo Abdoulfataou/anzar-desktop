@@ -1,23 +1,29 @@
 /**
- * Onglet Git (façon ZCode) : fichiers modifiés, diff, annulation par fichier,
- * commit (message proposé par l'IA si on veut), envoi et récupération.
+ * Onglet Git, sur le modèle du panneau Git de ZCode :
+ * - sources : non indexés · indexés · toutes les modifications de la branche · dernier tour
+ * - cartes dépliables par fichier (diff), indexer / désindexer / annuler, filtre
+ * - menu « Committer ou envoyer » : fenêtre de commit (message généré si vide, inclure
+ *   les non indexés) et fenêtre d'envoi (branche, branche distante, état, détail des erreurs)
+ * - sélecteur de branche : recherche, changement, création
  */
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  GitBranch, RefreshCw, Loader2, ArrowUp, ArrowDown, Undo2, Sparkles, Check, GitCommitHorizontal,
+  GitBranch, RefreshCw, Loader2, ArrowUp, ArrowDown, Undo2, Sparkles, Check, ChevronRight, ChevronDown,
+  Plus, Minus, Search, X, GitCommitHorizontal, FileText, Copy, AlertTriangle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import { terminalService } from '@/services/terminal';
 import {
-  readGitState, fileDiff, initRepo, discardChange, commitAll, push, pull, hasRemote, suggestCommitMessage,
-  type GitChange, type GitState,
+  readGitState, listChanges, fileDiff, initRepo, stage, unstage, discardChange, commit, push, pull,
+  hasIdentity, suggestCommitMessage, listBranches, switchBranch, createBranch, isValidBranchName,
+  type GitChange, type GitState, type GitSource,
 } from '@/services/git';
 
 export const OPEN_GIT_EVENT = 'anzar:open-git';
 
-const STATUS_STYLE: Record<GitChange['status'], { label: string; cls: string; title: string }> = {
+const STATUS: Record<GitChange['status'], { label: string; cls: string; title: string }> = {
   M: { label: 'M', cls: 'text-accent-warning', title: 'Modifié' },
   A: { label: 'A', cls: 'text-diff-added', title: 'Ajouté' },
   '?': { label: 'N', cls: 'text-diff-added', title: 'Nouveau fichier' },
@@ -26,82 +32,84 @@ const STATUS_STYLE: Record<GitChange['status'], { label: string; cls: string; ti
   U: { label: '!', cls: 'text-accent-error', title: 'En conflit' },
 };
 
-interface LogEntry { hash: string; subject: string; when: string }
+const SOURCE_LABEL: Record<GitSource, string> = {
+  unstaged: 'Non indexés',
+  staged: 'Indexés',
+  branch: 'Toutes les modifications de la branche',
+  'last-turn': 'Dernier tour',
+};
 
-export default function GitPanel({ workspacePath, refreshKey }: { workspacePath: string; refreshKey: number }) {
+const MAX_DIFF_LINES = 1500;
+
+const iconBtn = 'flex items-center justify-center size-6 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover disabled:opacity-40';
+const toolBtn = 'flex items-center gap-1 h-7 px-2 rounded-lg text-ui-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover disabled:opacity-40 transition-colors';
+const primary = 'h-8 px-3 rounded-lg text-ui-base font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 disabled:opacity-50';
+const secondary = 'h-8 px-3 rounded-lg text-ui-base border border-border-medium text-text-primary hover:bg-hover-fill disabled:opacity-50';
+
+interface Props {
+  workspacePath: string;
+  refreshKey: number;
+  /** Fichiers touchés par l'agent à sa dernière réponse (source « Dernier tour ») */
+  lastTurnPaths?: string[];
+  onOpenFile?: (path: string) => void;
+}
+
+export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = [], onOpenFile }: Props) {
   const [state, setState] = useState<GitState | null>(null);
-  const [remote, setRemote] = useState(false);
-  const [log, setLog] = useState<LogEntry[]>([]);
+  const [source, setSource] = useState<GitSource>('unstaged');
+  const [changes, setChanges] = useState<GitChange[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [diff, setDiff] = useState<string>('');
-  const [diffLoading, setDiffLoading] = useState(false);
-  const [message, setMessage] = useState('');
-  const [busy, setBusy] = useState<null | 'commit' | 'push' | 'pull' | 'suggest' | 'init'>(null);
+  const [filter, setFilter] = useState('');
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<null | 'commit' | 'push'>(null);
+  const [pendingSwitch, setPendingSwitch] = useState<string | null>(null);
+  const [log, setLog] = useState<{ hash: string; subject: string; when: string }[]>([]);
   const { confirm, ConfirmDialog } = useConfirmModal();
+  const lastTurnKey = lastTurnPaths.join('\n');
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const s = await readGitState(workspacePath);
       setState(s);
-      if (s.isRepo) {
-        setRemote(await hasRemote(workspacePath));
-        if (s.hasCommits) {
-          const r = await terminalService.execArgs('git', ['log', '-n', '8', '--format=%h%x09%s%x09%cr'], { cwd: workspacePath });
-          setLog(r.stdout.split('\n').filter(Boolean).map((l) => {
-            const [hash, subject, when] = l.split('\t');
-            return { hash, subject, when };
-          }));
-        } else setLog([]);
-      }
-      setSelected((cur) => (cur && s.changes.some((c) => c.path === cur) ? cur : null));
+      if (!s.isRepo) { setChanges([]); return; }
+      setChanges(await listChanges(workspacePath, s, source, lastTurnKey ? lastTurnKey.split('\n') : []));
+      if (s.hasCommits) {
+        const r = await terminalService.execArgs('git', ['log', '-n', '8', '--format=%h%x09%s%x09%cr'], { cwd: workspacePath });
+        setLog(r.stdout.split('\n').filter(Boolean).map((l) => { const [hash, subject, when] = l.split('\t'); return { hash, subject, when }; }));
+      } else setLog([]);
     } finally {
       setLoading(false);
     }
-  }, [workspacePath]);
+  }, [workspacePath, source, lastTurnKey]);
 
   useEffect(() => { void refresh(); }, [refresh, refreshKey]);
 
-  const selectedChange = useMemo(() => state?.changes.find((c) => c.path === selected) || null, [state, selected]);
-  useEffect(() => {
-    if (!selectedChange) { setDiff(''); return; }
-    let alive = true;
-    setDiffLoading(true);
-    void fileDiff(workspacePath, selectedChange)
-      .then((d) => { if (alive) setDiff(d); })
-      .finally(() => { if (alive) setDiffLoading(false); });
-    return () => { alive = false; };
-  }, [selectedChange, workspacePath]);
+  const counts = useMemo(() => ({
+    unstaged: state?.entries.filter((e) => e.worktree).length ?? 0,
+    staged: state?.entries.filter((e) => e.index).length ?? 0,
+  }), [state]);
 
-  const run = async (kind: NonNullable<typeof busy>, fn: () => Promise<void>, ok?: string) => {
-    setBusy(kind);
+  const shown = useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    return q ? changes.filter((c) => c.path.toLowerCase().includes(q)) : changes;
+  }, [changes, filter]);
+
+  const run = async (key: string, fn: () => Promise<unknown>, ok?: string) => {
+    setBusy(key);
     try {
       await fn();
       if (ok) toast.success(ok);
+      return true;
     } catch (e: any) {
       toast.error(e?.message || String(e), { duration: 6000 });
+      return false;
     } finally {
       setBusy(null);
       void refresh();
     }
   };
-
-  const doCommit = (andPush: boolean) => run('commit', async () => {
-    await commitAll(workspacePath, message);
-    setMessage('');
-    if (andPush) {
-      setBusy('push');
-      await push(workspacePath, state?.branch ?? null, state?.ahead !== null);
-    }
-  }, andPush ? 'Commit créé et envoyé' : 'Commit créé');
-
-  const suggest = () => run('suggest', async () => {
-    if (!state?.changes.length) return;
-    const m = await suggestCommitMessage(workspacePath, state.changes);
-    if (!m) throw new Error("L'IA n'a pas proposé de message. Réessaie.");
-    setMessage(m);
-  });
 
   const discard = async (c: GitChange) => {
     const ok = await confirm({
@@ -112,7 +120,7 @@ export default function GitPanel({ workspacePath, refreshKey }: { workspacePath:
       confirmLabel: c.status === '?' ? 'Supprimer' : 'Annuler les modifications',
       variant: 'danger',
     });
-    if (ok) await run('commit', () => discardChange(workspacePath, c));
+    if (ok) await run(`discard:${c.path}`, () => discardChange(workspacePath, c));
   };
 
   if (!state) {
@@ -124,181 +132,555 @@ export default function GitPanel({ workspacePath, refreshKey }: { workspacePath:
       <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center">
         {ConfirmDialog}
         <GitBranch size={22} className="text-text-muted" />
-        <p className="text-ui-base text-text-secondary max-w-sm">
-          Ce dossier n'utilise pas Git. Git garde l'historique de tes modifications et permet de revenir en arrière ou d'envoyer le code sur GitHub.
+        <p className="text-ui-base font-medium text-text-primary">Ce dossier n'est pas un dépôt Git</p>
+        <p className="text-ui-sm text-text-secondary max-w-sm">
+          Git garde l'historique de tes modifications : revenir en arrière, travailler sur des branches, envoyer le code sur GitHub.
         </p>
-        <button
-          onClick={() => void run('init', () => initRepo(workspacePath), 'Git initialisé')}
-          disabled={!!busy}
-          className="h-8 px-3 rounded-lg text-ui-base font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 disabled:opacity-50"
-        >
+        <button onClick={() => void run('init', () => initRepo(workspacePath), 'Git initialisé')} disabled={!!busy} className={primary}>
           Initialiser Git
         </button>
       </div>
     );
   }
 
-  const changes = state.changes;
-  const hasUpstream = state.ahead !== null;
-  const btn = 'flex items-center gap-1 h-7 px-2 rounded-lg text-ui-sm text-text-secondary hover:text-text-primary hover:bg-surface-hover disabled:opacity-40 transition-colors';
+  const dirtyCount = state.entries.length;
+  const sources: GitSource[] = ['unstaged', 'staged', ...(state.base ? (['branch'] as GitSource[]) : []), 'last-turn'];
 
   return (
-    <div className="flex flex-1 min-w-0 min-h-0 flex-col">
+    <div className="relative flex flex-1 min-w-0 min-h-0 flex-col">
       {ConfirmDialog}
-      {/* Branche · envoi · récupération */}
-      <div className="flex items-center gap-1 px-3 h-10 border-b border-border-subtle flex-shrink-0">
-        <GitBranch size={13} className="text-text-secondary flex-shrink-0" />
-        <span className="text-ui-base text-text-primary truncate">{state.branch || '(détachée)'}</span>
-        {hasUpstream && (state.ahead! > 0 || state.behind! > 0) && (
-          <span className="text-ui-sm text-text-muted tabular-nums ml-1">
+
+      {/* Ligne 1 : branche · état · actions */}
+      <div className="flex items-center gap-1 px-2 h-10 border-b border-border-subtle flex-shrink-0">
+        <BranchSwitcher
+          cwd={workspacePath}
+          current={state.branch}
+          dirtyCount={dirtyCount}
+          busy={!!busy}
+          onSwitch={(name) => run('switch', () => switchBranch(workspacePath, name), `Branche ${name}`)}
+          onCreate={(name) => run('create', () => createBranch(workspacePath, name), `Branche ${name} créée`)}
+          onBlocked={(name) => { setPendingSwitch(name); setDialog('commit'); }}
+        />
+        {state.upstream && (state.ahead! > 0 || state.behind! > 0) && (
+          <span className="text-ui-sm text-text-muted tabular-nums" title={`En avance de ${state.ahead} / en retard de ${state.behind} sur ${state.upstream}`}>
             {state.ahead! > 0 && `↑${state.ahead}`} {state.behind! > 0 && `↓${state.behind}`}
           </span>
         )}
         <div className="flex-1" />
-        {remote && (
-          <>
-            <button onClick={() => void run('pull', () => pull(workspacePath), 'Dépôt à jour')} disabled={!!busy} className={btn} title="Récupérer les changements du dépôt distant (git pull)">
-              {busy === 'pull' ? <Loader2 size={12} className="animate-spin" /> : <ArrowDown size={12} />} Récupérer
-            </button>
-            <button
-              onClick={() => void run('push', () => push(workspacePath, state.branch, hasUpstream), 'Commits envoyés')}
-              disabled={!!busy || !state.hasCommits || (hasUpstream && state.ahead === 0)}
-              className={btn}
-              title="Envoyer les commits (git push)"
-            >
-              {busy === 'push' ? <Loader2 size={12} className="animate-spin" /> : <ArrowUp size={12} />} Envoyer
-            </button>
-          </>
+        {state.hasRemote && (
+          <button onClick={() => void run('pull', () => pull(workspacePath), 'Dépôt à jour')} disabled={!!busy} className={toolBtn} title="Récupérer les changements du dépôt distant (git pull)">
+            {busy === 'pull' ? <Loader2 size={12} className="animate-spin" /> : <ArrowDown size={12} />} Récupérer
+          </button>
         )}
-        <button onClick={() => void refresh()} className={btn} title="Actualiser">
+        <button onClick={() => void refresh()} className={iconBtn} title="Actualiser">
           {loading ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
         </button>
+        <ActionMenu
+          canCommit={dirtyCount > 0}
+          canPush={state.hasRemote && state.hasCommits}
+          onCommit={() => setDialog('commit')}
+          onPush={() => setDialog('push')}
+        />
       </div>
 
-      {changes.length === 0 ? (
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="flex items-center gap-2 px-4 py-4 text-ui-base text-text-secondary">
-            <Check size={14} className="text-diff-added" /> Aucune modification : tout est commité.
-          </div>
-          {log.length > 0 && (
-            <div className="px-4 pb-4">
-              <div className="mb-1 text-ui-sm text-text-muted">Derniers commits</div>
-              {log.map((l) => (
-                <div key={l.hash} className="flex items-center gap-2 h-7 text-ui-sm">
-                  <GitCommitHorizontal size={12} className="text-text-muted flex-shrink-0" />
-                  <span className="font-mono text-text-muted flex-shrink-0">{l.hash}</span>
-                  <span className="truncate text-text-primary">{l.subject}</span>
-                  <span className="ml-auto text-text-muted flex-shrink-0">{l.when}</span>
-                </div>
-              ))}
-            </div>
-          )}
+      {/* Ligne 2 : source · filtre */}
+      <div className="flex items-center gap-2 px-2 h-10 border-b border-border-subtle flex-shrink-0">
+        <select
+          value={source}
+          onChange={(e) => { setSource(e.target.value as GitSource); setOpen(new Set()); }}
+          className="h-7 px-2 rounded-lg bg-input border border-input-border text-ui-sm text-text-primary outline-none max-w-[55%]"
+        >
+          {sources.map((s) => (
+            <option key={s} value={s}>
+              {SOURCE_LABEL[s]}{s === 'unstaged' ? ` (${counts.unstaged})` : s === 'staged' ? ` (${counts.staged})` : ''}
+            </option>
+          ))}
+        </select>
+        <div className="flex flex-1 items-center gap-1.5 h-7 px-2 rounded-lg bg-input border border-input-border min-w-0">
+          <Search size={12} className="text-text-muted flex-shrink-0" />
+          <input
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            placeholder="Filtrer les fichiers…"
+            className="flex-1 min-w-0 bg-transparent text-ui-sm text-text-primary outline-none placeholder:text-text-muted"
+          />
+          {filter && <button onClick={() => setFilter('')} className="text-text-muted hover:text-text-primary" title="Effacer le filtre"><X size={12} /></button>}
         </div>
-      ) : (
-        <>
-          {/* Fichiers modifiés */}
-          <div className={cn('overflow-y-auto border-b border-border-subtle py-1', selected ? 'max-h-[35%] flex-shrink-0' : 'flex-1 min-h-0')}>
-            {changes.map((c) => {
-              const st = STATUS_STYLE[c.status];
-              const slash = c.path.lastIndexOf('/');
-              return (
+      </div>
+
+      {source === 'branch' && state.base && (
+        <div className="px-3 py-1.5 text-ui-sm text-text-muted border-b border-border-subtle">Comparaison avec {state.base}, modifications non commitées comprises.</div>
+      )}
+      {source === 'last-turn' && (
+        <div className="px-3 py-1.5 text-ui-sm text-text-muted border-b border-border-subtle">Fichiers modifiés par l'agent à sa dernière réponse, comparés au dernier commit.</div>
+      )}
+
+      {/* Cartes des fichiers */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
+        {shown.length === 0 ? (
+          <EmptyState source={source} filtered={!!filter.trim() && changes.length > 0} log={source === 'unstaged' && dirtyCount === 0 ? log : []} />
+        ) : (
+          shown.map((c) => (
+            <ChangeCard
+              key={c.path}
+              cwd={workspacePath}
+              change={c}
+              source={source}
+              state={state}
+              refreshKey={refreshKey}
+              expanded={open.has(c.path)}
+              busy={busy}
+              onToggle={() => setOpen((prev) => { const n = new Set(prev); n.has(c.path) ? n.delete(c.path) : n.add(c.path); return n; })}
+              onStage={() => void run(`stage:${c.path}`, () => stage(workspacePath, c.path))}
+              onUnstage={() => void run(`unstage:${c.path}`, () => unstage(workspacePath, c.path, state.hasCommits))}
+              onDiscard={() => void discard(c)}
+              onOpenFile={onOpenFile && c.status !== 'D' ? () => onOpenFile(c.path) : undefined}
+            />
+          ))
+        )}
+      </div>
+
+      {dialog === 'commit' && (
+        <CommitDialog
+          cwd={workspacePath}
+          state={state}
+          stagedCount={counts.staged}
+          unstagedCount={counts.unstaged}
+          pendingSwitch={pendingSwitch}
+          onClose={() => { setDialog(null); setPendingSwitch(null); }}
+          onDone={async (pushAfter) => {
+            setDialog(null);
+            if (pushAfter) {
+              try {
+                const s = await readGitState(workspacePath);
+                const target = await push(workspacePath, s.branch, s.upstream);
+                toast.success(`Commit créé et envoyé sur ${target}`);
+              } catch (e: any) {
+                toast.error(`Commit créé, mais l'envoi a échoué : ${e?.message || e}`, { duration: 7000 });
+              }
+            } else toast.success('Commit créé');
+            if (pendingSwitch) {
+              const name = pendingSwitch;
+              setPendingSwitch(null);
+              await run('switch', () => switchBranch(workspacePath, name), `Branche ${name}`);
+            } else void refresh();
+          }}
+        />
+      )}
+      {dialog === 'push' && (
+        <PushDialog cwd={workspacePath} state={state} onClose={() => setDialog(null)} onDone={() => { setDialog(null); void refresh(); }} />
+      )}
+    </div>
+  );
+}
+
+/* ── Carte d'un fichier : en-tête + diff dépliable ── */
+
+function ChangeCard({
+  cwd, change, source, state, refreshKey, expanded, busy, onToggle, onStage, onUnstage, onDiscard, onOpenFile,
+}: {
+  cwd: string; change: GitChange; source: GitSource; state: GitState; refreshKey: number; expanded: boolean; busy: string | null;
+  onToggle: () => void; onStage: () => void; onUnstage: () => void; onDiscard: () => void; onOpenFile?: () => void;
+}) {
+  const [diff, setDiff] = useState<string | null>(null);
+  useEffect(() => {
+    if (!expanded) return;
+    let alive = true;
+    setDiff(null);
+    void fileDiff(cwd, change, source, state).then((d) => { if (alive) setDiff(d); }).catch(() => { if (alive) setDiff(''); });
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expanded, change.path, change.added, change.removed, source, refreshKey]);
+
+  const st = STATUS[change.status];
+  const slash = change.path.lastIndexOf('/');
+  const isBusy = !!busy && busy.endsWith(`:${change.path}`);
+  const lines = useMemo(() => {
+    if (!diff) return [];
+    return diff.split('\n').filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode|old mode|new mode|similarity index|rename (from|to))/.test(l));
+  }, [diff]);
+  const binary = !!diff && /^Binary files .* differ$/m.test(diff);
+
+  return (
+    <div className="overflow-hidden rounded-lg border border-border-medium bg-surface-default">
+      <div onClick={onToggle} className="group flex items-center gap-2 h-8 px-2 cursor-pointer text-ui-sm hover:bg-hover-fill">
+        {expanded ? <ChevronDown size={13} className="text-text-muted flex-shrink-0" /> : <ChevronRight size={13} className="text-text-muted flex-shrink-0" />}
+        <span className={cn('w-3 font-mono font-semibold flex-shrink-0', st.cls)} title={st.title}>{st.label}</span>
+        <span className="truncate text-text-primary">{slash >= 0 ? change.path.slice(slash + 1) : change.path}</span>
+        {slash >= 0 && <span className="truncate text-text-muted">{change.path.slice(0, slash)}</span>}
+        <span className="ml-auto flex items-center gap-1 flex-shrink-0 tabular-nums">
+          {isBusy && <Loader2 size={12} className="animate-spin text-text-muted" />}
+          <span className="hidden group-hover:flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+            {onOpenFile && <button onClick={onOpenFile} className={iconBtn} title="Ouvrir le fichier"><FileText size={12} /></button>}
+            {source === 'unstaged' && change.status !== 'U' && (
+              <button onClick={onDiscard} disabled={!!busy} className={cn(iconBtn, 'hover:text-accent-error')} title={change.status === '?' ? 'Supprimer ce nouveau fichier' : 'Annuler les modifications'}>
+                <Undo2 size={12} />
+              </button>
+            )}
+            {source === 'unstaged' && <button onClick={onStage} disabled={!!busy} className={iconBtn} title="Indexer (inclure dans le prochain commit)"><Plus size={13} /></button>}
+            {source === 'staged' && <button onClick={onUnstage} disabled={!!busy} className={iconBtn} title="Désindexer"><Minus size={13} /></button>}
+          </span>
+          {change.added > 0 && <span className="text-diff-added">+{change.added}</span>}
+          {change.removed > 0 && <span className="text-diff-removed">-{change.removed}</span>}
+        </span>
+      </div>
+      {expanded && (
+        <div className="border-t border-border-subtle overflow-x-auto font-mono text-ui-sm leading-5">
+          {diff === null ? (
+            <div className="px-3 py-2 text-text-muted"><Loader2 size={12} className="inline animate-spin mr-1" /> Chargement du diff…</div>
+          ) : binary ? (
+            <div className="px-3 py-2 text-text-muted">Fichier binaire : aperçu du diff indisponible.</div>
+          ) : lines.length === 0 ? (
+            <div className="px-3 py-2 text-text-muted">Pas de différence de contenu (fichier renommé ou mode changé).</div>
+          ) : (
+            <>
+              {lines.slice(0, MAX_DIFF_LINES).map((l, i) => (
                 <div
-                  key={c.path}
-                  onClick={() => setSelected(selected === c.path ? null : c.path)}
+                  key={i}
                   className={cn(
-                    'group flex items-center gap-2 h-7 px-3 cursor-pointer text-ui-sm',
-                    selected === c.path ? 'bg-selected' : 'hover:bg-hover-fill'
+                    'px-3 whitespace-pre min-w-max',
+                    l.startsWith('@@') ? 'text-text-muted bg-hover-fill'
+                      : l.startsWith('+') ? 'bg-diff-added/10 text-text-primary'
+                      : l.startsWith('-') ? 'bg-diff-removed/10 text-text-primary'
+                      : 'text-text-secondary'
                   )}
                 >
-                  <span className={cn('w-3 font-mono font-semibold flex-shrink-0', st.cls)} title={st.title}>{st.label}</span>
-                  <span className="truncate text-text-primary">{slash >= 0 ? c.path.slice(slash + 1) : c.path}</span>
-                  {slash >= 0 && <span className="truncate text-text-muted">{c.path.slice(0, slash)}</span>}
-                  <span className="ml-auto flex items-center gap-1.5 flex-shrink-0 tabular-nums">
-                    {c.added > 0 && <span className="text-diff-added">+{c.added}</span>}
-                    {c.removed > 0 && <span className="text-diff-removed">-{c.removed}</span>}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); void discard(c); }}
-                      disabled={!!busy || c.status === 'U'}
-                      className="hidden group-hover:flex p-0.5 rounded text-text-muted hover:text-accent-error"
-                      title={c.status === '?' ? 'Supprimer ce nouveau fichier' : 'Annuler les modifications de ce fichier'}
-                    >
-                      <Undo2 size={12} />
-                    </button>
-                  </span>
+                  {l || ' '}
                 </div>
-              );
-            })}
-          </div>
-
-          {/* Diff du fichier choisi */}
-          {selected && (
-            <div className="flex-1 min-h-0 overflow-auto font-mono text-ui-sm leading-5">
-              {diffLoading ? (
-                <div className="p-3 text-text-muted"><Loader2 size={12} className="inline animate-spin mr-1" /> Diff…</div>
-              ) : !diff.trim() ? (
-                <div className="p-3 text-text-muted">Pas de différence affichable (fichier binaire ou seulement renommé).</div>
-              ) : (
-                diff.split('\n')
-                  .filter((l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode|similarity index|rename (from|to))/.test(l))
-                  .slice(0, 3000)
-                  .map((l, i) => (
-                    <div
-                      key={i}
-                      className={cn(
-                        'px-3 whitespace-pre',
-                        l.startsWith('@@') ? 'text-text-muted bg-hover-fill mt-1'
-                          : l.startsWith('+') ? 'bg-diff-added/10 text-text-primary'
-                          : l.startsWith('-') ? 'bg-diff-removed/10 text-text-primary'
-                          : 'text-text-secondary'
-                      )}
-                    >
-                      {l || ' '}
-                    </div>
-                  ))
+              ))}
+              {lines.length > MAX_DIFF_LINES && (
+                <div className="px-3 py-2 text-text-muted">Diff tronqué : {lines.length - MAX_DIFF_LINES} lignes de plus. Ouvre le fichier pour tout voir.</div>
               )}
-            </div>
+            </>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
 
-          {/* Commit */}
-          <div className="flex-shrink-0 border-t border-border-subtle p-3 space-y-2">
-            <div className="relative">
-              <textarea
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && message.trim()) void doCommit(false); }}
-                rows={3}
-                placeholder={`Message du commit (${changes.length} fichier${changes.length > 1 ? 's' : ''})`}
-                className="w-full px-3 py-2 pr-9 rounded-lg bg-input border border-input-border text-ui-base text-text-primary outline-none focus:border-input-border-hover resize-none"
-              />
-              <button
-                onClick={() => void suggest()}
-                disabled={!!busy}
-                className="absolute right-2 top-2 p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover disabled:opacity-40"
-                title="Proposer un message (IA, coûte quelques FCFA)"
-              >
-                {busy === 'suggest' ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-              </button>
+function EmptyState({ source, filtered, log }: { source: GitSource; filtered: boolean; log: { hash: string; subject: string; when: string }[] }) {
+  if (filtered) return <div className="px-2 py-6 text-center text-ui-sm text-text-muted">Aucun fichier ne correspond au filtre.</div>;
+  const text = source === 'staged'
+    ? "Aucun fichier indexé. Indexe des fichiers avec + dans « Non indexés », ou committe tout directement."
+    : source === 'last-turn'
+      ? "Aucun fichier modifié par l'agent à sa dernière réponse (ou déjà commité)."
+      : source === 'branch'
+        ? 'Aucune différence avec la branche de référence.'
+        : 'Aucune modification : tout est commité.';
+  return (
+    <div>
+      <div className="flex items-center gap-2 px-2 py-3 text-ui-base text-text-secondary">
+        {source === 'unstaged' && <Check size={14} className="text-diff-added flex-shrink-0" />}
+        {text}
+      </div>
+      {log.length > 0 && (
+        <div className="px-2 pt-2">
+          <div className="mb-1 text-ui-sm text-text-muted">Derniers commits</div>
+          {log.map((l) => (
+            <div key={l.hash} className="flex items-center gap-2 h-7 text-ui-sm">
+              <GitCommitHorizontal size={12} className="text-text-muted flex-shrink-0" />
+              <span className="font-mono text-text-muted flex-shrink-0">{l.hash}</span>
+              <span className="truncate text-text-primary">{l.subject}</span>
+              <span className="ml-auto text-text-muted flex-shrink-0">{l.when}</span>
             </div>
-            <div className="flex gap-2">
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Menu « Committer ou envoyer » ── */
+
+function ActionMenu({ canCommit, canPush, onCommit, onPush }: { canCommit: boolean; canPush: boolean; onCommit: () => void; onPush: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+  const item = 'w-full flex items-center gap-2 h-8 px-2 rounded-md text-left text-ui-base text-text-primary hover:bg-surface-hover disabled:opacity-40 disabled:hover:bg-transparent';
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-1 h-7 pl-2.5 pr-1.5 rounded-lg text-ui-sm font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90">
+        Committer ou envoyer <ChevronDown size={12} />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 w-52 p-1 rounded-lg border border-border-medium bg-surface-elevated shadow-md z-50">
+          <button disabled={!canCommit} onClick={() => { setOpen(false); onCommit(); }} className={item}><GitCommitHorizontal size={13} /> Committer…</button>
+          <button disabled={!canPush} onClick={() => { setOpen(false); onPush(); }} className={item}><ArrowUp size={13} /> Envoyer…</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Fenêtres ── */
+
+function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-[min(480px,92vw)] rounded-xl border border-border-medium bg-bg-primary shadow-xl">
+        <div className="flex items-center justify-between px-4 h-12 border-b border-border-subtle">
+          <h3 className="text-ui-lg font-semibold text-text-primary">{title}</h3>
+          <button onClick={onClose} className={iconBtn} title="Fermer"><X size={14} /></button>
+        </div>
+        <div className="p-4 space-y-3">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 text-ui-base">
+      <span className="text-text-secondary">{label}</span>
+      <span className="text-text-primary text-right truncate">{children}</span>
+    </div>
+  );
+}
+
+function CommitDialog({
+  cwd, state, stagedCount, unstagedCount, pendingSwitch, onClose, onDone,
+}: {
+  cwd: string; state: GitState; stagedCount: number; unstagedCount: number; pendingSwitch: string | null;
+  onClose: () => void; onDone: (pushAfter: boolean) => void | Promise<void>;
+}) {
+  const [message, setMessage] = useState('');
+  const [includeUnstaged, setIncludeUnstaged] = useState(stagedCount === 0 || !!pendingSwitch);
+  const [identity, setIdentity] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState<null | 'generate' | 'commit' | 'push'>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => { void hasIdentity(cwd).then(setIdentity); }, [cwd]);
+
+  // Rien d'indexé : on committe forcément tout ; pour changer de branche aussi
+  const forced = stagedCount === 0 || !!pendingSwitch;
+  const include = forced || includeUnstaged;
+  const fileCount = include ? state.entries.length : stagedCount;
+
+  const generate = async (): Promise<string> => {
+    setBusy('generate');
+    setError(null);
+    try {
+      const changes = await listChanges(cwd, state, include ? 'unstaged' : 'staged');
+      const all = include ? [...changes, ...(await listChanges(cwd, state, 'staged'))] : changes;
+      const m = await suggestCommitMessage(cwd, all, !include);
+      if (!m) throw new Error("l'IA n'a pas proposé de message");
+      setMessage(m);
+      return m;
+    } catch (e: any) {
+      setError(`Génération impossible : ${e?.message || e}`);
+      return '';
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const submit = async (pushAfter: boolean) => {
+    setError(null);
+    let msg = message.trim();
+    if (!msg) msg = await generate(); // message vide : généré, comme dans ZCode
+    if (!msg) return;
+    setBusy(pushAfter ? 'push' : 'commit');
+    try {
+      await commit(cwd, msg, include);
+      await onDone(pushAfter);
+    } catch (e: any) {
+      setError(e?.message || String(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <Dialog title={pendingSwitch ? 'Committer puis changer de branche' : 'Committer les modifications'} onClose={onClose}>
+      <InfoRow label="Branche actuelle">{state.branch || '(détachée)'}</InfoRow>
+      {pendingSwitch && <InfoRow label="Branche cible">{pendingSwitch}</InfoRow>}
+      <InfoRow label="Modifications">{fileCount} fichier{fileCount > 1 ? 's' : ''}</InfoRow>
+      {identity === false && (
+        <div className="flex gap-2 rounded-lg bg-accent-warning/10 px-3 py-2 text-ui-sm text-text-primary">
+          <AlertTriangle size={14} className="mt-0.5 flex-shrink-0 text-accent-warning" />
+          <span>Git ne connaît pas ton nom : lance dans un terminal <span className="font-mono">git config --global user.name "Ton nom"</span> et <span className="font-mono">git config --global user.email "toi@exemple.com"</span>.</span>
+        </div>
+      )}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-ui-sm text-text-secondary">Message du commit</span>
+          <button onClick={() => void generate()} disabled={!!busy} className="flex items-center gap-1 text-ui-sm text-link hover:underline disabled:opacity-50">
+            {busy === 'generate' ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            {message ? 'Régénérer' : 'Générer le message'}
+          </button>
+        </div>
+        <textarea
+          autoFocus
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit(false); }}
+          rows={4}
+          placeholder="Message du commit (laisse vide pour le générer)"
+          className="w-full px-3 py-2 rounded-lg bg-input border border-input-border text-ui-base text-text-primary outline-none focus:border-input-border-hover resize-none"
+        />
+        <p className="mt-1 text-ui-sm text-text-muted">La génération utilise l'IA (quelques FCFA).</p>
+      </div>
+      {!forced && unstagedCount > 0 && (
+        <label className="flex items-center gap-2 text-ui-base text-text-primary cursor-pointer">
+          <input type="checkbox" checked={includeUnstaged} onChange={(e) => setIncludeUnstaged(e.target.checked)} />
+          Inclure les modifications non indexées
+        </label>
+      )}
+      {error && <p className="text-ui-sm text-accent-error">{error}</p>}
+      <div className="flex justify-end gap-2 pt-1">
+        {state.hasRemote && (
+          <button onClick={() => void submit(true)} disabled={!!busy || identity === false} className={secondary}>
+            {busy === 'push' ? 'Envoi…' : 'Committer et envoyer'}
+          </button>
+        )}
+        <button onClick={() => void submit(false)} disabled={!!busy || identity === false} className={primary}>
+          {busy === 'commit' ? 'Commit…' : pendingSwitch ? 'Committer et changer' : 'Committer'}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+function PushDialog({ cwd, state, onClose, onDone }: { cwd: string; state: GitState; onClose: () => void; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<{ summary: string; details: string } | null>(null);
+  const upToDate = !!state.upstream && state.ahead === 0;
+  const doPush = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const target = await push(cwd, state.branch, state.upstream);
+      toast.success(`Envoyé sur ${target}`);
+      onDone();
+    } catch (e: any) {
+      setError({ summary: e?.message || 'Envoi impossible', details: e?.details || e?.message || '' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog title="Envoyer les modifications" onClose={onClose}>
+      <p className="text-ui-sm text-text-secondary">
+        {state.upstream
+          ? `Les commits de ta branche seront envoyés sur ${state.upstream}.`
+          : `Cette branche n'existe pas encore sur le dépôt distant : elle sera créée (origin/${state.branch}).`}
+      </p>
+      <InfoRow label="Branche">{state.branch || '(détachée)'}</InfoRow>
+      <InfoRow label="Branche distante">{state.upstream || `origin/${state.branch} (sera créée)`}</InfoRow>
+      {state.upstream && <InfoRow label="État">En avance de {state.ahead} · en retard de {state.behind}</InfoRow>}
+      {upToDate && <p className="text-ui-sm text-text-muted">Aucun commit à envoyer sur cette branche.</p>}
+      {state.behind! > 0 && <p className="text-ui-sm text-accent-warning">Le dépôt distant a {state.behind} commit{state.behind! > 1 ? 's' : ''} que tu n'as pas : fais d'abord « Récupérer ».</p>}
+      {error && (
+        <div className="space-y-1.5">
+          <p className="text-ui-sm text-accent-error">{error.summary}</p>
+          {error.details && error.details !== error.summary && (
+            <>
+              <pre className="max-h-32 overflow-auto rounded-lg bg-hover-fill p-2 font-mono text-ui-sm text-text-secondary whitespace-pre-wrap">{error.details}</pre>
               <button
-                onClick={() => void doCommit(false)}
-                disabled={!!busy || !message.trim()}
-                className="flex-1 h-8 rounded-lg text-ui-base font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 disabled:opacity-50"
+                onClick={() => void navigator.clipboard.writeText(error.details).then(() => toast.success('Copié'), () => toast.error('Copie impossible'))}
+                className="flex items-center gap-1 text-ui-sm text-link hover:underline"
               >
-                {busy === 'commit' ? 'Commit…' : 'Committer'}
+                <Copy size={12} /> Copier l'erreur
               </button>
-              {remote && (
-                <button
-                  onClick={() => void doCommit(true)}
-                  disabled={!!busy || !message.trim()}
-                  className="flex-1 h-8 rounded-lg text-ui-base border border-border-medium text-text-primary hover:bg-hover-fill disabled:opacity-50"
-                >
-                  {busy === 'push' ? 'Envoi…' : 'Committer et envoyer'}
-                </button>
-              )}
-            </div>
+            </>
+          )}
+        </div>
+      )}
+      <div className="flex justify-end gap-2 pt-1">
+        <button onClick={onClose} className={secondary}>Annuler</button>
+        <button onClick={() => void doPush()} disabled={busy || upToDate} className={primary}>{busy ? 'Envoi…' : 'Envoyer'}</button>
+      </div>
+    </Dialog>
+  );
+}
+
+/* ── Sélecteur de branche ── */
+
+function BranchSwitcher({
+  cwd, current, dirtyCount, busy, onSwitch, onCreate, onBlocked,
+}: {
+  cwd: string; current: string | null; dirtyCount: number; busy: boolean;
+  onSwitch: (name: string) => unknown; onCreate: (name: string) => unknown; onBlocked: (name: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [query, setQuery] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    void listBranches(cwd).then(setBranches);
+    const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) { setOpen(false); setCreating(false); } };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open, cwd]);
+  const shown = branches.filter((b) => b.toLowerCase().includes(query.trim().toLowerCase()));
+  const pick = (name: string) => {
+    setOpen(false);
+    if (name === current) return;
+    if (dirtyCount > 0) onBlocked(name);
+    else void onSwitch(name);
+  };
+  const create = () => {
+    const name = newName.trim();
+    if (!isValidBranchName(name)) { toast.error('Nom de branche invalide (lettres, chiffres, - _ . /).'); return; }
+    setOpen(false); setCreating(false); setNewName('');
+    void onCreate(name); // les modifications en cours suivent la nouvelle branche
+  };
+  return (
+    <div ref={ref} className="relative min-w-0">
+      <button onClick={() => setOpen((v) => !v)} disabled={busy} className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover min-w-0" title="Changer de branche">
+        <GitBranch size={13} className="text-text-secondary flex-shrink-0" />
+        <span className="truncate">{current || '(détachée)'}</span>
+        <ChevronDown size={12} className="opacity-60 flex-shrink-0" />
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1 w-72 rounded-lg border border-border-medium bg-surface-elevated shadow-md z-50">
+          <div className="p-1.5 border-b border-border-subtle">
+            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher une branche" className="w-full h-7 px-2 rounded-md bg-input border border-input-border text-ui-sm text-text-primary outline-none" />
           </div>
-        </>
+          {dirtyCount > 0 && <div className="px-3 pt-2 text-ui-sm text-accent-warning">Modifications non commitées : {dirtyCount} fichier{dirtyCount > 1 ? 's' : ''}</div>}
+          <div className="px-3 pt-2 pb-1 text-ui-sm text-text-muted">Branches</div>
+          <div className="max-h-56 overflow-y-auto px-1 pb-1">
+            {shown.length === 0 && <div className="px-2 py-1.5 text-ui-sm text-text-muted">Aucune branche correspondante</div>}
+            {shown.map((b) => (
+              <button key={b} onClick={() => pick(b)} className="w-full flex items-center gap-2 h-7 px-2 rounded-md text-left text-ui-sm text-text-primary hover:bg-surface-hover">
+                <span className="flex-1 truncate">{b}</span>
+                {b === current && <Check size={13} />}
+              </button>
+            ))}
+          </div>
+          <div className="border-t border-border-subtle p-1">
+            {creating ? (
+              <div className="flex gap-1 p-1">
+                <input
+                  autoFocus
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') create(); if (e.key === 'Escape') setCreating(false); }}
+                  placeholder="ex. feature/paiement-wave"
+                  className="flex-1 h-7 px-2 rounded-md bg-input border border-input-border text-ui-sm font-mono text-text-primary outline-none"
+                />
+                <button onClick={create} className="h-7 px-2 rounded-md text-ui-sm font-medium bg-primary-btn text-primary-btn-fg">Créer</button>
+              </div>
+            ) : (
+              <button onClick={() => setCreating(true)} className="w-full flex items-center gap-2 h-7 px-2 rounded-md text-left text-ui-sm text-text-primary hover:bg-surface-hover">
+                <Plus size={13} /> Créer une nouvelle branche et y basculer…
+              </button>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

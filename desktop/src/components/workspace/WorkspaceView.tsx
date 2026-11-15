@@ -12,7 +12,7 @@
  * Aucune détection d'intention, aucun pipeline de génération.
  */
 import { useSettingsStore } from '@/stores/settingsStore';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Folder, FolderPlus, FileEdit, GitBranch, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
@@ -261,6 +261,16 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
 
   const workspaceName = activeProject?.name || null;
 
+  // Fichiers touchés par l'agent à sa dernière réponse qui a modifié quelque chose (Git → Dernier tour)
+  const lastTurnPaths = useMemo(() => {
+    const all = activeConversation?.messages || [];
+    for (let i = all.length - 1; i >= 0; i--) {
+      const m = all[i];
+      if (m.role === 'assistant' && m.fileChanges?.length && !m.changesUndone) return m.fileChanges.map((f) => f.path);
+    }
+    return [];
+  }, [activeConversation?.messages]);
+
   /** « @chemin » dans le message : le fichier est joint (5 au maximum). */
   const withMentionedFiles = useCallback(async (text: string, attachments: ChatAttachment[]) => {
     if (!workspacePath || !text.includes('@')) return attachments;
@@ -458,6 +468,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             plan={latestPlan}
             busy={isGenerating}
             onFileList={setMentionFiles}
+            lastTurnPaths={lastTurnPaths}
           />
         }
       />

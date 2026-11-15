@@ -36,6 +36,8 @@ interface WorkspacePanelProps {
   busy?: boolean;
   /** Liste des fichiers du projet à chaque relecture (suggestions « @ ») */
   onFileList?: (paths: string[]) => void;
+  /** Fichiers modifiés par l'agent à sa dernière réponse (Git → Dernier tour) */
+  lastTurnPaths?: string[];
 }
 
 /** Onglets ouverts : l'explorateur est fixe, le reste s'ouvre et se ferme à la demande. */
@@ -49,7 +51,7 @@ type PanelTab =
 
 const FILES_TAB: PanelTab = { id: 'files', kind: 'files' };
 
-export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, onOpenFolder, plan, busy, onFileList }: WorkspacePanelProps) {
+export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, onOpenFolder, plan, busy, onFileList, lastTurnPaths }: WorkspacePanelProps) {
   const [tabs, setTabs] = useState<PanelTab[]>([FILES_TAB]);
   const [activeId, setActiveId] = useState<string>('files');
   const [showAdd, setShowAdd] = useState(false);
@@ -427,7 +429,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
           </div>
         )}
 
-        {active.kind === 'git' && <GitPanel workspacePath={workspacePath} refreshKey={refreshKey} />}
+        {active.kind === 'git' && <GitPanel workspacePath={workspacePath} refreshKey={refreshKey} lastTurnPaths={lastTurnPaths} onOpenFile={openFile} />}
 
         {active.kind === 'preview' && (
           <div className="flex-1 min-h-0">
