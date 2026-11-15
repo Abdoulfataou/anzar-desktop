@@ -130,11 +130,11 @@ async function exportTasks(): Promise<number | null> {
     return conversations.length;
   }
   const { save } = await import('@tauri-apps/api/dialog');
-  const { downloadDir } = await import('@tauri-apps/api/path');
+  const { downloadDir, join } = await import('@tauri-apps/api/path');
   const { writeTextFile } = await import('@tauri-apps/api/fs');
   const path = await save({
     title: 'Exporter les tâches',
-    defaultPath: `${await downloadDir().catch(() => '')}${name}`,
+    defaultPath: await downloadDir().then((d) => join(d, name)).catch(() => name),
     filters: [{ name: 'Sauvegarde ANZAR', extensions: ['json'] }],
   });
   if (!path || typeof path !== 'string') return null;
