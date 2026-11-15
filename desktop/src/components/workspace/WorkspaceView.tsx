@@ -30,6 +30,7 @@ import { claimPendingPrompt } from '@/lib/pendingPrompt';
 import { openWorkspaceFolder, createWorkspaceFolder } from '@/lib/openWorkspace';
 import { terminalService } from '@/services/terminal';
 import { FILES_CHANGED_EVENT } from '@/services/agent/fileChanges';
+import { APPROVE_PLAN_EVENT } from '@/components/chat/PlanView';
 
 export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: boolean }) {
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
@@ -74,7 +75,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
   }, []);
 
   // ── Agent chat ──
-  const { sendMessage, stop, isGenerating, approval, resolveApproval, resume } = useAgentChat({
+  const { sendMessage, stop, isGenerating, approval, resolveApproval, resume, setModeNow } = useAgentChat({
     workspacePath,
     workspaceName: activeProject?.name,
     model: selectedModel,
@@ -147,6 +148,44 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
     }
   }, [activeConversationId, activeProjectId, createConversation, selectedModel]);
   const messages: Message[] = (activeConversation?.messages || []).filter((m) => m.role !== 'tool');
+
+  // ── Plan : le plus récent de la tâche s'affiche dans l'onglet « Plan » ──
+  const latestPlan = (() => {
+    const all = activeConversation?.messages || [];
+    for (let i = all.length - 1; i >= 0; i--) {
+      if (all[i].plan) return { messageId: all[i].id, plan: all[i].plan! };
+    }
+    return null;
+  })();
+
+  // Valider : on quitte le mode plan (retour au mode d'avant) et l'agent exécute le plan
+  const modeBeforePlan = useRef<PermissionMode>('auto');
+  useEffect(() => {
+    if (permissionMode !== 'plan') modeBeforePlan.current = permissionMode;
+  }, [permissionMode]);
+  useEffect(() => {
+    const onApprove = (e: Event) => {
+      const messageId = (e as CustomEvent<string>).detail;
+      const msg = (useChatStore.getState().conversations
+        .find((c) => c.id === useChatStore.getState().activeConversationId)?.messages || [])
+        .find((m) => m.id === messageId);
+      if (!msg?.plan || msg.plan.status !== 'pending' || isGenerating) return;
+      useChatStore.getState().updateMessage(messageId, { plan: { ...msg.plan, status: 'approved' } });
+      const next = modeBeforePlan.current;
+      changePermission(next);
+      setModeNow(next);
+      // Le plan part en pièce jointe : bulle courte à l'écran, plan complet pour l'agent
+      void sendMessage('Plan validé : exécute-le maintenant, étape par étape, puis vérifie ton travail.', [{
+        id: `plan_${messageId}`,
+        name: `Plan — ${msg.plan.title}.md`,
+        kind: 'text',
+        sizeBytes: msg.plan.markdown.length,
+        excerpt: msg.plan.markdown,
+      }]);
+    };
+    window.addEventListener(APPROVE_PLAN_EVENT, onApprove);
+    return () => window.removeEventListener(APPROVE_PLAN_EVENT, onApprove);
+  }, [isGenerating, changePermission, setModeNow, sendMessage]);
 
   const workspaceName = activeProject?.name || null;
 
@@ -306,6 +345,8 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             refreshKey={refreshKey}
             focusFile={focusFile}
             onOpenFolder={() => void handleOpenFolder()}
+            plan={latestPlan}
+            busy={isGenerating}
           />
         }
       />

@@ -8,7 +8,7 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  FolderOpen, FolderTree, FileText, Terminal as TerminalIcon, Eye, RefreshCw, Loader2, Plus, X,
+  FolderOpen, FolderTree, FileText, Terminal as TerminalIcon, Eye, RefreshCw, Loader2, Plus, X, ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
@@ -19,6 +19,8 @@ import StudioPreview from '@/components/vibecoding/StudioPreview';
 import type { StudioFile } from '@/types/studio';
 import type { FileNode } from '@/types/file-project';
 import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
+import { PlanPanel, OPEN_PLAN_EVENT } from '@/components/chat/PlanView';
+import type { Message } from '@/types';
 
 interface WorkspacePanelProps {
   workspacePath: string | null;
@@ -27,6 +29,10 @@ interface WorkspacePanelProps {
   /** Fichier à ouvrir automatiquement (chemin relatif) */
   focusFile?: string | null;
   onOpenFolder: () => void;
+  /** Dernier plan proposé dans la tâche (onglet « Plan ») */
+  plan?: { messageId: string; plan: NonNullable<Message['plan']> } | null;
+  /** Agent au travail : la validation du plan attend la fin */
+  busy?: boolean;
 }
 
 /** Onglets ouverts : l'explorateur est fixe, le reste s'ouvre et se ferme à la demande. */
@@ -34,11 +40,12 @@ type PanelTab =
   | { id: 'files'; kind: 'files' }
   | { id: 'terminal'; kind: 'terminal' }
   | { id: 'preview'; kind: 'preview' }
+  | { id: 'plan'; kind: 'plan' }
   | { id: string; kind: 'file'; path: string };
 
 const FILES_TAB: PanelTab = { id: 'files', kind: 'files' };
 
-export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, onOpenFolder }: WorkspacePanelProps) {
+export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, onOpenFolder, plan, busy }: WorkspacePanelProps) {
   const [tabs, setTabs] = useState<PanelTab[]>([FILES_TAB]);
   const [activeId, setActiveId] = useState<string>('files');
   const [showAdd, setShowAdd] = useState(false);
@@ -169,6 +176,18 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusFile, files.has(focusFile || '')]);
 
+  // ── Plan : un nouveau plan ouvre l'onglet ; « Ouvrir » dans la conversation aussi ──
+  const planKey = plan ? `${plan.messageId}:${plan.plan.status}` : null;
+  useEffect(() => {
+    if (plan?.plan.status === 'pending') openTab({ id: 'plan', kind: 'plan' });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planKey]);
+  useEffect(() => {
+    const onOpen = () => openTab({ id: 'plan', kind: 'plan' });
+    window.addEventListener(OPEN_PLAN_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_PLAN_EVENT, onOpen);
+  }, [openTab]);
+
   // ── Clic sur un fichier de la carte « fichiers modifiés » → ouverture explicite ──
   useEffect(() => {
     const onOpen = (e: Event) => openFile((e as CustomEvent<string>).detail);
@@ -241,8 +260,8 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
         <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
           {tabs.map((t) => {
             const label =
-              t.kind === 'files' ? 'Fichiers' : t.kind === 'terminal' ? 'Terminal' : t.kind === 'preview' ? 'Aperçu' : t.path.split('/').pop();
-            const Icon = t.kind === 'files' ? FolderTree : t.kind === 'terminal' ? TerminalIcon : t.kind === 'preview' ? Eye : FileText;
+              t.kind === 'files' ? 'Fichiers' : t.kind === 'terminal' ? 'Terminal' : t.kind === 'preview' ? 'Aperçu' : t.kind === 'plan' ? 'Plan' : t.path.split('/').pop();
+            const Icon = t.kind === 'files' ? FolderTree : t.kind === 'terminal' ? TerminalIcon : t.kind === 'preview' ? Eye : t.kind === 'plan' ? ListChecks : FileText;
             const isActive = t.id === active.id;
             return (
               <div
@@ -295,6 +314,12 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
                 className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
               >
                 <Eye size={13} /> Aperçu
+              </button>
+              <button
+                onClick={() => openTab({ id: 'plan', kind: 'plan' })}
+                className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
+              >
+                <ListChecks size={13} /> Plan
               </button>
             </div>
           )}
@@ -373,6 +398,18 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
         )}
 
         {/* Preview */}
+        {active.kind === 'plan' && (
+          <div className="flex-1 min-w-0 min-h-0">
+            {plan ? (
+              <PlanPanel messageId={plan.messageId} plan={plan.plan} disabled={busy} />
+            ) : (
+              <div className="flex items-center justify-center h-full text-text-muted text-ui-caption px-6 text-center">
+                Aucun plan pour cette tâche. Choisis « Mode plan » dans la saisie : l'agent explore sans rien modifier et propose un plan ici.
+              </div>
+            )}
+          </div>
+        )}
+
         {active.kind === 'preview' && (
           <div className="flex-1 min-h-0">
             <StudioPreview previewUrl={previewUrl} onOpenExternal={() => window.open(previewUrl || '', '_blank')} />

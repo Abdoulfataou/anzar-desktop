@@ -182,6 +182,8 @@ export interface Message {
   notice?: string;
   /** La réponse s'est arrêtée sur une erreur et peut être reprise */
   resumable?: boolean;
+  /** Plan proposé en mode plan (onglet « Plan ») */
+  plan?: { title: string; markdown: string; status: 'pending' | 'approved' | 'rejected' };
   /** Fichiers modifiés par l'agent pendant cette réponse */
   fileChanges?: import('@/services/agent/fileChanges').FileChange[];
   /** Les modifications de cette réponse ont été annulées */

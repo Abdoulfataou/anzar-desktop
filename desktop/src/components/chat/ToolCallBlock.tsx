@@ -12,7 +12,7 @@
 import React, { useState } from 'react';
 import {
   FileText, FilePlus, FileEdit, FileMinus, FolderOpen, Search,
-  Terminal, ChevronRight, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles,
+  Terminal, ChevronRight, ListChecks, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolEvent } from '@/hooks/useAgentChat';
@@ -28,6 +28,7 @@ const ICONS: Record<string, React.ReactNode> = {
   spawn_subagents: <GitBranch size={16} />,
   remember: <Brain size={16} />,
   task_done: <Sparkles size={16} />,
+  propose_plan: <ListChecks size={16} />,
 };
 
 /** Libellé lisible de chaque outil (le nom technique reste dans l'historique). */
@@ -42,6 +43,7 @@ const LABELS: Record<string, string> = {
   spawn_subagents: 'Sous-agents',
   remember: 'Mémoire',
   task_done: 'Terminé',
+  propose_plan: 'Plan proposé',
 };
 
 /**

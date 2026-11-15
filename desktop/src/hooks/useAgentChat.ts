@@ -19,7 +19,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
-import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall } from '@/types';
+import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall, ToolDefinition } from '@/types';
 
 /** Qui décide avant que l'agent agisse. */
 export type PermissionMode = 'ask' | 'auto' | 'plan' | 'full';
@@ -93,9 +93,27 @@ function needsApproval(mode: PermissionMode, tool: string): boolean {
 const PLAN_MODE_PROMPT = `
 
 # MODE PLAN (actif)
-Tu ne peux RIEN modifier ni exécuter : seuls read_file, list_dir et search_files sont disponibles.
-Explore ce qu'il faut, puis réponds avec un plan d'action numéroté et concret (fichiers concernés, changements prévus, vérifications).
-Termine en demandant à l'utilisateur de valider le plan.`;
+Tu ne peux RIEN modifier ni exécuter : seuls read_file, list_dir, search_files et propose_plan sont disponibles.
+Explore ce qu'il faut (sans tout lire), puis appelle propose_plan UNE fois avec le plan complet en Markdown :
+un titre court, puis des étapes numérotées et concrètes (fichiers concernés, changements prévus, vérifications), et les risques éventuels.
+N'écris pas le plan dans ta réponse texte : il s'affiche dans un onglet dédié où l'utilisateur le valide.`;
+
+/** Outil réservé au mode plan : le plan s'affiche dans l'onglet « Plan » (comme ExitPlanMode dans ZCode). */
+const PROPOSE_PLAN_TOOL: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'propose_plan',
+    description: "Mode plan uniquement : soumet le plan d'action à l'utilisateur pour validation. À appeler une seule fois, quand le plan est prêt.",
+    parameters: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Titre court du plan (moins de 60 caractères)' },
+        plan: { type: 'string', description: 'Plan complet en Markdown : étapes numérotées, fichiers concernés, vérifications, risques' },
+      },
+      required: ['title', 'plan'],
+    },
+  },
+};
 
 /** Événement d'outil affichable dans le message (rendu ZCode). */
 export interface ToolEvent {
@@ -440,6 +458,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       }
 
       let answered = false;
+      let planProposed = false;
 
       // ── Boucle agent ──
       for (let step = 0; step < MAX_STEPS; step++) {
@@ -457,7 +476,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         const tools = !workspacePath
           ? undefined
           : modeRef.current === 'plan'
-            ? AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name))
+            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), PROPOSE_PLAN_TOOL]
             : AGENT_TOOLS;
 
         // Une étape coupée par le réseau est réessayée seule : l'historique est intact,
@@ -531,7 +550,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
           // Accord de l'utilisateur selon le mode de permission
           let allowed = true;
-          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && call.function.name !== 'task_done') {
+          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !['task_done', 'propose_plan'].includes(call.function.name)) {
             allowed = false;
           } else if (needsApproval(modeRef.current, call.function.name)) {
             allowed = await new Promise<boolean>((resolve) => {
@@ -543,6 +562,24 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)
           if (allowed && workspacePath && ['write_file', 'edit_file', 'delete_file'].includes(call.function.name)) {
             await snapshotBeforeChange(snapshots, workspacePath, args.path || args.file_path);
+          }
+
+          // Plan soumis : affiché dans l'onglet « Plan », l'agent s'arrête et attend la validation
+          if (call.function.name === 'propose_plan' && allowed) {
+            const title = String(args.title || 'Plan').slice(0, 80);
+            const markdown = String(args.plan || '').trim();
+            updateMessage(assistantId, { plan: { title, markdown, status: 'pending' } });
+            ev.status = 'ok';
+            ev.argsSummary = title;
+            flush();
+            apiHistoryRef.current.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: "Plan affiché à l'utilisateur. Arrête-toi ici : il va le valider ou demander des changements.",
+            });
+            planProposed = true;
+            answered = true;
+            break;
           }
 
           const result = !allowed
@@ -589,6 +626,15 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         // Le contenu final remplace l'accumulation d'étapes intermédiaires vides
         if (stepContent && step < MAX_STEPS - 1) {
           // l'étape suivante produira la suite (réponse ou nouveaux outils)
+        }
+      }
+
+      // Mode plan : si le modèle a écrit le plan en texte au lieu d'appeler propose_plan
+      if (modeRef.current === 'plan' && !planProposed && answered) {
+        const last = [...timeline].reverse().find((t) => t.kind === 'text') as { kind: 'text'; text: string } | undefined;
+        if (last && last.text.length > 200) {
+          const heading = /^#{1,3}\s+(.+)$/m.exec(last.text)?.[1];
+          updateMessage(assistantId, { plan: { title: (heading || 'Plan proposé').slice(0, 80), markdown: last.text, status: 'pending' } });
         }
       }
 
@@ -700,5 +746,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     return true;
   }, [sendMessage]);
 
-  return { sendMessage, stop, isGenerating, approval, resolveApproval, resume };
+  /** Change le mode immédiatement (avant le prochain rendu), ex. à la validation d'un plan. */
+  const setModeNow = useCallback((m: PermissionMode) => { modeRef.current = m; }, []);
+
+  return { sendMessage, stop, isGenerating, approval, resolveApproval, resume, setModeNow };
 }
