@@ -24,7 +24,8 @@ export default function AppLayout({ className }: AppLayoutProps) {
   const setTheme = useThemeStore((s) => s.setTheme);
   const { isOnline, isSlowConnection } = useOffline();
   // L'espace de travail dessine ses propres panneaux ; les autres pages reçoivent un cadre unique.
-  const framed = useLocation().pathname.startsWith('/settings');
+  const { pathname } = useLocation();
+  const framed = pathname.startsWith('/settings') || pathname.startsWith('/skills');
 
   useEffect(() => {
     // Applique le thème persistant dès que settingsStore est hydraté.

@@ -12,7 +12,7 @@
 import React, { useState } from 'react';
 import {
   FileText, FilePlus, FileEdit, FileMinus, FolderOpen, Search,
-  Terminal, ChevronRight, ListChecks, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles,
+  Terminal, ChevronRight, ListChecks, Wand2, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolEvent } from '@/hooks/useAgentChat';
@@ -29,6 +29,7 @@ const ICONS: Record<string, React.ReactNode> = {
   remember: <Brain size={16} />,
   task_done: <Sparkles size={16} />,
   propose_plan: <ListChecks size={16} />,
+  load_skill: <Wand2 size={16} />,
 };
 
 /** Libellé lisible de chaque outil (le nom technique reste dans l'historique). */
@@ -44,6 +45,7 @@ const LABELS: Record<string, string> = {
   remember: 'Mémoire',
   task_done: 'Terminé',
   propose_plan: 'Plan proposé',
+  load_skill: 'Skill',
 };
 
 /**

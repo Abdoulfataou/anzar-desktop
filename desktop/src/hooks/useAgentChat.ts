@@ -18,6 +18,7 @@ import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
+import { listSkills, skillsPromptSection, MAX_SKILL_BODY_CHARS, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
 import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall, ToolDefinition } from '@/types';
 
@@ -98,6 +99,21 @@ Explore ce qu'il faut (sans tout lire), puis appelle propose_plan UNE fois avec 
 un titre court, puis des étapes numérotées et concrètes (fichiers concernés, changements prévus, vérifications), et les risques éventuels.
 N'écris pas le plan dans ta réponse texte : il s'affiche dans un onglet dédié où l'utilisateur le valide.`;
 
+/** Charge les instructions complètes d'une skill (la liste seule est dans le prompt). */
+const LOAD_SKILL_TOOL: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'load_skill',
+    description: "Charge les instructions complètes d'une skill de la liste « Skills disponibles ». À utiliser avant d'agir quand une skill correspond à la tâche.",
+    parameters: {
+      type: 'object',
+      properties: { name: { type: 'string', description: 'Nom exact de la skill' } },
+      required: ['name'],
+    },
+  },
+};
+const SKILL_RESULT_PREFIX = '# Skill « ';
+
 /** Outil réservé au mode plan : le plan s'affiche dans l'onglet « Plan » (comme ExitPlanMode dans ZCode). */
 const PROPOSE_PLAN_TOOL: ToolDefinition = {
   type: 'function',
@@ -175,7 +191,7 @@ function compactHistory(history: APIMessage[], keepRecent: number, stubChars: nu
   const cutoff = keepRecent > 0 ? toolIdx[toolIdx.length - keepRecent] ?? 0 : history.length;
   for (let i = 0; i < cutoff; i++) {
     const m = history[i];
-    if (m.role === 'tool' && (m.content?.length || 0) > SMALL_RESULT_CHARS) {
+    if (m.role === 'tool' && (m.content?.length || 0) > SMALL_RESULT_CHARS && !m.content!.startsWith(SKILL_RESULT_PREFIX)) {
       history[i] = { ...m, content: shrinkText(m.content || '', stubChars) };
     } else if (m.role === 'assistant' && m.tool_calls?.length) {
       history[i] = { ...m, tool_calls: m.tool_calls.map(shrinkToolCallArgs) };
@@ -226,6 +242,8 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
       return (args.tasks || []).length ? `${(args.tasks || []).length} sous-tâches` : '';
     case 'remember':
       return String(args.content || '').slice(0, 80);
+    case 'load_skill':
+      return String(args.name || '');
     case 'task_done':
       return String(args.summary || '').slice(0, 100);
     default:
@@ -404,6 +422,9 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       flush(liveText);
     };
 
+    // Skills du projet et personnelles : la liste va dans le prompt, le contenu via load_skill
+    const skills: Skill[] = workspacePath ? await listSkills(workspacePath).catch(() => []) : [];
+
     try {
       if (resumeFrom) {
         closeDanglingToolCalls(apiHistoryRef.current);
@@ -422,7 +443,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           };
           system = {
             role: 'system',
-            content: buildAgentSystemPrompt(promptCtx) + (modeRef.current === 'plan' ? PLAN_MODE_PROMPT : ''),
+            content: buildAgentSystemPrompt(promptCtx) + skillsPromptSection(skills) + (modeRef.current === 'plan' ? PLAN_MODE_PROMPT : ''),
           };
         } else {
           system = {
@@ -476,8 +497,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         const tools = !workspacePath
           ? undefined
           : modeRef.current === 'plan'
-            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), PROPOSE_PLAN_TOOL]
-            : AGENT_TOOLS;
+            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : [])]
+            : [...AGENT_TOOLS, ...(skills.length ? [LOAD_SKILL_TOOL] : [])];
 
         // Une étape coupée par le réseau est réessayée seule : l'historique est intact,
         // donc rien de ce qui a déjà été fait n'est perdu ni refacturé.
@@ -550,7 +571,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
           // Accord de l'utilisateur selon le mode de permission
           let allowed = true;
-          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !['task_done', 'propose_plan'].includes(call.function.name)) {
+          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !['task_done', 'propose_plan', 'load_skill'].includes(call.function.name)) {
             allowed = false;
           } else if (needsApproval(modeRef.current, call.function.name)) {
             allowed = await new Promise<boolean>((resolve) => {
@@ -562,6 +583,20 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)
           if (allowed && workspacePath && ['write_file', 'edit_file', 'delete_file'].includes(call.function.name)) {
             await snapshotBeforeChange(snapshots, workspacePath, args.path || args.file_path);
+          }
+
+          // Skill : instructions lues côté app, renvoyées à l'agent
+          if (call.function.name === 'load_skill') {
+            const wanted = String(args.name || '').trim().toLowerCase();
+            const skill = skills.find((sk) => sk.name === wanted) || skills.find((sk) => sk.name.includes(wanted) && wanted.length > 2);
+            const output = skill
+              ? `${SKILL_RESULT_PREFIX}${skill.name} »\n\n${skill.body.slice(0, MAX_SKILL_BODY_CHARS)}`
+              : `Skill « ${wanted} » introuvable. Skills disponibles : ${skills.map((sk) => sk.name).join(', ') || 'aucune'}.`;
+            ev.status = skill ? 'ok' : 'error';
+            ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+            flush();
+            apiHistoryRef.current.push({ role: 'tool', tool_call_id: call.id, content: output });
+            continue;
           }
 
           // Plan soumis : affiché dans l'onglet « Plan », l'agent s'arrête et attend la validation

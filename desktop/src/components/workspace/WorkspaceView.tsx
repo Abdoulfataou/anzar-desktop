@@ -32,6 +32,7 @@ import { terminalService } from '@/services/terminal';
 import { FILES_CHANGED_EVENT } from '@/services/agent/fileChanges';
 import { APPROVE_PLAN_EVENT } from '@/components/chat/PlanView';
 import { BUILTIN_COMMANDS, type SlashCommand } from '@/components/chat/composerSuggestions';
+import { listSkills } from '@/services/skills';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import type { ChatAttachment } from '@/types';
 
@@ -98,6 +99,17 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
           const name = n.name.replace(/\.md$/, '').toLowerCase().replace(/[^\w-]+/g, '-');
           const firstLine = prompt.split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '') || '';
           cmds.push({ name, description: firstLine.slice(0, 90), prompt, custom: true });
+        }
+        // Chaque skill est aussi une commande : /nom-de-la-skill
+        const skills = await listSkills(workspacePath).catch(() => []);
+        for (const sk of skills) {
+          if (cmds.some((c) => c.name === sk.name)) continue;
+          cmds.push({
+            name: sk.name,
+            description: `Skill — ${sk.description}`,
+            prompt: `Charge la skill « ${sk.name} » et suis-la pour : `,
+            custom: true,
+          });
         }
         if (alive) setProjectCommands(cmds);
       } catch { /* pas de commandes de projet */ }

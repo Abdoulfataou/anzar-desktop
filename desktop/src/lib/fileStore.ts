@@ -75,6 +75,26 @@ export async function removeEntry(rel: string): Promise<void> {
   } catch { /* déjà absent */ }
 }
 
+/** Crée un sous-dossier du stockage (et ses parents). */
+export async function ensureDir(rel: string): Promise<void> {
+  const root = await storeRoot();
+  if (!root) throw new Error('stockage disque indisponible');
+  const { createDir, exists } = await import('@tauri-apps/api/fs');
+  const path = `${root}/${rel}`;
+  if (!(await exists(path))) await createDir(path, { recursive: true });
+}
+
+/** Supprime un sous-dossier du stockage et son contenu. */
+export async function removeDirEntry(rel: string): Promise<void> {
+  const root = await storeRoot();
+  if (!root) return;
+  try {
+    const { exists, removeDir } = await import('@tauri-apps/api/fs');
+    const path = `${root}/${rel}`;
+    if (await exists(path)) await removeDir(path, { recursive: true });
+  } catch { /* déjà absent */ }
+}
+
 export async function listDir(rel: string): Promise<string[]> {
   const root = await storeRoot();
   if (!root) return [];

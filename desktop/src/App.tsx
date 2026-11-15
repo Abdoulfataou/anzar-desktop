@@ -27,6 +27,7 @@ function storesHydrated(): Promise<void> {
 // Lazy-load des pages
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
+const SkillsPage = lazy(() => import('@/pages/SkillsPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
 
@@ -91,6 +92,7 @@ export default function App() {
 
               {/* Paramètres */}
               <Route path="settings" element={<SettingsPage />} />
+              <Route path="skills" element={<SkillsPage />} />
             </Route>
           </Route>
 

@@ -252,7 +252,7 @@ export default function Sidebar({ className }: { className?: string }) {
             onClick={() => { setExpanded(true); setSearching((v) => !v); setQuery(''); }}
           />
           <NavRow icon={CalendarClock} label="Automatisations" hint="bientôt" disabled />
-          <NavRow icon={Wand2} label="Skills" hint="bientôt" disabled />
+          <NavRow icon={Wand2} label="Skills" onClick={() => { if (location.pathname !== '/skills') navigate('/skills'); }} />
         </div>
 
         {expanded && searching && (
