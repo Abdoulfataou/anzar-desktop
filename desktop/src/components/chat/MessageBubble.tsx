@@ -140,22 +140,21 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   const formatTime = (ts: number) =>
     new Date(ts).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
 
-  // ===== USER MESSAGE — style agent IDE (ZCode) : invite terminal ❯, pas de bulle =====
+  // ===== MESSAGE UTILISATEUR — bulle alignée à droite =====
   if (message.role === 'user') {
     return (
-      <div className="group px-4 py-1.5">
-        <div className="max-w-3xl flex items-start gap-2.5">
-          <span className="font-mono text-accent-primary text-[14px] leading-6 mt-px select-none" aria-hidden>❯</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-[14px] leading-6 text-text-primary break-words whitespace-pre-wrap font-mono">
+      <div className="group px-4 py-2">
+        <div className="max-w-3xl mx-auto flex flex-col items-end">
+          <div className="max-w-[85%] rounded-2xl rounded-br-md bg-bg-tertiary px-4 py-2.5">
+            <p className="text-[14px] leading-relaxed text-text-primary break-words whitespace-pre-wrap">
               {message.content}
             </p>
             {message.attachments && message.attachments.length > 0 && (
-              <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <div className="mt-2 flex flex-wrap gap-1.5">
                 {message.attachments.map((a) => (
                   <span
                     key={a.id}
-                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono border border-border-subtle bg-bg-tertiary/60 text-text-secondary"
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-mono border border-border-subtle bg-bg-primary/60 text-text-secondary"
                     title={a.name}
                   >
                     <span className="text-accent-primary font-semibold">{a.ref || ''}</span>
@@ -165,7 +164,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
               </div>
             )}
           </div>
-          <span className="text-[10px] font-mono text-text-muted mt-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          <span className="text-[10.5px] text-text-muted mt-1 mr-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {formatTime(message.timestamp)}
           </span>
         </div>
@@ -173,11 +172,11 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     );
   }
 
-  // ===== AI MESSAGE — style agent IDE (ZCode) : pleine largeur, en-tête mono =====
+  // ===== RÉPONSE DE L'AGENT — à gauche, sans bulle, même colonne que l'utilisateur =====
   return (
-    <div className="group px-4 py-1">
+    <div className="group px-4 py-2">
       {/* Content */}
-      <div className="max-w-3xl min-w-0">
+      <div className="max-w-3xl mx-auto min-w-0">
         {/* En-tête : marque + modèle + heure (mono, discret) */}
         <div className="flex items-center gap-2 mb-1">
           <Sparkles size={11} className="text-accent-primary" />
@@ -236,7 +235,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                p: ({ children }) => <p className="text-sm leading-relaxed mb-2 last:mb-0">{children}</p>,
+                p: ({ children }) => <p className="text-[14px] leading-[1.65] mb-3 last:mb-0">{children}</p>,
                 a: ({ href, children }) => (
                   <a
                     href={href}
@@ -277,22 +276,25 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                     />
                   );
                 },
-                ul: ({ children }) => <ul className="list-disc list-inside text-sm mb-2 space-y-1">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal list-inside text-sm mb-2 space-y-1">{children}</ol>,
-                li: ({ children }) => <li className="text-sm leading-relaxed">{children}</li>,
+                ul: ({ children }) => <ul className="list-disc pl-5 text-[14px] mb-3 space-y-1.5 marker:text-text-muted [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ol]:mt-1.5 [&_ol]:mb-0">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal pl-5 text-[14px] mb-3 space-y-1.5 marker:text-text-muted [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ol]:mt-1.5 [&_ol]:mb-0">{children}</ol>,
+                li: ({ children }) => <li className="text-[14px] leading-[1.65] pl-1 [&>p]:mb-1">{children}</li>,
+                hr: () => <hr className="my-4 border-border-subtle" />,
+                strong: ({ children }) => <strong className="font-semibold text-text-primary">{children}</strong>,
                 blockquote: ({ children }) => (
                   <blockquote className="border-l-2 border-accent-primary pl-3 my-2 text-sm italic text-text-secondary">{children}</blockquote>
                 ),
-                h1: ({ children }) => <h1 className="text-lg font-bold mb-2 mt-4 first:mt-0">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-base font-bold mb-2 mt-3 first:mt-0">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-sm font-bold mb-1 mt-2 first:mt-0">{children}</h3>,
+                h1: ({ children }) => <h1 className="text-[18px] font-semibold text-text-primary mb-3 mt-6 first:mt-0">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-[16px] font-semibold text-text-primary mb-2.5 mt-6 first:mt-0">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-[14.5px] font-semibold text-text-primary mb-2 mt-4 first:mt-0">{children}</h3>,
+                h4: ({ children }) => <h4 className="text-[14px] font-semibold text-text-primary mb-1.5 mt-3 first:mt-0">{children}</h4>,
                 table: ({ children }) => (
-                  <div className="overflow-x-auto my-2 rounded-lg border border-border-subtle">
-                    <table className="text-sm border-collapse w-full">{children}</table>
+                  <div className="overflow-x-auto my-3 rounded-lg border border-border-subtle">
+                    <table className="text-[13.5px] border-collapse w-full">{children}</table>
                   </div>
                 ),
-                td: ({ children }) => <td className="border-t border-border-subtle px-3 py-2">{children}</td>,
-                th: ({ children }) => <th className="px-3 py-2 bg-bg-tertiary font-semibold text-left text-xs uppercase tracking-wide">{children}</th>,
+                td: ({ children }) => <td className="border-t border-border-subtle px-3 py-2 align-top leading-[1.55]">{children}</td>,
+                th: ({ children }) => <th className="px-3 py-2 bg-bg-tertiary font-semibold text-left text-[12.5px] text-text-secondary whitespace-nowrap">{children}</th>,
               }}
             >
               {displayContent}

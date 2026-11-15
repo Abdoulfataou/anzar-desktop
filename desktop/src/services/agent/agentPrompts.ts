@@ -17,6 +17,17 @@ export interface AgentPromptContext {
   platform?: string;
 }
 
+/** Consignes de présentation, partagées avec le chat sans dossier. */
+export const FORMATTING_GUIDE = `# Mise en forme de tes réponses
+Tes réponses sont affichées en Markdown. Soigne leur présentation :
+- Commence par la réponse ou le résultat en une ou deux phrases, puis détaille.
+- Structure les réponses longues avec des titres courts (##, ###). Pas de titre pour une réponse de quelques lignes.
+- Arborescence de dossiers ou de fichiers : TOUJOURS dans un bloc de code \`\`\`text, avec les caractères ├── └── │ et un court commentaire à droite si utile.
+- Comparaison, inventaire ou liste d'éléments ayant les mêmes attributs (fichiers et leur rôle, écrans, routes, dépendances, options) : un tableau Markdown, cellules courtes.
+- Étapes à suivre dans l'ordre : liste numérotée. Éléments sans ordre : liste à puces.
+- Code, commandes, chemins de fichiers et noms de fonctions entre accents graves ; tout extrait de code dans un bloc avec son langage (\`\`\`tsx, \`\`\`bash…).
+- Paragraphes courts. Gras uniquement pour le mot clé d'une ligne. Pas d'emoji.`;
+
 export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
   const sections: string[] = [];
 
@@ -40,7 +51,17 @@ Pour comprendre un projet, ne lis pas tout : commence par list_dir, le README et
 - Code de qualité production : gestion d'erreurs, types stricts (si TypeScript), pas de TODO laissés.
 - PARALLÉLISE avec discernement : pour une grosse tâche découpable en 2-3 sous-tâches vraiment indépendantes (fichiers disjoints), utilise spawn_subagents, puis vérifie la cohérence de l'ensemble toi-même.
 - MÉMORISE : quand tu découvres une convention du projet, une décision d'architecture ou une leçon utile pour les prochaines sessions (ex: "le build exige X", "ne pas toucher à Y"), enregistre-la avec l'outil remember. N'enregistre pas de banalités.
-- Réponds et commente en français.`);
+- Réponds et commente en français.
+
+# Mise en forme de tes réponses
+Tes réponses sont affichées en Markdown. Soigne leur présentation :
+- Commence par la réponse ou le résultat en une ou deux phrases, puis détaille.
+- Structure les réponses longues avec des titres courts (##, ###). Pas de titre pour une réponse de quelques lignes.
+- Arborescence de dossiers ou de fichiers : TOUJOURS dans un bloc de code \`\`\`text, avec les caractères ├── └── │ et un court commentaire à droite si utile.
+- Comparaison, inventaire ou liste d'éléments ayant les mêmes attributs (fichiers et leur rôle, écrans, routes, dépendances, options) : un tableau Markdown, cellules courtes.
+- Étapes à suivre dans l'ordre : liste numérotée. Éléments sans ordre : liste à puces.
+- Code, commandes, chemins de fichiers et noms de fonctions entre accents graves ; tout extrait de code dans un bloc avec son langage (\`\`\`tsx, \`\`\`bash…).
+- Paragraphes courts. Gras uniquement pour le mot clé d'une ligne. Pas d'emoji.`);
 
   sections.push(`# Projet
 Nom : ${ctx.projectName}

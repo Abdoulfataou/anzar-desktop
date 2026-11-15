@@ -13,7 +13,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
-import { buildAgentSystemPrompt, type AgentPromptContext } from '@/services/agent/agentPrompts';
+import { buildAgentSystemPrompt, FORMATTING_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
 import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
@@ -324,7 +324,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             content:
               'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct. ' +
               "Aucun dossier de travail n'est ouvert : si l'utilisateur demande à créer ou modifier un projet, " +
-              "propose-lui d'ouvrir un dossier (bouton « Ouvrir un dossier ») pour que tu puisses agir avec tes outils.",
+              "propose-lui d'ouvrir un dossier (bouton « Ouvrir un dossier ») pour que tu puisses agir avec tes outils.\n\n" +
+              FORMATTING_GUIDE,
           };
         }
 
