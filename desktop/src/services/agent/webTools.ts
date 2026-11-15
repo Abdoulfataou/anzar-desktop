@@ -93,6 +93,16 @@ export async function executeWebTool(name: string, args: Record<string, any>, si
     return { output: `Outil web inconnu : ${name}`, isError: true };
   } catch (e: any) {
     if (signal?.aborted) return { output: 'Annulé.', isError: true };
-    return { output: `Erreur ${name} : ${e?.message || String(e)}`, isError: true };
+    const msg = String(e?.message || e);
+    const reason = /404|not found/i.test(msg)
+      ? "le serveur ANZAR n'a pas encore la recherche web (mise à jour à déployer)"
+      : /402|solde/i.test(msg) ? 'solde épuisé' : msg;
+    return {
+      output:
+        `Erreur ${name} : ${reason}.\n` +
+        "NE CONTOURNE PAS cette erreur : n'écris aucun script, ne lance aucune commande (node, npm, curl…) pour accéder au web " +
+        "et ne crée aucun fichier pour ça. Réponds avec ce que tu sais déjà, en précisant que la recherche web n'a pas fonctionné.",
+      isError: true,
+    };
   }
 }

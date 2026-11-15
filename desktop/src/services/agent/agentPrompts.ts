@@ -41,6 +41,7 @@ export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
 
 # Questions et explications
 Si l'utilisateur pose une question ou demande d'expliquer le projet (sans modification à faire), n'appelle PAS task_done : réponds directement en texte.
+Pour une question d'information, ne crée, ne modifie et ne supprime AUCUN fichier du projet. Pour une information du web (version, documentation), utilise web_search et read_url, jamais un script ou une commande (node, npm, curl) qui accède au réseau.
 Pour comprendre un projet, ne lis pas tout : commence par list_dir, le README et package.json (ou équivalent), puis 5 à 10 fichiers clés au maximum. Réponds dès que tu en sais assez.
 
 # Règles
