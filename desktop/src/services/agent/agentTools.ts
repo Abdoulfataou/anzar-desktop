@@ -338,21 +338,42 @@ async function execListDir(args: any, ctx: ToolExecutionContext): Promise<ToolRe
   return { output: lines.join('\n') + suffix };
 }
 
-async function execSearchFiles(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  let regex: RegExp;
+const MAX_SEARCH_LINE = 2000;       // lignes plus longues (fichiers minifiés) testées sur leur début
+const SEARCH_TIME_BUDGET_MS = 4000;
+
+/**
+ * Regex du modèle, sans risque de bloquer l'app (S5) : un motif à retour arrière
+ * catastrophique (quantificateurs imbriqués, références arrière) est cherché comme texte.
+ */
+export function compileSearchPattern(pattern: string): { regex: RegExp; literal: boolean; note?: string } {
+  const src = String(pattern ?? '');
+  const literal = (note?: string) => ({ regex: new RegExp(src.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'), literal: true, note });
+  if (src.length > 300) return literal('motif trop long : cherché comme texte');
+  const nested = /\((?:[^()\\]|\\.)*[+*}](?:[^()\\]|\\.)*\)\s*(?:[+*]|\{\d)/.test(src);
+  const backref = /\\[1-9]/.test(src);
+  if (nested || backref) return literal('motif à risque (quantificateurs imbriqués ou référence arrière) : cherché comme texte');
   try {
-    regex = new RegExp(args.pattern, 'i');
-  } catch (e: any) {
-    return { output: `Erreur: regex invalide — ${e.message}`, isError: true };
+    return { regex: new RegExp(src, 'i'), literal: false };
+  } catch {
+    return literal('regex invalide : cherché comme texte');
   }
+}
+
+async function execSearchFiles(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const { regex, note } = compileSearchPattern(args.pattern);
 
   const rootAbs = resolvePath(ctx.projectRoot, args.path);
   const files = await fileSystemService.readProjectFiles(rootAbs, 6);
   const ext = (args.file_glob || '').replace(/^\*+/, ''); // '.ts'
   const results: string[] = [];
+  const started = Date.now();
+  let timedOut = false;
 
-  for (const f of files) {
+  for (let n = 0; n < files.length; n++) {
+    const f = files[n];
     if (results.length >= MAX_SEARCH_RESULTS) break;
+    if (Date.now() - started > SEARCH_TIME_BUDGET_MS) { timedOut = true; break; }
+    if (n % 25 === 24) await new Promise((r) => setTimeout(r, 0)); // laisse respirer l'interface
     const p: string = (f as any).path || (f as any).name || '';
     if (ext && !p.endsWith(ext)) continue;
     if (!isTextFile(p)) continue;
@@ -360,13 +381,15 @@ async function execSearchFiles(args: any, ctx: ToolExecutionContext): Promise<To
     if (!content) continue;
     const lines = content.split('\n');
     for (let i = 0; i < lines.length && results.length < MAX_SEARCH_RESULTS; i++) {
-      if (regex.test(lines[i])) {
+      if (regex.test(lines[i].length > MAX_SEARCH_LINE ? lines[i].slice(0, MAX_SEARCH_LINE) : lines[i])) {
         results.push(`${p}:${i + 1}: ${lines[i].trim().slice(0, 200)}`);
       }
     }
   }
+  if (note) results.unshift(`(${note})`);
+  if (timedOut) results.push(`… [recherche arrêtée après ${SEARCH_TIME_BUDGET_MS / 1000} s : précise le chemin ou le motif]`);
 
-  if (results.length === 0) return { output: `Aucun résultat pour /${args.pattern}/` };
+  if (results.length === 0 || (results.length === 1 && note)) return { output: `Aucun résultat pour /${args.pattern}/${note ? ` (${note})` : ''}` };
   return { output: truncate(results.join('\n'), MAX_COMMAND_OUTPUT_CHARS, 'recherche') };
 }
 
