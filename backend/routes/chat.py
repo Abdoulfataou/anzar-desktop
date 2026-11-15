@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 import httpx
 
 from config import settings
-from security import get_current_user, validate_messages, calculate_cost_fcfa
+from security import get_current_user, validate_messages, calculate_cost_fcfa, usage_tokens
 from db import (
     has_credits, deduct_credits, record_usage,
     get_rate_limit_count, record_rate_limit_hit,
@@ -89,12 +89,13 @@ async def _proxy_request_with_billing(
     data = resp.json()
     duration_ms = int((time.time() - start_time) * 1000)
 
-    usage = data.get("usage", {})
-    input_tokens = usage.get("prompt_tokens", 0)
-    output_tokens = usage.get("completion_tokens", 0)
+    input_tokens, output_tokens, cached_tokens = usage_tokens(data.get("usage"))
+    model_name = data.get("model") or body.get("model", "unknown")
 
     if input_tokens > 0 or output_tokens > 0:
-        cost_usd, cost_fcfa = calculate_cost_fcfa(provider, input_tokens, output_tokens)
+        cost_usd, cost_fcfa = calculate_cost_fcfa(
+            provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
+        )
 
         try:
             is_paid = await has_credits(email)
@@ -136,6 +137,8 @@ async def _proxy_stream_with_billing(
     async def stream_generator():
         input_tokens = 0
         output_tokens = 0
+        cached_tokens = 0
+        output_chars = 0  # repli si le fournisseur ne renvoie pas l'usage
         model_name = body.get("model", "unknown")
         client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
 
@@ -156,9 +159,13 @@ async def _proxy_stream_with_billing(
                         if line.startswith("data: ") and line != "data: [DONE]":
                             try:
                                 chunk = json.loads(line[6:])
-                                if "usage" in chunk:
-                                    input_tokens = chunk["usage"].get("prompt_tokens", 0)
-                                    output_tokens = chunk["usage"].get("completion_tokens", 0)
+                                if chunk.get("usage"):
+                                    input_tokens, output_tokens, cached_tokens = usage_tokens(chunk["usage"])
+                                for choice in chunk.get("choices") or []:
+                                    delta = choice.get("delta") or {}
+                                    output_chars += len(delta.get("content") or "") + len(delta.get("reasoning_content") or "")
+                                    for tc in delta.get("tool_calls") or []:
+                                        output_chars += len(((tc or {}).get("function") or {}).get("arguments") or "")
                                 if chunk.get("model"):
                                     model_name = chunk["model"]
                             except (json.JSONDecodeError, KeyError):
@@ -178,15 +185,21 @@ async def _proxy_stream_with_billing(
 
             duration_ms = int((time.time() - start_time) * 1000)
 
+            estimated = False
             if input_tokens == 0 and output_tokens == 0:
+                # Usage absent (coupure, fournisseur muet) : estimation sur le texte réellement échangé
+                estimated = True
                 input_chars = sum(
                     len(m.get("content", "")) for m in body.get("messages", []) if isinstance(m.get("content"), str)
                 )
                 input_tokens = max(input_chars // 4, 1)
-                output_tokens = max(duration_ms // 50, 10)
+                output_tokens = max(output_chars // 4, 1)
+                logger.warning("USAGE_MISSING: user=%s provider=%s model=%s — coût estimé", email, provider, model_name)
 
             if input_tokens > 0 or output_tokens > 0:
-                cost_usd, cost_fcfa = calculate_cost_fcfa(provider, input_tokens, output_tokens)
+                cost_usd, cost_fcfa = calculate_cost_fcfa(
+                    provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
+                )
                 try:
                     is_paid = await has_credits(email)
                     await record_usage(
@@ -198,7 +211,7 @@ async def _proxy_stream_with_billing(
                         cost_usd,
                         cost_fcfa,
                         duration_ms,
-                        task_type="free_chat_stream" if not is_paid else "chat_stream",
+                        task_type=("free_chat_stream" if not is_paid else "chat_stream") + ("_estimated" if estimated else ""),
                     )
                     if is_paid and cost_fcfa > 0:
                         await deduct_credits(
@@ -284,6 +297,9 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
     is_stream = body.get("stream", False)
     if is_free_chat and is_stream:
         raise HTTPException(400, "Streaming indisponible en quota gratuit. Désactive stream ou recharge.")
+    if is_stream:
+        # Sans cette option, le flux ne contient pas la consommation réelle : on facturerait une estimation.
+        body["stream_options"] = {**(body.get("stream_options") or {}), "include_usage": True}
 
     headers = {
         "Content-Type": "application/json",

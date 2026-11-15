@@ -95,6 +95,9 @@ class Settings(BaseSettings):
     # DeepSeek V4-Pro: coût réel ~$2/$8 → 1120/4480 F. Vente: marge x2.5
     deepseek_pro_input_cost_per_million: float = 2800.0
     deepseek_pro_output_cost_per_million: float = 11200.0
+    # Tokens d'entrée servis par le cache DeepSeek (historique déjà envoyé) : facturés à ce
+    # ratio du prix d'entrée. DeepSeek facture lui-même le cache bien moins cher que l'entrée normale.
+    deepseek_cache_hit_ratio: float = 0.25
     # Kimi K2.5: coût réel $0.60/$2.50 → 336/1400 F. Vente: marge x3
     kimi_input_cost_per_million: float = 1000.0
     kimi_output_cost_per_million: float = 4000.0

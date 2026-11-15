@@ -317,22 +317,38 @@ def sanitize_error(error: Exception) -> str:
 # COST CALCULATION
 # ============================================================================
 
-def calculate_cost_fcfa(provider: str, input_tokens: int, output_tokens: int, model: str = "") -> tuple[float, float]:
+def usage_tokens(usage: dict | None) -> tuple[int, int, int]:
+    """(entrée, sortie, entrée servie par le cache) depuis le bloc `usage` du fournisseur."""
+    usage = usage or {}
+    input_tokens = int(usage.get("prompt_tokens") or 0)
+    output_tokens = int(usage.get("completion_tokens") or 0)
+    details = usage.get("prompt_tokens_details") or {}
+    cached = int(usage.get("prompt_cache_hit_tokens") or details.get("cached_tokens") or 0)
+    return input_tokens, output_tokens, max(0, min(cached, input_tokens))
+
+
+def calculate_cost_fcfa(
+    provider: str, input_tokens: int, output_tokens: int, model: str = "", cached_input_tokens: int = 0,
+) -> tuple[float, float]:
     """
     Calculate the cost of an API call in USD and FCFA.
     Returns (cost_usd, cost_fcfa).
     Uses Pro pricing when the model contains 'pro'.
+    DeepSeek: the part of the input served by the provider cache is billed at a reduced ratio.
     """
     if provider == "deepseek":
         is_pro = "pro" in (model or "").lower()
         input_cost = settings.deepseek_pro_input_cost_per_million if is_pro else settings.deepseek_input_cost_per_million
         output_cost = settings.deepseek_pro_output_cost_per_million if is_pro else settings.deepseek_output_cost_per_million
+        cached = max(0, min(cached_input_tokens, input_tokens))
+        ratio = min(1.0, max(0.0, settings.deepseek_cache_hit_ratio))
+        billed_input = (input_tokens - cached) + cached * ratio
         cost_usd = (
-            (input_tokens / 1_000_000) * (input_cost / settings.usd_to_fcfa)
+            (billed_input / 1_000_000) * (input_cost / settings.usd_to_fcfa)
             + (output_tokens / 1_000_000) * (output_cost / settings.usd_to_fcfa)
         )
         cost_fcfa = (
-            (input_tokens / 1_000_000) * input_cost
+            (billed_input / 1_000_000) * input_cost
             + (output_tokens / 1_000_000) * output_cost
         )
     elif provider == "kimi":

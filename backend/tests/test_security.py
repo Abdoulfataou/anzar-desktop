@@ -54,3 +54,30 @@ def test_expired_rejected_but_grace_window_allows_decode():
 
 def test_legacy_homebrew_format_rejected():
     assert verify_token("eyJmb28iOiJiYXIifQ.deadbeef") is None
+
+
+# ── Coût exact : usage réel du fournisseur, cache DeepSeek ──
+
+def test_usage_tokens_reads_deepseek_cache():
+    from security import usage_tokens
+    assert usage_tokens({"prompt_tokens": 1000, "completion_tokens": 200, "prompt_cache_hit_tokens": 800}) == (1000, 200, 800)
+    assert usage_tokens({"prompt_tokens": 100, "completion_tokens": 5, "prompt_tokens_details": {"cached_tokens": 40}}) == (100, 5, 40)
+    assert usage_tokens(None) == (0, 0, 0)
+    # Un cache supérieur à l'entrée est borné
+    assert usage_tokens({"prompt_tokens": 10, "prompt_cache_hit_tokens": 50})[2] == 10
+
+
+def test_cache_hit_tokens_billed_at_reduced_ratio():
+    from config import settings
+    from security import calculate_cost_fcfa
+    _, full = calculate_cost_fcfa("deepseek", 1_000_000, 0, model="deepseek-chat")
+    _, cached = calculate_cost_fcfa("deepseek", 1_000_000, 0, model="deepseek-chat", cached_input_tokens=1_000_000)
+    assert full == settings.deepseek_input_cost_per_million
+    assert cached == round(settings.deepseek_input_cost_per_million * settings.deepseek_cache_hit_ratio, 2)
+
+
+def test_pro_model_uses_pro_pricing():
+    from config import settings
+    from security import calculate_cost_fcfa
+    _, cost = calculate_cost_fcfa("deepseek", 0, 1_000_000, model="deepseek-v4-pro")
+    assert cost == settings.deepseek_pro_output_cost_per_million
