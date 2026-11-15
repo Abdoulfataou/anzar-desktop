@@ -106,6 +106,8 @@ Tests backend (pytest sur agents/routes) et front (vitest sur stores/services). 
 
 **Documents dans Discussion (05/07)** : (1) **drag & drop** de fichiers n'importe où dans la fenêtre (événements natifs Tauri, overlay visuel, même pipeline que le trombone) ; (2) **OCR tesseract.js** (fra+eng) automatique pour les PDF scannés sans couche texte (5 premières pages, rendu 2x) — crucial pour les documents administratifs scannés ; (3) message clair pour les **formats anciens** .doc/.ppt/.xls (au lieu d'un extrait vide) ; (4) pipeline d'extraction unifié `processFilePath()` partagé trombone/drop.
 
+**Visuels dans le chat (05/07)** : le chaînon manquant est comblé — la détection visuelle routait déjà vers Kimi avec un prompt Mermaid/SVG, mais l'utilisateur voyait le CODE BRUT. Nouveau `VisualBlock.tsx` : les blocs ```mermaid sont **dessinés** (flowcharts, séquences, ER, Gantt, camemberts, mindmaps — thème clair/sombre auto) et les blocs ```svg rendus inline (sanitisés : scripts/handlers/foreignObject retirés), avec toggle Visuel ⇄ Code et copie. Dépendance `mermaid@^11` ajoutée — **lancer `npm install` dans desktop/** (l'install sandbox a expiré).
+
 **Reste à faire (épuration profonde, seconde passe)** : dégraisser `ChatInput` (863 l.) et `useChatEngine` (821 l.) du code de routage projet devenu inutile (forceProjectGenerationOnceRef, wizardMetaRef) ; redesign Sidebar (546 l.) ; unifier GenerationPanel dans le studio pour supprimer le doublon d'affichage de génération ; commit des suppressions `.git_broken/`.
 
 ## 6. Fichiers critiques à connaître
