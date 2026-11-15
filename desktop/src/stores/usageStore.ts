@@ -6,6 +6,7 @@ import { safeStorage } from '@/lib/safeStorage';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AIProvider, AIModel } from '@/types';
+import { useAccountStore } from '@/stores/accountStore';
 
 // ============================================================================
 // TYPES
@@ -108,7 +109,6 @@ export const useUsageStore = create<UsageStore>()(
 
         // Déduire du solde prépayé
         if (record.costFCFA > 0) {
-          const { useAccountStore } = require('@/stores/accountStore');
           useAccountStore.getState().deductCredit(
             record.costFCFA,
             `Requête IA (${record.model})`
@@ -185,12 +185,10 @@ export const useUsageStore = create<UsageStore>()(
       },
 
       hasCredit: () => {
-        const { useAccountStore } = require('@/stores/accountStore');
         return useAccountStore.getState().hasCredit();
       },
 
       getRemainingBalance: () => {
-        const { useAccountStore } = require('@/stores/accountStore');
         return useAccountStore.getState().getRemainingBalance();
       },
 

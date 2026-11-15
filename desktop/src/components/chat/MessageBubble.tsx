@@ -288,13 +288,13 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
         {/* Main message — pas de bulle (ZCode) ; erreur = filet gauche danger */}
         <div className={cn(
           'px-0 py-0.5 message-enter',
-          message.isError && 'border-l-2 border-accent-error/60 pl-3'
+          message.isError && !message.timeline?.length && 'border-l-2 border-accent-error/60 pl-3'
         )}>
           <div
             ref={textRef}
             className={cn(
               'max-w-none text-ui-base text-text-primary break-words',
-              message.isError && 'text-accent-error'
+              message.isError && !message.timeline?.length && 'text-accent-error'
             )}
           >
             {message.timeline?.length ? (
@@ -310,8 +310,15 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                     </div>
                   ) : null;
                 }
+                const isErrorNote = message.isError && isLast;
                 return (
-                  <div key={`x${idx}`} className="my-3 first:mt-0 last:mb-0">
+                  <div
+                    key={`x${idx}`}
+                    className={cn(
+                      'my-3 first:mt-0 last:mb-0',
+                      isErrorNote && 'rounded-lg bg-accent-error/10 px-3 py-2 text-accent-error [&_strong]:text-accent-error'
+                    )}
+                  >
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
                       {item.text}
                     </ReactMarkdown>

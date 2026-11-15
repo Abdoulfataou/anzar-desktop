@@ -555,41 +555,47 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       // Réponse finale dans l'historique API
       apiHistoryRef.current.push({ role: 'assistant', content: accContent });
 
-      // ── Coût réel : différence de solde serveur (le backend facture chaque appel) ──
-      const estimate = Math.round((promptTokens / 1_000_000) * priceIn + (completionTokens / 1_000_000) * priceOut);
-      await new Promise((r) => setTimeout(r, 600)); // laisse le serveur enregistrer le dernier appel
-      const balanceAfter = await refreshCredits();
-      const fromServer = balanceBefore !== null && balanceAfter !== null;
-      const costFCFA = fromServer ? Math.max(0, Math.round((balanceBefore - balanceAfter) * 100) / 100) : estimate;
-
+      // La réponse est terminée : on l'affiche tout de suite, sans attendre la comptabilité.
       updateMessage(assistantId, {
         content: accContent,
         timeline: snapshotTimeline(),
         reasoning: accReasoning ? [accReasoning] : undefined,
         isStreaming: false,
         tokens: { prompt: promptTokens, completion: completionTokens },
-        costFCFA,
         notice: undefined,
         resumable: false,
         toolEvents: [...events],
-        fileChanges: workspacePath ? await collectChanges(assistantId, workspacePath, snapshots) : undefined,
+        fileChanges: workspacePath ? await collectChanges(assistantId, workspacePath, snapshots).catch(() => undefined) : undefined,
       });
 
-      const record = {
-        provider: 'deepseek' as const,
-        model,
-        taskType: 'agent_chat',
-        inputTokens: promptTokens,
-        outputTokens: completionTokens,
-        costUSD: Math.round((costFCFA / 615) * 10000) / 10000,
-        costFCFA,
-        wasFallback: false,
-        timestamp: Date.now(),
-        durationMs: Date.now() - t0,
-      };
-      // Solde déjà synchronisé depuis le serveur → on journalise sans redébiter.
-      if (fromServer) addUsageRecord(record);
-      else addUsage(record);
+      // Coût et journal d'usage : une erreur ici ne doit jamais faire échouer la réponse.
+      try {
+        // ── Coût réel : différence de solde serveur (le backend facture chaque appel) ──
+        const estimate = Math.round((promptTokens / 1_000_000) * priceIn + (completionTokens / 1_000_000) * priceOut);
+        await new Promise((r) => setTimeout(r, 600)); // laisse le serveur enregistrer le dernier appel
+        const balanceAfter = await refreshCredits();
+        const fromServer = balanceBefore !== null && balanceAfter !== null;
+        const costFCFA = fromServer ? Math.max(0, Math.round((balanceBefore - balanceAfter) * 100) / 100) : estimate;
+        updateMessage(assistantId, { costFCFA });
+
+        const record = {
+          provider: 'deepseek' as const,
+          model,
+          taskType: 'agent_chat',
+          inputTokens: promptTokens,
+          outputTokens: completionTokens,
+          costUSD: Math.round((costFCFA / 615) * 10000) / 10000,
+          costFCFA,
+          wasFallback: false,
+          timestamp: Date.now(),
+          durationMs: Date.now() - t0,
+        };
+        // Solde déjà synchronisé depuis le serveur → on journalise sans redébiter.
+        if (fromServer) addUsageRecord(record);
+        else addUsage(record);
+      } catch (err) {
+        console.warn('[agent] comptabilité du coût impossible', err);
+      }
     } catch (e: any) {
       const aborted = controller.signal.aborted;
       // On garde de quoi reprendre exactement ici (bouton « Reprendre »)
