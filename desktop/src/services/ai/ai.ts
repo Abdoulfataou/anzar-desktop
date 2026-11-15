@@ -32,7 +32,7 @@ function getSettingsStore() {
 
 /** Get the backend proxy URL (single source of truth) */
 function getBackendUrl(): string {
-  return getSettingsStore().getBackendUrl() || 'https://anzar-desktop-production.up.railway.app';
+  return getSettingsStore().getBackendUrl() || 'https://anzar-api.issalanhub.com';
 }
 
 // ============================================================================

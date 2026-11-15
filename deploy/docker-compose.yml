@@ -1,0 +1,64 @@
+# ANZAR en production sur le VPS Hetzner partagé avec ShagoStore : PostgreSQL + API.
+# Pas de Caddy ici : celui de ShagoStore reçoit le HTTPS et transmet anzar-api.issalanhub.com
+# à ce service (réseau Docker « shagostore_default », nom « anzar-api »).
+# Lancement : ./initialiser.sh   puis   docker compose up -d --build
+name: anzar
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: anzar
+      POSTGRES_USER: anzar
+      POSTGRES_PASSWORD: ${PG_PASSWORD:?à définir dans .env}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    shm_size: 128mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anzar -d anzar"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [interne]
+    # Aucun port publié : la base n'est joignable que par l'API.
+
+  api:
+    build: ../backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ENV: production
+      PORT: "8000"
+      DATABASE_URL: postgresql://anzar:${PG_PASSWORD}@db:5432/anzar
+      JWT_SECRET: ${JWT_SECRET:?à définir dans .env}
+      OTP_SECRET: ${OTP_SECRET:?à définir dans .env}
+      ADMIN_DEFAULT_EMAIL: ${ADMIN_DEFAULT_EMAIL:-admin@issalanhub.com}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:?à définir dans .env}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?clé DeepSeek à mettre dans .env}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      SENDER_EMAIL: ${SENDER_EMAIL:-no-reply@issalanhub.com}
+      SENDER_NAME: ${SENDER_NAME:-ANZAR}
+      DEEPSEEK_MARGIN: ${DEEPSEEK_MARGIN:-3.0}
+      WELCOME_BONUS_FCFA: ${WELCOME_BONUS_FCFA:-1000}
+      FREE_DAILY_CHAT_REQUESTS: ${FREE_DAILY_CHAT_REQUESTS:-10}
+    networks:
+      interne: {}
+      shago:
+        aliases: [anzar-api]
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+networks:
+  interne: {}
+  # Réseau créé par ShagoStore (docker compose de /root/shagostore/deploy) : son Caddy y joint l'API.
+  shago:
+    name: shagostore_default
+    external: true
+
+volumes:
+  pgdata:

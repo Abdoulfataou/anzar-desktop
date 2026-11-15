@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     # ─── Security ───
     jwt_secret: str = "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
     jwt_expiry_hours: int = 24  # Court : le client refresh toutes les 6h (grâce refresh : 7 jours)
-    cors_origins: str = "http://localhost:1420,http://localhost:5173,tauri://localhost,https://tauri.localhost,https://endearing-exploration-production.up.railway.app,https://anzar-desktop-production.up.railway.app"
+    cors_origins: str = "http://localhost:1420,http://localhost:5173,tauri://localhost,https://tauri.localhost,https://endearing-exploration-production.up.railway.app,https://anzar-desktop-production.up.railway.app,https://anzar-api.issalanhub.com"
     rate_limit_per_minute: int = 30
     rate_limit_per_day: int = 500
 

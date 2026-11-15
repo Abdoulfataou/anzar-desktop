@@ -94,7 +94,7 @@ function generateDeviceVaultKey(): string {
 const defaultSettings: Settings = {
   model: 'fast',
   provider: 'deepseek',
-  backendUrl: import.meta.env.VITE_BACKEND_URL || 'https://anzar-desktop-production.up.railway.app',
+  backendUrl: import.meta.env.VITE_BACKEND_URL || 'https://anzar-api.issalanhub.com',
   deviceVaultKey: generateDeviceVaultKey(),
   theme: 'dark',
   language: 'fr',
@@ -141,7 +141,10 @@ export const useSettingsStore = create<SettingsStore>()(
       // ─── Backend URL ───
 
       getBackendUrl: () => {
-        const configured = (get().settings.backendUrl || '').trim();
+        let configured = (get().settings.backendUrl || '').trim();
+        // L'ancien serveur Railway a été remplacé par le VPS : une adresse Railway
+        // sauvegardée sur une installation existante est ignorée.
+        if (/\.up\.railway\.app/i.test(configured)) configured = '';
 
         // If user explicitly set a non-default URL in settings, use it
         // But ignore stale localhost defaults — prefer env variable
@@ -154,7 +157,7 @@ export const useSettingsStore = create<SettingsStore>()(
         if (envUrl) return envUrl;
 
         // Final fallback
-        return configured || 'https://anzar-desktop-production.up.railway.app';
+        return configured || 'https://anzar-api.issalanhub.com';
       },
 
       isAPIConfigured: () => {
