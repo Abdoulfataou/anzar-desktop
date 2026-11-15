@@ -242,11 +242,11 @@ function GeneralSection() {
   };
   return (
     <Card>
-      <Row label="Modèle par défaut" description="Rapide convient à la plupart des tâches et coûte moins cher. Réflexion raisonne plus longtemps avant d'agir.">
+      <Row label="Modèle par défaut" description="Rapide : réflexion courte, le moins cher. Réflexion : le bon réglage pour la plupart des tâches. Max : tâches difficiles, plus lent et plus cher.">
         <Segmented
           value={model}
           onChange={(v) => updateSettings({ model: v })}
-          options={[{ id: 'fast', label: 'Rapide', icon: Zap }, { id: 'thinking', label: 'Réflexion', icon: Brain }]}
+          options={[{ id: 'fast', label: 'Rapide', icon: Zap }, { id: 'thinking', label: 'Réflexion', icon: Brain }, { id: 'max', label: 'Max', icon: Brain }]}
         />
       </Row>
       <Row label="Permissions par défaut" description="Ce que l'agent peut faire sans te demander. Modifiable à tout moment depuis la saisie.">

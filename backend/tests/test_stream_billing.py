@@ -41,7 +41,37 @@ def test_stream_sends_exact_cost_before_done(monkeypatch):
     cost_idx = next(i for i, l in enumerate(events) if '"anzar"' in l)
     assert events[cost_idx + 1] == "data: [DONE]"
     sent = json.loads(events[cost_idx][6:])["anzar"]["cost_fcfa"]
-    from config import settings
-    expected = round(settings.deepseek_input_cost_per_million * settings.deepseek_cache_hit_ratio, 2)
+    from security import calculate_cost_fcfa
+    expected = calculate_cost_fcfa("deepseek", 1_000_000, 0, model="deepseek-chat", cached_input_tokens=1_000_000)[1]
     assert sent == expected
     assert billed["deduct"] == expected  # le montant affiché est exactement le montant débité
+
+
+def test_legacy_deepseek_models_are_converted(monkeypatch):
+    """Anciennes versions de l'app : deepseek-chat / deepseek-reasoner → deepseek-flash."""
+    from fastapi.testclient import TestClient
+    from main import app
+    from security import get_current_user
+    from config import settings
+    seen = {}
+
+    async def fake_proxy(url, headers, body, email, provider, start):
+        seen["model"] = body["model"]
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"ok": True})
+
+    async def has_credits(email): return True
+    monkeypatch.setattr(chat, "_proxy_request_with_billing", fake_proxy)
+    monkeypatch.setattr(chat, "has_credits", has_credits)
+    monkeypatch.setattr(chat, "get_provider_config", lambda p: {"api_key": "test", "base_url": "http://x"})
+    app.dependency_overrides[get_current_user] = lambda: {"sub": "a@b.c"}
+    try:
+        client = TestClient(app)
+        for legacy in ["deepseek-chat", "deepseek-reasoner", "deepseek-v4-flash", "n'importe-quoi"]:
+            r = client.post("/api/deepseek/chat/completions", json={"model": legacy, "messages": [{"role": "user", "content": "hi"}]})
+            assert r.status_code == 200, r.text
+            assert seen["model"] == settings.deepseek_model
+        client.post("/api/deepseek/chat/completions", json={"model": settings.deepseek_pro_model, "messages": [{"role": "user", "content": "hi"}]})
+        assert seen["model"] == settings.deepseek_pro_model
+    finally:
+        app.dependency_overrides.clear()

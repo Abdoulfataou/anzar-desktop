@@ -405,8 +405,9 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     // Solde serveur avant la tâche : la différence à la fin = coût réel facturé.
     const balanceBefore = resumeFrom ? resumeFrom.balanceBefore : await refreshCredits();
     const cost: ServerCost = resumeFrom?.cost ?? { sum: 0, reports: 0, calls: 0 };
-    const priceIn = model === 'thinking' ? 400 : 250;
-    const priceOut = model === 'thinking' ? 900 : 500;
+    // Repli si le serveur n'envoie pas le coût exact (FCFA / 1M tokens, ordre de grandeur)
+    const priceIn = 250;
+    const priceOut = 1000;
     const historyTokens = () =>
       Math.ceil(apiHistoryRef.current.reduce((n, m) => n + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0) / 4);
 
@@ -454,21 +455,31 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         closeDanglingToolCalls(apiHistoryRef.current);
       } else {
         // ── System prompt : agent si workspace, chat simple sinon ──
+        // Cache DeepSeek : le début de la requête doit rester IDENTIQUE d'un appel à l'autre
+        // (un token servi par le cache coûte ~2 % du prix normal). Le prompt système ne
+        // contient donc que ce qui change rarement ; la carte du code, les indices de la
+        // tâche et le mode plan vont dans le message de la demande, en fin de requête.
         let system: APIMessage;
+        let turnContext = '';
+        const freshHistory = apiHistoryRef.current.length === 0;
         if (workspacePath) {
           const ctx = await buildAgentContext(workspacePath, content).catch(() => null);
           const promptCtx: AgentPromptContext = {
             projectName: workspaceName || workspacePath.split('/').pop() || 'projet',
             projectRoot: workspacePath,
-            codeMap: ctx?.codeMap,
-            taskHints: ctx?.taskHints,
             memory: ctx?.memory,
             platform: navigator.platform.toLowerCase().includes('win') ? 'windows' : 'macos',
           };
           system = {
             role: 'system',
-            content: buildAgentSystemPrompt(promptCtx) + skillsPromptSection(skills) + personal + (modeRef.current === 'plan' ? PLAN_MODE_PROMPT : ''),
+            content: buildAgentSystemPrompt(promptCtx) + skillsPromptSection(skills) + personal,
           };
+          const parts: string[] = [];
+          // Carte du code : une fois par conversation (elle reste ensuite dans l'historique)
+          if (freshHistory && ctx?.codeMap) parts.push(`## Carte du code (fichiers + symboles clés)\n${ctx.codeMap}`);
+          if (ctx?.taskHints) parts.push(`## Fichiers probablement pertinents pour cette demande\n${ctx.taskHints}\n(Indices heuristiques : vérifie avec read_file.)`);
+          if (modeRef.current === 'plan') parts.push(PLAN_MODE_PROMPT.trim());
+          if (parts.length) turnContext = `\n\n---\n# Contexte fourni par ANZAR\n${parts.join('\n\n')}`;
         } else {
           system = {
             role: 'system',
@@ -499,7 +510,13 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         }
         // Les résultats d'outils des demandes précédentes ne servent plus qu'en résumé
         compactHistory(apiHistoryRef.current, 0, 300);
-        apiHistoryRef.current.push({ role: 'user', content: apiContent });
+        // Le raisonnement des demandes précédentes n'est plus utile au modèle (DeepSeek accepte
+        // qu'on le retire entre deux demandes) : on l'enlève pour ne pas le repayer.
+        for (let i = 0; i < apiHistoryRef.current.length; i++) {
+          const m = apiHistoryRef.current[i];
+          if (m.reasoning_content) apiHistoryRef.current[i] = { ...m, reasoning_content: undefined };
+        }
+        apiHistoryRef.current.push({ role: 'user', content: apiContent + turnContext });
       }
 
       let answered = false;
@@ -577,6 +594,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         apiHistoryRef.current.push({
           role: 'assistant',
           content: stepContent || null,
+          // DeepSeek exige le raisonnement de l'étape avec ses appels d'outils (sinon erreur 400)
+          ...(stepReasoning ? { reasoning_content: stepReasoning } : {}),
           tool_calls: toolCalls,
         });
 

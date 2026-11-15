@@ -409,8 +409,9 @@ const PERMISSIONS: { id: PermissionMode; label: string; hint: string }[] = [
 ];
 
 const MODELS: { id: AIModel; label: string; hint: string }[] = [
-  { id: 'fast',     label: 'Rapide',    hint: 'Réponses rapides, moins cher' },
-  { id: 'thinking', label: 'Réflexion', hint: 'Raisonne plus longtemps, plus cher' },
+  { id: 'fast',     label: 'Rapide',    hint: 'Réflexion courte : questions, petites modifications. Le moins cher' },
+  { id: 'thinking', label: 'Réflexion', hint: "Le bon réglage pour la plupart des tâches d'agent" },
+  { id: 'max',      label: 'Max',       hint: 'Réflexion maximale pour les tâches difficiles. Plus lent et plus cher' },
 ];
 
 /** Menu déroulant de la barre du composer (s'ouvre vers le haut). */
@@ -921,7 +922,7 @@ export default function ChatInput({
                   value={selectedModel}
                   options={MODELS}
                   onChange={onModelChange}
-                  icon={selectedModel === 'thinking' ? <Brain size={14} /> : <Zap size={14} />}
+                  icon={selectedModel === 'fast' ? <Zap size={14} /> : <Brain size={14} />}
                   align="right"
                 />
               )}

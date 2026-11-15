@@ -50,6 +50,26 @@ function isSlowNetwork(): boolean {
   return !!c && (['slow-2g', '2g', '3g'].includes(c.effectiveType) || (typeof c.rtt === 'number' && c.rtt > 800));
 }
 
+
+/**
+ * Réglages propres au modèle. DeepSeek : réflexion pilotée explicitement (elle est activée
+ * par défaut chez eux, effort « high ») ; la température n'a pas d'effet sur deepseek-flash.
+ */
+function applyModelOptions(body: Record<string, any>, provider: AIProvider, mode: AIModel, options: ChatOptions) {
+  const config = AI_PROVIDERS[provider];
+  const effort = options.reasoningEffort ?? config.reasoningEffort?.[mode];
+  if (provider === 'deepseek') {
+    if (effort === 'none') {
+      body.thinking = { type: 'disabled' };
+    } else {
+      body.thinking = { type: 'enabled' };
+      body.reasoning_effort = effort || 'high';
+    }
+    return;
+  }
+  body.temperature = options.temperature ?? config.defaultTemperature[mode];
+}
+
 class AIService {
   private abortControllers = new Map<string, AbortController>();
 
@@ -133,10 +153,7 @@ class AIService {
       stream: false,
     };
 
-    // Temperature (non supportée par certains modèles de raisonnement)
-    if (!(provider === 'deepseek' && mode === 'thinking')) {
-      body.temperature = options.temperature ?? config.defaultTemperature[mode];
-    }
+    applyModelOptions(body, provider, mode, options);
 
     // Max tokens
     if (options.maxTokens) {
@@ -254,10 +271,7 @@ class AIService {
       stream: true,
     };
 
-    // Temperature
-    if (!(provider === 'deepseek' && mode === 'thinking')) {
-      body.temperature = options.temperature ?? config.defaultTemperature[mode];
-    }
+    applyModelOptions(body, provider, mode, options);
 
     if (options.maxTokens) {
       body.max_completion_tokens = options.maxTokens;

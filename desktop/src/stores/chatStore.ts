@@ -26,7 +26,7 @@ interface ChatStore {
 
   // Actions
   /** Create a new conversation */
-  createConversation: (title?: string, model?: 'fast' | 'thinking', opts?: { activate?: boolean; projectId?: string }) => Conversation;
+  createConversation: (title?: string, model?: import('@/types').AIModel, opts?: { activate?: boolean; projectId?: string }) => Conversation;
 
   /** Delete a conversation */
   deleteConversation: (id: string) => void;
@@ -121,7 +121,7 @@ export const useChatStore = create<ChatStore>()(
       /**
        * Create a new conversation
        */
-      createConversation: (title?: string, model = 'fast' as const, opts?: { activate?: boolean; projectId?: string }) => {
+      createConversation: (title?: string, model: import('@/types').AIModel = 'fast', opts?: { activate?: boolean; projectId?: string }) => {
         const conversation: Conversation = {
           id: generateId(),
           title: title || getDefaultConversationTitle(),

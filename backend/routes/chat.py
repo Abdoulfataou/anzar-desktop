@@ -139,6 +139,7 @@ async def _proxy_stream_with_billing(
         output_tokens = 0
         cached_tokens = 0
         output_chars = 0  # repli si le fournisseur ne renvoie pas l'usage
+        priced = None     # (cost_usd, cost_fcfa) calculé une seule fois : affiché = débité
         model_name = body.get("model", "unknown")
         client = httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0))
 
@@ -158,10 +159,10 @@ async def _proxy_stream_with_billing(
                             # Coût exact de cet appel, envoyé à l'app avant la fin du flux :
                             # l'app additionne ces montants au lieu de comparer le solde
                             # (faux si une autre session consomme en même temps).
-                            _, call_cost = calculate_cost_fcfa(
+                            priced = calculate_cost_fcfa(
                                 provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
                             )
-                            yield f"data: {json.dumps({'anzar': {'cost_fcfa': call_cost}})}\n\n"
+                            yield f"data: {json.dumps({'anzar': {'cost_fcfa': priced[1]}})}\n\n"
                         yield f"{line}\n\n"
 
                         if line.startswith("data: ") and line != "data: [DONE]":
@@ -205,7 +206,7 @@ async def _proxy_stream_with_billing(
                 logger.warning("USAGE_MISSING: user=%s provider=%s model=%s — coût estimé", email, provider, model_name)
 
             if input_tokens > 0 or output_tokens > 0:
-                cost_usd, cost_fcfa = calculate_cost_fcfa(
+                cost_usd, cost_fcfa = priced or calculate_cost_fcfa(
                     provider, input_tokens, output_tokens, model=model_name, cached_input_tokens=cached_tokens,
                 )
                 try:
@@ -287,6 +288,13 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
 
     if "messages" in body:
         body["messages"] = validate_messages(body["messages"])
+
+    # Modèles DeepSeek : seuls les identifiants actuels passent ; les anciens noms (versions
+    # de l'app déjà installées) sont convertis, sinon DeepSeek répondrait par une erreur.
+    if provider == "deepseek":
+        allowed = {settings.deepseek_model, settings.deepseek_pro_model}
+        if body.get("model") not in allowed:
+            body["model"] = settings.deepseek_model
 
     if is_free_chat:
         if provider == "deepseek":

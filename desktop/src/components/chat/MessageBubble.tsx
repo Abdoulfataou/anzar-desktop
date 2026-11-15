@@ -244,7 +244,7 @@ function MessageBubbleImpl({ message, onCopy, onRegenerate, selectedProjectId = 
 
           {/* Timestamp */}
           <span className="ml-auto text-ui-sm text-text-muted">
-            {message.model === 'thinking' ? 'Réflexion · ' : ''}{formatTime(message.timestamp)}
+            {message.model === 'thinking' ? 'Réflexion · ' : message.model === 'max' ? 'Max · ' : ''}{formatTime(message.timestamp)}
             {typeof message.costFCFA === 'number' && !message.isStreaming && (
               <> · {message.costFCFA < 1 ? '< 1' : Math.round(message.costFCFA).toLocaleString('fr-FR')} FCFA</>
             )}

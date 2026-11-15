@@ -16,7 +16,7 @@ interface ProjectStore {
   activeProjectId: string | null;
 
   /** Crée un projet et le rend actif */
-  createProject: (name: string, description: string, model?: 'fast' | 'thinking') => Project;
+  createProject: (name: string, description: string, model?: import('@/types').AIModel) => Project;
   updateProject: (id: string, updates: Partial<Project>) => void;
   deleteProject: (id: string) => void;
   setActiveProject: (id: string | null) => void;

@@ -327,30 +327,44 @@ def usage_tokens(usage: dict | None) -> tuple[int, int, int]:
     return input_tokens, output_tokens, max(0, min(cached, input_tokens))
 
 
+def deepseek_is_peak(at=None) -> bool:
+    """Heures pleines DeepSeek : en semaine (UTC), dans les plages de deepseek_peak_windows_utc."""
+    from datetime import datetime, timezone
+    now = at or datetime.now(timezone.utc)
+    if now.weekday() >= 5:  # samedi, dimanche
+        return False
+    for window in (settings.deepseek_peak_windows_utc or "").split(","):
+        try:
+            start, end = (int(x) for x in window.split("-"))
+        except ValueError:
+            continue
+        if start <= now.hour < end:
+            return True
+    return False
+
+
 def calculate_cost_fcfa(
-    provider: str, input_tokens: int, output_tokens: int, model: str = "", cached_input_tokens: int = 0,
+    provider: str, input_tokens: int, output_tokens: int, model: str = "", cached_input_tokens: int = 0, at=None,
 ) -> tuple[float, float]:
     """
-    Calculate the cost of an API call in USD and FCFA.
+    Calculate the cost of an API call in USD and FCFA (prix de vente).
     Returns (cost_usd, cost_fcfa).
-    Uses Pro pricing when the model contains 'pro'.
-    DeepSeek: the part of the input served by the provider cache is billed at a reduced ratio.
+    DeepSeek : barème réel (cache / hors cache / sortie, heures pleines ou creuses) × marge.
     """
     if provider == "deepseek":
         is_pro = "pro" in (model or "").lower()
-        input_cost = settings.deepseek_pro_input_cost_per_million if is_pro else settings.deepseek_input_cost_per_million
-        output_cost = settings.deepseek_pro_output_cost_per_million if is_pro else settings.deepseek_output_cost_per_million
+        hit, miss, out = (
+            (settings.deepseek_pro_hit_usd, settings.deepseek_pro_miss_usd, settings.deepseek_pro_output_usd)
+            if is_pro else
+            (settings.deepseek_flash_hit_usd, settings.deepseek_flash_miss_usd, settings.deepseek_flash_output_usd)
+        )
+        factor = 1.0 if deepseek_is_peak(at) else settings.deepseek_offpeak_factor
         cached = max(0, min(cached_input_tokens, input_tokens))
-        ratio = min(1.0, max(0.0, settings.deepseek_cache_hit_ratio))
-        billed_input = (input_tokens - cached) + cached * ratio
-        cost_usd = (
-            (billed_input / 1_000_000) * (input_cost / settings.usd_to_fcfa)
-            + (output_tokens / 1_000_000) * (output_cost / settings.usd_to_fcfa)
-        )
-        cost_fcfa = (
-            (billed_input / 1_000_000) * input_cost
-            + (output_tokens / 1_000_000) * output_cost
-        )
+        real_usd = factor * (
+            cached * hit + (input_tokens - cached) * miss + output_tokens * out
+        ) / 1_000_000
+        cost_fcfa = real_usd * settings.usd_to_fcfa * settings.deepseek_margin
+        cost_usd = cost_fcfa / settings.usd_to_fcfa
     elif provider == "kimi":
         cost_usd = (
             (input_tokens / 1_000_000) * (settings.kimi_input_cost_per_million / settings.usd_to_fcfa)

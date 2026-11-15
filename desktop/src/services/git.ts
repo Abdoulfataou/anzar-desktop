@@ -340,7 +340,7 @@ export async function suggestCommitMessage(cwd: string, changes: GitChange[], st
       },
       { role: 'user', content: `Fichiers modifiés :\n${list}\n\nDiff (extrait) :\n${excerpt}` },
     ],
-    { model: 'fast', maxTokens: 200, temperature: 0.3 },
+    { model: 'fast', maxTokens: 200, temperature: 0.3, reasoningEffort: 'none' },
   );
   return (res.choices?.[0]?.message?.content || '').replace(/^```\w*\n?|```$/g, '').trim();
 }

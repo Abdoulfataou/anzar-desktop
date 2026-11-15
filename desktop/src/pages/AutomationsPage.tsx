@@ -155,6 +155,7 @@ export default function AutomationsPage() {
                 <select value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value as Draft['model'] })} className={inputCls}>
                   <option value="fast">Rapide (moins cher)</option>
                   <option value="thinking">Réflexion</option>
+                  <option value="max">Max</option>
                 </select>
               </label>
             </div>

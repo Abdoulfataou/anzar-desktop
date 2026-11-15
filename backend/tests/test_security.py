@@ -67,17 +67,38 @@ def test_usage_tokens_reads_deepseek_cache():
     assert usage_tokens({"prompt_tokens": 10, "prompt_cache_hit_tokens": 50})[2] == 10
 
 
-def test_cache_hit_tokens_billed_at_reduced_ratio():
+def test_deepseek_real_price_times_margin_peak_and_offpeak():
+    from datetime import datetime, timezone
+    from config import settings
+    from security import calculate_cost_fcfa, deepseek_is_peak
+    monday_peak = datetime(2026, 11, 16, 2, 30, tzinfo=timezone.utc)     # lundi 02:30 UTC
+    monday_off = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)      # lundi 12:00 UTC
+    saturday = datetime(2026, 11, 14, 2, 30, tzinfo=timezone.utc)        # samedi
+    assert deepseek_is_peak(monday_peak) and not deepseek_is_peak(monday_off) and not deepseek_is_peak(saturday)
+    k = settings.usd_to_fcfa * settings.deepseek_margin
+    _, out_peak = calculate_cost_fcfa("deepseek", 0, 1_000_000, model="deepseek-flash", at=monday_peak)
+    _, out_off = calculate_cost_fcfa("deepseek", 0, 1_000_000, model="deepseek-flash", at=monday_off)
+    assert out_peak == round(settings.deepseek_flash_output_usd * k, 2)
+    assert out_off == round(out_peak * settings.deepseek_offpeak_factor, 2)
+    # Vendu au-dessus du coût réel en heures pleines
+    assert out_peak > settings.deepseek_flash_output_usd * settings.usd_to_fcfa
+
+
+def test_cache_hit_tokens_billed_at_cache_price():
+    from datetime import datetime, timezone
     from config import settings
     from security import calculate_cost_fcfa
-    _, full = calculate_cost_fcfa("deepseek", 1_000_000, 0, model="deepseek-chat")
-    _, cached = calculate_cost_fcfa("deepseek", 1_000_000, 0, model="deepseek-chat", cached_input_tokens=1_000_000)
-    assert full == settings.deepseek_input_cost_per_million
-    assert cached == round(settings.deepseek_input_cost_per_million * settings.deepseek_cache_hit_ratio, 2)
+    at = datetime(2026, 11, 16, 12, 0, tzinfo=timezone.utc)
+    _, full = calculate_cost_fcfa("deepseek", 1_000_000, 0, model="deepseek-flash", at=at)
+    _, cached = calculate_cost_fcfa("deepseek", 1_000_000, 0, model="deepseek-flash", cached_input_tokens=1_000_000, at=at)
+    assert cached < full / 40   # ~2 % du prix hors cache
+    assert cached == round(settings.deepseek_flash_hit_usd * settings.deepseek_offpeak_factor * settings.usd_to_fcfa * settings.deepseek_margin, 2)
 
 
 def test_pro_model_uses_pro_pricing():
+    from datetime import datetime, timezone
     from config import settings
     from security import calculate_cost_fcfa
-    _, cost = calculate_cost_fcfa("deepseek", 0, 1_000_000, model="deepseek-v4-pro")
-    assert cost == settings.deepseek_pro_output_cost_per_million
+    at = datetime(2026, 11, 16, 2, 0, tzinfo=timezone.utc)
+    _, cost = calculate_cost_fcfa("deepseek", 0, 1_000_000, model="deepseek-v4-pro", at=at)
+    assert cost == round(settings.deepseek_pro_output_usd * settings.usd_to_fcfa * settings.deepseek_margin, 2)

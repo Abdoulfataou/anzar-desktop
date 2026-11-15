@@ -82,22 +82,27 @@ class Settings(BaseSettings):
         return f"sqlite+aiosqlite:///{path}"
 
     # ─── Models (defaults) ───
-    # DeepSeek V4: 1M context, 384K max output, thinking mode intégré
-    deepseek_model: str = "deepseek-v4-flash"
+    # DeepSeek : deepseek-flash (V4.1-Flash), 1M de contexte, réflexion réglable par requête.
+    # deepseek-chat / deepseek-reasoner / deepseek-v4-flash sont retirés (convertis côté proxy).
+    deepseek_model: str = "deepseek-flash"
     deepseek_pro_model: str = "deepseek-v4-pro"  # Pour projets complexes (optionnel)
-    deepseek_reasoner: str = "deepseek-v4-flash"  # thinking mode via API param
+    deepseek_reasoner: str = "deepseek-flash"  # la réflexion se règle par paramètre
     kimi_model: str = "moonshot-v1-8k"
 
-    # ─── Pricing — PRIX DE VENTE (FCFA par 1M tokens, facturés aux utilisateurs) ───
-    # DeepSeek V4-Flash: coût réel $0.14/$0.28 → 78/157 F. Vente: marge x3.2
-    deepseek_input_cost_per_million: float = 250.0
-    deepseek_output_cost_per_million: float = 500.0
-    # DeepSeek V4-Pro: coût réel ~$2/$8 → 1120/4480 F. Vente: marge x2.5
-    deepseek_pro_input_cost_per_million: float = 2800.0
-    deepseek_pro_output_cost_per_million: float = 11200.0
-    # Tokens d'entrée servis par le cache DeepSeek (historique déjà envoyé) : facturés à ce
-    # ratio du prix d'entrée. DeepSeek facture lui-même le cache bien moins cher que l'entrée normale.
-    deepseek_cache_hit_ratio: float = 0.25
+    # ─── Pricing DeepSeek — COÛT RÉEL (USD par 1M tokens, tarif HEURES PLEINES) ───
+    # Source : api-docs.deepseek.com/quick_start/pricing (novembre 2026).
+    # Heures creuses = ce tarif × deepseek_offpeak_factor. Prix de vente = coût × deepseek_margin.
+    deepseek_flash_hit_usd: float = 0.006    # entrée servie par le cache
+    deepseek_flash_miss_usd: float = 0.30    # entrée hors cache
+    deepseek_flash_output_usd: float = 1.20
+    deepseek_pro_hit_usd: float = 0.044
+    deepseek_pro_miss_usd: float = 1.32
+    deepseek_pro_output_usd: float = 3.96
+    deepseek_offpeak_factor: float = 0.5
+    # Heures pleines DeepSeek (UTC, lundi→vendredi) : 01:00–04:00 et 06:00–10:00
+    deepseek_peak_windows_utc: str = "1-4,6-10"
+    # Marge appliquée au coût réel pour le prix de vente
+    deepseek_margin: float = 3.0
     # Kimi K2.5: coût réel $0.60/$2.50 → 336/1400 F. Vente: marge x3
     kimi_input_cost_per_million: float = 1000.0
     kimi_output_cost_per_million: float = 4000.0

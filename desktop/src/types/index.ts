@@ -11,7 +11,11 @@
 export type AIProvider = 'deepseek' | 'kimi' | 'openrouter';
 
 /** User-facing mode names (white-labeled) */
-export type AIModel = 'fast' | 'thinking';
+/** Rapide = réflexion courte · Réflexion = effort standard des agents · Max = tâches difficiles */
+export type AIModel = 'fast' | 'thinking' | 'max';
+
+/** Effort de réflexion DeepSeek (« none » = sans réflexion) */
+export type ReasoningEffort = 'none' | 'low' | 'high' | 'max';
 
 /** Provider-specific model identifiers */
 export interface ProviderModel {
@@ -33,7 +37,7 @@ export interface ProviderModel {
 export const AI_MODELS: ProviderModel[] = [
   // Provider A (standard)
   {
-    id: 'deepseek-chat',
+    id: 'deepseek-flash',
     name: 'ANZAR Rapide',
     provider: 'deepseek',
     mode: 'fast',
@@ -47,7 +51,7 @@ export const AI_MODELS: ProviderModel[] = [
     description: 'Rapide et polyvalent, idéal pour le code et la conversation',
   },
   {
-    id: 'deepseek-reasoner',
+    id: 'deepseek-flash-thinking',
     name: 'ANZAR Raisonnement',
     provider: 'deepseek',
     mode: 'thinking',
@@ -96,7 +100,9 @@ export interface AIProviderConfig {
   provider: AIProvider;
   label: string;
   baseUrl: string;
-  models: { fast: string; thinking: string };
+  models: Record<AIModel, string>;
+  /** Effort de réflexion envoyé pour chaque mode (fournisseurs qui le gèrent) */
+  reasoningEffort?: Record<AIModel, ReasoningEffort>;
   defaultTemperature: Record<AIModel, number>;
   features: string[];
 }
@@ -108,8 +114,11 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
     label: 'ANZAR Rapide',
     // NOTE: les requêtes passent par le backend ANZAR (proxy). Ne pas exposer de vendor URL ici.
     baseUrl: 'proxy',
-    models: { fast: 'deepseek-chat', thinking: 'deepseek-reasoner' },
-    defaultTemperature: { fast: 1.0, thinking: 1.0 },
+    // deepseek-chat / deepseek-reasoner ont été retirés par DeepSeek (24/07/2026) :
+    // un seul modèle, deepseek-flash, dont on règle l'effort de réflexion.
+    models: { fast: 'deepseek-flash', thinking: 'deepseek-flash', max: 'deepseek-flash' },
+    reasoningEffort: { fast: 'low', thinking: 'high', max: 'max' },
+    defaultTemperature: { fast: 1.0, thinking: 1.0, max: 1.0 },
     features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'FIM', 'Raisonnement'],
   },
   kimi: {
@@ -117,8 +126,8 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
     label: 'ANZAR Vision',
     // NOTE: les requêtes passent par le backend ANZAR (proxy). Ne pas exposer de vendor URL ici.
     baseUrl: 'proxy',
-    models: { fast: 'kimi-k2.6', thinking: 'kimi-k2.5' },
-    defaultTemperature: { fast: 0.7, thinking: 0.7 },
+    models: { fast: 'kimi-k2.6', thinking: 'kimi-k2.5', max: 'kimi-k2.5' },
+    defaultTemperature: { fast: 0.7, thinking: 0.7, max: 0.7 },
     features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'Vision', '262K Context'],
   },
   openrouter: {
@@ -127,8 +136,8 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
     // NOTE: proxy backend — nécessite OPENROUTER_API_KEY côté serveur.
     // IDs de modèles OpenRouter — à ajuster selon le catalogue (openrouter.ai/models).
     baseUrl: 'proxy',
-    models: { fast: 'openai/gpt-4o-mini', thinking: 'anthropic/claude-sonnet-4' },
-    defaultTemperature: { fast: 0.7, thinking: 0.7 },
+    models: { fast: 'openai/gpt-4o-mini', thinking: 'anthropic/claude-sonnet-4', max: 'anthropic/claude-sonnet-4' },
+    defaultTemperature: { fast: 0.7, thinking: 0.7, max: 0.7 },
     features: ['Chat', 'Streaming', 'Tool Calling', 'Claude', 'GPT'],
   },
 };
@@ -493,6 +502,8 @@ export interface ChatOptions {
   tools?: ToolDefinition[];
   responseFormat?: { type: 'text' | 'json_object' };
   systemPrompt?: string;
+  /** Force l'effort de réflexion (ex. « none » pour une réponse courte et peu chère) */
+  reasoningEffort?: ReasoningEffort;
 }
 
 export interface APIMessage {
