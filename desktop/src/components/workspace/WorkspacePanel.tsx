@@ -33,6 +33,8 @@ interface WorkspacePanelProps {
   plan?: { messageId: string; plan: NonNullable<Message['plan']> } | null;
   /** Agent au travail : la validation du plan attend la fin */
   busy?: boolean;
+  /** Liste des fichiers du projet à chaque relecture (suggestions « @ ») */
+  onFileList?: (paths: string[]) => void;
 }
 
 /** Onglets ouverts : l'explorateur est fixe, le reste s'ouvre et se ferme à la demande. */
@@ -45,7 +47,7 @@ type PanelTab =
 
 const FILES_TAB: PanelTab = { id: 'files', kind: 'files' };
 
-export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, onOpenFolder, plan, busy }: WorkspacePanelProps) {
+export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, onOpenFolder, plan, busy, onFileList }: WorkspacePanelProps) {
   const [tabs, setTabs] = useState<PanelTab[]>([FILES_TAB]);
   const [activeId, setActiveId] = useState<string>('files');
   const [showAdd, setShowAdd] = useState(false);
@@ -94,6 +96,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
         }
       };
       walk(tree);
+      onFileList?.(paths);
       setFiles((prev) => {
         const next = new Map<string, StudioFile>();
         for (const p of paths) {
@@ -108,6 +111,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
     } finally {
       setLoading(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspacePath]);
 
   /** Lit un fichier ; `trackChange` garde l'ancienne version pour la vue diff. */

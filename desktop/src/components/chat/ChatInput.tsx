@@ -12,7 +12,10 @@ import {
 import toast from 'react-hot-toast';
 import { cn, isTauri, generateId } from '@/lib/utils';
 import { AIModel, Project, ChatAttachment, ChatAttachmentKind } from '@/types';
-import { useProjectStore } from '@/stores/projectStore';
+import {
+  findSuggestionQuery, rankFiles, rankCommands, SuggestionMenu,
+  type SlashCommand, type SuggestionItem,
+} from './composerSuggestions';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 import { readTextFile, readBinaryFile } from '@tauri-apps/api/fs';
 
@@ -27,6 +30,12 @@ interface ChatInputProps {
   onPermissionChange?: (mode: PermissionMode) => void;
   placeholder?: string;
   maxHeight?: number;
+  /** Fichiers du projet proposés après « @ » (chemins relatifs) */
+  mentionFiles?: string[];
+  /** Commandes proposées après « / » en début de message */
+  commands?: SlashCommand[];
+  /** Commande qui déclenche une action de l'app (ex. /plan) */
+  onCommand?: (command: SlashCommand) => void;
 }
 
 const MAX_HEIGHT = 200;
@@ -476,6 +485,9 @@ export default function ChatInput({
   onPermissionChange,
   placeholder = 'Décris ta tâche, ANZAR s\'en occupe...',
   maxHeight = MAX_HEIGHT,
+  mentionFiles = [],
+  commands = [],
+  onCommand,
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [isFocused, setIsFocused] = useState(false);
@@ -588,7 +600,62 @@ export default function ChatInput({
     }
   };
 
+  // ── Suggestions « @ fichier » et « / commande » ──
+  const [caret, setCaret] = useState(0);
+  const [activeSuggestion, setActiveSuggestion] = useState(0);
+  const [suggestionsClosed, setSuggestionsClosed] = useState(false);
+  const suggestionQuery = isFocused && !suggestionsClosed ? findSuggestionQuery(message, caret) : null;
+  const fileMatches = suggestionQuery?.kind === 'mention' ? rankFiles(mentionFiles, suggestionQuery.query) : [];
+  const commandMatches = suggestionQuery?.kind === 'slash' ? rankCommands(commands, suggestionQuery.query) : [];
+  const suggestionItems: SuggestionItem[] = suggestionQuery?.kind === 'mention'
+    ? fileMatches.map((f) => ({ key: f, label: f.split('/').pop() || f, detail: f, icon: 'file' as const }))
+    : commandMatches.map((c) => ({ key: c.name, label: `/${c.name}`, detail: c.description, icon: c.custom ? 'custom' as const : 'command' as const }));
+  const showSuggestions = suggestionItems.length > 0;
+  useEffect(() => { setActiveSuggestion(0); }, [suggestionQuery?.kind, suggestionQuery?.query]);
+
+  const updateCaret = (el: HTMLTextAreaElement) => setCaret(el.selectionStart ?? el.value.length);
+
+  const placeCaret = (pos: number) => {
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(pos, pos);
+      setCaret(pos);
+    });
+  };
+
+  const pickSuggestion = (index: number) => {
+    if (!suggestionQuery) return;
+    if (suggestionQuery.kind === 'mention') {
+      const path = fileMatches[index];
+      if (!path) return;
+      const insert = `@${path} `;
+      const next = message.slice(0, suggestionQuery.start) + insert + message.slice(caret);
+      setMessage(next);
+      placeCaret(suggestionQuery.start + insert.length);
+      return;
+    }
+    const cmd = commandMatches[index];
+    if (!cmd) return;
+    if (cmd.action) {
+      setMessage(message.slice(caret).trimStart());
+      onCommand?.(cmd);
+      placeCaret(0);
+      return;
+    }
+    const text = cmd.prompt || `/${cmd.name}`;
+    setMessage(text);
+    placeCaret(text.length);
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showSuggestions) {
+      if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSuggestion((i) => (i + 1) % suggestionItems.length); return; }
+      if (e.key === 'ArrowUp') { e.preventDefault(); setActiveSuggestion((i) => (i - 1 + suggestionItems.length) % suggestionItems.length); return; }
+      if (e.key === 'Enter' || e.key === 'Tab') { e.preventDefault(); pickSuggestion(activeSuggestion); return; }
+      if (e.key === 'Escape') { e.preventDefault(); setSuggestionsClosed(true); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
@@ -618,12 +685,24 @@ export default function ChatInput({
             ? 'border-input-border-hover'
             : 'border-input-border hover:border-input-border-hover'
         )}>
+          {/* Suggestions « @ » / « / » au-dessus de la saisie */}
+          {showSuggestions && (
+            <SuggestionMenu
+              items={suggestionItems}
+              activeIndex={activeSuggestion}
+              onPick={pickSuggestion}
+              onHover={setActiveSuggestion}
+              title={suggestionQuery?.kind === 'mention' ? 'Fichiers du projet' : 'Commandes'}
+            />
+          )}
+
           {/* Textarea area */}
           <div className="flex items-end gap-2 px-1">
             <textarea
               ref={textareaRef}
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(e) => { setMessage(e.target.value); updateCaret(e.target); setSuggestionsClosed(false); }}
+              onSelect={(e) => updateCaret(e.currentTarget)}
               onKeyDown={handleKeyDown}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}

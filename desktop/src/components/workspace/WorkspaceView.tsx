@@ -31,6 +31,9 @@ import { openWorkspaceFolder, createWorkspaceFolder } from '@/lib/openWorkspace'
 import { terminalService } from '@/services/terminal';
 import { FILES_CHANGED_EVENT } from '@/services/agent/fileChanges';
 import { APPROVE_PLAN_EVENT } from '@/components/chat/PlanView';
+import { BUILTIN_COMMANDS, type SlashCommand } from '@/components/chat/composerSuggestions';
+import { fileSystemService } from '@/services/filesystem/fileSystem';
+import type { ChatAttachment } from '@/types';
 
 export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: boolean }) {
   const [selectedModel, setSelectedModel] = useState<AIModel>('fast');
@@ -73,6 +76,38 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
       window.removeEventListener(FILES_CHANGED_EVENT, onChanged);
     };
   }, []);
+
+  // ── Suggestions de la saisie : fichiers (« @ ») et commandes du projet (« / ») ──
+  const [mentionFiles, setMentionFiles] = useState<string[]>([]);
+  const [projectCommands, setProjectCommands] = useState<SlashCommand[]>([]);
+  useEffect(() => {
+    setMentionFiles([]);
+    setProjectCommands([]);
+    if (!workspacePath) return;
+    let alive = true;
+    (async () => {
+      // .anzar/commands/<nom>.md : une commande par fichier, le contenu est la demande
+      const dir = `${workspacePath.replace(/[\\/]+$/, '')}/.anzar/commands`;
+      try {
+        const nodes = await fileSystemService.readDirectoryTree(dir, 1);
+        const cmds: SlashCommand[] = [];
+        for (const n of nodes) {
+          if (n.type !== 'file' || !n.name.endsWith('.md')) continue;
+          const prompt = (await fileSystemService.readFile(n.path).catch(() => '')).trim();
+          if (!prompt) continue;
+          const name = n.name.replace(/\.md$/, '').toLowerCase().replace(/[^\w-]+/g, '-');
+          const firstLine = prompt.split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '') || '';
+          cmds.push({ name, description: firstLine.slice(0, 90), prompt, custom: true });
+        }
+        if (alive) setProjectCommands(cmds);
+      } catch { /* pas de commandes de projet */ }
+    })();
+    return () => { alive = false; };
+  }, [workspacePath]);
+  const commands = [
+    ...projectCommands,
+    ...BUILTIN_COMMANDS.filter((c) => !projectCommands.some((p) => p.name === c.name)),
+  ];
 
   // ── Agent chat ──
   const { sendMessage, stop, isGenerating, approval, resolveApproval, resume, setModeNow } = useAgentChat({
@@ -188,6 +223,23 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
   }, [isGenerating, changePermission, setModeNow, sendMessage]);
 
   const workspaceName = activeProject?.name || null;
+
+  /** « @chemin » dans le message : le fichier est joint (5 au maximum). */
+  const withMentionedFiles = useCallback(async (text: string, attachments: ChatAttachment[]) => {
+    if (!workspacePath || !text.includes('@')) return attachments;
+    const known = new Set(mentionFiles);
+    const paths = [...new Set([...text.matchAll(/(?:^|\s)@([^\s@]+)/g)].map((m) => m[1].replace(/[.,;:!?)]+$/, '')))]
+      .filter((p) => known.has(p))
+      .slice(0, 5);
+    const extra: ChatAttachment[] = [];
+    for (const p of paths) {
+      try {
+        const content = await fileSystemService.readFile(`${workspacePath.replace(/[\\/]+$/, '')}/${p}`);
+        extra.push({ id: `mention_${p}`, name: p, kind: 'code', sizeBytes: content.length, excerpt: content });
+      } catch { /* fichier disparu : la mention reste dans le texte */ }
+    }
+    return [...attachments, ...extra];
+  }, [workspacePath, mentionFiles]);
 
   // Une tâche « a travaillé sur un projet » si elle y est rattachée ou si l'agent y a déjà utilisé ses outils
   const taskProject = activeConversation?.projectId
@@ -326,7 +378,10 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             {/* Composer */}
             <div className="flex-shrink-0">
               <ChatInput
-                onSendMessage={async (msg, attachments) => { await sendMessage(msg, attachments); }}
+                onSendMessage={async (msg, attachments) => { await sendMessage(msg, await withMentionedFiles(msg, attachments || [])); }}
+                mentionFiles={mentionFiles}
+                commands={workspacePath ? commands : []}
+                onCommand={(cmd) => { if (cmd.action === 'plan') changePermission('plan'); }}
                 onStopGeneration={stop}
                 isLoading={isGenerating}
                 isOnline={onlineStatus}
@@ -334,7 +389,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
                 onModelChange={setSelectedModel}
                 permissionMode={permissionMode}
                 onPermissionChange={workspacePath ? changePermission : undefined}
-                placeholder={workspacePath ? 'Demande à l\'agent de lire, modifier ou exécuter…' : 'Pose une question, ou ouvre un dossier pour coder…'}
+                placeholder={workspacePath ? 'Demande à l\'agent… (@ pour un fichier, / pour une commande)' : 'Pose une question, ou ouvre un dossier pour coder…'}
               />
             </div>
           </div>
@@ -347,6 +402,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             onOpenFolder={() => void handleOpenFolder()}
             plan={latestPlan}
             busy={isGenerating}
+            onFileList={setMentionFiles}
           />
         }
       />
