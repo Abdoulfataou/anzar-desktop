@@ -96,7 +96,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               }
             ]
           },
@@ -486,7 +486,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               }
             ]
           },
@@ -495,7 +495,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -507,7 +507,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -522,7 +522,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -540,7 +540,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -561,7 +561,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -585,7 +585,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -612,7 +612,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|update-browserslist-db(?:@latest)?|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
