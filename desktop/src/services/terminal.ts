@@ -623,6 +623,47 @@ class TerminalService {
     }
   }
 
+  /**
+   * Exécute un programme autorisé avec ses arguments tels quels (pas de découpage d'une
+   * chaîne : un message de commit avec guillemets ou apostrophes passe intact).
+   * La sortie n'est pas « trim » au début : les espaces de `git status --porcelain` comptent.
+   */
+  async execArgs(
+    program: keyof typeof COMMAND_NAME_MAP | string,
+    args: string[],
+    options: { cwd?: string; timeout?: number } = {}
+  ): Promise<CommandResult> {
+    const startTime = Date.now();
+    const base = COMMAND_NAME_MAP[program.toLowerCase()];
+    const fail = (stderr: string): CommandResult => ({ success: false, exitCode: 1, stdout: '', stderr, durationMs: Date.now() - startTime });
+    if (!base) return fail('⛔ Commande non autorisée (exécutable non allowlisté)');
+    if (args.length > MAX_ARGS) return fail(`⛔ Trop d'arguments (max ${MAX_ARGS})`);
+    if (args.some((a) => /[\r\n]/.test(a) || a.length > 400)) return fail('⛔ Argument invalide (retour à la ligne ou plus de 400 caractères)');
+    try {
+      const cmd = new Command(`${base}-${args.length}`, args, { cwd: options.cwd });
+      const out: string[] = [];
+      const err: string[] = [];
+      cmd.stdout.on('data', (line: string) => { out.push(line); });
+      cmd.stderr.on('data', (line: string) => { err.push(line); });
+      const child = await cmd.spawn();
+      const timeoutId = options.timeout ? setTimeout(() => { void child.kill(); }, options.timeout) : undefined;
+      const result = await new Promise<{ code: number }>((resolve) => {
+        cmd.on('close', (data: { code: number }) => resolve(data));
+        cmd.on('error', () => resolve({ code: 1 }));
+      });
+      if (timeoutId) clearTimeout(timeoutId);
+      return {
+        success: result.code === 0,
+        exitCode: result.code,
+        stdout: out.join('\n'),
+        stderr: err.join('\n').trim(),
+        durationMs: Date.now() - startTime,
+      };
+    } catch (error: any) {
+      return fail(error?.message || String(error));
+    }
+  }
+
   // ─── Dependency Installation ───
 
   /**

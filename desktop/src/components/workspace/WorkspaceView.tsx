@@ -30,6 +30,7 @@ import WorkspacePanel from './WorkspacePanel';
 import { claimPendingPrompt } from '@/lib/pendingPrompt';
 import { openWorkspaceFolder, createWorkspaceFolder } from '@/lib/openWorkspace';
 import ProjectPicker from './ProjectPicker';
+import { OPEN_GIT_EVENT } from './GitPanel';
 import { terminalService } from '@/services/terminal';
 import { FILES_CHANGED_EVENT } from '@/services/agent/fileChanges';
 import { APPROVE_PLAN_EVENT } from '@/components/chat/PlanView';
@@ -336,10 +337,14 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
                 <span className="truncate">{workspaceName || 'Ouvrir un dossier'}</span>
               </button>
               {branch && (
-                <span className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-secondary flex-shrink-0">
+                <button
+                  onClick={() => window.dispatchEvent(new Event(OPEN_GIT_EVENT))}
+                  title="Ouvrir le panneau Git"
+                  className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors flex-shrink-0"
+                >
                   <GitBranch size={12} />
                   {branch}
-                </span>
+                </button>
               )}
               <div className="flex-1" />
               {modifiedCount > 0 && (

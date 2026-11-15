@@ -8,8 +8,9 @@
  */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  FolderOpen, FolderTree, FileText, Terminal as TerminalIcon, Eye, RefreshCw, Loader2, Plus, X, ListChecks,
+  FolderOpen, FolderTree, FileText, Terminal as TerminalIcon, Eye, RefreshCw, Loader2, Plus, X, ListChecks, GitBranch,
 } from 'lucide-react';
+import GitPanel, { OPEN_GIT_EVENT } from './GitPanel';
 import { cn } from '@/lib/utils';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { terminalService, onDevServerUrl } from '@/services/terminal';
@@ -43,6 +44,7 @@ type PanelTab =
   | { id: 'terminal'; kind: 'terminal' }
   | { id: 'preview'; kind: 'preview' }
   | { id: 'plan'; kind: 'plan' }
+  | { id: 'git'; kind: 'git' }
   | { id: string; kind: 'file'; path: string };
 
 const FILES_TAB: PanelTab = { id: 'files', kind: 'files' };
@@ -188,8 +190,13 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
   }, [planKey]);
   useEffect(() => {
     const onOpen = () => openTab({ id: 'plan', kind: 'plan' });
+    const onOpenGit = () => openTab({ id: 'git', kind: 'git' });
+    window.addEventListener(OPEN_GIT_EVENT, onOpenGit);
     window.addEventListener(OPEN_PLAN_EVENT, onOpen);
-    return () => window.removeEventListener(OPEN_PLAN_EVENT, onOpen);
+    return () => {
+      window.removeEventListener(OPEN_PLAN_EVENT, onOpen);
+      window.removeEventListener(OPEN_GIT_EVENT, onOpenGit);
+    };
   }, [openTab]);
 
   // ── Clic sur un fichier de la carte « fichiers modifiés » → ouverture explicite ──
@@ -264,8 +271,8 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
         <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
           {tabs.map((t) => {
             const label =
-              t.kind === 'files' ? 'Fichiers' : t.kind === 'terminal' ? 'Terminal' : t.kind === 'preview' ? 'Aperçu' : t.kind === 'plan' ? 'Plan' : t.path.split('/').pop();
-            const Icon = t.kind === 'files' ? FolderTree : t.kind === 'terminal' ? TerminalIcon : t.kind === 'preview' ? Eye : t.kind === 'plan' ? ListChecks : FileText;
+              t.kind === 'files' ? 'Fichiers' : t.kind === 'terminal' ? 'Terminal' : t.kind === 'preview' ? 'Aperçu' : t.kind === 'plan' ? 'Plan' : t.kind === 'git' ? 'Git' : t.path.split('/').pop();
+            const Icon = t.kind === 'files' ? FolderTree : t.kind === 'terminal' ? TerminalIcon : t.kind === 'preview' ? Eye : t.kind === 'plan' ? ListChecks : t.kind === 'git' ? GitBranch : FileText;
             const isActive = t.id === active.id;
             return (
               <div
@@ -324,6 +331,12 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
                 className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
               >
                 <ListChecks size={13} /> Plan
+              </button>
+              <button
+                onClick={() => openTab({ id: 'git', kind: 'git' })}
+                className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
+              >
+                <GitBranch size={13} /> Git
               </button>
             </div>
           )}
@@ -413,6 +426,8 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
             )}
           </div>
         )}
+
+        {active.kind === 'git' && <GitPanel workspacePath={workspacePath} refreshKey={refreshKey} />}
 
         {active.kind === 'preview' && (
           <div className="flex-1 min-h-0">
