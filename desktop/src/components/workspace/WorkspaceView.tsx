@@ -12,7 +12,7 @@
  * Aucune détection d'intention, aucun pipeline de génération.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Folder, FolderPlus, FileEdit, GitBranch } from 'lucide-react';
+import { Folder, FolderPlus, FileEdit, GitBranch, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useAgentChat, type PermissionMode } from '@/hooks/useAgentChat';
@@ -150,6 +150,25 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
 
   const workspaceName = activeProject?.name || null;
 
+  // Une tâche « a travaillé sur un projet » si elle y est rattachée ou si l'agent y a déjà utilisé ses outils
+  const taskProject = activeConversation?.projectId
+    ? projects.find((p) => p.id === activeConversation.projectId) || null
+    : null;
+  const taskNeedsFolder = !!taskProject || (activeConversation?.messages || []).some((m) => (m.toolEvents?.length || 0) > 0);
+
+  /** Rouvre le dossier de la tâche (ou en choisit un) et y rattache la tâche. */
+  const reopenTaskFolder = useCallback(async () => {
+    let projectId: string | null = taskProject?.id ?? null;
+    if (projectId) useProjectStore.getState().setActiveProject(projectId);
+    else projectId = await openWorkspaceFolder();
+    if (!projectId || !activeConversation) return;
+    const convId = activeConversation.id;
+    useChatStore.setState((st) => ({
+      conversations: st.conversations.map((c) => (c.id === convId ? { ...c, projectId: projectId! } : c)),
+    }));
+    setRefreshKey((k) => k + 1);
+  }, [taskProject, activeConversation]);
+
   // Bouton sous une réponse en erreur : reprise à l'étape coupée si possible,
   // sinon on renvoie la demande d'origine.
   const handleRetry = useCallback((assistantMessageId: string) => {
@@ -228,6 +247,22 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
                   className="h-7 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
                 >
                   Autoriser
+                </button>
+              </div>
+            )}
+
+            {/* Tâche qui a travaillé sur un projet, mais aucun dossier ouvert : l'agent n'a pas d'outils */}
+            {!workspacePath && taskNeedsFolder && (
+              <div className="mx-4 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl border border-accent-warning/30 bg-accent-warning/10 flex-shrink-0">
+                <AlertTriangle size={16} className="flex-shrink-0 text-accent-warning" />
+                <p className="flex-1 text-ui-caption text-text-primary">
+                  Aucun dossier ouvert : l'agent ne peut ni lire, ni lancer, ni modifier quoi que ce soit dans ce projet.
+                </p>
+                <button
+                  onClick={() => void reopenTaskFolder()}
+                  className="h-7 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity flex-shrink-0"
+                >
+                  {taskProject ? `Rouvrir ${taskProject.name}` : 'Ouvrir le dossier'}
                 </button>
               </div>
             )}
