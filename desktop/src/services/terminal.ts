@@ -224,13 +224,21 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   pip: 'pip',
 };
 
+/** Nombre maximal d'arguments par commande (voir les entrées <cmd>-N de tauri.conf.json). */
+const MAX_ARGS = 8;
+
 function parseExecutable(command: string): { cmdName: string; args: string[] } | null {
   const parts = tokenize(command);
   if (parts.length === 0) return null;
   const raw = parts[0].toLowerCase();
-  const cmdName = COMMAND_NAME_MAP[raw];
-  if (!cmdName) return null;
-  return { cmdName, args: parts.slice(1) };
+  const base = COMMAND_NAME_MAP[raw];
+  if (!base) return null;
+  const args = parts.slice(1);
+  // Tauri 1 valide les arguments par position et ignore EN SILENCE ceux qui dépassent
+  // la liste déclarée : avec un seul validateur, « npm run build » devenait « npm run ».
+  // tauri.conf.json déclare donc une entrée par nombre d'arguments (npm-0 … npm-8).
+  if (args.length > MAX_ARGS) return null;
+  return { cmdName: `${base}-${args.length}`, args };
 }
 
 /** Validate and normalize a file path (prevent traversal) */

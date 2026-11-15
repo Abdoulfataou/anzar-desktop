@@ -153,6 +153,1455 @@
                 "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
               }
             ]
+          },
+          {
+            "name": "node-0",
+            "cmd": "node",
+            "args": []
+          },
+          {
+            "name": "node-1",
+            "cmd": "node",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              }
+            ]
+          },
+          {
+            "name": "node-2",
+            "cmd": "node",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "node-3",
+            "cmd": "node",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "node-4",
+            "cmd": "node",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "node-5",
+            "cmd": "node",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "node-6",
+            "cmd": "node",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "node-7",
+            "cmd": "node",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "node-8",
+            "cmd": "node",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.m?[jt]sx?$|^-[v]$|^--version$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npm-0",
+            "cmd": "npm",
+            "args": []
+          },
+          {
+            "name": "npm-1",
+            "cmd": "npm",
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+              }
+            ]
+          },
+          {
+            "name": "npm-2",
+            "cmd": "npm",
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npm-3",
+            "cmd": "npm",
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npm-4",
+            "cmd": "npm",
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npm-5",
+            "cmd": "npm",
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npm-6",
+            "cmd": "npm",
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npm-7",
+            "cmd": "npm",
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npm-8",
+            "cmd": "npm",
+            "args": [
+              {
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npx-0",
+            "cmd": "npx",
+            "args": []
+          },
+          {
+            "name": "npx-1",
+            "cmd": "npx",
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              }
+            ]
+          },
+          {
+            "name": "npx-2",
+            "cmd": "npx",
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npx-3",
+            "cmd": "npx",
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npx-4",
+            "cmd": "npx",
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npx-5",
+            "cmd": "npx",
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npx-6",
+            "cmd": "npx",
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npx-7",
+            "cmd": "npx",
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "npx-8",
+            "cmd": "npx",
+            "args": [
+              {
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python3-0",
+            "cmd": "python3",
+            "args": []
+          },
+          {
+            "name": "python3-1",
+            "cmd": "python3",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              }
+            ]
+          },
+          {
+            "name": "python3-2",
+            "cmd": "python3",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python3-3",
+            "cmd": "python3",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python3-4",
+            "cmd": "python3",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python3-5",
+            "cmd": "python3",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python3-6",
+            "cmd": "python3",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python3-7",
+            "cmd": "python3",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python3-8",
+            "cmd": "python3",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python-0",
+            "cmd": "python",
+            "args": []
+          },
+          {
+            "name": "python-1",
+            "cmd": "python",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              }
+            ]
+          },
+          {
+            "name": "python-2",
+            "cmd": "python",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python-3",
+            "cmd": "python",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python-4",
+            "cmd": "python",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python-5",
+            "cmd": "python",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python-6",
+            "cmd": "python",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python-7",
+            "cmd": "python",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "python-8",
+            "cmd": "python",
+            "args": [
+              {
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip-0",
+            "cmd": "pip",
+            "args": []
+          },
+          {
+            "name": "pip-1",
+            "cmd": "pip",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              }
+            ]
+          },
+          {
+            "name": "pip-2",
+            "cmd": "pip",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip-3",
+            "cmd": "pip",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip-4",
+            "cmd": "pip",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip-5",
+            "cmd": "pip",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip-6",
+            "cmd": "pip",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip-7",
+            "cmd": "pip",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip-8",
+            "cmd": "pip",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip3-0",
+            "cmd": "pip3",
+            "args": []
+          },
+          {
+            "name": "pip3-1",
+            "cmd": "pip3",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              }
+            ]
+          },
+          {
+            "name": "pip3-2",
+            "cmd": "pip3",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip3-3",
+            "cmd": "pip3",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip3-4",
+            "cmd": "pip3",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip3-5",
+            "cmd": "pip3",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip3-6",
+            "cmd": "pip3",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip3-7",
+            "cmd": "pip3",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "pip3-8",
+            "cmd": "pip3",
+            "args": [
+              {
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "git-0",
+            "cmd": "git",
+            "args": []
+          },
+          {
+            "name": "git-1",
+            "cmd": "git",
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              }
+            ]
+          },
+          {
+            "name": "git-2",
+            "cmd": "git",
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "git-3",
+            "cmd": "git",
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "git-4",
+            "cmd": "git",
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "git-5",
+            "cmd": "git",
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "git-6",
+            "cmd": "git",
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "git-7",
+            "cmd": "git",
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "git-8",
+            "cmd": "git",
+            "args": [
+              {
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "cargo-0",
+            "cmd": "cargo",
+            "args": []
+          },
+          {
+            "name": "cargo-1",
+            "cmd": "cargo",
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+              }
+            ]
+          },
+          {
+            "name": "cargo-2",
+            "cmd": "cargo",
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "cargo-3",
+            "cmd": "cargo",
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "cargo-4",
+            "cmd": "cargo",
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "cargo-5",
+            "cmd": "cargo",
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "cargo-6",
+            "cmd": "cargo",
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "cargo-7",
+            "cmd": "cargo",
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "cargo-8",
+            "cmd": "cargo",
+            "args": [
+              {
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
           }
         ]
       }

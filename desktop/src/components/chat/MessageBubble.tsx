@@ -364,7 +364,10 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
         )}
 
         {/* Erreur : reprise là où l'agent s'est arrêté (ou nouvel essai) */}
-        {message.isError && !message.isStreaming && onRegenerate && (
+        {/* « Reprendre » si la reprise est possible ; « Réessayer » seulement si rien n'a été fait
+            (renvoyer la demande referait un travail déjà accompli). */}
+        {message.isError && !message.isStreaming && onRegenerate &&
+          (message.resumable || (!message.toolEvents?.length && !message.fileChanges?.length)) && (
           <button
             onClick={onRegenerate}
             className="mt-2 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
