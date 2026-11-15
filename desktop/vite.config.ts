@@ -61,7 +61,7 @@ export default defineConfig(() => {
       output: {
         manualChunks: {
           'vendor': ['react', 'react-dom', 'react-router-dom'],
-          'ui': ['lucide-react', 'class-variance-authority', 'clsx', 'tailwind-merge'],
+          'ui': ['lucide-react', 'clsx', 'tailwind-merge'],
         },
       },
     },

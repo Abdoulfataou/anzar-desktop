@@ -9,11 +9,9 @@ import { WifiOff } from 'lucide-react';
 import TitleBar from './TitleBar';
 import Sidebar from './Sidebar';
 import CommandPalette from '@/components/ui/CommandPalette';
-import OnboardingWelcome from '@/components/ui/OnboardingWelcome';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
-import { useAccountStore } from '@/stores/accountStore';
 import { useOffline } from '@/hooks/useOffline';
 
 interface AppLayoutProps {
@@ -25,7 +23,6 @@ export default function AppLayout({ className }: AppLayoutProps) {
   const currentTheme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
   const { isOnline, isSlowConnection } = useOffline();
-  const hasCompletedOnboarding = useAccountStore((s) => s.hasCompletedOnboarding);
   // L'espace de travail dessine ses propres panneaux ; les autres pages reçoivent un cadre unique.
   const framed = useLocation().pathname.startsWith('/settings');
 
@@ -43,9 +40,6 @@ export default function AppLayout({ className }: AppLayoutProps) {
         className
       )}
     >
-      {/* Onboarding overlay for new users */}
-      {!hasCompletedOnboarding && <OnboardingWelcome />}
-
       {/* Command Palette (global) */}
       <CommandPalette />
 
