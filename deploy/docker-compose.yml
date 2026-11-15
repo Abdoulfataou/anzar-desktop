@@ -27,7 +27,7 @@ services:
     # Aucun port publié : la base n'est joignable que par l'API (réseau interne, sans Internet).
     security_opt: ["no-new-privileges:true"]
     mem_limit: 1g
-    cpus: 1.0
+    cpus: 0.5
     pids_limit: 256
 
   api:
@@ -60,7 +60,7 @@ services:
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
     mem_limit: 1g
-    cpus: 1.5
+    cpus: 0.7   # le VPS n’a qu’un processeur : ANZAR en laisse toujours à ShagoStore
     pids_limit: 256
     logging:
       driver: json-file
