@@ -281,9 +281,11 @@ interface UseAgentChatParams {
   permissionMode?: PermissionMode;
   /** Appelé quand un outil modifie un fichier (refresh explorateur/éditeur). */
   onFileChanged?: (relativePath: string, action: 'create' | 'edit' | 'delete') => void;
+  /** Exécution en arrière-plan (automatisations) : ne touche pas à l'indicateur global. */
+  background?: boolean;
 }
 
-export function useAgentChat({ workspacePath, workspaceName, model, permissionMode = 'full', onFileChanged }: UseAgentChatParams) {
+export function useAgentChat({ workspacePath, workspaceName, model, permissionMode = 'full', onFileChanged, background = false }: UseAgentChatParams) {
   const [isGenerating, setIsGenerating] = useState(false);
   // Le mode peut changer pendant que l'agent travaille : on lit toujours la valeur courante.
   const modeRef = useRef(permissionMode);
@@ -320,11 +322,17 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     resolveApproval(false);
   }, [resolveApproval]);
 
-  const sendMessage = useCallback(async (content: string, rawAttachments: ChatAttachment[] = [], resumeFrom?: ResumeState) => {
+  const sendMessage = useCallback(async (
+    content: string,
+    rawAttachments: ChatAttachment[] = [],
+    resumeFrom?: ResumeState,
+    /** Tâche cible (automatisations) ; par défaut la tâche affichée */
+    opts?: { conversationId?: string },
+  ) => {
     if ((!content.trim() && !resumeFrom) || isGenerating) return;
     const attachments = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
     const apiContent = withAttachments(content, attachments);
-    const convId = resumeFrom?.convId ?? ensureConversation();
+    const convId = resumeFrom?.convId ?? opts?.conversationId ?? ensureConversation();
     if (!resumeFrom) resumeRef.current = null; // un nouveau message rend l'ancienne reprise caduque
 
     // Reset de l'historique API si on change de conversation
@@ -336,7 +344,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     const controller = new AbortController();
     abortRef.current = controller;
     setIsGenerating(true);
-    setStoreGenerating(true);
+    if (!background) setStoreGenerating(true);
 
     const userMsg: Message = {
       id: `msg_${Date.now()}_u`,
@@ -348,7 +356,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         ? attachments.map(({ excerpt: _excerpt, ...rest }) => rest)
         : undefined,
     };
-    if (!resumeFrom) addMessage(userMsg);
+    if (!resumeFrom) addMessage(userMsg, convId);
 
     const assistantId = resumeFrom?.assistantId ?? `msg_${Date.now()}_a`;
     if (resumeFrom) {
@@ -370,7 +378,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         model,
         isStreaming: true,
         toolEvents: [],
-      });
+      }, convId);
     }
 
     let accContent = resumeFrom?.accContent ?? '';
@@ -764,13 +772,13 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       });
     } finally {
       setIsGenerating(false);
-      setStoreGenerating(false);
+      if (!background) setStoreGenerating(false);
       abortRef.current = null;
       approvalResolver.current = null;
       setApproval(null);
       void refreshCredits();
     }
-  }, [isGenerating, ensureConversation, addMessage, updateMessage, setStoreGenerating, model, workspacePath, workspaceName, onFileChanged, addUsage, addUsageRecord]);
+  }, [isGenerating, ensureConversation, addMessage, updateMessage, setStoreGenerating, background, model, workspacePath, workspaceName, onFileChanged, addUsage, addUsageRecord]);
 
   /** Reprend une réponse interrompue par une erreur. Retourne false si la reprise n'est plus possible. */
   const resume = useCallback((messageId: string): boolean => {

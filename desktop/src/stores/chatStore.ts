@@ -72,7 +72,7 @@ interface ChatStore {
 
   // Actions
   /** Create a new conversation */
-  createConversation: (title?: string, model?: 'fast' | 'thinking') => Conversation;
+  createConversation: (title?: string, model?: 'fast' | 'thinking', opts?: { activate?: boolean; projectId?: string }) => Conversation;
 
   /** Delete a conversation */
   deleteConversation: (id: string) => void;
@@ -84,7 +84,8 @@ interface ChatStore {
   setActiveConversation: (id: string | null) => void;
 
   /** Add a message to the active conversation */
-  addMessage: (message: Message) => void;
+  /** Ajoute un message à la tâche donnée (par défaut : la tâche affichée). */
+  addMessage: (message: Message, conversationId?: string) => void;
 
   /** Update a message in the active conversation */
   updateMessage: (id: string, updates: Partial<Message>) => void;
@@ -271,7 +272,7 @@ export const useChatStore = create<ChatStore>()(
       /**
        * Create a new conversation
        */
-      createConversation: (title?: string, model = 'fast' as const) => {
+      createConversation: (title?: string, model = 'fast' as const, opts?: { activate?: boolean; projectId?: string }) => {
         const conversation: Conversation = {
           id: generateId(),
           title: title || getDefaultConversationTitle(),
@@ -280,11 +281,13 @@ export const useChatStore = create<ChatStore>()(
           updatedAt: Date.now(),
           model,
           tags: [],
+          ...(opts?.projectId ? { projectId: opts.projectId } : {}),
         };
 
         set((state) => ({
           conversations: [conversation, ...state.conversations],
-          activeConversationId: conversation.id,
+          // Une tâche créée en arrière-plan (automatisation) ne remplace pas la tâche affichée
+          activeConversationId: opts?.activate === false ? state.activeConversationId : conversation.id,
         }));
 
         return conversation;
@@ -331,10 +334,11 @@ export const useChatStore = create<ChatStore>()(
       /**
        * Add a message to the active conversation
        */
-      addMessage: (message: Message) => {
+      addMessage: (message: Message, conversationId?: string) => {
         set((state) => {
+          const targetId = conversationId ?? state.activeConversationId;
           const activeConversation = state.conversations.find(
-            (c) => c.id === state.activeConversationId
+            (c) => c.id === targetId
           );
 
           if (!activeConversation) return state;
@@ -349,7 +353,7 @@ export const useChatStore = create<ChatStore>()(
             : undefined;
 
           const updated = state.conversations.map((c) => {
-            if (c.id === state.activeConversationId) {
+            if (c.id === targetId) {
               return {
                 ...c,
                 messages: [...c.messages, message],
@@ -371,8 +375,11 @@ export const useChatStore = create<ChatStore>()(
        */
       updateMessage: (id: string, updates: Partial<Message>) => {
         set((state) => {
+          // La tâche qui contient le message (l'utilisateur a pu changer de tâche entre-temps)
+          const owner = state.conversations.find((c) => c.messages.some((m) => m.id === id));
+          if (!owner) return state;
           const updated = state.conversations.map((c) => {
-            if (c.id === state.activeConversationId) {
+            if (c.id === owner.id) {
               return {
                 ...c,
                 messages: c.messages.map((m) =>

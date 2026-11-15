@@ -9,6 +9,7 @@ import { WifiOff } from 'lucide-react';
 import TitleBar from './TitleBar';
 import Sidebar from './Sidebar';
 import CommandPalette from '@/components/ui/CommandPalette';
+import AutomationRunner from '@/components/automations/AutomationRunner';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -25,7 +26,7 @@ export default function AppLayout({ className }: AppLayoutProps) {
   const { isOnline, isSlowConnection } = useOffline();
   // L'espace de travail dessine ses propres panneaux ; les autres pages reçoivent un cadre unique.
   const { pathname } = useLocation();
-  const framed = pathname.startsWith('/settings') || pathname.startsWith('/skills');
+  const framed = pathname.startsWith('/settings') || pathname.startsWith('/skills') || pathname.startsWith('/automations');
 
   useEffect(() => {
     // Applique le thème persistant dès que settingsStore est hydraté.
@@ -43,6 +44,8 @@ export default function AppLayout({ className }: AppLayoutProps) {
     >
       {/* Command Palette (global) */}
       <CommandPalette />
+      {/* Automatisations : tournent tant que l'app est ouverte */}
+      <AutomationRunner />
 
       {/* Title bar */}
       <TitleBar />

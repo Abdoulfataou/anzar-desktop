@@ -15,6 +15,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useAutomationStore } from '@/stores/automationStore';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import { openWorkspaceFolder } from '@/lib/openWorkspace';
 import type { Conversation } from '@/types';
@@ -45,6 +46,7 @@ export default function Sidebar({ className }: { className?: string }) {
   const conversations = useChatStore((s) => s.conversations);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const isGenerating = useChatStore((s) => s.isGenerating);
+  const automationConvId = useAutomationStore((s) => s.runningConversationId);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const renameConversation = useChatStore((s) => s.renameConversation);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
@@ -149,7 +151,7 @@ export default function Sidebar({ className }: { className?: string }) {
    */
   const renderTask = (c: Conversation, nested = false) => {
     const active = c.id === activeConversationId;
-    const running = active && isGenerating;
+    const running = (active && isGenerating) || c.id === automationConvId;
     const last = c.messages[c.messages.length - 1];
     const failed = !running && last?.role === 'assistant' && !!last.isError;
     let added = 0;
@@ -251,7 +253,7 @@ export default function Sidebar({ className }: { className?: string }) {
             label="Rechercher"
             onClick={() => { setExpanded(true); setSearching((v) => !v); setQuery(''); }}
           />
-          <NavRow icon={CalendarClock} label="Automatisations" hint="bientôt" disabled />
+          <NavRow icon={CalendarClock} label="Automatisations" onClick={() => { if (location.pathname !== '/automations') navigate('/automations'); }} />
           <NavRow icon={Wand2} label="Skills" onClick={() => { if (location.pathname !== '/skills') navigate('/skills'); }} />
         </div>
 
