@@ -1,363 +1,347 @@
-import { useEffect, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Button } from '@/components/ui/Button'
+import { useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { toast } from 'sonner'
+import { ArrowLeft, Ban, CheckCircle2, Minus, Pencil, Plus } from 'lucide-react'
 import { Badge } from '@/components/ui/Badge'
-import { Input } from '@/components/ui/Input'
-import { anzarApi } from '@/api/backend'
-import { ArrowLeft, CreditCard, RefreshCw, ToggleLeft, Wallet } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import {
+  DataTable, ErrorBox, Field, Modal, Pagination, Panel, Spinner, Stat, Tabs, TextInput, useLoad, usePermissions, useTab,
+} from '@/components/ui/kit'
+import { CancelPaymentModal, CreditModal, MarkPaidModal, bonusFromTiers } from '@/components/actions'
+import { api, AuditEntry, PaymentIntent, Transaction, UsageRecord } from '@/api/backend'
+import {
+  ACTION_LABELS, METHOD_LABELS, PAYMENT_LABELS, TASK_LABELS, TX_LABELS, ago, dateTime, fcfa, label, num,
+} from '@/lib/format'
 
-interface AdminUser {
-  id: number
-  email: string
-  name?: string
-  is_active: boolean
-  created_at: string
-  last_login?: string
-  credits: {
-    balance_fcfa: number
-    total_recharged: number
-    total_used: number
-  }
-  recent_transactions: Transaction[]
-  project_count: number
-}
-
-interface Transaction {
-  id: number
-  amount_fcfa: number
-  type: 'recharge' | 'usage' | 'bonus' | 'refund'
-  description: string
-  created_at: string
-  external_ref?: string
-}
-
-function formatDate(value?: string) {
-  if (!value) return '—'
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return '—'
-  return d.toLocaleString('fr-FR')
-}
+const LIMIT = 50
 
 export default function UserDetailsPage() {
-  const { userId } = useParams()
+  const { userId = '' } = useParams()
+  const email = decodeURIComponent(userId)
   const navigate = useNavigate()
+  const perms = usePermissions()
+  const user = useLoad(() => api.user(email), [email])
+  const tabs = [
+    { id: 'overview', label: 'Aperçu' },
+    { id: 'ledger', label: 'Mouvements' },
+    { id: 'usage', label: 'Consommation' },
+    { id: 'payments', label: 'Paiements' },
+    { id: 'audit', label: 'Journal', hidden: !perms.canSeeAudit },
+  ]
+  const [tab, setTab] = useTab(tabs)
+  const [money, setMoney] = useState<'credit' | 'debit' | null>(null)
+  const [renaming, setRenaming] = useState(false)
+  const [confirmToggle, setConfirmToggle] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [user, setUser] = useState<AdminUser | null>(null)
-  const [saving, setSaving] = useState(false)
-  const [grantAmount, setGrantAmount] = useState('')
-  const [grantType, setGrantType] = useState<'bonus' | 'refund' | 'recharge'>('bonus')
-  const [grantReference, setGrantReference] = useState('')
-  const [grantDescription, setGrantDescription] = useState('')
-  const [granting, setGranting] = useState(false)
+  const u = user.data
+  const balance = u?.credits?.balance_fcfa ?? 0
+  const refresh = () => { user.reload(); setRefreshKey((k) => k + 1) }
 
-  const load = async () => {
-    if (!userId) return
-    setLoading(true)
-    setError(null)
+  if (user.loading && !u) return <div className="py-16 text-center"><Spinner /></div>
+  if (user.error || !u) return (
+    <div className="space-y-4">
+      <Button variant="ghost" leftIcon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/users')}>Utilisateurs</Button>
+      <ErrorBox message={user.error ?? 'Utilisateur introuvable'} onRetry={user.reload} />
+    </div>
+  )
+
+  const toggleActive = async () => {
     try {
-      const u = await anzarApi.getUser(decodeURIComponent(userId))
-      setUser(u as unknown as AdminUser)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur chargement utilisateur')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId])
-
-  const toggleActiveStatus = async () => {
-    if (!user) return
-    setError(null)
-    setSaving(true)
-    try {
-      await anzarApi.updateUser(user.email, { is_active: !user.is_active })
-      setUser({ ...user, is_active: !user.is_active })
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur mise à jour statut')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const grantCredits = async () => {
-    if (!user || !grantAmount || !grantDescription) return
-    setError(null)
-    setGranting(true)
-    try {
-      const amount = parseFloat(grantAmount)
-      if (isNaN(amount) || amount <= 0) {
-        setError('Montant invalide')
-        setGranting(false)
-        return
-      }
-      const desc = grantDescription.trim()
-      if (desc.length < 3) {
-        setError("Raison obligatoire (min 3 caractères)")
-        setGranting(false)
-        return
-      }
-      const ref = grantReference.trim()
-      if (grantType === 'recharge' && !ref) {
-        setError("Référence obligatoire pour une recharge (anti double recharge)")
-        setGranting(false)
-        return
-      }
-
-      await anzarApi.adjustCredits({
-        email: user.email,
-        amount,
-        tx_type: grantType,
-        description: desc,
-        external_ref: ref,
-      })
-
-      setGrantAmount('')
-      setGrantType('bonus')
-      setGrantReference('')
-      setGrantDescription('')
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur lors de l'attribution de crédits")
-    } finally {
-      setGranting(false)
+      await api.updateUser(email, { is_active: !u.is_active })
+      toast.success(u.is_active ? 'Compte désactivé : accès coupé immédiatement' : 'Compte réactivé')
+      setConfirmToggle(false)
+      refresh()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Échec')
     }
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+    <div>
+      <Button variant="ghost" size="sm" leftIcon={<ArrowLeft className="h-4 w-4" />} onClick={() => navigate('/users')} className="mb-3">
+        Utilisateurs
+      </Button>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-6">
+        <div>
           <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/users')} aria-label="Retour">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-            <div className="min-w-0">
-              <h1 className="text-2xl font-bold text-foreground-primary truncate">{user?.email || userId}</h1>
-              <p className="text-sm text-foreground-secondary truncate">{user?.name || '—'}</p>
-            </div>
+            <h1 className="text-2xl font-semibold">{u.email}</h1>
+            {u.is_active ? <Badge variant="success">Actif</Badge> : <Badge variant="error">Désactivé</Badge>}
+            {balance < 0 && <Badge variant="error">En dette</Badge>}
           </div>
+          <p className="text-sm text-foreground-secondary mt-1">
+            {u.name || 'Sans nom'} · inscrit le {dateTime(u.created_at)} · dernière connexion {ago(u.last_login)}
+          </p>
         </div>
-
-        <div className="flex gap-2">
-          <Button variant="secondary" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()}>
-            Rafraîchir
-          </Button>
-          <Button
-            variant={user?.is_active ? 'secondary' : 'outline'}
-            leftIcon={<ToggleLeft className="h-4 w-4" />}
-            onClick={() => void toggleActiveStatus()}
-            isLoading={saving}
-          >
-            {user?.is_active ? 'Désactiver' : 'Activer'}
-          </Button>
+        <div className="flex flex-wrap gap-2">
+          {perms.canManageMoney && <>
+            <Button leftIcon={<Plus className="h-4 w-4" />} onClick={() => setMoney('credit')}>Créditer</Button>
+            <Button variant="secondary" leftIcon={<Minus className="h-4 w-4" />} onClick={() => setMoney('debit')}>Retirer</Button>
+            <Button variant="ghost" leftIcon={<Pencil className="h-4 w-4" />} onClick={() => setRenaming(true)}>Renommer</Button>
+          </>}
+          {perms.canToggleUsers && (
+            <Button variant={u.is_active ? 'danger' : 'outline'}
+              leftIcon={u.is_active ? <Ban className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}
+              onClick={() => setConfirmToggle(true)}>
+              {u.is_active ? 'Désactiver' : 'Réactiver'}
+            </Button>
+          )}
         </div>
       </div>
 
-      {error && (
-        <Card className="border-accent-error/30">
-          <CardContent className="p-4 text-sm text-accent-error">{error}</CardContent>
-        </Card>
-      )}
+      <Tabs tabs={tabs} value={tab} onChange={setTab} />
 
-      {loading ? (
-        <Card>
-          <CardContent className="p-6 text-sm text-foreground-secondary">Chargement…</CardContent>
-        </Card>
-      ) : !user ? (
-        <Card>
-          <CardContent className="p-6 text-sm text-foreground-secondary">Utilisateur introuvable.</CardContent>
-        </Card>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-            <Card className="lg:col-span-2">
-              <CardHeader>
-                <CardTitle>Informations utilisateur</CardTitle>
-                <CardDescription>Détails du compte et status</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground-primary">Email</label>
-                    <p className="text-sm text-foreground-primary">{user.email}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground-primary">Nom</label>
-                    <p className="text-sm text-foreground-primary">{user.name || '—'}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground-primary">Statut</label>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={user.is_active ? 'success' : 'outline'}>
-                        {user.is_active ? 'Actif' : 'Inactif'}
-                      </Badge>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground-primary">Projets</label>
-                    <p className="text-sm text-foreground-primary">{user.project_count}</p>
-                  </div>
-                </div>
-                <div className="pt-2 border-t border-border space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-foreground-secondary">Créé le</span>
-                    <span className="text-sm text-foreground-primary">{formatDate(user.created_at)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-foreground-secondary">Dernière connexion</span>
-                    <span className="text-sm text-foreground-primary">{formatDate(user.last_login)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Wallet className="h-5 w-5 text-accent-secondary" />
-                  Crédits
-                </CardTitle>
-                <CardDescription>Solde et historique</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="bg-background-secondary/50 rounded-lg p-4 space-y-2">
-                  <p className="text-xs font-medium text-foreground-secondary uppercase">Solde actuel</p>
-                  <p className="text-2xl font-bold text-foreground-primary">
-                    {(user.credits?.balance_fcfa ?? 0).toLocaleString('fr-FR')} FCFA
-                  </p>
-                </div>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-foreground-secondary">Total recharges</span>
-                    <span className="text-foreground-primary">{(user.credits?.total_recharged ?? 0).toLocaleString('fr-FR')} FCFA</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-foreground-secondary">Total utilisé</span>
-                    <span className="text-foreground-primary">{(user.credits?.total_used ?? 0).toLocaleString('fr-FR')} FCFA</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+      {tab === 'overview' && (
+        <div className="space-y-4">
+          <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+            <Stat label="Solde" value={fcfa(balance)} tone={balance < 0 ? 'error' : balance > 0 ? 'success' : 'default'}
+              hint={balance < 0 ? 'Bloqué jusqu\'à la recharge' : balance === 0 ? 'Ne peut pas utiliser l\'IA' : undefined} />
+            <Stat label="Total rechargé" value={fcfa(u.credits?.total_recharged)} />
+            <Stat label="Total consommé" value={fcfa(u.credits?.total_used)} />
+            <Stat label="Projets serveur" value={num(u.project_count)} />
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-accent-primary" />
-                Attribuer des crédits
-              </CardTitle>
-              <CardDescription>Ajouter des crédits au compte utilisateur</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground-primary">Montant (FCFA)</label>
-                  <Input
-                    type="number"
-                    placeholder="1000"
-                    value={grantAmount}
-                    onChange={(e) => setGrantAmount(e.target.value)}
-                    min="0"
-                    step="100"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground-primary">Type</label>
-                  <select
-                    className="w-full h-10 rounded-lg border border-border bg-background-secondary px-3 text-sm text-foreground-primary"
-                    value={grantType}
-                    onChange={(e) => setGrantType(e.target.value as any)}
-                    disabled={granting}
-                  >
-                    <option value="bonus">Bonus</option>
-                    <option value="refund">Remboursement</option>
-                    <option value="recharge">Recharge</option>
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground-primary">Référence (optionnel)</label>
-                  <Input
-                    placeholder="ex: wave_2026_000123"
-                    value={grantReference}
-                    onChange={(e) => setGrantReference(e.target.value)}
-                    disabled={granting}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground-primary">Raison (obligatoire)</label>
-                  <Input
-                    placeholder="Ex: Bonus de bienvenue, compensation, recharge validée…"
-                    value={grantDescription}
-                    onChange={(e) => setGrantDescription(e.target.value)}
-                    disabled={granting}
-                  />
-                </div>
-                <div className="flex items-end md:col-span-4">
-                  <Button
-                    onClick={() => void grantCredits()}
-                    disabled={!grantAmount || !grantDescription}
-                    isLoading={granting}
-                    className="w-full"
-                  >
-                    Attribuer
-                  </Button>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {Array.isArray(user.recent_transactions) && user.recent_transactions.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Transactions récentes</CardTitle>
-                <CardDescription>Derniers mouvements de crédits</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto rounded-lg border border-border">
-                  <table className="w-full text-sm">
-                    <thead className="bg-background-tertiary/40">
-                      <tr className="text-left">
-                        <th className="p-3 font-medium text-foreground-secondary">Type</th>
-                        <th className="p-3 font-medium text-foreground-secondary">Description</th>
-                        <th className="p-3 font-medium text-foreground-secondary">Montant</th>
-                        <th className="p-3 font-medium text-foreground-secondary">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(user.recent_transactions as Transaction[]).map((transaction) => (
-                        <tr key={transaction.id} className="border-t border-border hover:bg-background-tertiary/30">
-                          <td className="p-3">
-                            <Badge variant={transaction.type === 'usage' ? 'secondary' : 'success'} className="capitalize">
-                              {transaction.type}
-                            </Badge>
-                          </td>
-                          <td className="p-3 text-foreground-secondary">{transaction.description}</td>
-                          <td className="p-3 text-foreground-primary font-medium">
-                            <span className={transaction.type === 'usage' ? 'text-accent-error' : 'text-accent-success'}>
-                              {transaction.amount_fcfa >= 0 ? '+' : '-'}
-                              {Math.abs(transaction.amount_fcfa).toLocaleString('fr-FR')} FCFA
-                            </span>
-                          </td>
-                          <td className="p-3 text-foreground-secondary text-xs">
-                            {formatDate(transaction.created_at)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </>
+          <Panel title="Derniers mouvements" padded={false} actions={
+            <Button size="sm" variant="ghost" onClick={() => setTab('ledger')}>Tout voir</Button>}>
+            <TxTable rows={u.recent_transactions?.slice(0, 10) ?? []} />
+          </Panel>
+        </div>
       )}
+      {tab === 'ledger' && <UserLedger email={email} refreshKey={refreshKey} />}
+      {tab === 'usage' && <UserUsage email={email} />}
+      {tab === 'payments' && <UserPayments email={email} onChanged={refresh} />}
+      {tab === 'audit' && <UserAudit email={email} refreshKey={refreshKey} />}
+
+      {money && (
+        <CreditModal open email={email} mode={money} balance={balance} onClose={() => setMoney(null)} onDone={refresh} />
+      )}
+      {renaming && <RenameModal email={email} current={u.name ?? ''} onClose={() => setRenaming(false)} onDone={refresh} />}
+      <Modal open={confirmToggle} onClose={() => setConfirmToggle(false)}
+        title={u.is_active ? 'Désactiver ce compte ?' : 'Réactiver ce compte ?'}
+        footer={<>
+          <Button variant="ghost" onClick={() => setConfirmToggle(false)}>Annuler</Button>
+          <Button variant={u.is_active ? 'danger' : 'primary'} onClick={toggleActive}>{u.is_active ? 'Désactiver' : 'Réactiver'}</Button>
+        </>}>
+        <p className="text-sm text-foreground-secondary">
+          {u.is_active
+            ? 'L\'utilisateur est déconnecté immédiatement et ne peut plus se reconnecter. Son solde est conservé.'
+            : 'L\'utilisateur pourra de nouveau se connecter et utiliser son solde.'}
+        </p>
+      </Modal>
     </div>
   )
 }
+
+function RenameModal({ email, current, onClose, onDone }: { email: string; current: string; onClose: () => void; onDone: () => void }) {
+  const [name, setName] = useState(current)
+  const [busy, setBusy] = useState(false)
+  const save = async () => {
+    setBusy(true)
+    try {
+      await api.updateUser(email, { name: name.trim() })
+      toast.success('Nom modifié')
+      onClose()
+      onDone()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Échec')
+    } finally {
+      setBusy(false)
+    }
+  }
+  return (
+    <Modal open title="Renommer l'utilisateur" onClose={onClose} footer={<>
+      <Button variant="ghost" onClick={onClose}>Annuler</Button>
+      <Button disabled={!name.trim()} isLoading={busy} onClick={save}>Enregistrer</Button>
+    </>}>
+      <Field label="Nom affiché"><TextInput autoFocus value={name} onChange={(e) => setName(e.target.value)} maxLength={100} /></Field>
+    </Modal>
+  )
+}
+
+export function TxTable({ rows, loading, showUser = false }: { rows: Transaction[]; loading?: boolean; showUser?: boolean }) {
+  const navigate = useNavigate()
+  return (
+    <DataTable<Transaction>
+      rows={rows}
+      rowKey={(r) => r.id}
+      loading={loading}
+      empty="Aucun mouvement"
+      onRowClick={showUser ? (r) => navigate(`/users/${encodeURIComponent(r.user_email)}`) : undefined}
+      columns={[
+        { key: 'date', header: 'Date', className: 'whitespace-nowrap text-foreground-secondary', render: (r) => dateTime(r.created_at) },
+        ...(showUser ? [{ key: 'u', header: 'Compte', render: (r: Transaction) => r.user_email }] : []),
+        { key: 'type', header: 'Type', render: (r) => (
+          <Badge variant={r.type === 'usage' ? 'default' : r.type === 'bonus' ? 'warning' : r.type === 'refund' ? 'secondary' : 'success'}>
+            {label(TX_LABELS, r.type)}
+          </Badge>
+        ) },
+        { key: 'desc', header: 'Description', render: (r) => (
+          <div className="max-w-[420px]">
+            <p className="truncate" title={r.description}>{r.description || '—'}</p>
+            {r.external_ref && <p className="text-[11px] text-foreground-muted font-mono truncate">réf. {r.external_ref}</p>}
+            {r.type === 'usage' && (r.input_tokens || r.output_tokens) ? (
+              <p className="text-[11px] text-foreground-muted">{num(r.input_tokens)} jetons entrée · {num(r.output_tokens)} sortie</p>
+            ) : null}
+          </div>
+        ) },
+        { key: 'amount', header: 'Montant', align: 'right', render: (r) => (
+          <span className={r.amount_fcfa < 0 ? 'text-foreground-secondary' : 'text-accent-success font-medium'}>
+            {r.amount_fcfa > 0 ? '+' : ''}{fcfa(r.amount_fcfa, true)}
+          </span>
+        ) },
+      ]}
+    />
+  )
+}
+
+function useOffset(): [number, (o: number) => void] {
+  const [sp, setSp] = useSearchParams()
+  const offset = Number(sp.get('page') ?? 0)
+  return [offset, (o) => { const n = new URLSearchParams(sp); n.set('page', String(o)); setSp(n, { replace: true }) }]
+}
+
+function UserLedger({ email, refreshKey }: { email: string; refreshKey: number }) {
+  const [offset, setOffset] = useOffset()
+  const data = useLoad(() => api.transactions({ email, limit: LIMIT, offset }), [email, offset, refreshKey])
+  return (
+    <Panel padded={false} title="Tous les mouvements du compte" description={data.data &&
+      `${data.data.total} mouvement(s) · crédité ${fcfa(data.data.sum_credited)} · débité ${fcfa(-data.data.sum_debited)}`}>
+      {data.error ? <div className="p-4"><ErrorBox message={data.error} /></div> : <TxTable rows={data.data?.transactions ?? []} loading={data.loading} />}
+      <Pagination total={data.data?.total ?? 0} limit={LIMIT} offset={offset} onChange={setOffset} />
+    </Panel>
+  )
+}
+
+function UserUsage({ email }: { email: string }) {
+  const [offset, setOffset] = useOffset()
+  const data = useLoad(() => api.usage({ email, limit: LIMIT, offset }), [email, offset])
+  const d = data.data
+  return (
+    <div className="space-y-4">
+      {d && (
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Stat label="Requêtes" value={num(d.total)} />
+          <Stat label="Jetons d'entrée" value={num(d.sum_input_tokens)} />
+          <Stat label="Jetons de sortie" value={num(d.sum_output_tokens)} />
+          <Stat label="Montant facturé" value={fcfa(d.sum_cost_fcfa)} tone="primary" />
+        </div>
+      )}
+      <Panel padded={false}>
+        <UsageTable rows={d?.usage ?? []} loading={data.loading} error={data.error} />
+        <Pagination total={d?.total ?? 0} limit={LIMIT} offset={offset} onChange={setOffset} />
+      </Panel>
+    </div>
+  )
+}
+
+export function UsageTable({ rows, loading, error, showUser = false }: { rows: UsageRecord[]; loading?: boolean; error?: string | null; showUser?: boolean }) {
+  const navigate = useNavigate()
+  return (
+    <DataTable<UsageRecord>
+      rows={rows}
+      rowKey={(r) => r.id}
+      loading={loading}
+      error={error}
+      empty="Aucune consommation"
+      onRowClick={showUser ? (r) => navigate(`/users/${encodeURIComponent(r.user_email)}?tab=usage`) : undefined}
+      columns={[
+        { key: 'date', header: 'Date', className: 'whitespace-nowrap text-foreground-secondary', render: (r) => dateTime(r.created_at) },
+        ...(showUser ? [{ key: 'u', header: 'Compte', render: (r: UsageRecord) => r.user_email }] : []),
+        { key: 'task', header: 'Type', render: (r) => {
+          const bad = r.task_type === 'billing_failed'
+          const est = r.task_type.endsWith('estimated')
+          return <Badge variant={bad ? 'error' : est ? 'warning' : 'default'}>{label(TASK_LABELS, r.task_type)}</Badge>
+        } },
+        { key: 'model', header: 'Modèle', render: (r) => <span className="font-mono text-xs">{r.model}</span> },
+        { key: 'in', header: 'Entrée', align: 'right', render: (r) => num(r.input_tokens) },
+        { key: 'out', header: 'Sortie', align: 'right', render: (r) => num(r.output_tokens) },
+        { key: 'dur', header: 'Durée', align: 'right', render: (r) => r.duration_ms ? `${(r.duration_ms / 1000).toFixed(1)} s` : '—' },
+        { key: 'cost', header: 'Facturé', align: 'right', render: (r) => fcfa(r.cost_fcfa, true) },
+      ]}
+    />
+  )
+}
+
+function UserPayments({ email, onChanged }: { email: string; onChanged: () => void }) {
+  const perms = usePermissions()
+  const data = useLoad(() => api.payments({ status: 'all', email, limit: 100 }), [email])
+  const settings = useLoad(() => api.settings(), [])
+  const [paying, setPaying] = useState<PaymentIntent | null>(null)
+  const [cancelling, setCancelling] = useState<PaymentIntent | null>(null)
+  const done = () => { data.reload(); onChanged() }
+  return (
+    <Panel padded={false}>
+      <PaymentsTable rows={data.data?.payment_intents ?? []} loading={data.loading} error={data.error}
+        canAct={perms.canManageMoney} onPay={setPaying} onCancel={setCancelling} />
+      <MarkPaidModal intent={paying} onClose={() => setPaying(null)} onDone={done}
+        bonusPercent={bonusFromTiers(settings.data?.recharge_bonus_tiers)} />
+      <CancelPaymentModal intent={cancelling} onClose={() => setCancelling(null)} onDone={done} />
+    </Panel>
+  )
+}
+
+export function PaymentsTable({ rows, loading, error, canAct, onPay, onCancel, showUser = false }: {
+  rows: PaymentIntent[]; loading?: boolean; error?: string | null; canAct: boolean
+  onPay: (p: PaymentIntent) => void; onCancel: (p: PaymentIntent) => void; showUser?: boolean
+}) {
+  const navigate = useNavigate()
+  return (
+    <DataTable<PaymentIntent>
+      rows={rows}
+      rowKey={(r) => r.id}
+      loading={loading}
+      error={error}
+      empty="Aucune demande de paiement"
+      columns={[
+        { key: 'date', header: 'Demandé le', className: 'whitespace-nowrap text-foreground-secondary', render: (r) => dateTime(r.created_at) },
+        ...(showUser ? [{ key: 'u', header: 'Compte', render: (r: PaymentIntent) => (
+          <button className="hover:text-accent-primary text-left" onClick={() => navigate(`/users/${encodeURIComponent(r.user_email)}`)}>{r.user_email}</button>
+        ) }] : []),
+        { key: 'method', header: 'Moyen', render: (r) => label(METHOD_LABELS, r.method) },
+        { key: 'amount', header: 'Montant', align: 'right', render: (r) => <span className="font-medium">{fcfa(r.amount_fcfa)}</span> },
+        { key: 'status', header: 'Statut', render: (r) => (
+          <Badge variant={r.status === 'paid' ? 'success' : r.status === 'pending' ? 'warning' : 'default'}>{label(PAYMENT_LABELS, r.status)}</Badge>
+        ) },
+        { key: 'ref', header: 'Référence', render: (r) => <span className="font-mono text-xs text-foreground-secondary">{r.provider_ref || '—'}</span> },
+        { key: 'act', header: '', align: 'right', render: (r) => canAct && r.status === 'pending' && (
+          <div className="flex justify-end gap-2">
+            <Button size="sm" onClick={() => onPay(r)}>Valider</Button>
+            <Button size="sm" variant="ghost" onClick={() => onCancel(r)}>Annuler</Button>
+          </div>
+        ) },
+      ]}
+    />
+  )
+}
+
+function UserAudit({ email, refreshKey }: { email: string; refreshKey: number }) {
+  const data = useLoad(() => api.audit({ target: email, limit: 100 }), [email, refreshKey])
+  return (
+    <Panel padded={false} title="Actions des admins sur ce compte">
+      <AuditTable rows={data.data?.entries ?? []} loading={data.loading} error={data.error} />
+    </Panel>
+  )
+}
+
+export function AuditTable({ rows, loading, error }: { rows: AuditEntry[]; loading?: boolean; error?: string | null }) {
+  return (
+    <DataTable<AuditEntry>
+      rows={rows}
+      rowKey={(r) => r.id}
+      loading={loading}
+      error={error}
+      empty="Aucune action enregistrée"
+      columns={[
+        { key: 'date', header: 'Date', className: 'whitespace-nowrap text-foreground-secondary', render: (r) => dateTime(r.created_at) },
+        { key: 'admin', header: 'Admin', render: (r) => r.admin_email },
+        { key: 'action', header: 'Action', render: (r) => (
+          <Badge variant={r.action === 'login_failed' || r.action.startsWith('disable') || r.action.startsWith('debit') ? 'error'
+            : r.action.startsWith('grant') || r.action.startsWith('mark') ? 'success' : 'default'}>{label(ACTION_LABELS, r.action)}</Badge>
+        ) },
+        { key: 'target', header: 'Cible', render: (r) => <span className="text-foreground-secondary">{r.target || '—'}</span> },
+        { key: 'details', header: 'Détails', render: (r) => <span className="text-xs text-foreground-muted block max-w-[360px] truncate" title={r.details}>{r.details || '—'}</span> },
+        { key: 'ip', header: 'IP', render: (r) => <span className="font-mono text-xs text-foreground-muted">{r.ip || '—'}</span> },
+      ]}
+    />
+  )
+}
+

@@ -1,231 +1,73 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card'
-import { Badge } from '@/components/ui/Badge'
+import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { RefreshCw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
-import { Input } from '@/components/ui/Input'
-import { anzarApi, type PaymentIntent } from '@/api/backend'
-import { CheckCircle2, CreditCard, RefreshCw } from 'lucide-react'
+import { Notice, PageHeader, Pagination, Panel, Tabs, TextInput, useDebounced, useLoad, usePermissions, useTab } from '@/components/ui/kit'
+import { CancelPaymentModal, MarkPaidModal, bonusFromTiers } from '@/components/actions'
+import { api, PaymentIntent } from '@/api/backend'
+import { fcfa } from '@/lib/format'
+import { PaymentsTable } from '@/app/users/details/page'
 
-function statusVariant(status: PaymentIntent['status']) {
-  if (status === 'paid') return 'success' as const
-  if (status === 'pending') return 'secondary' as const
-  return 'outline' as const
-}
+const LIMIT = 50
 
 export default function PaymentsPage() {
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [items, setItems] = useState<PaymentIntent[]>([])
-  const [total, setTotal] = useState(0)
+  const perms = usePermissions()
+  const [sp, setSp] = useSearchParams()
+  const base = [
+    { id: 'pending', label: 'En attente' },
+    { id: 'paid', label: 'Payés' },
+    { id: 'cancelled', label: 'Annulés' },
+    { id: 'all', label: 'Tous' },
+  ]
+  const [tab, setTab] = useTab(base)
+  const [email, setEmail] = useState('')
+  const q = useDebounced(email)
+  const offset = Number(sp.get('page') ?? 0)
+  const setOffset = (o: number) => { const n = new URLSearchParams(sp); n.set('page', String(o)); setSp(n, { replace: true }) }
+  const data = useLoad(() => api.payments({ status: tab, email: q, limit: LIMIT, offset }), [tab, q, offset])
+  const settings = useLoad(() => api.settings(), [])
+  const [paying, setPaying] = useState<PaymentIntent | null>(null)
+  const [cancelling, setCancelling] = useState<PaymentIntent | null>(null)
 
-  const [status, setStatus] = useState<'pending' | 'paid' | 'failed' | 'cancelled' | 'all'>('pending')
-
-  const [selected, setSelected] = useState<PaymentIntent | null>(null)
-  const [providerRef, setProviderRef] = useState('')
-  const [description, setDescription] = useState('')
-  const [marking, setMarking] = useState(false)
-
-  const load = async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await anzarApi.listPaymentIntents({ status, limit: 100, offset: 0 })
-      setItems(res.payment_intents || [])
-      setTotal(res.total || 0)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur chargement paiements')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    void load()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status])
-
-  useEffect(() => {
-    if (!selected) return
-    setProviderRef(selected.provider_ref || '')
-    setDescription('')
-  }, [selected])
-
-  const pendingCount = useMemo(() => items.filter((i) => i.status === 'pending').length, [items])
-
-  const markPaid = async () => {
-    if (!selected) return
-    const desc = description.trim()
-    if (desc.length < 3) {
-      setError('Raison obligatoire (min 3 caractères)')
-      return
-    }
-    setMarking(true)
-    setError(null)
-    try {
-      await anzarApi.markPaymentPaid(selected.id, {
-        provider_ref: providerRef.trim(),
-        description: desc,
-      })
-      setSelected(null)
-      setProviderRef('')
-      setDescription('')
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erreur validation paiement')
-    } finally {
-      setMarking(false)
-    }
-  }
+  const counts = data.data?.counts ?? {}
+  const tabs = base.map((t) => ({
+    ...t,
+    count: t.id === 'all' ? Object.values(counts).reduce((a, b) => a + b, 0) : counts[t.id] ?? 0,
+  }))
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground-primary">Paiements</h1>
-          <p className="text-foreground-secondary mt-1">
-            Demandes de paiement (mode “pré-intégration”). En attente: {pendingCount} / {total}.
-          </p>
+    <div>
+      <PageHeader
+        title="Paiements"
+        description="Demandes de recharge envoyées depuis l'app. Vérifie la réception de l'argent, puis valide : le compte est crédité."
+        actions={<Button variant="secondary" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={data.reload}>Actualiser</Button>}
+      />
+      <Tabs tabs={tabs} value={tab} onChange={setTab} />
+      {tab === 'pending' && (counts.pending ?? 0) > 0 && (
+        <div className="mb-4">
+          <Notice tone="warning">
+            {counts.pending} demande(s) en attente
+            {data.data && tab === 'pending' ? ` · ${fcfa(data.data.sum_amount_fcfa)} au total` : ''}. Ne valide une demande
+            qu'après avoir vu l'argent arriver sur ton compte Mobile Money : la validation crédite le client immédiatement.
+          </Notice>
         </div>
-        <Button variant="secondary" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={() => void load()}>
-          Rafraîchir
-        </Button>
-      </div>
-
-      {error && (
-        <Card className="border-accent-error/30">
-          <CardContent className="p-4 text-sm text-accent-error">{error}</CardContent>
-        </Card>
       )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CreditCard className="h-5 w-5 text-accent-primary" />
-            Liste
-          </CardTitle>
-          <CardDescription>Filtrer et valider manuellement une demande.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex flex-col md:flex-row md:items-end gap-3">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground-primary">Statut</label>
-              <select
-                className="w-full md:w-56 h-10 rounded-lg border border-border bg-background-secondary px-3 text-sm text-foreground-primary"
-                value={status}
-                onChange={(e) => setStatus(e.target.value as any)}
-                disabled={loading}
-              >
-                <option value="pending">En attente</option>
-                <option value="paid">Payé</option>
-                <option value="failed">Échec</option>
-                <option value="cancelled">Annulé</option>
-                <option value="all">Tous</option>
-              </select>
-            </div>
+      <Panel padded={false}>
+        <div className="p-4 border-b border-border-subtle flex flex-wrap items-center justify-between gap-3">
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground-muted" />
+            <TextInput className="pl-9" placeholder="Filtrer par e-mail…" value={email}
+              onChange={(e) => { setEmail(e.target.value); if (offset) setOffset(0) }} />
           </div>
-
-          {loading ? (
-            <p className="text-sm text-foreground-secondary">Chargement…</p>
-          ) : items.length > 0 ? (
-            <div className="overflow-x-auto rounded-lg border border-border">
-              <table className="w-full text-sm">
-                <thead className="bg-background-tertiary/40">
-                  <tr className="text-left">
-                    <th className="p-3 font-medium text-foreground-secondary">Email</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Montant</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Méthode</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Statut</th>
-                    <th className="p-3 font-medium text-foreground-secondary">Date</th>
-                    <th className="p-3 font-medium text-foreground-secondary" />
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((p) => (
-                    <tr key={p.id} className="border-t border-border hover:bg-background-tertiary/30">
-                      <td className="p-3 text-foreground-primary">{p.user_email}</td>
-                      <td className="p-3 text-foreground-primary font-medium">
-                        {Number(p.amount_fcfa || 0).toLocaleString('fr-FR')} {p.currency || 'XOF'}
-                      </td>
-                      <td className="p-3">
-                        <Badge variant="outline" className="capitalize">
-                          {p.method || '—'}
-                        </Badge>
-                      </td>
-                      <td className="p-3">
-                        <Badge variant={statusVariant(p.status)} className="capitalize">
-                          {p.status}
-                        </Badge>
-                      </td>
-                      <td className="p-3 text-foreground-secondary text-xs">
-                        {p.created_at ? new Date(p.created_at).toLocaleString('fr-FR') : '—'}
-                      </td>
-                      <td className="p-3 text-right">
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          leftIcon={<CheckCircle2 className="h-4 w-4" />}
-                          disabled={p.status !== 'pending'}
-                          onClick={() => setSelected(p)}
-                        >
-                          Marquer payé
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="text-sm text-foreground-secondary">Aucune demande.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      {selected && (
-        <Card className="border-accent-primary/20">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CheckCircle2 className="h-5 w-5 text-accent-primary" />
-              Valider un paiement
-            </CardTitle>
-            <CardDescription>
-              {selected.user_email} — {Number(selected.amount_fcfa || 0).toLocaleString('fr-FR')} {selected.currency}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground-primary">Référence (optionnel)</label>
-                <Input
-                  value={providerRef}
-                  onChange={(e) => setProviderRef(e.target.value)}
-                  placeholder="ex: wave_2026_000123"
-                  disabled={marking}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground-primary">Raison (obligatoire)</label>
-                <Input
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  placeholder="Ex: Paiement reçu et vérifié"
-                  disabled={marking}
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setSelected(null)} disabled={marking}>
-                Annuler
-              </Button>
-              <Button onClick={() => void markPaid()} isLoading={marking}>
-                Valider & créditer
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+          {data.data && <span className="text-xs text-foreground-secondary">{data.data.total} demande(s) · {fcfa(data.data.sum_amount_fcfa)}</span>}
+        </div>
+        <PaymentsTable rows={data.data?.payment_intents ?? []} loading={data.loading} error={data.error}
+          canAct={perms.canManageMoney} onPay={setPaying} onCancel={setCancelling} showUser />
+        <Pagination total={data.data?.total ?? 0} limit={LIMIT} offset={offset} onChange={setOffset} />
+      </Panel>
+      <MarkPaidModal intent={paying} onClose={() => setPaying(null)} onDone={data.reload}
+        bonusPercent={bonusFromTiers(settings.data?.recharge_bonus_tiers)} />
+      <CancelPaymentModal intent={cancelling} onClose={() => setCancelling(null)} onDone={data.reload} />
     </div>
   )
 }
-

@@ -1,337 +1,191 @@
-import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
-import { Badge } from '../../components/ui/Badge'
-import { Button } from '../../components/ui/Button'
-import { anzarApi, type HealthResponse } from '@/api/backend'
-import { useAuthStore } from '@/stores/authStore'
-import { Activity, FolderKanban, Sparkles, Wallet, Server, ChevronRight, AlertCircle } from 'lucide-react'
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { AlertTriangle, CreditCard, RefreshCw, TrendingUp, Users, Wallet, Zap } from 'lucide-react'
+import { Button } from '@/components/ui/Button'
+import { Badge } from '@/components/ui/Badge'
+import { DataTable, ErrorBox, PageHeader, Panel, Select, Spinner, Stat, useLoad } from '@/components/ui/kit'
+import { api, Transaction } from '@/api/backend'
+import { ago, compact, fcfa, label, num, TX_LABELS } from '@/lib/format'
+import { useState } from 'react'
 
-interface StatsResponse {
-  users: { active: number; total: number; new_7d: number }
-  projects: { total: number; by_status: Record<string, number> }
-  credits: { total_balance: number; platform_recharged: number; platform_used: number }
-  usage_30d: { total_requests: number; total_tokens: number; total_cost_fcfa: number }
-  usage_today: { requests: number; cost_fcfa: number }
+const tooltipStyle = {
+  contentStyle: { background: '#14141B', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, fontSize: 12 },
+  labelStyle: { color: '#94A3B8' },
 }
 
 export default function DashboardPage() {
   const navigate = useNavigate()
-  const user = useAuthStore((s) => s.user)
+  const [days, setDays] = useState(30)
+  const stats = useLoad(() => api.stats(), [])
+  const daily = useLoad(() => api.daily(days), [days])
+  const breakdown = useLoad(() => api.breakdown(days), [days])
+  const recent = useLoad(() => api.transactions({ limit: 8 }), [])
+  const health = useLoad(() => api.health(), [])
 
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [health, setHealth] = useState<HealthResponse | null>(null)
-  const [stats, setStats] = useState<StatsResponse | null>(null)
-
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const [h, s] = await Promise.all([
-          anzarApi.health(),
-          anzarApi.stats(),
-        ])
-        if (!alive) return
-        setHealth(h)
-        setStats(s as StatsResponse)
-      } catch (err) {
-        if (!alive) return
-        setError(err instanceof Error ? err.message : 'Erreur de chargement')
-      } finally {
-        if (!alive) return
-        setLoading(false)
-      }
-    })()
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  const healthVariant = health?.status === 'healthy' ? 'success' : health?.status ? 'warning' : 'outline'
-
-  if (error) {
-    return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-foreground-primary">Dashboard</h1>
-            <p className="text-foreground-secondary mt-1">Vue d’ensemble de la plateforme</p>
-          </div>
-          <div className="flex gap-2">
-            <Button variant="secondary" leftIcon={<Activity className="h-4 w-4" />} onClick={() => navigate('/observability')}>
-              Observability
-            </Button>
-            <Button leftIcon={<Sparkles className="h-4 w-4" />} onClick={() => navigate('/studio')}>
-              Studio
-            </Button>
-          </div>
-        </div>
-        <Card className="border-accent-error/20 bg-accent-error/5">
-          <CardContent className="p-6 flex items-center gap-4">
-            <AlertCircle className="h-6 w-6 text-accent-error" />
-            <div>
-              <p className="font-medium text-foreground-primary">Erreur de chargement</p>
-              <p className="text-sm text-accent-error">{error}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  const reload = () => { stats.reload(); daily.reload(); breakdown.reload(); recent.reload(); health.reload() }
+  const s = stats.data
+  const series = (daily.data?.days ?? []).map((d) => ({ ...d, label: d.day.slice(5).split('-').reverse().join('/') }))
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-foreground-primary">Dashboard</h1>
-          <p className="text-foreground-secondary mt-1">
-            Bienvenue {user?.name} {user?.role ? `(${user.role})` : ''}
-          </p>
+      <PageHeader
+        title="Tableau de bord"
+        description="Activité, argent encaissé et consommation de la plateforme."
+        actions={<>
+          <Select value={String(days)} onChange={(e) => setDays(Number(e.target.value))} className="w-52" options={[
+            { value: '7', label: '7 derniers jours' },
+            { value: '30', label: '30 derniers jours' },
+            { value: '90', label: '90 derniers jours' },
+          ]} />
+          <Button variant="secondary" size="md" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={reload}>Actualiser</Button>
+        </>}
+      />
+
+      {stats.error && <ErrorBox message={stats.error} onRetry={stats.reload} />}
+
+      {/* Alertes à traiter */}
+      {s && (s.payments_pending.count > 0 || s.debts.count > 0 || s.billing_anomalies_30d > 0) && (
+        <div className="grid gap-3 md:grid-cols-3">
+          {s.payments_pending.count > 0 && (
+            <button onClick={() => navigate('/payments')} className="text-left rounded-lg border border-accent-warning/40 bg-accent-warning/10 p-4">
+              <p className="text-sm font-medium text-accent-warning">{s.payments_pending.count} paiement(s) à valider</p>
+              <p className="text-xs text-foreground-secondary mt-1">{fcfa(s.payments_pending.amount_fcfa)} en attente de vérification</p>
+            </button>
+          )}
+          {s.debts.count > 0 && (
+            <button onClick={() => navigate('/users?status=debt')} className="text-left rounded-lg border border-accent-error/40 bg-accent-error/10 p-4">
+              <p className="text-sm font-medium text-accent-error">{s.debts.count} compte(s) en dette</p>
+              <p className="text-xs text-foreground-secondary mt-1">{fcfa(s.debts.amount_fcfa)} au total (bloqués jusqu'à la recharge)</p>
+            </button>
+          )}
+          {s.billing_anomalies_30d > 0 && (
+            <button onClick={() => navigate('/usage?tab=anomalies')} className="text-left rounded-lg border border-border-strong bg-background-tertiary p-4">
+              <p className="text-sm font-medium flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-accent-warning" />{s.billing_anomalies_30d} facturation(s) à vérifier</p>
+              <p className="text-xs text-foreground-secondary mt-1">Coûts estimés ou débits échoués (30 j)</p>
+            </button>
+          )}
         </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" leftIcon={<Activity className="h-4 w-4" />} onClick={() => navigate('/observability')}>
-            Observability
-          </Button>
-          <Button leftIcon={<Sparkles className="h-4 w-4" />} onClick={() => navigate('/studio')}>
-            Studio
-          </Button>
+      )}
+
+      {/* Chiffres clés */}
+      {!s && stats.loading ? <div className="py-10 text-center"><Spinner /></div> : s && (
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+          <Stat label="Argent encaissé (30 j)" value={fcfa(s.recharged_30d)} icon={<Wallet className="h-4 w-4" />} tone="success"
+            hint={`Crédité depuis le début (bonus compris) : ${fcfa(s.credits.platform_recharged)}`} onClick={() => navigate('/credits?type=recharge')} />
+          <Stat label="Consommation facturée (30 j)" value={fcfa(s.usage_30d.total_cost_fcfa)} icon={<Zap className="h-4 w-4" />} tone="primary"
+            hint={`Aujourd'hui : ${fcfa(s.usage_today.cost_fcfa)} · ${num(s.usage_today.requests)} requêtes`} onClick={() => navigate('/usage')} />
+          <Stat label="Crédit restant chez les clients" value={fcfa(s.credits.total_balance)} icon={<CreditCard className="h-4 w-4" />}
+            hint={`${num(s.funded_users)} compte(s) avec du crédit`} />
+          <Stat label="Utilisateurs" value={num(s.users.total)} icon={<Users className="h-4 w-4" />}
+            hint={`${num(s.users.active)} actifs · +${num(s.users.new_7d)} cette semaine`} onClick={() => navigate('/users')} />
+          <Stat label="Requêtes IA (30 j)" value={compact(s.usage_30d.total_requests)} hint={`${compact(s.usage_30d.total_tokens)} jetons`} />
+          <Stat label="Bonus offerts (30 j)" value={fcfa(s.bonus_30d)} tone={s.bonus_30d > 0 ? 'warning' : 'default'} />
+          <Stat label="Paiements en attente" value={num(s.payments_pending.count)} tone={s.payments_pending.count ? 'warning' : 'default'}
+            hint={fcfa(s.payments_pending.amount_fcfa)} onClick={() => navigate('/payments')} />
+          <Stat label="Comptes en dette" value={num(s.debts.count)} tone={s.debts.count ? 'error' : 'default'}
+            hint={fcfa(s.debts.amount_fcfa)} onClick={() => navigate('/users?status=debt')} />
         </div>
-      </div>
+      )}
 
-      {/* Welcome Card */}
-      <Card className="bg-gradient-to-r from-accent-primary/10 to-accent-secondary/10 border-accent-primary/20">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-foreground-secondary">Bonjour</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-2xl font-bold text-foreground-primary">
-                  {loading ? '…' : user?.name || 'Administrateur'}
-                </span>
-                <span className="text-sm text-foreground-secondary">
-                  {user?.role && `Rôle: ${user.role}`}
-                </span>
-              </div>
+      {/* Graphiques */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Panel title="Consommation et recharges par jour" description="En FCFA · consommation à gauche, recharges à droite">
+          {daily.error ? <ErrorBox message={daily.error} /> : (
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={series} margin={{ left: -10, right: 8, top: 8 }}>
+                  <defs>
+                    <linearGradient id="gCost" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#00D9FF" stopOpacity={0.35} /><stop offset="100%" stopColor="#00D9FF" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gRech" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#00C853" stopOpacity={0.3} /><stop offset="100%" stopColor="#00C853" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fill: '#64748B', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={16} />
+                  <YAxis yAxisId="c" tick={{ fill: '#00D9FF', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => compact(v)} />
+                  <YAxis yAxisId="r" orientation="right" tick={{ fill: '#00C853', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(v) => compact(v)} />
+                  <Tooltip {...tooltipStyle} formatter={(v: number, n: string) => [fcfa(v), n === 'cost_fcfa' ? 'Consommation' : 'Recharges']} />
+                  <Area yAxisId="r" type="monotone" dataKey="recharged_fcfa" stroke="#00C853" fill="url(#gRech)" strokeWidth={2} />
+                  <Area yAxisId="c" type="monotone" dataKey="cost_fcfa" stroke="#00D9FF" fill="url(#gCost)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
             </div>
-            <div className="p-3 rounded-lg bg-accent-primary/20">
-              <Sparkles className="h-6 w-6 text-accent-primary" />
-            </div>
+          )}
+        </Panel>
+        <Panel title="Requêtes IA et nouveaux comptes par jour">
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={series} margin={{ left: -10, right: 8, top: 8 }}>
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="label" tick={{ fill: '#64748B', fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={16} />
+                <YAxis tick={{ fill: '#64748B', fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                <Tooltip {...tooltipStyle} formatter={(v: number, n: string) => [num(v), n === 'requests' ? 'Requêtes' : 'Nouveaux comptes']} />
+                <Bar dataKey="requests" fill="#B829DD" radius={[3, 3, 0, 0]} />
+                <Bar dataKey="new_users" fill="#00D9FF" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Health Status Card */}
-      <Card className="group hover:border-accent-primary/30 transition-colors">
-        <CardContent className="p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-foreground-secondary">État du Backend</p>
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-2xl font-bold text-foreground-primary">
-                  {loading ? '…' : health?.status || 'unknown'}
-                </span>
-                <Badge variant={healthVariant} className="text-xs">
-                  v{health?.version || '—'}
-                </Badge>
-              </div>
-              {health?.checks && (
-                <div className="mt-3 text-xs text-foreground-secondary space-y-1">
-                  {Object.entries(health.checks).map(([key, value]) => (
-                    <div key={key}>
-                      {key}: {typeof value === 'boolean' ? (value ? '✓' : '✗') : String(value)}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="p-3 rounded-lg bg-accent-primary/10">
-              <Server className="h-6 w-6 text-accent-primary" />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Users Card */}
-        <Card className="group hover:border-accent-primary/30 transition-colors">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm text-foreground-secondary">Utilisateurs Actifs</p>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-3xl font-bold text-foreground-primary">
-                    {loading ? '…' : stats?.users?.active ?? '—'}
-                  </span>
-                  <span className="text-xs text-foreground-secondary">
-                    sur {loading ? '…' : stats?.users?.total ?? '—'}
-                  </span>
-                </div>
-                {stats?.users?.new_7d !== undefined && (
-                  <p className="text-xs text-foreground-secondary mt-2">
-                    +{stats.users.new_7d} cette semaine
-                  </p>
-                )}
-              </div>
-              <div className="p-3 rounded-lg bg-accent-primary/10">
-                <Activity className="h-6 w-6 text-accent-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Projects Card */}
-        <Card className="group hover:border-accent-primary/30 transition-colors">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm text-foreground-secondary">Projets Totaux</p>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-3xl font-bold text-foreground-primary">
-                    {loading ? '…' : stats?.projects?.total ?? '—'}
-                  </span>
-                </div>
-                {stats?.projects?.by_status && Object.keys(stats.projects.by_status).length > 0 && (
-                  <div className="text-xs text-foreground-secondary mt-2 space-y-1">
-                    {Object.entries(stats.projects.by_status).slice(0, 2).map(([status, count]) => (
-                      <div key={status}>{status}: {count}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <div className="p-3 rounded-lg bg-accent-success/10">
-                <FolderKanban className="h-6 w-6 text-accent-success" />
-              </div>
-            </div>
-            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate('/projects')}>
-              Voir Projets <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Credits Card */}
-        <Card className="group hover:border-accent-primary/30 transition-colors">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm text-foreground-secondary">Solde Crédits</p>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-2xl font-bold text-foreground-primary">
-                    {loading ? '…' : stats?.credits?.total_balance ? `${(stats.credits.total_balance).toLocaleString('fr-FR')}` : '—'}
-                  </span>
-                  <span className="text-xs text-foreground-secondary">FCFA</span>
-                </div>
-                {stats?.credits && (
-                  <div className="text-xs text-foreground-secondary mt-2 space-y-1">
-                    <div>Rechargé: {(stats.credits?.platform_recharged ?? 0).toLocaleString('fr-FR')}</div>
-                    <div>Utilisé: {(stats.credits?.platform_used ?? 0).toLocaleString('fr-FR')}</div>
-                  </div>
-                )}
-              </div>
-              <div className="p-3 rounded-lg bg-accent-secondary/10">
-                <Wallet className="h-6 w-6 text-accent-secondary" />
-              </div>
-            </div>
-            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate('/credits')}>
-              Gérer Crédits <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Usage Card */}
-        <Card className="group hover:border-accent-primary/30 transition-colors">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div className="flex-1">
-                <p className="text-sm text-foreground-secondary">Usage Aujourd’hui</p>
-                <div className="flex items-baseline gap-2 mt-2">
-                  <span className="text-2xl font-bold text-foreground-primary">
-                    {loading ? '…' : stats?.usage_today?.requests ?? '—'}
-                  </span>
-                  <span className="text-xs text-foreground-secondary">requêtes</span>
-                </div>
-                {stats?.usage_today && (
-                  <p className="text-xs text-foreground-secondary mt-2">
-                    Coût: {(stats.usage_today?.cost_fcfa ?? 0).toLocaleString('fr-FR')} FCFA
-                  </p>
-                )}
-              </div>
-              <div className="p-3 rounded-lg bg-accent-warning/10">
-                <Activity className="h-6 w-6 text-accent-warning" />
-              </div>
-            </div>
-            <Button variant="ghost" size="sm" className="mt-4" onClick={() => navigate('/observability')}>
-              Détails <ChevronRight className="h-4 w-4 ml-1" />
-            </Button>
-          </CardContent>
-        </Card>
+        </Panel>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-accent-primary" />
-              Démarrage rapide
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm text-foreground-secondary">
-            <p>
-              1) Va dans <span className="text-foreground-primary font-medium">Studio</span> et génère un plan.
-            </p>
-            <p>
-              2) Clique <span className="text-foreground-primary font-medium">Exécuter</span> pour lancer la pipeline.
-            </p>
-            <p>
-              3) Inspecte le résultat dans <span className="text-foreground-primary font-medium">Projects</span> (plan/result JSON).
-            </p>
-            <div className="pt-2">
-              <Button onClick={() => navigate('/studio')}>Ouvrir Studio</Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Activity className="h-5 w-5 text-accent-secondary" />
-              Usage (30 jours)
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            {loading ? (
-              <p className="text-foreground-secondary">…</p>
-            ) : stats?.usage_30d ? (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-foreground-secondary">Requêtes:</span>
-                  <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d?.total_requests ?? 0).toLocaleString('fr-FR')}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-foreground-secondary">Tokens:</span>
-                  <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d?.total_tokens ?? 0).toLocaleString('fr-FR')}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-foreground-secondary">Coût:</span>
-                  <span className="font-medium text-foreground-primary">
-                    {(stats.usage_30d?.total_cost_fcfa ?? 0).toLocaleString('fr-FR')} FCFA
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <p className="text-foreground-secondary">—</p>
-            )}
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Panel title="Meilleurs clients" description={`Consommation sur ${days} jours`} padded={false}>
+          <DataTable
+            rows={breakdown.data?.top_users ?? []}
+            rowKey={(r) => r.key}
+            loading={breakdown.loading}
+            empty="Aucune consommation"
+            onRowClick={(r) => navigate(`/users/${encodeURIComponent(r.key)}`)}
+            columns={[
+              { key: 'u', header: 'Compte', render: (r) => <span className="truncate block max-w-[180px]">{r.key}</span> },
+              { key: 'n', header: 'Req.', align: 'right', render: (r) => num(r.requests) },
+              { key: 'c', header: 'Montant', align: 'right', render: (r) => fcfa(r.cost_fcfa) },
+            ]}
+          />
+        </Panel>
+        <Panel title="Par modèle" description={`${days} jours`} padded={false}>
+          <DataTable
+            rows={breakdown.data?.by_model ?? []}
+            rowKey={(r) => r.key}
+            loading={breakdown.loading}
+            empty="Aucune consommation"
+            columns={[
+              { key: 'm', header: 'Modèle', render: (r) => <span className="font-mono text-xs">{r.key}</span> },
+              { key: 'n', header: 'Req.', align: 'right', render: (r) => num(r.requests) },
+              { key: 'c', header: 'Montant', align: 'right', render: (r) => fcfa(r.cost_fcfa) },
+            ]}
+          />
+        </Panel>
+        <Panel title="Derniers mouvements" padded={false} actions={
+          <Button size="sm" variant="ghost" onClick={() => navigate('/credits')}><TrendingUp className="h-4 w-4 mr-1" />Tout voir</Button>}>
+          <DataTable<Transaction>
+            rows={recent.data?.transactions ?? []}
+            rowKey={(r) => r.id}
+            loading={recent.loading}
+            empty="Aucun mouvement"
+            onRowClick={(r) => navigate(`/users/${encodeURIComponent(r.user_email)}`)}
+            columns={[
+              { key: 'u', header: 'Compte', render: (r) => <div><p className="truncate max-w-[150px]">{r.user_email}</p><p className="text-[11px] text-foreground-muted">{ago(r.created_at)}</p></div> },
+              { key: 't', header: 'Type', render: (r) => <Badge variant={r.type === 'usage' ? 'default' : r.type === 'bonus' ? 'warning' : 'success'}>{label(TX_LABELS, r.type)}</Badge> },
+              { key: 'a', header: 'Montant', align: 'right', render: (r) => <span className={r.amount_fcfa < 0 ? 'text-foreground-secondary' : 'text-accent-success'}>{fcfa(r.amount_fcfa)}</span> },
+            ]}
+          />
+        </Panel>
       </div>
+
+      {health.data && (
+        <div className="flex flex-wrap items-center gap-2 text-xs text-foreground-secondary">
+          <span>Services :</span>
+          {Object.entries(health.data.checks ?? {}).map(([k, v]) => (
+            <Badge key={k} variant={v === 'ok' || v === 'configured' ? 'success' : v === 'not_configured' ? 'default' : 'error'}>
+              {k} : {v === 'ok' || v === 'configured' ? 'OK' : v === 'not_configured' ? 'non configuré' : v}
+            </Badge>
+          ))}
+          <span className="ml-auto">Serveur v{health.data.version}</span>
+        </div>
+      )}
     </div>
   )
 }

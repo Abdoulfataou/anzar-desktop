@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Lock, Mail, Eye, EyeOff } from 'lucide-react'
 import AnzarLogo from '@/components/ui/AnzarLogo'
 import { motion } from 'framer-motion'
-import { anzarApi } from '@/api/backend'
+import { api } from '@/api/backend'
 import { useAuthStore } from '@/stores/authStore'
 
 export default function LoginPage() {
@@ -24,7 +24,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const result = await anzarApi.login(email.trim(), password)
+      const result = await api.login(email.trim(), password)
       setSession({ token: result.token, user: result.user as any })
       if ((result.user as any)?.must_change_password) {
         navigate('/settings')

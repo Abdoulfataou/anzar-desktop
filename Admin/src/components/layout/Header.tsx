@@ -1,117 +1,72 @@
-import { useEffect, useMemo, useState } from 'react'
+import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Search, Settings, Sparkles } from 'lucide-react'
-import { Button } from '../ui/Button'
-import { Input } from '../ui/Input'
-import { Badge } from '../ui/Badge'
-import { anzarApi } from '@/api/backend'
-import { useAuthStore } from '@/stores/authStore'
+import { Search } from 'lucide-react'
+import { api } from '@/api/backend'
+
+const TITLES: [string, string][] = [
+  ['/users', 'Utilisateurs'],
+  ['/credits', 'Crédits'],
+  ['/payments', 'Paiements'],
+  ['/usage', 'Consommation'],
+  ['/audit', "Journal d'audit"],
+  ['/admins', 'Administrateurs'],
+  ['/settings', 'Paramètres'],
+]
 
 export function Header() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [health, setHealth] = useState<'ok' | 'degraded' | 'down'>('down')
-  const [healthLabel, setHealthLabel] = useState('Backend: inconnu')
   const location = useLocation()
   const navigate = useNavigate()
-  const user = useAuthStore((s) => s.user)
+  const [query, setQuery] = useState('')
+  const [health, setHealth] = useState<'ok' | 'degraded' | 'down' | 'unknown'>('unknown')
 
-  const pageTitle = useMemo(() => {
-    const path = location.pathname
-    if (path.startsWith('/studio')) return 'Studio'
-    if (path.startsWith('/projects')) return 'Projets'
-    if (path.startsWith('/users')) return 'Utilisateurs'
-    if (path.startsWith('/credits')) return 'Crédits'
-    if (path.startsWith('/payments')) return 'Paiements'
-    if (path.startsWith('/observability')) return 'Observabilité'
-    if (path.startsWith('/settings')) return 'Paramètres'
-    return 'Dashboard'
-  }, [location.pathname])
+  const title = useMemo(
+    () => TITLES.find(([p]) => location.pathname.startsWith(p))?.[1] ?? 'Tableau de bord',
+    [location.pathname],
+  )
 
   useEffect(() => {
     let alive = true
-
-    ;(async () => {
-      try {
-        const res = await anzarApi.health()
-        if (!alive) return
-        setHealth(res.status === 'healthy' ? 'ok' : 'degraded')
-        setHealthLabel(`Backend: ${res.status}`)
-      } catch {
-        if (!alive) return
-        setHealth('down')
-        setHealthLabel('Backend: down')
-      }
-    })()
-
-    return () => {
-      alive = false
-    }
+    const check = () => api.health().then(
+      (r) => alive && setHealth(r.status === 'healthy' ? 'ok' : 'degraded'),
+      () => alive && setHealth('down'),
+    )
+    check()
+    const t = setInterval(check, 60_000)
+    return () => { alive = false; clearInterval(t) }
   }, [])
 
+  // Recherche rapide d'un client par e-mail ou nom
+  const submit = (e: FormEvent) => {
+    e.preventDefault()
+    const q = query.trim()
+    if (!q) return
+    navigate(`/users?q=${encodeURIComponent(q)}`)
+    setQuery('')
+  }
+
+  const dot = { ok: 'bg-accent-success', degraded: 'bg-accent-warning', down: 'bg-accent-error', unknown: 'bg-foreground-muted' }[health]
+  const text = { ok: 'Serveur en ligne', degraded: 'Serveur dégradé', down: 'Serveur injoignable', unknown: 'Vérification…' }[health]
+
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background-secondary/80 backdrop-blur-lg">
-      <div className="flex items-center justify-between h-14 px-6">
-        {/* Left: Search */}
-        <div className="flex items-center gap-4 flex-1 min-w-0">
-          <div className="min-w-0">
-            <p className="text-xs text-foreground-secondary">ANZAR Admin</p>
-            <h2 className="text-sm font-semibold text-foreground-primary truncate">{pageTitle}</h2>
-          </div>
-
-          <div className="hidden md:block flex-1 max-w-xl">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-foreground-secondary" />
-              <Input
-                type="search"
-                placeholder="Rechercher projets, commandes, IDs…"
-                className="pl-10 bg-background-tertiary border-border-subtle"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Actions */}
-        <div className="flex items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            leftIcon={<Sparkles className="h-4 w-4" />}
-            onClick={() => navigate('/studio')}
-            className="hidden sm:inline-flex"
-          >
-            Nouveau projet
-          </Button>
-
-          <Button variant="ghost" size="icon" onClick={() => navigate('/settings')} aria-label="Paramètres">
-            <Settings className="h-4 w-4" />
-          </Button>
-
-          {/* Status Indicator */}
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background-tertiary">
-            <div
-              className={[
-                'h-2 w-2 rounded-full animate-pulse-subtle',
-                health === 'ok' ? 'bg-accent-success' : health === 'degraded' ? 'bg-accent-warning' : 'bg-accent-error',
-              ].join(' ')}
+    <header className="sticky top-0 z-40 border-b border-border bg-background-secondary/80 backdrop-blur-lg">
+      <div className="flex items-center justify-between gap-4 h-14 px-6">
+        <h2 className="text-sm font-semibold truncate">{title}</h2>
+        <form onSubmit={submit} className="hidden md:block flex-1 max-w-md">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-foreground-muted" />
+            <input
+              type="search"
+              placeholder="Chercher un client (e-mail, nom)… puis Entrée"
+              className="w-full h-9 rounded-md border border-border-subtle bg-background-tertiary pl-9 pr-3 text-sm placeholder:text-foreground-muted focus:outline-none focus:ring-2 focus:ring-accent-primary"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
             />
-            <span className="text-xs font-medium text-foreground-primary">{healthLabel}</span>
           </div>
-
-          {user?.role && (
-            <Badge variant="primary" className="hidden lg:inline-flex">
-              {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
-            </Badge>
-          )}
+        </form>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background-tertiary">
+          <div className={`h-2 w-2 rounded-full ${dot}`} />
+          <span className="text-xs">{text}</span>
         </div>
-      </div>
-
-      {/* Backend URL Bar */}
-      <div className="h-7 px-6 border-t border-border-subtle bg-background-tertiary/30 flex items-center justify-end text-xs">
-        <Badge variant="outline" className="text-[10px] hidden sm:inline-flex">
-          {anzarApi.backendUrl}
-        </Badge>
       </div>
     </header>
   )
