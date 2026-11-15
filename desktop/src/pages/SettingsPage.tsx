@@ -230,6 +230,7 @@ type Confirm = ReturnType<typeof useConfirmModal>['confirm'];
 function GeneralSection() {
   const model = useSettingsStore((s) => s.settings.model);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const webTools = useSettingsStore((s) => s.settings.webTools !== false);
   const [mode, setMode] = useState<PermissionMode>(() => {
     try {
       const v = localStorage.getItem('anzar.permissionMode');
@@ -247,6 +248,16 @@ function GeneralSection() {
           value={model}
           onChange={(v) => updateSettings({ model: v })}
           options={[{ id: 'fast', label: 'Rapide', icon: Zap }, { id: 'thinking', label: 'Réflexion', icon: Brain }, { id: 'max', label: 'Max', icon: Brain }]}
+        />
+      </Row>
+      <Row
+        label="Recherche web"
+        description="L'agent peut chercher sur le web et lire des pages (documentation récente, erreurs inconnues). Environ 1 FCFA par recherche ou page lue, ajouté au coût de la réponse."
+      >
+        <Segmented
+          value={webTools ? 'on' : 'off'}
+          onChange={(v) => updateSettings({ webTools: v === 'on' })}
+          options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
         />
       </Row>
       <Row label="Permissions par défaut" description="Ce que l'agent peut faire sans te demander. Modifiable à tout moment depuis la saisie.">

@@ -103,6 +103,8 @@ class Settings(BaseSettings):
     deepseek_peak_windows_utc: str = "1-4,6-10"
     # Marge appliquée au coût réel pour le prix de vente
     deepseek_margin: float = 3.0
+    # Search / Fetch DeepSeek : 0,75 $ les 1 000 appels réussis
+    deepseek_web_tool_usd_per_call: float = 0.00075
     # Kimi K2.5: coût réel $0.60/$2.50 → 336/1400 F. Vente: marge x3
     kimi_input_cost_per_million: float = 1000.0
     kimi_output_cost_per_million: float = 4000.0

@@ -112,6 +112,28 @@ class AIService {
   }
 
   /** Get the API endpoint URL — always through backend proxy */
+  /** Outils web DeepSeek (Search / Fetch) via le serveur ANZAR, qui facture l'appel réussi. */
+  async webTool<T>(kind: 'search' | 'fetch', body: Record<string, unknown>, signal?: AbortSignal): Promise<T & { anzar?: { cost_fcfa?: number } }> {
+    let response: Response;
+    try {
+      response = await fetch(`${getBackendUrl()}/api/deepseek/tools/${kind}`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(body),
+        signal,
+      });
+    } catch (e: any) {
+      if (signal?.aborted) throw e;
+      throw new Error('Pas de connexion internet. Vérifie ton réseau.');
+    }
+    if (!response.ok) {
+      const err = await response.json().catch(() => null);
+      const detail = typeof err?.detail === 'string' ? err.detail : err?.error?.message;
+      throw new Error(detail || `Erreur ${response.status}`);
+    }
+    return response.json();
+  }
+
   private getEndpoint(provider: AIProvider, path: string = '/chat/completions'): string {
     return `${getBackendUrl()}/api/${provider}${path}`;
   }

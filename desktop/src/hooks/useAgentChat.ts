@@ -15,6 +15,8 @@ import { loadPersonalInstructions, personalInstructionsSection } from '@/service
 import { useCallback, useRef, useState } from 'react';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
+import { WEB_TOOLS, WEB_TOOL_NAMES, executeWebTool } from '@/services/agent/webTools';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { buildAgentSystemPrompt, FORMATTING_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
 import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
@@ -93,7 +95,7 @@ function closeDanglingToolCalls(history: APIMessage[]): void {
 
 const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember']);
 const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents']);
-const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files']);
+const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'web_search', 'read_url']);
 
 function needsApproval(mode: PermissionMode, tool: string): boolean {
   if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);
@@ -246,6 +248,10 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
       return args.path || '.';
     case 'search_files':
       return args.query || args.pattern || '';
+    case 'web_search':
+      return args.query || '';
+    case 'read_url':
+      return args.url || '';
     case 'run_command':
       return args.command || '';
     case 'spawn_subagents':
@@ -449,6 +455,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     // Skills du projet et personnelles : la liste va dans le prompt, le contenu via load_skill
     const skills: Skill[] = workspacePath ? await listSkills(workspacePath).catch(() => []) : [];
     const personal = personalInstructionsSection(await loadPersonalInstructions().catch(() => ''));
+    // Recherche web (Search / Fetch DeepSeek) : désactivable dans les Paramètres
+    const webEnabled = useSettingsStore.getState().settings.webTools !== false;
 
     try {
       if (resumeFrom) {
@@ -485,7 +493,11 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             role: 'system',
             content:
               'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct.\n\n' +
-              "AUCUN DOSSIER N'EST OUVERT : tu n'as aucun outil. Tu ne peux ni lire un fichier, ni lancer une commande, " +
+              (webEnabled
+                ? "Tu peux chercher sur le web (web_search) et lire une page (read_url) quand la question porte sur une information récente " +
+                  "ou une documentation ; cite alors tes sources avec leur URL. Ce sont tes SEULS outils.\n\n"
+                : '') +
+              "AUCUN DOSSIER N'EST OUVERT : tu n'as aucun outil sur les fichiers. Tu ne peux ni lire un fichier, ni lancer une commande, " +
               "ni modifier quoi que ce soit. Ne prétends JAMAIS l'avoir fait, même si l'historique de la conversation " +
               "montre que tu le faisais avant : n'invente aucun résultat de commande, de build ou de test. " +
               "Si la demande exige d'agir sur un projet, dis-le en une phrase et demande d'ouvrir le dossier " +
@@ -535,11 +547,12 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           compactHistory(apiHistoryRef.current, 2, 300);
         }
         promptTokens += historyTokens();
+        const web = webEnabled ? WEB_TOOLS : [];
         const tools = !workspacePath
-          ? undefined
+          ? (web.length ? web : undefined)
           : modeRef.current === 'plan'
-            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : [])]
-            : [...AGENT_TOOLS, ...(skills.length ? [LOAD_SKILL_TOOL] : [])];
+            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : [])]
+            : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : [])];
 
         // Une étape coupée par le réseau est réessayée seule : l'historique est intact,
         // donc rien de ce qui a déjà été fait n'est perdu ni refacturé.
@@ -674,8 +687,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             break;
           }
 
-          const result = !allowed
+          const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number } = !allowed
             ? { output: refusal, isError: true }
+            : WEB_TOOL_NAMES.has(call.function.name)
+            ? await executeWebTool(call.function.name, args, controller.signal)
             : workspacePath
             ? await executeToolCall(call, {
                 projectRoot: workspacePath,
@@ -683,6 +698,9 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
                 onFileChanged: (rel, _c, action) => onFileChanged?.(rel, action),
               })
             : { output: 'Aucun dossier de travail ouvert.', isError: true };
+
+          // Recherche et lecture web : facturées à part par le serveur, ajoutées au coût de la réponse
+          if (result.costFCFA) cost.sum += result.costFCFA;
 
           // B7 : delta de lignes calculé depuis les ARGS de l'outil (l'ancien
           // parse attendait un format qu'aucun exécuteur ne produisait).

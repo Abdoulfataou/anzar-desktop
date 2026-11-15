@@ -25,6 +25,9 @@ export interface Settings {
   // comme "password" Stronghold. Elle protège le token au repos (fichier vault).
   deviceVaultKey: string;
 
+  /** L'agent peut chercher sur le web et lire des pages (Search / Fetch DeepSeek) */
+  webTools?: boolean;
+
   // Interface
   theme: 'light' | 'dark' | 'system';
   language: 'fr' | 'en';
@@ -182,6 +185,7 @@ export const useSettingsStore = create<SettingsStore>()(
       partialize: (state) => ({
         settings: {
           model: state.settings.model,
+          webTools: state.settings.webTools,
           provider: state.settings.provider,
           backendUrl: state.settings.backendUrl,
           deviceVaultKey: state.settings.deviceVaultKey,

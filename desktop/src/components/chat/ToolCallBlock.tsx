@@ -12,7 +12,7 @@
 import React, { useState } from 'react';
 import {
   FileText, FilePlus, FileEdit, FileMinus, FolderOpen, Search,
-  Terminal, ChevronRight, ListChecks, Wand2, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles,
+  Terminal, ChevronRight, ListChecks, Wand2, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles, Globe, Link2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolEvent } from '@/hooks/useAgentChat';
@@ -30,6 +30,8 @@ const ICONS: Record<string, React.ReactNode> = {
   task_done: <Sparkles size={16} />,
   propose_plan: <ListChecks size={16} />,
   load_skill: <Wand2 size={16} />,
+  web_search: <Globe size={16} />,
+  read_url: <Link2 size={16} />,
 };
 
 /** Libellé lisible de chaque outil (le nom technique reste dans l'historique). */
@@ -46,6 +48,8 @@ const LABELS: Record<string, string> = {
   task_done: 'Terminé',
   propose_plan: 'Plan proposé',
   load_skill: 'Skill',
+  web_search: 'Recherche web',
+  read_url: 'Page web',
 };
 
 /**
@@ -132,6 +136,8 @@ const VERBS: Record<string, [string, string]> = {
   read_file: ['fichier lu', 'fichiers lus'],
   list_dir: ['dossier listé', 'dossiers listés'],
   search_files: ['recherche', 'recherches'],
+  web_search: ['recherche web', 'recherches web'],
+  read_url: ['page lue', 'pages lues'],
   run_command: ['commande', 'commandes'],
   edit_file: ['modification', 'modifications'],
   write_file: ['fichier écrit', 'fichiers écrits'],
