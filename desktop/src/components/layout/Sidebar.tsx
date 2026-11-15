@@ -105,6 +105,23 @@ export default function Sidebar({ className }: { className?: string }) {
     if (ok) deleteProject(id);
   };
 
+  /** Supprime d'un coup une liste de tâches (après confirmation). */
+  const removeTasks = async (list: Conversation[], label: string) => {
+    if (list.length === 0) return;
+    const ok = await confirm({
+      title: 'Supprimer les tâches',
+      message: `Supprimer ${list.length} tâche${list.length > 1 ? 's' : ''} (${label}) ? Leur historique est effacé du disque, c'est irréversible. Tes projets et tes fichiers ne sont pas touchés.`,
+      confirmLabel: `Supprimer ${list.length} tâche${list.length > 1 ? 's' : ''}`,
+      variant: 'danger',
+    });
+    if (!ok) return;
+    const ids = new Set(list.map((c) => c.id));
+    useChatStore.setState((st) => ({
+      conversations: st.conversations.filter((c) => !ids.has(c.id)),
+      activeConversationId: st.activeConversationId && ids.has(st.activeConversationId) ? null : st.activeConversationId,
+    }));
+  };
+
   const finishRename = () => {
     if (editingId && editingName.trim()) renameConversation(editingId, editingName.trim());
     setEditingId(null);
@@ -301,7 +318,17 @@ export default function Sidebar({ className }: { className?: string }) {
                     );
                   })}
 
-                  <p className="px-2 pt-4 pb-1 text-[12px] text-text-muted">Tâches</p>
+                  <div className="flex items-center px-2 pt-4 pb-1">
+                    <p className="flex-1 text-[12px] text-text-muted">Tâches</p>
+                    {looseTasks.length > 0 && (
+                      <button
+                        onClick={() => void removeTasks(looseTasks, 'hors projet')}
+                        className="text-[11.5px] text-text-muted hover:text-accent-error transition-colors"
+                      >
+                        Tout supprimer
+                      </button>
+                    )}
+                  </div>
                   {looseTasks.length === 0 ? (
                     <p className="px-2 py-1.5 text-[12.5px] text-text-muted">Aucune tâche</p>
                   ) : (
@@ -310,7 +337,17 @@ export default function Sidebar({ className }: { className?: string }) {
                 </>
               ) : (
                 <>
-                  <p className="px-2 pt-2 pb-1 text-[12px] text-text-muted">Toutes les tâches</p>
+                  <div className="flex items-center px-2 pt-2 pb-1">
+                    <p className="flex-1 text-[12px] text-text-muted">Toutes les tâches</p>
+                    {visible.length > 0 && (
+                      <button
+                        onClick={() => void removeTasks(visible, 'toutes')}
+                        className="text-[11.5px] text-text-muted hover:text-accent-error transition-colors"
+                      >
+                        Tout supprimer
+                      </button>
+                    )}
+                  </div>
                   {visible.length === 0 ? (
                     <p className="px-2 py-1.5 text-[12.5px] text-text-muted">Aucune tâche</p>
                   ) : (
