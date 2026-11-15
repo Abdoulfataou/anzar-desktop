@@ -1,4 +1,5 @@
 import { isTauri } from '@/lib/utils'
+import { isPathWithin } from '@/lib/pathGuard'
 import { desktopDir, documentDir, downloadDir, homeDir } from '@tauri-apps/api/path'
 
 function normalize(p: string): string {
@@ -29,7 +30,7 @@ export async function isAllowedProjectRoot(selectedPath: string): Promise<boolea
       home ? normalize(home) : null,
     ].filter(Boolean) as string[]
 
-    return roots.some((r) => selected.startsWith(r))
+    return roots.some((r) => isPathWithin(selected, r))
   } catch {
     return true
   }

@@ -153,6 +153,8 @@ const BLOCKED_PATTERNS = [
 ];
 
 /** Validate a command is safe before execution */
+import { isPathWithin } from '@/lib/pathGuard';
+
 function validateCommand(command: string): { safe: boolean; reason?: string } {
   // Block empty commands
   if (!command.trim()) {
@@ -363,7 +365,9 @@ class TerminalService {
       return processId;
     }
 
-    const isAllowed = Array.from(this.allowedProjectPaths).some((p) => normalizedCwd.startsWith(p));
+    // S1 : comparaison par segments — startsWith acceptait /Users/x/pro-evil
+    // comme étant « dans » /Users/x/pro
+    const isAllowed = Array.from(this.allowedProjectPaths).some((p) => isPathWithin(normalizedCwd, p));
     if (!isAllowed) {
       this.emitOutput(processId, 'error', '⛔ Dossier non autorisé. Cette commande est limitée au dossier projet.');
       this.eventBus.emit({ type: 'process-error', processId, error: 'Répertoire non autorisé' });

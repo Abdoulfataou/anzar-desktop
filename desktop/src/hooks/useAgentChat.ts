@@ -314,9 +314,13 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   const addUsageRecord = useUsageStore((s) => s.addRecord);
 
   const ensureConversation = useCallback((): string => {
-    if (activeConversationId) return activeConversationId;
-    return createConversation(undefined, model).id;
-  }, [activeConversationId, createConversation, model]);
+    // Toujours lire l'état FRAIS du store : une closure périmée (effet de
+    // replay au démarrage) créerait une 2ᵉ conversation orpheline (B4).
+    const current = useChatStore.getState().activeConversationId;
+    if (current) return current;
+    return useChatStore.getState().createConversation(undefined, model).id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [model]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -707,12 +711,19 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       }
 
       // ── Finalisation ──
+      // Interruption utilisateur : la réponse partielle est marquée comme telle
+      // (sinon le modèle croit avoir terminé et l'utilisateur voit une coupe sans signe).
+      const wasAborted = controller.signal.aborted;
+      const finalContent = wasAborted
+        ? (accContent ? `${accContent}\n\n_(interrompu)_` : '_(génération interrompue)_')
+        : accContent;
+
       // Réponse finale dans l'historique API
-      apiHistoryRef.current.push({ role: 'assistant', content: accContent });
+      apiHistoryRef.current.push({ role: 'assistant', content: finalContent });
 
       // La réponse est terminée : on l'affiche tout de suite, sans attendre la comptabilité.
       updateMessage(assistantId, {
-        content: accContent,
+        content: finalContent,
         timeline: snapshotTimeline(),
         reasoning: accReasoning ? [accReasoning] : undefined,
         isStreaming: false,

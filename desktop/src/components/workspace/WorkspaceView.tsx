@@ -40,7 +40,12 @@ import { listSkills } from '@/services/skills';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import type { ChatAttachment } from '@/types';
 
-export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: boolean }) {
+import { useOffline } from '@/hooks/useOffline';
+
+export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
+  // U1 : le statut réseau arrive directement ici — avant, la prop par défaut
+  // `true` rendait le composer utilisable hors ligne (échec à l'envoi).
+  const { isOnline: onlineStatus } = useOffline();
   // Modèle : celui des Paramètres, et un changement dans la saisie devient le nouveau défaut
   const [selectedModel, setSelectedModelState] = useState<AIModel>(() => useSettingsStore.getState().settings.model || 'fast');
   const setSelectedModel = useCallback((m: AIModel) => {

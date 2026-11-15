@@ -325,7 +325,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$"
               }
             ]
           },
@@ -334,7 +334,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -346,7 +346,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -361,7 +361,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -379,7 +379,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -400,7 +400,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -424,7 +424,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -451,7 +451,7 @@
             "cmd": "npm",
             "args": [
               {
-                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$|^[\\w@./-]+$"
+                "validator": "^(install|i|uninstall|remove|run|start|test|build|init|list|ls|outdated|update|audit|ci|cache|pack|version|--version|-v)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -647,7 +647,7 @@
             "cmd": "python3",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               }
             ]
           },
@@ -656,7 +656,7 @@
             "cmd": "python3",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -668,7 +668,7 @@
             "cmd": "python3",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -683,7 +683,7 @@
             "cmd": "python3",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -701,7 +701,7 @@
             "cmd": "python3",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -722,7 +722,7 @@
             "cmd": "python3",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -746,7 +746,7 @@
             "cmd": "python3",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -773,7 +773,7 @@
             "cmd": "python3",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -808,7 +808,7 @@
             "cmd": "python",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               }
             ]
           },
@@ -817,7 +817,7 @@
             "cmd": "python",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -829,7 +829,7 @@
             "cmd": "python",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -844,7 +844,7 @@
             "cmd": "python",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -862,7 +862,7 @@
             "cmd": "python",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -883,7 +883,7 @@
             "cmd": "python",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -907,7 +907,7 @@
             "cmd": "python",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -934,7 +934,7 @@
             "cmd": "python",
             "args": [
               {
-                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^[\\w]+$"
+                "validator": "^[\\w./\\-]+\\.py$|^-[cmV]$|^--version$|^-m$|^\\w+$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -969,7 +969,7 @@
             "cmd": "pip",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               }
             ]
           },
@@ -978,7 +978,7 @@
             "cmd": "pip",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -990,7 +990,7 @@
             "cmd": "pip",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1005,7 +1005,7 @@
             "cmd": "pip",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1023,7 +1023,7 @@
             "cmd": "pip",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1044,7 +1044,7 @@
             "cmd": "pip",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1068,7 +1068,7 @@
             "cmd": "pip",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1095,7 +1095,7 @@
             "cmd": "pip",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1130,7 +1130,7 @@
             "cmd": "pip3",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               }
             ]
           },
@@ -1139,7 +1139,7 @@
             "cmd": "pip3",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1151,7 +1151,7 @@
             "cmd": "pip3",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1166,7 +1166,7 @@
             "cmd": "pip3",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1184,7 +1184,7 @@
             "cmd": "pip3",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1205,7 +1205,7 @@
             "cmd": "pip3",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1229,7 +1229,7 @@
             "cmd": "pip3",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1256,7 +1256,7 @@
             "cmd": "pip3",
             "args": [
               {
-                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$|^[\\w@./\\->=<]+$"
+                "validator": "^(install|uninstall|list|show|freeze|search|check|download|wheel|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1291,7 +1291,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
               }
             ]
           },
@@ -1300,7 +1300,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1312,7 +1312,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1327,7 +1327,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1345,7 +1345,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1366,7 +1366,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1390,7 +1390,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1417,7 +1417,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1452,7 +1452,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$"
               }
             ]
           },
@@ -1461,7 +1461,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1473,7 +1473,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1488,7 +1488,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1506,7 +1506,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1527,7 +1527,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1551,7 +1551,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1578,7 +1578,7 @@
             "cmd": "cargo",
             "args": [
               {
-                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$|^[\\w./-]+$"
+                "validator": "^(build|run|test|check|clean|update|new|init|add|remove|bench|doc|install|--version|-V)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"

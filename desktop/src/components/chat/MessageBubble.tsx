@@ -18,7 +18,12 @@ interface MessageBubbleProps {
 }
 
 
-export default function MessageBubble({ message, onCopy, onRegenerate, selectedProjectId = null, selectedProjectPath }: MessageBubbleProps) {
+// P1 : deux variantes construites UNE SEULE fois (avant : l'objet était recréé
+// à chaque render, et chaque flush de streaming re-parseait TOUTES les bulles).
+const MD_COMPONENTS_FULL = markdownComponents({ hideCodeActions: false });
+const MD_COMPONENTS_HIDE_ACTIONS = markdownComponents({ hideCodeActions: true });
+
+function MessageBubbleImpl({ message, onCopy, onRegenerate, selectedProjectId = null, selectedProjectPath }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
   const [showThinking, setShowThinking] = useState(false);
   const [expandedLong, setExpandedLong] = useState(false);
@@ -87,7 +92,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
   }
 
   // Rendu Markdown partagé (chat, onglet Plan)
-  const mdComponents = markdownComponents({ hideCodeActions: isVibecoding });
+  const mdComponents = isVibecoding ? MD_COMPONENTS_HIDE_ACTIONS : MD_COMPONENTS_FULL;
 
   // ===== RÉPONSE DE L'AGENT — à gauche, sans bulle, même colonne que l'utilisateur =====
   return (
@@ -249,3 +254,5 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     </div>
   );
 }
+
+export default React.memo(MessageBubbleImpl);

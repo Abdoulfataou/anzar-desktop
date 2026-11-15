@@ -242,6 +242,12 @@ class AIService {
     const controller = new AbortController();
     this.abortControllers.set(requestId, controller);
 
+    // B1 : le signal de l'appelant (bouton Stop / abort d'agent) doit couper
+    // le fetch réel — sinon le stream continue en arrière-plan ET est facturé.
+    const onExternalAbort = () => controller.abort();
+    options.signal?.addEventListener('abort', onExternalAbort);
+    if (options.signal?.aborted) controller.abort();
+
     const body: Record<string, any> = {
       model: modelId,
       messages,
@@ -353,30 +359,29 @@ class AIService {
             if (!trimmed || trimmed === 'data: [DONE]') continue;
             if (!trimmed.startsWith('data: ')) continue;
 
+            // B2 : on sépare le parse (chunk malformé → skip) de l'erreur SSE
+            // (crédit insuffisant, 401… → doit remonter à l'appelant).
+            let json: any;
             try {
-              const json = JSON.parse(trimmed.slice(6));
+              json = JSON.parse(trimmed.slice(6));
+            } catch {
+              continue; // chunk malformé — on l'ignore
+            }
 
-              // Check for mid-stream errors (API error in SSE payload)
-              if (json.error) {
-                throw new Error(json.error.message || 'Erreur API dans le stream');
-              }
+            if (json.error) {
+              // Erreur réelle du serveur, au milieu du stream : NE PAS l'avaler.
+              throw new StreamAPIError(json.error.message || 'Erreur API dans le stream');
+            }
 
-              const delta = json.choices?.[0]?.delta;
-              if (delta) {
-                yielded = true;
-                yield {
-                  content: delta.content || undefined,
-                  reasoning_content: delta.reasoning_content || undefined,
-                  tool_calls: delta.tool_calls || undefined,
-                  finish_reason: json.choices[0].finish_reason || undefined,
-                };
-              }
-            } catch (parseError: any) {
-              // Only throw if it's a mid-stream API error, skip malformed JSON chunks
-              if (parseError.message?.includes('Erreur API')) {
-                throw parseError;
-              }
-              // Otherwise silently skip malformed chunks
+            const delta = json.choices?.[0]?.delta;
+            if (delta) {
+              yielded = true;
+              yield {
+                content: delta.content || undefined,
+                reasoning_content: delta.reasoning_content || undefined,
+                tool_calls: delta.tool_calls || undefined,
+                finish_reason: json.choices[0].finish_reason || undefined,
+              };
             }
           }
         } catch (timeoutError: any) {
@@ -394,6 +399,7 @@ class AIService {
         if (
           attempt < maxAttempts - 1 &&
           !yielded &&
+          !(err instanceof StreamAPIError) && // erreur métier (crédit, 401…) : pas de retry
           this.isOnline() &&
           !controller.signal.aborted &&
           (this.isTransientFetchError(err) || /timeout|abort/i.test(String(err?.message || '')))
@@ -407,6 +413,7 @@ class AIService {
         throw err;
       } finally {
         clearTimeout(fetchTimeoutId);
+        options.signal?.removeEventListener('abort', onExternalAbort);
         this.abortControllers.delete(requestId);
       }
     }
@@ -719,6 +726,15 @@ Sois précis sur les fichiers à créer. Chaque fichier doit avoir un chemin ré
 // ============================================================================
 // SINGLETON EXPORT
 // ============================================================================
+
+/** Erreur SSE renvoyée par le serveur EN COURS de stream (ex: crédit insuffisant).
+ *  Doit traverser le parseur sans être confondue avec un chunk malformé. */
+class StreamAPIError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StreamAPIError';
+  }
+}
 
 export const aiService = new AIService();
 

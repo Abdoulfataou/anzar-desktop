@@ -75,10 +75,49 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // ── Terminal ──
-  const [termLines, setTermLines] = useState<string[]>([]);
+  // B3 : la sortie arrive via le bus d'événements du service (runCommand ne
+  // renvoie qu'un processId) — on suit le process courant jusqu'à process-end.
+  type TermLine = { text: string; kind: 'cmd' | 'out' | 'err' | 'sys' };
+  const [termLines, setTermLines] = useState<TermLine[]>([]);
   const [termInput, setTermInput] = useState('');
   const [termBusy, setTermBusy] = useState(false);
+  const [termProcId, setTermProcId] = useState<string | null>(null);
+  const termProcIdRef = useRef<string | null>(null);
   const termBottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const unsub = terminalService.onEvent((ev) => {
+      // On n'écoute que le process lancé depuis CET onglet terminal
+      if (ev.type === 'output' || ev.type === 'process-end' || ev.type === 'process-error') {
+        if (ev.processId !== termProcIdRef.current) return;
+        if (ev.type === 'output') {
+          const kind: TermLine['kind'] =
+            ev.data.type === 'stderr' || ev.data.type === 'error' ? 'err'
+            : ev.data.type === 'system' || ev.data.type === 'success' ? 'sys'
+            : 'out';
+          setTermLines((l) => {
+            const parts = ev.data.content.split('\n').filter(Boolean).slice(-50);
+            return [...l, ...parts.map((text) => ({ text, kind }))].slice(-500);
+          });
+        } else if (ev.type === 'process-end') {
+          setTermLines((l) => [...l, { text: `— processus terminé (code ${ev.exitCode}) —`, kind: 'sys' }]);
+          setTermBusy(false);
+          setTermProcId(null);
+          termProcIdRef.current = null;
+        } else if (ev.type === 'process-error') {
+          setTermLines((l) => [...l, { text: `✗ ${ev.error}`, kind: 'err' }]);
+          setTermBusy(false);
+          setTermProcId(null);
+          termProcIdRef.current = null;
+        }
+      }
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    requestAnimationFrame(() => termBottomRef.current?.scrollIntoView({ block: 'end' }));
+  }, [termLines]);
 
   // ── Chargement du dossier ──
   // Seule la LISTE des fichiers est lue (rapide, même sur un gros projet) ;
@@ -229,18 +268,24 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
     const cmd = termInput.trim();
     if (!cmd || !workspacePath || termBusy) return;
     setTermInput('');
-    setTermLines((l) => [...l, `$ ${cmd}`]);
+    setTermLines((l) => [...l, { text: `$ ${cmd}`, kind: 'cmd' as const }]);
     setTermBusy(true);
-    try {
-      const out = await terminalService.runCommand(cmd, { cwd: workspacePath });
-      setTermLines((l) => [...l, ...(out || '(pas de sortie)').split('\n').slice(-200)].slice(-400));
-    } catch (e: any) {
-      setTermLines((l) => [...l, `✗ ${e?.message || 'commande refusée (allowlist)'}`]);
-    } finally {
-      setTermBusy(false);
-      requestAnimationFrame(() => termBottomRef.current?.scrollIntoView({ block: 'end' }));
-    }
+    // runCommand résout dès le spawn (il renvoie le processId) : le busy
+    // s'arrête sur process-end/process-error du bus, pas sur ce await.
+    const procId = await terminalService.runCommand(cmd, { cwd: workspacePath });
+    termProcIdRef.current = procId;
+    setTermProcId(procId);
   }, [termInput, workspacePath, termBusy]);
+
+  const killTerminalCommand = useCallback(async () => {
+    const procId = termProcIdRef.current;
+    if (!procId) return;
+    await terminalService.killProcess(procId).catch(() => {});
+    setTermLines((l) => [...l, { text: '— processus arrêté —', kind: 'sys' as const }]);
+    setTermBusy(false);
+    setTermProcId(null);
+    termProcIdRef.current = null;
+  }, []);
 
   const filesList = useMemo(() => Array.from(files.values()).sort((a, b) => a.path.localeCompare(b.path)), [files]);
 
@@ -395,8 +440,11 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
                 <p className="text-text-muted/60">Terminal — les commandes s'exécutent dans {workspacePath.split('/').pop()} (allowlist : node, npm, git, python…).</p>
               )}
               {termLines.map((l, i) => (
-                <pre key={i} className={cn('whitespace-pre-wrap break-all', l.startsWith('$') ? 'text-accent-primary' : l.startsWith('✗') ? 'text-accent-error' : 'text-text-secondary')}>
-                  {l}
+                <pre key={i} className={cn(
+                  'whitespace-pre-wrap break-all',
+                  l.kind === 'cmd' ? 'text-accent-primary' : l.kind === 'err' ? 'text-accent-error' : l.kind === 'sys' ? 'text-text-muted' : 'text-text-secondary'
+                )}>
+                  {l.text}
                 </pre>
               ))}
               <div ref={termBottomRef} />
@@ -407,11 +455,22 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
                 value={termInput}
                 onChange={(e) => setTermInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void runTerminalCommand(); }}
-                placeholder="npm install…"
+                placeholder={termBusy ? 'commande en cours…' : 'npm install…'}
                 disabled={termBusy}
                 className="flex-1 bg-transparent text-text-primary placeholder-text-muted/50 focus:outline-none disabled:opacity-50"
               />
-              {termBusy && <Loader2 size={12} className="animate-spin text-text-muted" />}
+              {termBusy && (
+                <>
+                  <Loader2 size={12} className="animate-spin text-text-muted" />
+                  <button
+                    onClick={() => void killTerminalCommand()}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] text-accent-error hover:bg-accent-error/10 transition-colors"
+                    title="Arrêter le processus"
+                  >
+                    Stop
+                  </button>
+                </>
+              )}
             </div>
           </div>
         )}
