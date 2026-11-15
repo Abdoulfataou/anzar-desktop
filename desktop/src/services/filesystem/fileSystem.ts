@@ -207,13 +207,16 @@ class FileSystemService {
    */
   async readProjectFiles(
     rootPath: string,
-    maxDepth: number = 6
+    maxDepth: number = 6,
+    /** Arrête la lecture après ce nombre de fichiers (gros projets) */
+    maxFiles: number = Infinity
   ): Promise<ProjectFile[]> {
     const tree = await this.readDirectoryTree(rootPath, maxDepth);
     const files: ProjectFile[] = [];
 
     const collectFiles = async (nodes: FileNode[], basePath: string) => {
       for (const node of nodes) {
+        if (files.length >= maxFiles) return;
         if (node.type === 'file') {
           try {
             const content = await this.readFile(node.path);

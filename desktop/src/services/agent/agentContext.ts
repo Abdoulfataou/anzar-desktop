@@ -45,7 +45,8 @@ const MAX_FILE_SIZE_TO_INDEX = 120_000;
 // ============================================================================
 
 async function readProjectAsRecord(projectRoot: string): Promise<Record<string, string>> {
-  const files = await fileSystemService.readProjectFiles(projectRoot, 6);
+  // Lecture plafonnée : au-delà, l'agent explore lui-même avec list_dir / search_files
+  const files = await fileSystemService.readProjectFiles(projectRoot, 6, MAX_INDEXED_FILES * 2);
   const record: Record<string, string> = {};
   let count = 0;
   for (const f of files) {
@@ -184,6 +185,13 @@ début de chaque session. Modifiable à la main.
  * Construit le contexte complet de l'agent pour une session.
  * Ne throw jamais : en cas d'échec d'indexation, renvoie un contexte minimal.
  */
+const INDEX_CACHE_MS = 2 * 60 * 1000;
+const indexCache = new Map<string, {
+  at: number;
+  files: Record<string, string>;
+  index: ReturnType<typeof codeIndexer.indexProject>;
+}>();
+
 export async function buildAgentContext(
   projectRoot: string,
   task: string
@@ -193,8 +201,18 @@ export async function buildAgentContext(
   const memory = await loadProjectMemory(projectRoot);
 
   try {
-    const files = await readProjectAsRecord(projectRoot);
-    const index = codeIndexer.indexProject(files);
+    // Index réutilisé 2 minutes : relire tout le projet à chaque message retardait
+    // le démarrage de l'agent sur les gros dossiers. La carte n'est qu'un repère.
+    const cached = indexCache.get(projectRoot);
+    let files: Record<string, string>;
+    let index: ReturnType<typeof codeIndexer.indexProject>;
+    if (cached && Date.now() - cached.at < INDEX_CACHE_MS) {
+      ({ files, index } = cached);
+    } else {
+      files = await readProjectAsRecord(projectRoot);
+      index = codeIndexer.indexProject(files);
+      indexCache.set(projectRoot, { at: Date.now(), files, index });
+    }
     return {
       codeMap: buildCodeMap(index),
       taskHints: buildTaskHints(index, files, task),

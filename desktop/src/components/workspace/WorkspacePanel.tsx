@@ -17,6 +17,7 @@ import StudioFileTree from '@/components/vibecoding/StudioFileTree';
 import StudioEditor from '@/components/vibecoding/StudioEditor';
 import StudioPreview from '@/components/vibecoding/StudioPreview';
 import type { StudioFile } from '@/types/studio';
+import type { FileNode } from '@/types/file-project';
 import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
 
 interface WorkspacePanelProps {
@@ -67,24 +68,90 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
   const termBottomRef = useRef<HTMLDivElement>(null);
 
   // ── Chargement du dossier ──
-  const loadWorkspace = useCallback(async () => {
+  // Seule la LISTE des fichiers est lue (rapide, même sur un gros projet) ;
+  // le contenu d'un fichier n'est lu qu'à l'ouverture de son onglet.
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
+
+  const listWorkspace = useCallback(async () => {
     if (!workspacePath) return;
     setLoading(true);
     try {
-      const projectFiles = await fileSystemService.readProjectFiles(workspacePath, 8);
-      const map = new Map<string, StudioFile>();
-      for (const f of projectFiles) {
-        map.set(f.path, { path: f.path, content: f.content, language: f.language, status: 'done' });
-      }
-      setFiles(map);
+      const root = workspacePath.replace(/[\\/]+$/, '');
+      const tree = await fileSystemService.readDirectoryTree(root, 8);
+      const paths: string[] = [];
+      const walk = (nodes: FileNode[]) => {
+        for (const n of nodes) {
+          if (n.type === 'file') paths.push(n.path.slice(root.length).replace(/^[\\/]+/, '').replace(/\\/g, '/'));
+          else if (n.children) walk(n.children);
+        }
+      };
+      walk(tree);
+      setFiles((prev) => {
+        const next = new Map<string, StudioFile>();
+        for (const p of paths) {
+          next.set(p, prev.get(p) ?? {
+            path: p, content: '', language: fileSystemService.getLanguage(p), status: 'done', loaded: false,
+          });
+        }
+        return next;
+      });
     } catch (e) {
-      console.error('Workspace load failed:', e);
+      console.error('Workspace list failed:', e);
     } finally {
       setLoading(false);
     }
   }, [workspacePath]);
 
-  useEffect(() => { void loadWorkspace(); }, [loadWorkspace, refreshKey]);
+  /** Lit un fichier ; `trackChange` garde l'ancienne version pour la vue diff. */
+  const loadContent = useCallback(async (path: string, trackChange = false) => {
+    if (!workspacePath) return;
+    let text: string;
+    try {
+      text = await fileSystemService.readFile(`${workspacePath.replace(/[\\/]+$/, '')}/${path}`);
+    } catch {
+      return; // supprimé ou illisible : la liste se mettra à jour
+    }
+    setFiles((prev) => {
+      const f = prev.get(path);
+      if (!f) return prev;
+      if (f.loaded && f.content === text) return prev;
+      const next = new Map(prev);
+      next.set(path, {
+        ...f,
+        content: text,
+        loaded: true,
+        previousContent: trackChange && f.loaded ? f.content : f.previousContent,
+      });
+      return next;
+    });
+  }, [workspacePath]);
+
+  /** Relit la liste puis le contenu des onglets ouverts (après une action de l'agent). */
+  const refreshAll = useCallback(async () => {
+    await listWorkspace();
+    for (const t of tabsRef.current) {
+      if (t.kind === 'file') void loadContent(t.path, true);
+    }
+  }, [listWorkspace, loadContent]);
+
+  // Nouveau dossier : on repart de zéro
+  useEffect(() => { setFiles(new Map()); void listWorkspace(); }, [listWorkspace]);
+
+  // L'agent modifie souvent plusieurs fichiers d'affilée : une seule relecture par rafale
+  const firstRefresh = useRef(true);
+  useEffect(() => {
+    if (firstRefresh.current) { firstRefresh.current = false; return; }
+    const t = setTimeout(() => void refreshAll(), 300);
+    return () => clearTimeout(t);
+  }, [refreshKey, refreshAll]);
+
+  // Onglet de fichier ouvert → son contenu est lu s'il ne l'est pas encore
+  useEffect(() => {
+    for (const t of tabs) {
+      if (t.kind === 'file' && files.has(t.path) && !files.get(t.path)!.loaded) void loadContent(t.path);
+    }
+  }, [tabs, files, loadContent]);
 
   // ── Le dev server démarre → preview ──
   useEffect(() => onDevServerUrl((url) => { setPreviewUrl(url); openTab({ id: 'preview', kind: 'preview' }); }), [openTab]);
@@ -236,7 +303,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
         <div className="ml-auto flex items-center gap-1 flex-shrink-0">
           {loading && <Loader2 size={12} className="animate-spin text-text-muted" />}
           <button
-            onClick={() => void loadWorkspace()}
+            onClick={() => void refreshAll()}
             className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
             title="Rafraîchir le dossier"
           >
@@ -257,7 +324,11 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
         {/* Fichier ouvert */}
         {active.kind === 'file' && (
           <div className="flex-1 min-w-0 overflow-hidden">
-            {files.has(active.path) ? (
+            {files.has(active.path) && !files.get(active.path)!.loaded ? (
+              <div className="flex items-center justify-center h-full text-text-muted text-ui-caption">
+                <Loader2 size={14} className="animate-spin mr-2" /> Lecture du fichier…
+              </div>
+            ) : files.has(active.path) ? (
               <StudioEditor
                 files={filesList}
                 selectedFile={active.path}
