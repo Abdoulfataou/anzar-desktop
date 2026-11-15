@@ -641,11 +641,17 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               })
             : { output: 'Aucun dossier de travail ouvert.', isError: true };
 
-          // Delta de lignes pour les edits
-          if (['write_file', 'edit_file'].includes(call.function.name)) {
-            const body = typeof result.output === 'string' ? result.output : '';
-            const m = body.match(/\+(\d+)(?:\s*\/\s*−(\d+)|\s*-\s*(\d+))?/);
-            ev.delta = m ? [parseInt(m[1]), parseInt(m[2] || m[3] || '0')] : undefined;
+          // B7 : delta de lignes calculé depuis les ARGS de l'outil (l'ancien
+          // parse attendait un format qu'aucun exécuteur ne produisait).
+          if (!result.isError && call.function.name === 'write_file' && typeof args.content === 'string') {
+            const lines = args.content.split('\n').length;
+            ev.delta = [lines, 0];
+          } else if (!result.isError && call.function.name === 'edit_file') {
+            // Sans replace_all : exactement 1 remplacement. Avec replace_all,
+            // le compte réel est dans result.output — on affiche le minimum (1).
+            const oldLines = typeof args.old_text === 'string' ? args.old_text.split('\n').length : 0;
+            const newLines = typeof args.new_text === 'string' ? args.new_text.split('\n').length : 0;
+            ev.delta = [newLines, oldLines];
           }
 
           ev.status = result.isError ? 'error' : 'ok';
