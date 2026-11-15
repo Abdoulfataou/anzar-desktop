@@ -50,7 +50,7 @@ export default function ProjectPicker({
   const item = 'w-full flex items-center gap-2 px-2 h-8 rounded-md text-left text-ui-base hover:bg-surface-hover transition-colors';
 
   return (
-    <div ref={ref} className="relative z-50 max-w-3xl mx-auto px-4 sm:px-6">
+    <div ref={ref} className="relative z-30 max-w-3xl mx-auto px-4 sm:px-6">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}

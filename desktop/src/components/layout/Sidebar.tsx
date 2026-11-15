@@ -124,8 +124,11 @@ export default function Sidebar({ className }: { className?: string }) {
 
   const q = query.trim().toLowerCase();
   const sorted = useMemo(
-    () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
-    [conversations]
+    // Une tâche vide n'apparaît pas dans la liste (sauf celle qui est affichée), comme Claude
+    () => [...conversations]
+      .filter((c) => c.messages.length > 0 || c.id === activeConversationId)
+      .sort((a, b) => b.updatedAt - a.updatedAt),
+    [conversations, activeConversationId]
   );
   const visible = q ? sorted.filter((c) => (c.title || '').toLowerCase().includes(q)) : sorted;
   const projectIds = new Set(projects.map((p) => p.id));
