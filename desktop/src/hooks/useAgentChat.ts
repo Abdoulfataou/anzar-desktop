@@ -339,6 +339,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           apiHistoryRef.current.push(system, ...prior);
         } else {
           apiHistoryRef.current[0] = system;
+          // Si la réponse précédente a été coupée, l'historique doit rester valide pour « continue »
+          closeDanglingToolCalls(apiHistoryRef.current);
         }
         apiHistoryRef.current.push({ role: 'user', content: apiContent });
       }
