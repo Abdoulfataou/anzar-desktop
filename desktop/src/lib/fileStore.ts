@@ -177,6 +177,8 @@ function serializeTask(c: Conversation): string {
     const slim: Message = {
       ...m,
       isStreaming: false,
+      notice: undefined,
+      resumable: undefined, // la reprise ne survit pas au redémarrage
       toolEvents: m.toolEvents?.map((e) => ({ ...e, output: e.output?.slice(0, MAX_TOOL_OUTPUT_ON_DISK) })),
     };
     lines.push(JSON.stringify(slim));

@@ -74,7 +74,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
   }, []);
 
   // ── Agent chat ──
-  const { sendMessage, stop, isGenerating, approval, resolveApproval } = useAgentChat({
+  const { sendMessage, stop, isGenerating, approval, resolveApproval, resume } = useAgentChat({
     workspacePath,
     workspaceName: activeProject?.name,
     model: selectedModel,
@@ -140,6 +140,17 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
 
   const workspaceName = activeProject?.name || null;
 
+  // Bouton sous une réponse en erreur : reprise à l'étape coupée si possible,
+  // sinon on renvoie la demande d'origine.
+  const handleRetry = useCallback((assistantMessageId: string) => {
+    if (isGenerating) return;
+    if (resume(assistantMessageId)) return;
+    const all = activeConversation?.messages || [];
+    const idx = all.findIndex((m) => m.id === assistantMessageId);
+    const previousUser = all.slice(0, Math.max(idx, 0)).reverse().find((m) => m.role === 'user');
+    if (previousUser?.content) void sendMessage(previousUser.content);
+  }, [isGenerating, resume, activeConversation, sendMessage]);
+
   return (
     <div className="h-full min-h-0 flex flex-col">
       {/* ── Split chat | workspace ── */}
@@ -185,7 +196,7 @@ export default function WorkspaceView({ onlineStatus = true }: { onlineStatus?: 
             </div>
 
             {/* Messages */}
-            <MessageList messages={messages} isLoading={isGenerating} />
+            <MessageList messages={messages} isLoading={isGenerating} onRegenerateMessage={handleRetry} />
 
             {/* Demande d'accord (modes « Demander » et « Modifier automatiquement ») */}
             {approval && (

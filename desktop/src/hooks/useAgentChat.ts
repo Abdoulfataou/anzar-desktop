@@ -11,7 +11,7 @@
  * usageStore (débit FCFA), chatStore (persistance conversation).
  */
 import { useCallback, useRef, useState } from 'react';
-import { aiService } from '@/services/ai/ai';
+import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
 import { buildAgentSystemPrompt, type AgentPromptContext } from '@/services/agent/agentPrompts';
 import { buildAgentContext } from '@/services/agent/agentContext';
@@ -29,6 +29,49 @@ export interface ApprovalRequest {
   id: string;
   name: string;
   summary: string;
+}
+
+/** Attente avant chaque nouvelle tentative quand une étape est coupée (ms). */
+const RETRY_DELAYS = [2000, 5000, 10000];
+
+/** Une erreur de solde ou d'authentification ne se règle pas en réessayant. */
+function isRetryable(e: any): boolean {
+  const msg = String(e?.message || '');
+  return !/cr[ée]dit|quota|solde|recharge|401|402|403|non autoris|unauthori[sz]ed|token/i.test(msg);
+}
+
+function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+  });
+}
+
+/** Tout ce qu'il faut pour reprendre une réponse là où elle s'est arrêtée. */
+interface ResumeState {
+  convId: string;
+  assistantId: string;
+  accContent: string;
+  events: ToolEvent[];
+  snapshots: Snapshots;
+  promptTokens: number;
+  completionTokens: number;
+  balanceBefore: number | null;
+}
+
+/** Après une coupure, chaque appel d'outil annoncé doit avoir une réponse, sinon l'API refuse l'historique. */
+function closeDanglingToolCalls(history: APIMessage[]): void {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const m = history[i];
+    if (m.role !== 'assistant' || !m.tool_calls?.length) continue;
+    const answeredIds = new Set(history.slice(i + 1).filter((x) => x.role === 'tool').map((x) => x.tool_call_id));
+    for (const call of m.tool_calls) {
+      if (!answeredIds.has(call.id)) {
+        history.push({ role: 'tool', tool_call_id: call.id, content: 'Interrompu par une coupure. Relance cet outil si son résultat est nécessaire.' });
+      }
+    }
+    return;
+  }
 }
 
 const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember']);
@@ -160,6 +203,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   // Historique API complet de la conversation (tool exchanges inclus), par conversation
   const apiHistoryRef = useRef<APIMessage[]>([]);
   const activeConvRef = useRef<string | null>(null);
+  const resumeRef = useRef<ResumeState | null>(null);
 
   const activeConversationId = useChatStore((s) => s.activeConversationId);
   const createConversation = useChatStore((s) => s.createConversation);
@@ -179,14 +223,15 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     resolveApproval(false);
   }, [resolveApproval]);
 
-  const sendMessage = useCallback(async (content: string, rawAttachments: ChatAttachment[] = []) => {
-    if (!content.trim() || isGenerating) return;
+  const sendMessage = useCallback(async (content: string, rawAttachments: ChatAttachment[] = [], resumeFrom?: ResumeState) => {
+    if ((!content.trim() && !resumeFrom) || isGenerating) return;
     const attachments = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
     const apiContent = withAttachments(content, attachments);
-    const convId = ensureConversation();
+    const convId = resumeFrom?.convId ?? ensureConversation();
+    if (!resumeFrom) resumeRef.current = null; // un nouveau message rend l'ancienne reprise caduque
 
     // Reset de l'historique API si on change de conversation
-    if (activeConvRef.current !== convId) {
+    if (!resumeFrom && activeConvRef.current !== convId) {
       apiHistoryRef.current = [];
       activeConvRef.current = convId;
     }
@@ -206,28 +251,39 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         ? attachments.map(({ excerpt: _excerpt, ...rest }) => rest)
         : undefined,
     };
-    addMessage(userMsg);
+    if (!resumeFrom) addMessage(userMsg);
 
-    const assistantId = `msg_${Date.now()}_a`;
-    addMessage({
-      id: assistantId,
-      role: 'assistant',
-      content: '',
-      timestamp: Date.now(),
-      model,
-      isStreaming: true,
-      toolEvents: [],
-    });
+    const assistantId = resumeFrom?.assistantId ?? `msg_${Date.now()}_a`;
+    if (resumeFrom) {
+      // Reprise : on continue DANS la même réponse, sans le message d'erreur
+      updateMessage(assistantId, {
+        content: resumeFrom.accContent,
+        isStreaming: true,
+        isError: false,
+        resumable: false,
+        toolEvents: [...resumeFrom.events],
+      });
+    } else {
+      addMessage({
+        id: assistantId,
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now(),
+        model,
+        isStreaming: true,
+        toolEvents: [],
+      });
+    }
 
-    let accContent = '';
+    let accContent = resumeFrom?.accContent ?? '';
     let accReasoning = '';
-    const events: ToolEvent[] = [];
-    const snapshots: Snapshots = new Map();
-    let promptTokens = 0;
-    let completionTokens = 0;
+    const events: ToolEvent[] = resumeFrom?.events ?? [];
+    const snapshots: Snapshots = resumeFrom?.snapshots ?? new Map();
+    let promptTokens = resumeFrom?.promptTokens ?? 0;
+    let completionTokens = resumeFrom?.completionTokens ?? 0;
     const t0 = Date.now();
     // Solde serveur avant la tâche : la différence à la fin = coût réel facturé.
-    const balanceBefore = await refreshCredits();
+    const balanceBefore = resumeFrom ? resumeFrom.balanceBefore : await refreshCredits();
     const priceIn = model === 'thinking' ? 400 : 250;
     const priceOut = model === 'thinking' ? 900 : 500;
     const historyTokens = () =>
@@ -243,45 +299,49 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     };
 
     try {
-      // ── System prompt : agent si workspace, chat simple sinon ──
-      let system: APIMessage;
-      if (workspacePath) {
-        const ctx = await buildAgentContext(workspacePath, content).catch(() => null);
-        const promptCtx: AgentPromptContext = {
-          projectName: workspaceName || workspacePath.split('/').pop() || 'projet',
-          projectRoot: workspacePath,
-          codeMap: ctx?.codeMap,
-          taskHints: ctx?.taskHints,
-          memory: ctx?.memory,
-          platform: navigator.platform.toLowerCase().includes('win') ? 'windows' : 'macos',
-        };
-        system = {
-          role: 'system',
-          content: buildAgentSystemPrompt(promptCtx) + (modeRef.current === 'plan' ? PLAN_MODE_PROMPT : ''),
-        };
+      if (resumeFrom) {
+        closeDanglingToolCalls(apiHistoryRef.current);
       } else {
-        system = {
-          role: 'system',
-          content:
-            'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct. ' +
-            "Aucun dossier de travail n'est ouvert : si l'utilisateur demande à créer ou modifier un projet, " +
-            "propose-lui d'ouvrir un dossier (bouton « Ouvrir un dossier ») pour que tu puisses agir avec tes outils.",
-        };
-      }
+        // ── System prompt : agent si workspace, chat simple sinon ──
+        let system: APIMessage;
+        if (workspacePath) {
+          const ctx = await buildAgentContext(workspacePath, content).catch(() => null);
+          const promptCtx: AgentPromptContext = {
+            projectName: workspaceName || workspacePath.split('/').pop() || 'projet',
+            projectRoot: workspacePath,
+            codeMap: ctx?.codeMap,
+            taskHints: ctx?.taskHints,
+            memory: ctx?.memory,
+            platform: navigator.platform.toLowerCase().includes('win') ? 'windows' : 'macos',
+          };
+          system = {
+            role: 'system',
+            content: buildAgentSystemPrompt(promptCtx) + (modeRef.current === 'plan' ? PLAN_MODE_PROMPT : ''),
+          };
+        } else {
+          system = {
+            role: 'system',
+            content:
+              'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct. ' +
+              "Aucun dossier de travail n'est ouvert : si l'utilisateur demande à créer ou modifier un projet, " +
+              "propose-lui d'ouvrir un dossier (bouton « Ouvrir un dossier ») pour que tu puisses agir avec tes outils.",
+          };
+        }
 
-      if (apiHistoryRef.current.length === 0) {
-        // Reprise d'une conversation existante (redémarrage, changement de tâche) :
-        // on redonne à l'agent les échanges texte précédents.
-        const prior = (useChatStore.getState().conversations.find((c) => c.id === convId)?.messages || [])
-          .filter((m) => m.id !== userMsg.id && m.id !== assistantId)
-          .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
-          .slice(-12)
-          .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }) as APIMessage);
-        apiHistoryRef.current.push(system, ...prior);
-      } else {
-        apiHistoryRef.current[0] = system;
+        if (apiHistoryRef.current.length === 0) {
+          // Reprise d'une conversation existante (redémarrage, changement de tâche) :
+          // on redonne à l'agent les échanges texte précédents.
+          const prior = (useChatStore.getState().conversations.find((c) => c.id === convId)?.messages || [])
+            .filter((m) => m.id !== userMsg.id && m.id !== assistantId)
+            .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
+            .slice(-12)
+            .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }) as APIMessage);
+          apiHistoryRef.current.push(system, ...prior);
+        } else {
+          apiHistoryRef.current[0] = system;
+        }
+        apiHistoryRef.current.push({ role: 'user', content: apiContent });
       }
-      apiHistoryRef.current.push({ role: 'user', content: apiContent });
 
       let answered = false;
 
@@ -289,9 +349,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       for (let step = 0; step < MAX_STEPS; step++) {
         if (controller.signal.aborted) break;
 
-        const assembler = new Assembler();
+        let assembler = new Assembler();
         let stepContent = '';
-        let stepFinish: string | null = null;
 
         // Chaque étape renvoie tout l'historique au modèle : on le compte à chaque fois.
         promptTokens += historyTokens();
@@ -301,23 +360,35 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             ? AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name))
             : AGENT_TOOLS;
 
-        const stream = aiService.chatStream(apiHistoryRef.current, {
-          model,
-          tools,
-          signal: controller.signal,
-        });
-
-        try {
-          for await (const delta of stream) {
-            if (delta.content) stepContent += delta.content;
-            if (delta.reasoning_content) accReasoning += delta.reasoning_content;
-            if (delta.tool_calls) assembler.add(delta.tool_calls);
-            if (delta.finish_reason) stepFinish = delta.finish_reason;
+        // Une étape coupée par le réseau est réessayée seule : l'historique est intact,
+        // donc rien de ce qui a déjà été fait n'est perdu ni refacturé.
+        let stepReasoning = '';
+        for (let attempt = 0; ; attempt++) {
+          assembler = new Assembler();
+          stepContent = '';
+          stepReasoning = '';
+          try {
+            const stream = aiService.chatStream(apiHistoryRef.current, { model, tools, signal: controller.signal });
+            for await (const delta of stream) {
+              if (delta.content) stepContent += delta.content;
+              if (delta.reasoning_content) stepReasoning += delta.reasoning_content;
+              if (delta.tool_calls) assembler.add(delta.tool_calls);
+            }
+            break;
+          } catch (e: any) {
+            if (controller.signal.aborted) break;
+            if (attempt >= RETRY_DELAYS.length || !isRetryable(e)) throw e;
+            markSlowNetwork();
+            const wait = RETRY_DELAYS[attempt];
+            updateMessage(assistantId, {
+              notice: `Connexion perdue — nouvelle tentative dans ${wait / 1000} s (${attempt + 1}/${RETRY_DELAYS.length})…`,
+            });
+            await sleepAbortable(wait, controller.signal);
+            updateMessage(assistantId, { notice: undefined });
           }
-        } catch (e: any) {
-          if (controller.signal.aborted) break;
-          throw e;
         }
+        if (controller.signal.aborted) break;
+        accReasoning += stepReasoning;
 
         // Le texte de chaque étape s'accumule (les étapes tool-only sont vides)
         if (stepContent) {
@@ -456,6 +527,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         isStreaming: false,
         tokens: { prompt: promptTokens, completion: completionTokens },
         costFCFA,
+        notice: undefined,
+        resumable: false,
         toolEvents: [...events],
         fileChanges: workspacePath ? await collectChanges(assistantId, workspacePath, snapshots) : undefined,
       });
@@ -477,10 +550,16 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       else addUsage(record);
     } catch (e: any) {
       const aborted = controller.signal.aborted;
+      // On garde de quoi reprendre exactement ici (bouton « Reprendre »)
+      resumeRef.current = aborted
+        ? null
+        : { convId, assistantId, accContent, events, snapshots, promptTokens, completionTokens, balanceBefore };
       updateMessage(assistantId, {
+        notice: undefined,
+        resumable: !aborted,
         content: aborted
           ? (accContent ? `${accContent}\n\n_(interrompu)_` : '_(génération interrompue)_')
-          : `${accContent ? accContent + '\n\n' : ''}**Erreur** — ${e?.message || 'service indisponible'}. L'agent s'est arrêté avant de répondre ; renvoie ton message pour reprendre.`,
+          : `${accContent ? accContent + '\n\n' : ''}**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`,
         isStreaming: false,
         isError: !aborted,
         toolEvents: [...events],
@@ -496,5 +575,14 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     }
   }, [isGenerating, ensureConversation, addMessage, updateMessage, setStoreGenerating, model, workspacePath, workspaceName, onFileChanged, addUsage, addUsageRecord]);
 
-  return { sendMessage, stop, isGenerating, approval, resolveApproval };
+  /** Reprend une réponse interrompue par une erreur. Retourne false si la reprise n'est plus possible. */
+  const resume = useCallback((messageId: string): boolean => {
+    const state = resumeRef.current;
+    if (!state || state.assistantId !== messageId || activeConvRef.current !== state.convId) return false;
+    resumeRef.current = null;
+    void sendMessage('', [], state);
+    return true;
+  }, [sendMessage]);
+
+  return { sendMessage, stop, isGenerating, approval, resolveApproval, resume };
 }

@@ -39,6 +39,17 @@ function getBackendUrl(): string {
 // AI SERVICE CLASS
 // ============================================================================
 
+// ── Réseau lent : délais d'attente allongés ────────────────────────────────
+// Dès qu'une requête a dû être réessayée, on double les délais pendant 10 minutes,
+// pour ne pas abandonner une réponse qui arrive lentement.
+let slowUntil = 0;
+export function markSlowNetwork(): void { slowUntil = Date.now() + 10 * 60 * 1000; }
+function isSlowNetwork(): boolean {
+  if (Date.now() < slowUntil) return true;
+  const c = (navigator as any)?.connection;
+  return !!c && (['slow-2g', '2g', '3g'].includes(c.effectiveType) || (typeof c.rtt === 'number' && c.rtt > 800));
+}
+
 class AIService {
   private abortControllers = new Map<string, AbortController>();
 
@@ -262,7 +273,8 @@ class AIService {
     // Set up fetch timeout controller
     // Use a longer timeout when messages contain attachments/large content
     const totalContentLength = messages.reduce((sum, m) => sum + (typeof m.content === 'string' ? m.content.length : JSON.stringify(m.content).length), 0);
-    const fetchTimeout = totalContentLength > 10000 ? 90000 : 45000; // 90s for large payloads, 45s otherwise
+    const slowFactor = isSlowNetwork() ? 2 : 1;
+    const fetchTimeout = (totalContentLength > 10000 ? 90000 : 45000) * slowFactor; // 45 s (90 s si gros envoi), doublé en réseau lent
     const fetchTimeoutController = new AbortController();
     const fetchTimeoutId = setTimeout(() => fetchTimeoutController.abort(), fetchTimeout);
 
@@ -310,7 +322,7 @@ class AIService {
         const decoder = new TextDecoder();
         let buffer = '';
         let lastChunkTime = Date.now();
-        const CHUNK_TIMEOUT = 45000; // 45s chunk-level timeout
+        const CHUNK_TIMEOUT = 45000 * slowFactor; // 45 s entre deux morceaux, 90 s en réseau lent
 
         while (true) {
         // Set up chunk timeout
@@ -322,7 +334,7 @@ class AIService {
           const readPromise = reader.read();
           const timeoutPromise = new Promise<never>((_, reject) =>
             chunkTimeoutController.signal.addEventListener('abort', () => {
-              reject(new Error('Timeout lors de la réception de données (45s)'));
+              reject(new Error(`Aucune donnée reçue pendant ${CHUNK_TIMEOUT / 1000} s`));
             })
           );
 

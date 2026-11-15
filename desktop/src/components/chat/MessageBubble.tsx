@@ -322,6 +322,22 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
           </div>
         )}
 
+        {/* État temporaire (nouvelle tentative réseau) */}
+        {message.isStreaming && message.notice && (
+          <p className="mt-1 text-[12px] text-text-muted">{message.notice}</p>
+        )}
+
+        {/* Erreur : reprise là où l'agent s'est arrêté (ou nouvel essai) */}
+        {message.isError && !message.isStreaming && onRegenerate && (
+          <button
+            onClick={onRegenerate}
+            className="mt-2 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
+          >
+            <RefreshCw size={13} />
+            {message.resumable ? 'Reprendre' : 'Réessayer'}
+          </button>
+        )}
+
         {/* Fichiers modifiés par l'agent + annulation */}
         {!message.isStreaming && message.fileChanges && message.fileChanges.length > 0 && (
           <FileChangesCard messageId={message.id} changes={message.fileChanges} undone={message.changesUndone} />
@@ -340,17 +356,6 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
             >
               {copied ? <Check size={13} className="text-accent-success" /> : <Copy size={13} />}
               <span>{copied ? 'Copié' : 'Copier'}</span>
-            </button>
-          )}
-
-          {/* Regenerate / Retry */}
-          {onRegenerate && (
-            <button
-              onClick={onRegenerate}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs text-text-muted hover:text-text-secondary hover:bg-surface-hover transition-all duration-200"
-            >
-              <RefreshCw size={13} />
-              <span>{message.isError ? 'Réessayer' : 'Régénérer'}</span>
             </button>
           )}
 
