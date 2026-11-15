@@ -4,7 +4,7 @@
  */
 import type { Components } from 'react-markdown';
 import CodeBlock from './CodeBlock';
-import { MermaidBlock, SvgBlock, getVisualKind } from './VisualBlock';
+import { MermaidBlock, SvgBlock, WidgetBlock, getVisualKind } from './VisualBlock';
 import { openExternalUrl } from '@/services/infra/externalLinks';
 
 export function markdownComponents({ hideCodeActions = false }: { hideCodeActions?: boolean } = {}): Components {
@@ -42,10 +42,11 @@ export function markdownComponents({ hideCodeActions = false }: { hideCodeAction
 
     const raw = String(children).replace(/\n$/, '');
 
-    // ── Visuels : les blocs mermaid/svg sont DESSINÉS, pas affichés en code ──
+    // ── Visuels : les blocs mermaid / svg / widget sont DESSINÉS, pas affichés en code ──
     const visualKind = getVisualKind(language, raw);
     if (visualKind === 'mermaid') return <MermaidBlock code={raw} />;
     if (visualKind === 'svg') return <SvgBlock code={raw} />;
+    if (visualKind === 'widget') return <WidgetBlock code={raw} />;
 
     return (
       <CodeBlock

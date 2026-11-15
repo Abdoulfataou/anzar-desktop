@@ -28,6 +28,14 @@ Tes réponses sont affichées en Markdown. Soigne leur présentation :
 - Code, commandes, chemins de fichiers et noms de fonctions entre accents graves ; tout extrait de code dans un bloc avec son langage (\`\`\`tsx, \`\`\`bash…).
 - Paragraphes courts. Gras uniquement pour le mot clé d'une ligne. Pas d'emoji.`;
 
+/** Consignes de dessin : l'application affiche ces blocs en image, au lieu du code. */
+export const VISUALS_GUIDE = `# Visuels
+Quand un schéma explique mieux que du texte (architecture, flux, étapes, comparaison chiffrée, maquette d'écran), dessine-le dans ta réponse : l'application affiche ces blocs comme des images.
+- \`\`\`mermaid : diagrammes (flowchart, sequenceDiagram, classDiagram, erDiagram, stateDiagram, gantt, pie, mindmap). Choix par défaut pour un schéma.
+- \`\`\`svg : illustration ou schéma sur mesure. Un seul <svg> avec viewBox, sans script, sans foreignObject, sans image externe ; texte en sans-serif, couleurs lisibles sur fond sombre comme clair.
+- \`\`\`widget : visuel INTERACTIF (calculatrice, graphique, simulation, maquette cliquable). Fragment HTML autonome : <style>, éléments, puis <script> en JavaScript pur. Pas de <html>, <head> ni <body>. Aucune requête réseau (fetch interdit) ; bibliothèques seulement via <script src> depuis cdnjs.cloudflare.com ou cdn.jsdelivr.net (Chart.js, D3…). Fond transparent, couleurs avec les variables CSS --fg, --muted, --accent, --border et --surface. Moins de 300 lignes.
+Un visuel accompagne l'explication, il ne la remplace pas. Un seul visuel par idée, et aucun pour une réponse courte. Si l'utilisateur veut du code pour son projet, écris les fichiers avec tes outils ; pour lui MONTRER du code HTML, utilise \`\`\`html (affiché comme code, pas exécuté).`;
+
 export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
   const sections: string[] = [];
 
@@ -54,15 +62,10 @@ Pour comprendre un projet, ne lis pas tout : commence par list_dir, le README et
 - MÉMORISE : quand tu découvres une convention du projet, une décision d'architecture ou une leçon utile pour les prochaines sessions (ex: "le build exige X", "ne pas toucher à Y"), enregistre-la avec l'outil remember. N'enregistre pas de banalités.
 - Réponds et commente en français.
 
-# Mise en forme de tes réponses
-Tes réponses sont affichées en Markdown. Soigne leur présentation :
-- Commence par la réponse ou le résultat en une ou deux phrases, puis détaille.
-- Structure les réponses longues avec des titres courts (##, ###). Pas de titre pour une réponse de quelques lignes.
-- Arborescence de dossiers ou de fichiers : TOUJOURS dans un bloc de code \`\`\`text, avec les caractères ├── └── │ et un court commentaire à droite si utile.
-- Comparaison, inventaire ou liste d'éléments ayant les mêmes attributs (fichiers et leur rôle, écrans, routes, dépendances, options) : un tableau Markdown, cellules courtes.
-- Étapes à suivre dans l'ordre : liste numérotée. Éléments sans ordre : liste à puces.
-- Code, commandes, chemins de fichiers et noms de fonctions entre accents graves ; tout extrait de code dans un bloc avec son langage (\`\`\`tsx, \`\`\`bash…).
-- Paragraphes courts. Gras uniquement pour le mot clé d'une ligne. Pas d'emoji.`);
+
+${FORMATTING_GUIDE}
+
+${VISUALS_GUIDE}`);
 
   sections.push(`# Projet
 Nom : ${ctx.projectName}

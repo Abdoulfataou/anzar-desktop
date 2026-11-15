@@ -17,7 +17,7 @@ import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
 import { WEB_TOOLS, WEB_TOOL_NAMES, executeWebTool } from '@/services/agent/webTools';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { buildAgentSystemPrompt, FORMATTING_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
+import { buildAgentSystemPrompt, FORMATTING_GUIDE, VISUALS_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
 import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
@@ -504,7 +504,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               "montre que tu le faisais avant : n'invente aucun résultat de commande, de build ou de test. " +
               "Si la demande exige d'agir sur un projet, dis-le en une phrase et demande d'ouvrir le dossier " +
               "(bouton « Ouvrir un dossier » en haut de la conversation).\n\n" +
-              FORMATTING_GUIDE + personal,
+              FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + personal,
           };
         }
 
