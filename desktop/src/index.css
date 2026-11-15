@@ -53,6 +53,19 @@
 
     /* Shadows — bordures uniquement, sauf modales/menus */
     --color-shadow: rgba(0, 0, 0, 0.5);
+    /* Jetons repris de ZCode « Zai Dark » (Apache-2.0, voir THIRD-PARTY-NOTICES.md) */
+    --color-user-bubble: rgba(255, 255, 255, 0.08);
+    --color-selected: rgba(255, 255, 255, 0.10);
+    --color-hover-fill: rgba(255, 255, 255, 0.05);
+    --color-link: #80BEFF;
+    --color-tag: #363636;
+    --color-inline-code: rgba(54, 54, 54, 0.5);
+    --color-input: #2B2B2B;
+    --color-input-border: rgba(255, 255, 255, 0.10);
+    --color-input-border-hover: rgba(255, 255, 255, 0.15);
+    --color-diff-added: #46BF72;
+    --color-diff-removed: #FF5C5C;
+    --shadow-composer: 0 0 #0000;
     --glow-accent: rgba(110, 123, 255, 0.14);
     --glow-accent-strong: rgba(110, 123, 255, 0.28);
   }
@@ -97,6 +110,19 @@
     --color-primary-fg: #FFFFFF;
 
     --color-shadow: rgba(0, 0, 0, 0.08);
+    /* Jetons repris de ZCode « Zai Light » (Apache-2.0, voir THIRD-PARTY-NOTICES.md) */
+    --color-user-bubble: rgba(13, 13, 13, 0.05);
+    --color-selected: rgba(13, 13, 13, 0.06);
+    --color-hover-fill: rgba(13, 13, 13, 0.05);
+    --color-link: #0066DD;
+    --color-tag: #E6E6E6;
+    --color-inline-code: rgba(230, 230, 230, 0.6);
+    --color-input: #FFFFFF;
+    --color-input-border: rgba(13, 13, 13, 0.10);
+    --color-input-border-hover: rgba(13, 13, 13, 0.15);
+    --color-diff-added: #1E8A3E;
+    --color-diff-removed: #E03131;
+    --shadow-composer: 0 1px 3px rgb(0 0 0 / 4%), 0 6px 18px rgb(0 0 0 / 4%);
     --glow-accent: rgba(79, 91, 213, 0.12);
     --glow-accent-strong: rgba(79, 91, 213, 0.24);
   }

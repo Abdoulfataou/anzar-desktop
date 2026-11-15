@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   SquarePen, Search, CalendarClock, Wand2, Folder, FolderOpen, FolderPlus,
-  Hash, Settings, Sun, Moon, Trash2, Plus, X, PanelLeftClose, PanelLeft,
+  Hash, Settings, Sun, Moon, Trash2, Plus, X, PanelLeftClose, PanelLeft, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useThemeStore } from '@/stores/themeStore';
@@ -44,6 +44,7 @@ export default function Sidebar({ className }: { className?: string }) {
 
   const conversations = useChatStore((s) => s.conversations);
   const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const isGenerating = useChatStore((s) => s.isGenerating);
   const deleteConversation = useChatStore((s) => s.deleteConversation);
   const renameConversation = useChatStore((s) => s.renameConversation);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
@@ -142,19 +143,40 @@ export default function Sidebar({ className }: { className?: string }) {
       )
     : sortedProjects;
 
+  /**
+   * Ligne de tâche, sur le modèle de TaskListItem de ZCode : emplacement d'état
+   * à gauche (agent au travail, erreur), titre, bilan +/− des fichiers modifiés.
+   */
   const renderTask = (c: Conversation, nested = false) => {
     const active = c.id === activeConversationId;
+    const running = active && isGenerating;
+    const last = c.messages[c.messages.length - 1];
+    const failed = !running && last?.role === 'assistant' && !!last.isError;
+    let added = 0;
+    let removed = 0;
+    for (const m of c.messages) {
+      if (m.changesUndone || !m.fileChanges) continue;
+      for (const f of m.fileChanges) { added += f.added; removed += f.removed; }
+    }
     return (
       <div
         key={c.id}
         className={cn(
-          'group flex items-center gap-2 h-8 rounded-lg cursor-pointer transition-colors',
-          nested ? 'pl-9 pr-2' : 'pl-2.5 pr-2',
-          active ? 'bg-border-medium text-text-primary' : 'text-text-secondary hover:bg-surface-hover/60'
+          'group flex items-center gap-2 h-8 rounded-lg pr-1 cursor-pointer transition-colors',
+          nested ? 'pl-6' : 'pl-2.5',
+          active ? 'bg-selected' : 'hover:bg-hover-fill'
         )}
         onClick={() => selectTask(c)}
         onDoubleClick={() => { setEditingId(c.id); setEditingName(c.title || ''); }}
       >
+        {/* Emplacement d'état (vide quand rien à signaler) */}
+        <span className="flex size-4 flex-shrink-0 items-center justify-center" aria-hidden>
+          {running ? (
+            <Loader2 size={14} className="animate-spin text-text-secondary" />
+          ) : failed ? (
+            <span className="size-1.5 rounded-full bg-accent-error" />
+          ) : null}
+        </span>
         {editingId === c.id ? (
           <input
             autoFocus
@@ -163,18 +185,26 @@ export default function Sidebar({ className }: { className?: string }) {
             onBlur={finishRename}
             onKeyDown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') setEditingId(null); }}
             onClick={(e) => e.stopPropagation()}
-            className="flex-1 min-w-0 bg-transparent text-ui-base outline-none border-b border-border-medium"
+            className="flex-1 min-w-0 bg-transparent text-ui-base text-text-primary outline-none border-b border-border-medium"
           />
         ) : (
-          <span className="flex-1 min-w-0 truncate text-ui-base">{c.title || 'Sans titre'}</span>
+          <span className={cn('flex-1 min-w-0 truncate text-ui-base', active ? 'text-text-primary' : 'text-text-secondary')}>
+            {c.title || 'Sans titre'}
+          </span>
         )}
-        <span className="text-ui-sm text-text-muted tabular-nums group-hover:hidden">{age(c.updatedAt)}</span>
+        {(added > 0 || removed > 0) && (
+          <span className="flex-shrink-0 text-ui-sm tabular-nums group-hover:hidden">
+            {added > 0 && <span className="text-diff-added">+{added}</span>}
+            {removed > 0 && <span className="ml-1 text-diff-removed">-{removed}</span>}
+          </span>
+        )}
+        <span className="flex-shrink-0 text-ui-sm text-text-muted tabular-nums group-hover:hidden">{age(c.updatedAt)}</span>
         <button
           onClick={(e) => { e.stopPropagation(); void removeTask(c); }}
-          className="hidden group-hover:block p-0.5 rounded text-text-muted hover:text-accent-error"
+          className="hidden group-hover:flex size-6 items-center justify-center rounded-md text-text-muted hover:text-accent-error hover:bg-hover-fill"
           title="Supprimer"
         >
-          <Trash2 size={12} />
+          <Trash2 size={13} />
         </button>
       </div>
     );
@@ -293,7 +323,7 @@ export default function Sidebar({ className }: { className?: string }) {
                           className={cn(
                             'group flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-lg cursor-pointer transition-colors',
                             active ? 'text-text-primary' : 'text-text-secondary',
-                            'hover:bg-surface-hover/60'
+                            'hover:bg-hover-fill'
                           )}
                         >
                           {active ? <FolderOpen size={16} className="flex-shrink-0" /> : <Folder size={16} className="flex-shrink-0" />}

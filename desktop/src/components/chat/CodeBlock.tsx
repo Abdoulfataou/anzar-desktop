@@ -40,7 +40,7 @@ const LANG_COLORS: Record<string, string> = {
 const CodeBlock: React.FC<CodeBlockProps> = ({
   language = 'text',
   code,
-  showLineNumbers = true,
+  showLineNumbers = false,
   hideActions = false,
 }) => {
   const [copied, setCopied] = useState(false);
@@ -61,11 +61,11 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   // Short blocks (1-3 lines, e.g. filenames, short snippets) get a compact style
   if (isShortBlock) {
     return (
-      <div className="my-2 rounded-lg overflow-hidden border border-border-subtle bg-bg-tertiary/60">
+      <div className="rounded-xl overflow-hidden bg-input">
         <div className="flex items-center justify-between px-3 py-1.5">
           <div className="flex items-center gap-2 min-w-0 flex-1">
             {language && language !== 'text' && (
-              <span className="flex items-center gap-1 text-[10px] font-mono text-text-muted">
+              <span className="flex items-center gap-1 text-ui-xs font-mono text-text-muted">
                 <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: langColor }} />
                 {language}
               </span>
@@ -94,23 +94,19 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
   }
 
   return (
-    <div className="my-3 rounded-xl overflow-hidden border border-border-subtle bg-bg-tertiary/50">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-border-subtle bg-bg-tertiary/80">
-        <div className="flex items-center gap-2 min-w-0">
-          {language && language !== 'text' && (
-            <span className="flex items-center gap-1.5 text-[11px] font-mono text-text-muted">
-              <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: langColor }} />
-              {language}
-            </span>
-          )}
-        </div>
+    <div className="group/code rounded-xl overflow-hidden bg-input">
+      {/* En-tête (ZCode : langage en minuscules, actions à droite) */}
+      <div className="flex items-center justify-between gap-3 px-3 py-2 text-ui-base text-text-muted">
+        <span className="flex items-center gap-2 min-w-0 font-mono lowercase truncate">
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: langColor }} />
+          {language || 'text'}
+        </span>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {isLongBlock && (
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-1.5 hover:bg-bg-secondary rounded-lg text-text-muted hover:text-text-secondary transition-colors"
+              className="p-1.5 hover:bg-hover-fill rounded-md text-text-muted hover:text-text-primary transition-colors"
               title={isExpanded ? 'Reduire' : 'Developper'}
             >
               {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
@@ -121,10 +117,10 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
             <button
               onClick={handleCopy}
               className={cn(
-                'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all duration-200',
+                'flex items-center gap-1.5 h-7 px-2 rounded-md text-ui-base transition-colors',
                 copied
-                  ? 'text-accent-success bg-accent-success/10'
-                  : 'text-text-muted hover:text-text-secondary hover:bg-bg-secondary'
+                  ? 'text-accent-success'
+                  : 'text-text-muted hover:text-text-primary hover:bg-hover-fill'
               )}
             >
               {copied ? <Check size={13} /> : <Copy size={13} />}
@@ -136,7 +132,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
 
       {/* Code content */}
       {(!isLongBlock || isExpanded) && (
-        <div className="flex overflow-x-auto max-h-[500px]">
+        <div className="flex overflow-x-auto max-h-[500px] px-2 pb-3">
           {showLineNumbers && (
             <div className="flex-shrink-0 py-3 px-3 text-right select-none border-r border-border-subtle/50 bg-bg-tertiary/40">
               {Array.from({ length: lineCount }, (_, i) => i + 1).map((num) => (
@@ -144,13 +140,13 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
               ))}
             </div>
           )}
-          <pre className="flex-1 py-3 px-4 overflow-x-auto overflow-y-hidden">
+          <pre className="flex-1 px-2 overflow-x-auto overflow-y-hidden">
             <code className="font-mono text-[13px] text-text-primary whitespace-pre leading-6">
               {lines.map((line, i) => (
                 <div
                   key={i}
                   className={cn(
-                    'h-6 hover:bg-bg-secondary/30 -mx-4 px-4 transition-colors',
+                    'h-6',
                     i === lineCount - 1 && line === '' && 'hidden'
                   )}
                 >
@@ -166,7 +162,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({
       {isLongBlock && !isExpanded && (
         <button
           onClick={() => setIsExpanded(true)}
-          className="w-full px-4 py-3 text-xs text-text-muted bg-bg-tertiary/30 hover:bg-bg-tertiary/60 transition-colors text-center"
+          className="w-full px-3 pb-3 text-ui-sm text-text-muted hover:text-text-primary transition-colors text-left"
         >
           {lineCount} lignes — cliquez pour developper
         </button>

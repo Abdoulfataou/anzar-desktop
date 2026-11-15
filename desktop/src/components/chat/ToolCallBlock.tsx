@@ -12,7 +12,7 @@
 import React, { useState } from 'react';
 import {
   FileText, FilePlus, FileEdit, FileMinus, FolderOpen, Search,
-  Terminal, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles,
+  Terminal, ChevronRight, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolEvent } from '@/hooks/useAgentChat';
@@ -44,32 +44,41 @@ const LABELS: Record<string, string> = {
   task_done: 'Terminé',
 };
 
+/**
+ * Ligne d'action de l'agent, sur le modèle de ToolSummaryRow de ZCode :
+ * pas de cadre ; icône + type en gris, détail plus discret, chevron au survol,
+ * sortie dépliée en dessous dans un bloc sans bordure.
+ */
 export default function ToolCallBlock({ event }: { event: ToolEvent }) {
   const [open, setOpen] = useState(false);
-  const isCommand = event.name === 'run_command';
   const isDone = event.name === 'task_done';
+  const canToggle = !!event.output;
 
   return (
-    <div className="rounded-md overflow-hidden">
+    <div>
       <button
-        onClick={() => event.output && setOpen((v) => !v)}
+        type="button"
+        onClick={() => canToggle && setOpen((v) => !v)}
+        aria-expanded={canToggle ? open : undefined}
         className={cn(
-          'group/tool w-full flex items-center gap-2 h-7 text-left transition-colors text-ui-base rounded-md',
-          event.output ? 'cursor-pointer' : 'cursor-default'
+          'group/tool inline-flex max-w-full items-center gap-2 h-7 text-left text-ui-base transition-colors',
+          canToggle ? 'cursor-pointer' : 'cursor-default'
         )}
       >
         {/* Icône / statut */}
-        {event.status === 'running' ? (
-          <Loader2 size={16} className="animate-spin text-accent-primary flex-shrink-0" />
-        ) : event.status === 'error' ? (
-          <AlertCircle size={16} className="text-accent-error flex-shrink-0" />
-        ) : isDone ? (
-          <CheckCircle2 size={16} className="text-accent-success flex-shrink-0" />
-        ) : (
-          <span className="text-text-muted flex-shrink-0">{ICONS[event.name] ?? <Terminal size={16} />}</span>
-        )}
+        <span className="flex-shrink-0 text-text-secondary group-hover/tool:text-text-primary transition-colors">
+          {event.status === 'running' ? (
+            <Loader2 size={16} className="animate-spin" />
+          ) : event.status === 'error' ? (
+            <AlertCircle size={16} className="text-accent-error" />
+          ) : isDone ? (
+            <CheckCircle2 size={16} className="text-accent-success" />
+          ) : (
+            ICONS[event.name] ?? <Terminal size={16} />
+          )}
+        </span>
 
-        {/* Nom de l'outil */}
+        {/* Type d'action */}
         <span className={cn(
           'flex-shrink-0 transition-colors',
           event.status === 'error' ? 'text-accent-error' : 'text-text-secondary group-hover/tool:text-text-primary'
@@ -77,30 +86,37 @@ export default function ToolCallBlock({ event }: { event: ToolEvent }) {
           {LABELS[event.name] ?? event.name}
         </span>
 
-        {/* Argument principal */}
-        <span className={cn(
-          'truncate font-mono text-ui-sm text-text-muted group-hover/tool:text-text-secondary transition-colors'
-        )}>
-          {event.argsSummary}
-        </span>
-
-        {/* Delta +n/−n (éditions) */}
-        {event.delta && (event.delta[0] > 0 || event.delta[1] > 0) && (
-          <span className="flex-shrink-0 flex items-center gap-1 text-ui-xs font-semibold">
-            {event.delta[0] > 0 && <span className="text-accent-success">+{event.delta[0]}</span>}
-            {event.delta[1] > 0 && <span className="text-accent-error">−{event.delta[1]}</span>}
+        {/* Détail (chemin, commande…) */}
+        {event.argsSummary && (
+          <span className="min-w-0 truncate text-text-muted group-hover/tool:text-text-secondary transition-colors">
+            {event.argsSummary}
           </span>
         )}
 
-        {/* Indicateur repli si sortie présente */}
-        {event.output && (
-          <span className="flex-shrink-0 text-text-muted/50 text-[9px]">{open ? '▲' : '▼'}</span>
+        {/* Lignes ajoutées / retirées */}
+        {event.delta && (event.delta[0] > 0 || event.delta[1] > 0) && (
+          <span className="flex-shrink-0 tabular-nums">
+            {event.delta[0] > 0 && <span className="text-diff-added">+{event.delta[0]}</span>}
+            {event.delta[0] > 0 && event.delta[1] > 0 && ' '}
+            {event.delta[1] > 0 && <span className="text-diff-removed">-{event.delta[1]}</span>}
+          </span>
+        )}
+
+        {canToggle && (
+          <ChevronRight
+            size={16}
+            aria-hidden
+            className={cn(
+              'flex-shrink-0 text-text-muted transition-all duration-200',
+              open ? 'rotate-90 opacity-100' : 'opacity-0 group-hover/tool:opacity-100'
+            )}
+          />
         )}
       </button>
 
-      {/* Sortie dépliable */}
+      {/* Sortie dépliée */}
       {open && event.output && (
-        <pre className="mt-1 mb-2 px-3 py-2 rounded-lg bg-bg-tertiary font-mono text-ui-sm leading-relaxed text-text-tertiary whitespace-pre-wrap break-all max-h-52 overflow-y-auto">
+        <pre className="mt-1 mb-2 px-3 py-2 rounded-lg bg-input font-mono text-ui-sm leading-relaxed text-text-secondary whitespace-pre-wrap break-all max-h-60 overflow-y-auto">
           {event.output}
         </pre>
       )}
@@ -139,16 +155,25 @@ export function ToolEventList({ events, live }: { events: ToolEvent[]; live?: bo
   return (
     <div className="mb-1.5">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 h-7 rounded-md text-ui-base text-text-secondary hover:text-text-primary transition-colors"
+        aria-expanded={open}
+        className="group/tool inline-flex items-center gap-2 h-7 text-ui-base text-text-secondary hover:text-text-primary transition-colors"
       >
-        {live ? <Loader2 size={16} className="animate-spin text-accent-primary" /> : <CheckCircle2 size={16} className="text-text-muted" />}
+        {live ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
         <span>{summary}</span>
-        {errors > 0 && <span className="text-accent-error">· {errors} en erreur</span>}
-        <span className="text-text-muted text-[9px]">{open ? '▲' : '▼'}</span>
+        {errors > 0 && <span className="text-accent-error">{errors} en erreur</span>}
+        <ChevronRight
+          size={16}
+          aria-hidden
+          className={cn(
+            'text-text-muted transition-all duration-200',
+            open ? 'rotate-90 opacity-100' : 'opacity-0 group-hover/tool:opacity-100'
+          )}
+        />
       </button>
       {shown.length > 0 && (
-        <div className={cn('ml-2 pl-3.5 border-l border-border-medium', open && 'max-h-72 overflow-y-auto')}>
+        <div className={cn('ml-2 pl-4 border-l border-border-medium', open && 'max-h-72 overflow-y-auto')}>
           {shown.map((ev) => <ToolCallBlock key={ev.id} event={ev} />)}
         </div>
       )}

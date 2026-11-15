@@ -613,14 +613,13 @@ export default function ChatInput({
 
         {/* Input container */}
         <div className={cn(
-          'rounded-2xl border transition-colors',
-          'bg-surface-default',
+          'relative flex flex-col gap-3 rounded-2xl border-[0.5px] bg-input p-3 shadow-composer transition-colors',
           isFocused
-            ? 'border-border-strong'
-            : 'border-border-medium hover:border-border-strong'
+            ? 'border-input-border-hover'
+            : 'border-input-border hover:border-input-border-hover'
         )}>
           {/* Textarea area */}
-          <div className="flex items-end gap-2 px-4 pt-4 pb-2">
+          <div className="flex items-end gap-2 px-1">
             <textarea
               ref={textareaRef}
               value={message}
@@ -634,7 +633,7 @@ export default function ChatInput({
               className={cn(
                 'flex-1 bg-transparent border-none outline-none resize-none',
                 'text-text-primary placeholder-text-muted',
-                'text-sm leading-relaxed',
+                'text-ui-base leading-relaxed',
                 'disabled:opacity-60 disabled:cursor-not-allowed',
               )}
               style={{
@@ -647,7 +646,7 @@ export default function ChatInput({
 
           {/* Attachments chips */}
           {attachments.length > 0 && (
-            <div className="px-4 pb-2 flex flex-wrap gap-2">
+            <div className="px-1 flex flex-wrap gap-2">
               {attachments.map((a) => (
                 <div
                   key={a.id}
@@ -669,7 +668,7 @@ export default function ChatInput({
           )}
 
           {/* Bottom toolbar */}
-          <div className="flex items-center justify-between px-3 py-2">
+          <div className="flex items-center justify-between -mx-1 -mb-1">
             {/* Left side: Project selector + attachment */}
             <div className="flex items-center gap-1">
               <button

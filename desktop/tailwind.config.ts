@@ -23,6 +23,21 @@ const config: Config = {
       },
       colors: {
         window: 'var(--color-window)',
+        'user-bubble': 'var(--color-user-bubble)',
+        selected: 'var(--color-selected)',
+        'hover-fill': 'var(--color-hover-fill)',
+        link: 'var(--color-link)',
+        tag: 'var(--color-tag)',
+        'inline-code': 'var(--color-inline-code)',
+        input: {
+          DEFAULT: 'var(--color-input)',
+          border: 'var(--color-input-border)',
+          'border-hover': 'var(--color-input-border-hover)',
+        },
+        diff: {
+          added: 'var(--color-diff-added)',
+          removed: 'var(--color-diff-removed)',
+        },
         bg: {
           primary: 'var(--color-bg-primary)',
           secondary: 'var(--color-bg-secondary)',
@@ -79,6 +94,7 @@ const config: Config = {
         'md': '0 4px 12px var(--color-shadow)',
         'lg': '0 12px 32px var(--color-shadow)',
         'glow': '0 0 20px -5px var(--glow-accent)',
+        'composer': 'var(--shadow-composer)',
         'glow-lg': '0 0 40px -5px var(--glow-accent-strong)',
       },
       animation: {

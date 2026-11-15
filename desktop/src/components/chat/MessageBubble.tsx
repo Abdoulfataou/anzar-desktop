@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Check, ChevronDown, ChevronUp, Sparkles, Brain, RefreshCw, FileDown, FileText, Presentation, FileCheck, ExternalLink, Play } from 'lucide-react';
+import { Copy, Check, ChevronDown, ChevronUp, ChevronRight, Sparkles, Brain, RefreshCw, FileDown, FileText, Presentation, FileCheck, ExternalLink, Play } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -145,7 +145,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     return (
       <div className="group px-4 py-2">
         <div className="max-w-3xl mx-auto flex flex-col items-end">
-          <div className="max-w-xl rounded-xl rounded-tr-[4px] border border-border-medium bg-bg-tertiary px-4 py-3">
+          <div className="max-w-[80%] rounded-lg rounded-tr-[4px] bg-user-bubble px-4 py-3">
             <p className="text-ui-base leading-relaxed text-text-primary break-words whitespace-pre-wrap">
               {message.content}
             </p>
@@ -177,39 +177,34 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
     <div className="group px-4 py-2">
       {/* Content */}
       <div className="max-w-3xl mx-auto min-w-0">
-        {/* En-tête : marque + modèle + heure (mono, discret) */}
-        <div className="flex items-center gap-2 mb-1">
-          <Sparkles size={11} className="text-accent-primary" />
-          <span className="text-ui-xs font-mono font-semibold uppercase tracking-wider text-text-tertiary">anzar</span>
-          {message.model && (
-            <span className="text-ui-xs font-mono text-text-muted/70">{message.model}</span>
-          )}
-          <span className="text-ui-xs font-mono text-text-muted/50">{formatTime(message.timestamp)}</span>
-        </div>
         {/* Actions d'outils de l'agent — rendu ZCode (read/edit/bash…) */}
         {message.toolEvents && message.toolEvents.length > 0 && (
           <ToolEventList events={message.toolEvents} live={message.isStreaming} />
         )}
 
-        {/* Thinking section */}
+        {/* Raisonnement : ligne repliable, même langage que les outils (ZCode) */}
         {(message.thinking || message.reasoning) && (
-          <div className="mb-1 rounded-md border border-border-subtle overflow-hidden">
+          <div className="mb-1.5">
             <button
               onClick={() => setShowThinking(!showThinking)}
-              className="w-full flex items-center gap-2 px-2.5 py-1.5 hover:bg-surface-hover transition-colors font-mono text-ui-sm text-text-tertiary"
+              className="group/think inline-flex items-center gap-2 h-7 text-ui-base text-text-secondary hover:text-text-primary transition-colors"
             >
-              <Brain size={12} className="text-text-muted" />
-              <span>{showThinking ? 'masquer le raisonnement' : 'raisonnement'}</span>
-              <div className="flex-1" />
-              {showThinking ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              <Brain size={16} className="flex-shrink-0" />
+              <span>{message.isStreaming ? 'Réflexion en cours…' : 'Réflexion'}</span>
+              <ChevronRight
+                size={16}
+                className={cn(
+                  'text-text-muted transition-all duration-200',
+                  showThinking ? 'rotate-90 opacity-100' : 'opacity-0 group-hover/think:opacity-100'
+                )}
+              />
             </button>
-
             {showThinking && (
-              <div className="px-3 py-2 border-t border-border-subtle space-y-1.5 bg-bg-primary/40">
+              <div className="mt-1 ml-2 pl-4 border-l border-border-medium space-y-2 max-h-80 overflow-y-auto">
                 {message.reasoning?.map((step, idx) => (
-                  <p key={`step-${idx}-${step.slice(0, 20)}`} className="font-mono text-ui-sm text-text-tertiary leading-relaxed">{step}</p>
+                  <p key={`step-${idx}-${step.slice(0, 20)}`} className="text-ui-sm text-text-tertiary leading-relaxed whitespace-pre-wrap">{step}</p>
                 )) || (
-                  <p className="font-mono text-ui-sm text-text-tertiary leading-relaxed">{message.thinking}</p>
+                  <p className="text-ui-sm text-text-tertiary leading-relaxed whitespace-pre-wrap">{message.thinking}</p>
                 )}
               </div>
             )}
@@ -224,22 +219,18 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
           <div
             ref={textRef}
             className={cn(
-              'prose prose-sm max-w-none',
-              'prose-headings:text-text-primary prose-p:text-text-primary prose-strong:text-text-primary',
-              'prose-a:text-accent-primary prose-a:no-underline hover:prose-a:underline',
-              'prose-code:text-accent-primary prose-code:bg-bg-tertiary prose-code:rounded prose-code:px-1 prose-code:py-0.5 prose-code:text-xs',
-              'prose-pre:bg-transparent prose-pre:p-0 prose-pre:m-0',
+              'max-w-none text-ui-base text-text-primary break-words',
               message.isError && 'text-accent-error'
             )}
           >
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                p: ({ children }) => <p className="text-ui-base leading-[1.65] mb-3 last:mb-0">{children}</p>,
+                p: ({ children }) => <p className="text-ui-base leading-[1.7] my-3 first:mt-0 last:mb-0">{children}</p>,
                 a: ({ href, children }) => (
                   <a
                     href={href}
-                    className="text-accent-primary hover:underline"
+                    className="font-medium text-link no-underline decoration-dotted underline-offset-4 hover:underline"
                     onClick={(e) => {
                       // Grand public: empêcher la navigation interne, ouvrir via wrapper sécurisé
                       e.preventDefault();
@@ -249,13 +240,18 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                     {children}
                   </a>
                 ),
-                code: ({ inline, className, children, ...props }: any) => {
+                // Un bloc ``` est rendu par CodeBlock : <pre> ne doit rien ajouter autour.
+                pre: ({ children }) => <div className="my-3 first:mt-0 last:mb-0">{children}</div>,
+                code: ({ className, children, node: _node, ...props }: any) => {
                   const match = /language-(\w+)/.exec(className || '');
                   const language = match ? match[1] : 'text';
 
-                  if (inline) {
+                  // react-markdown 9 ne transmet plus `inline` : un code sans langage
+                  // et sur une seule ligne est du code en ligne (`comme ceci`).
+                  const isInline = !match && !String(children).includes('\n');
+                  if (isInline) {
                     return (
-                      <code className="bg-bg-tertiary px-1.5 py-0.5 rounded text-xs text-accent-primary font-mono" {...props}>
+                      <code className="mx-0.5 rounded-md bg-inline-code px-1.5 py-0.5 font-mono text-ui-sm text-text-primary" {...props}>
                         {children}
                       </code>
                     );
@@ -276,25 +272,30 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
                     />
                   );
                 },
-                ul: ({ children }) => <ul className="list-disc pl-5 text-ui-base mb-3 space-y-1.5 marker:text-text-muted [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ol]:mt-1.5 [&_ol]:mb-0">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-5 text-ui-base mb-3 space-y-1.5 marker:text-text-muted [&_ul]:mt-1.5 [&_ul]:mb-0 [&_ol]:mt-1.5 [&_ol]:mb-0">{children}</ol>,
-                li: ({ children }) => <li className="text-ui-base leading-[1.65] pl-1 [&>p]:mb-1">{children}</li>,
-                hr: () => <hr className="my-4 border-border-subtle" />,
+                ul: ({ children }) => <ul className="my-3 first:mt-0 last:mb-0 list-outside list-disc space-y-1.5 pl-5 marker:text-text-muted [&_ul]:my-1.5 [&_ol]:my-1.5">{children}</ul>,
+                ol: ({ children }) => <ol className="my-3 first:mt-0 last:mb-0 list-inside list-decimal space-y-1.5 pl-0 marker:text-text-muted [&_ul]:my-1.5 [&_ol]:my-1.5">{children}</ol>,
+                li: ({ children }) => <li className="pl-1 leading-[1.7] [&>p]:my-0 [&>p]:inline">{children}</li>,
+                hr: () => <hr className="my-6 border-border-medium" />,
                 strong: ({ children }) => <strong className="font-semibold text-text-primary">{children}</strong>,
                 blockquote: ({ children }) => (
-                  <blockquote className="border-l-2 border-accent-primary pl-3 my-2 text-sm italic text-text-secondary">{children}</blockquote>
+                  <blockquote className="my-4 border-l-2 border-border-strong pl-3 text-text-secondary [&_p]:my-0 [&_p+p]:mt-2">{children}</blockquote>
                 ),
-                h1: ({ children }) => <h1 className="text-ui-xl font-semibold text-text-primary mb-3 mt-6 first:mt-0">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-ui-lg font-semibold text-text-primary mb-2.5 mt-6 first:mt-0">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-ui-base font-semibold text-text-primary mb-2 mt-4 first:mt-0">{children}</h3>,
-                h4: ({ children }) => <h4 className="text-ui-base font-semibold text-text-primary mb-1.5 mt-3 first:mt-0">{children}</h4>,
+                h1: ({ children }) => <h1 className="mt-6 mb-4 first:mt-0 text-ui-xl font-semibold text-text-primary">{children}</h1>,
+                h2: ({ children }) => <h2 className="mt-6 mb-4 first:mt-0 text-ui-lg font-semibold text-text-primary">{children}</h2>,
+                h3: ({ children }) => <h3 className="mt-6 mb-4 first:mt-0 text-ui-base font-semibold text-text-primary">{children}</h3>,
+                h4: ({ children }) => <h4 className="mt-6 mb-4 first:mt-0 text-ui-base font-semibold text-text-primary">{children}</h4>,
+                h5: ({ children }) => <h5 className="mt-6 mb-4 first:mt-0 text-ui-base font-medium text-text-primary">{children}</h5>,
+                h6: ({ children }) => <h6 className="mt-6 mb-4 first:mt-0 text-ui-base font-normal text-text-primary">{children}</h6>,
                 table: ({ children }) => (
-                  <div className="overflow-x-auto my-3 rounded-lg border border-border-subtle">
-                    <table className="text-ui-base border-collapse w-full">{children}</table>
+                  <div className="my-3 first:mt-0 last:mb-0 w-full overflow-hidden rounded-xl border border-border-medium">
+                    <div className="w-full overflow-x-auto">
+                      <table className="w-max min-w-full border-separate border-spacing-0 text-ui-base">{children}</table>
+                    </div>
                   </div>
                 ),
-                td: ({ children }) => <td className="border-t border-border-subtle px-3 py-2 align-top leading-[1.55]">{children}</td>,
-                th: ({ children }) => <th className="px-3 py-2 bg-bg-tertiary font-semibold text-left text-ui-caption text-text-secondary whitespace-nowrap">{children}</th>,
+                tr: ({ children }) => <tr className="transition-colors last:[&>td]:border-b-0 hover:bg-hover-fill">{children}</tr>,
+                th: ({ children }) => <th className="border-b border-border-medium px-3 py-2 text-left font-normal text-text-muted min-w-16 max-w-md whitespace-normal break-words">{children}</th>,
+                td: ({ children }) => <td className="border-b border-border-medium px-3 py-2 align-top text-text-primary min-w-16 max-w-md whitespace-normal break-words">{children}</td>,
               }}
             >
               {displayContent}
@@ -448,7 +449,7 @@ export default function MessageBubble({ message, onCopy, onRegenerate, selectedP
 
           {/* Timestamp */}
           <span className="ml-auto text-ui-sm text-text-muted">
-            {formatTime(message.timestamp)}
+            {message.model === 'thinking' ? 'Réflexion · ' : ''}{formatTime(message.timestamp)}
             {typeof message.costFCFA === 'number' && !message.isStreaming && (
               <> · {message.costFCFA < 1 ? '< 1' : Math.round(message.costFCFA).toLocaleString('fr-FR')} FCFA</>
             )}

@@ -48,14 +48,17 @@ export default function FileChangesCard({
   return (
     <div className="mt-3 rounded-xl border border-border-medium bg-surface-default overflow-hidden">
       {ConfirmDialog}
-      <div className="flex items-center gap-2 h-10 px-3">
-        <button onClick={() => setOpen((v) => !v)} className="flex items-center gap-2 flex-1 min-w-0 text-left">
-          <ChevronRight size={13} className={cn('text-text-muted transition-transform', open && 'rotate-90')} />
-          <span className={cn('text-ui-base text-text-primary', undone && 'line-through text-text-muted')}>
+      {/* En-tête : MessageChangeSummaryPanel de ZCode */}
+      <div className="flex items-center justify-between gap-3 h-10 px-2 transition-colors hover:bg-hover-fill">
+        <button onClick={() => setOpen((v) => !v)} className="flex h-full items-center gap-2 flex-1 min-w-0 px-1 text-left">
+          <ChevronRight size={14} className={cn('flex-shrink-0 text-text-muted transition-transform', open && 'rotate-90')} />
+          <span className={cn('min-w-0 truncate text-ui-base font-medium text-text-primary', undone && 'line-through text-text-muted')}>
             {changes.length} fichier{changes.length > 1 ? 's' : ''} modifié{changes.length > 1 ? 's' : ''}
           </span>
-          <span className="text-ui-caption font-mono tabular-nums text-accent-success">+{added}</span>
-          <span className="text-ui-caption font-mono tabular-nums text-accent-error">−{removed}</span>
+          <span className="flex-shrink-0 tabular-nums text-ui-base">
+            <span className="text-diff-added">+{added}</span>{' '}
+            <span className="text-diff-removed">-{removed}</span>
+          </span>
         </button>
         {undone ? (
           <span className="text-ui-sm text-text-muted">Annulé</span>
@@ -65,8 +68,8 @@ export default function FileChangesCard({
             disabled={!undoable || busy}
             title={undoable ? "Remettre les fichiers dans leur état précédent" : "Annulation indisponible pour cette réponse"}
             className={cn(
-              'flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-caption transition-colors',
-              undoable && !busy ? 'text-text-secondary hover:bg-surface-hover hover:text-text-primary' : 'text-text-muted/50 cursor-not-allowed'
+              'flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base transition-colors',
+              undoable && !busy ? 'text-text-secondary hover:text-text-primary' : 'text-text-muted cursor-not-allowed'
             )}
           >
             <Undo2 size={13} />
@@ -75,19 +78,19 @@ export default function FileChangesCard({
         )}
       </div>
       {open && (
-        <div className="border-t border-border-subtle py-1 max-h-56 overflow-y-auto">
+        <div className="border-t border-border-medium bg-bg-primary py-1 max-h-56 overflow-y-auto">
           {changes.map((c) => (
             <button
               key={c.path}
               onClick={() => window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: c.path }))}
               disabled={c.kind === 'deleted' || undone}
-              className="w-full flex items-center gap-2 h-7 px-3 text-left text-ui-base hover:bg-surface-hover disabled:hover:bg-transparent transition-colors"
+              className="w-full flex items-center gap-2 h-8 px-3 text-left text-ui-base hover:bg-hover-fill disabled:hover:bg-transparent transition-colors"
             >
               <span className={cn('flex-1 min-w-0 truncate text-text-secondary', c.kind === 'deleted' && 'line-through')}>{c.path}</span>
               {c.kind === 'created' && <span className="text-text-muted">nouveau</span>}
               {c.kind === 'deleted' && <span className="text-text-muted">supprimé</span>}
-              {c.added > 0 && <span className="text-accent-success tabular-nums">+{c.added}</span>}
-              {c.removed > 0 && <span className="text-accent-error tabular-nums">−{c.removed}</span>}
+              {c.added > 0 && <span className="text-diff-added tabular-nums">+{c.added}</span>}
+              {c.removed > 0 && <span className="text-diff-removed tabular-nums">-{c.removed}</span>}
             </button>
           ))}
         </div>
