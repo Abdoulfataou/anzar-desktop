@@ -96,7 +96,7 @@
             "cmd": "npx",
             "args": [
               {
-                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
+                "validator": "^(--?\\w[\\w-]*|serve|react-native|expo|expo-doctor|tsc|vite|eslint|prettier|tailwindcss|jest|vitest|http-server|degit|npm-check-updates|typescript|[\\w@./-]*create-[\\w.@/-]+)$"
               }
             ]
           },
