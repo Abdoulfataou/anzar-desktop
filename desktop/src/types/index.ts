@@ -174,6 +174,8 @@ export interface ChatAttachment {
   excerpt?: string;
   /** Infos additionnelles (pages, feuilles, lignes, etc.) */
   meta?: Record<string, any>;
+  /** Image : contenu en data URL, envoyé au modèle (jamais sauvegardé dans l'historique) */
+  dataUrl?: string;
 }
 
 export interface Message {
@@ -506,9 +508,14 @@ export interface ChatOptions {
   reasoningEffort?: ReasoningEffort;
 }
 
+/** Bloc d'un message mixte (texte + images) */
+export type APIContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string; detail?: 'low' | 'high' | 'auto' } };
+
 export interface APIMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
-  content: string | null;
+  content: string | APIContentPart[] | null;
   reasoning_content?: string;     // Raisonnement (si fourni)
   tool_calls?: ToolCall[];
   tool_call_id?: string;

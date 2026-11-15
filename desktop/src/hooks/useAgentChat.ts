@@ -203,8 +203,8 @@ function compactHistory(history: APIMessage[], keepRecent: number, stubChars: nu
   const cutoff = keepRecent > 0 ? toolIdx[toolIdx.length - keepRecent] ?? 0 : history.length;
   for (let i = 0; i < cutoff; i++) {
     const m = history[i];
-    if (m.role === 'tool' && (m.content?.length || 0) > SMALL_RESULT_CHARS && !m.content!.startsWith(SKILL_RESULT_PREFIX)) {
-      history[i] = { ...m, content: shrinkText(m.content || '', stubChars) };
+    if (m.role === 'tool' && typeof m.content === 'string' && m.content.length > SMALL_RESULT_CHARS && !m.content.startsWith(SKILL_RESULT_PREFIX)) {
+      history[i] = { ...m, content: shrinkText(m.content, stubChars) };
     } else if (m.role === 'assistant' && m.tool_calls?.length) {
       history[i] = { ...m, tool_calls: m.tool_calls.map(shrinkToolCallArgs) };
     }
@@ -224,7 +224,9 @@ function withAttachments(content: string, attachments: ChatAttachment[]): string
   const blocks = attachments.map((a) => {
     const label = `[${a.ref}] ${a.name} (${a.kind})`;
     if (a.kind === 'image') {
-      return `${label}\n(Image jointe : son contenu visuel n'est pas lisible ici. Dis-le à l'utilisateur si sa demande en dépend.)`;
+      return a.dataUrl
+        ? `${label}\n(Image jointe : elle t'est montrée à la suite de ce message.)`
+        : `${label}\n(Image jointe illisible : dis-le à l'utilisateur si sa demande en dépend.)`;
     }
     const full = (a.excerpt || '').trim();
     if (!full) return `${label}\n(Contenu illisible ou vide.)`;
@@ -373,7 +375,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       timestamp: Date.now(),
       // Affichage : nom et type seulement (le contenu part au modèle, pas dans l'historique local)
       attachments: attachments.length
-        ? attachments.map(({ excerpt: _excerpt, ...rest }) => rest)
+        ? attachments.map(({ excerpt: _excerpt, dataUrl: _data, ...rest }) => rest)
         : undefined,
     };
     if (!resumeFrom) addMessage(userMsg, convId);
@@ -527,8 +529,24 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         for (let i = 0; i < apiHistoryRef.current.length; i++) {
           const m = apiHistoryRef.current[i];
           if (m.reasoning_content) apiHistoryRef.current[i] = { ...m, reasoning_content: undefined };
+          // Images des demandes précédentes : déjà analysées, on ne les renvoie plus (connexions lentes)
+          if (m.role === 'user' && Array.isArray(m.content)) {
+            const text = m.content.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('\n');
+            const n = m.content.filter((p) => p.type === 'image_url').length;
+            apiHistoryRef.current[i] = { ...apiHistoryRef.current[i], content: `${text}\n\n(${n} image${n > 1 ? 's' : ''} jointe${n > 1 ? 's' : ''} à cette demande, déjà analysée${n > 1 ? 's' : ''} dans ta réponse.)` };
+          }
         }
-        apiHistoryRef.current.push({ role: 'user', content: apiContent + turnContext });
+        // Images jointes : envoyées au modèle (deepseek-flash est multimodal)
+        const images = attachments.filter((a) => a.kind === 'image' && a.dataUrl).slice(0, 8);
+        apiHistoryRef.current.push({
+          role: 'user',
+          content: images.length
+            ? [
+                { type: 'text', text: apiContent + turnContext },
+                ...images.map((a) => ({ type: 'image_url' as const, image_url: { url: a.dataUrl!, detail: 'auto' as const } })),
+              ]
+            : apiContent + turnContext,
+        });
       }
 
       let answered = false;

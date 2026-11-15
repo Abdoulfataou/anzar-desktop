@@ -102,3 +102,18 @@ def test_pro_model_uses_pro_pricing():
     at = datetime(2026, 11, 16, 2, 0, tzinfo=timezone.utc)
     _, cost = calculate_cost_fcfa("deepseek", 0, 1_000_000, model="deepseek-v4-pro", at=at)
     assert cost == round(settings.deepseek_pro_output_usd * settings.usd_to_fcfa * settings.deepseek_margin, 2)
+
+
+def test_validate_messages_accepts_images_and_long_agent_histories():
+    import pytest
+    from fastapi import HTTPException
+    from security import validate_messages
+    ok = validate_messages([{"role": "user", "content": [
+        {"type": "text", "text": "Regarde"},
+        {"type": "image_url", "image_url": {"url": "data:image/png;base64,iVBORw0KGgo="}},
+    ]}] + [{"role": "tool", "content": "x", "tool_call_id": str(i)} for i in range(300)])
+    assert len(ok) == 301
+    with pytest.raises(HTTPException):
+        validate_messages([{"role": "user", "content": [{"type": "image_url", "image_url": {"url": "file:///etc/passwd"}}]}])
+    with pytest.raises(HTTPException):
+        validate_messages([{"role": "user", "content": [{"type": "input_audio", "x": 1}]}])

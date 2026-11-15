@@ -17,6 +17,7 @@ import {
   type SlashCommand, type SuggestionItem,
 } from './composerSuggestions';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
+import { imageToDataUrl, imageMimeFromName } from '@/lib/imageAttach';
 import { readTextFile, readBinaryFile } from '@tauri-apps/api/fs';
 
 interface ChatInputProps {
@@ -353,6 +354,11 @@ async function processFilePath(filePath: string): Promise<ChatAttachment> {
   }
 
   try {
+    if (kind === 'image') {
+      const bytes = await readBinaryFile(filePath);
+      const dataUrl = await imageToDataUrl(new Blob([bytes as unknown as BlobPart], { type: imageMimeFromName(name) }));
+      return { id: generateId(), name, kind, sizeBytes: bytes.byteLength, excerpt: '[Image jointe]', dataUrl };
+    }
     if (kind === 'pdf') {
       const bytes = await readBinaryFile(filePath);
       if (bytes.byteLength > MAX_BYTES_PDF) {
@@ -650,6 +656,27 @@ export default function ChatInput({
     placeCaret(text.length);
   };
 
+  /** Capture d'écran collée (⌘V) : jointe comme image, envoyée au modèle */
+  const handlePasteImages = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = Array.from(e.clipboardData?.items || [])
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => !!f);
+    if (files.length === 0) return; // texte : collage normal
+    e.preventDefault();
+    const stamp = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
+    const items: ChatAttachment[] = [];
+    for (const [i, file] of files.entries()) {
+      try {
+        const dataUrl = await imageToDataUrl(file);
+        items.push({ id: generateId(), name: `capture-${stamp}${files.length > 1 ? `-${i + 1}` : ''}.png`, kind: 'image', sizeBytes: file.size, excerpt: '[Image jointe]', dataUrl });
+      } catch (err: any) {
+        toast.error(`Image non jointe : ${err?.message || 'format illisible'}`);
+      }
+    }
+    if (items.length) setAttachments((prev) => [...prev, ...items].slice(0, 8));
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (showSuggestions) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setActiveSuggestion((i) => (i + 1) % suggestionItems.length); return; }
@@ -705,6 +732,7 @@ export default function ChatInput({
               onChange={(e) => { setMessage(e.target.value); updateCaret(e.target); setSuggestionsClosed(false); }}
               onSelect={(e) => updateCaret(e.currentTarget)}
               onKeyDown={handleKeyDown}
+              onPaste={(e) => { void handlePasteImages(e); }}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               placeholder={placeholder}
@@ -860,8 +888,12 @@ export default function ChatInput({
                                 const content = await file.text();
                                 webNewItems.push({ id: generateId(), name: file.name, kind: kind === 'binary' ? 'text' : kind, sizeBytes: file.size, excerpt: truncateMiddle(content, 9000) });
                                 added++;
+                              } else if (kind === 'image') {
+                                const dataUrl = await imageToDataUrl(file);
+                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Image jointe]', dataUrl });
+                                added++;
                               } else {
-                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: kind === 'image' ? '[Image jointe]' : '[Fichier joint]' });
+                                webNewItems.push({ id: generateId(), name: file.name, kind, sizeBytes: file.size, excerpt: '[Fichier joint]' });
                                 added++;
                               }
                             } catch {

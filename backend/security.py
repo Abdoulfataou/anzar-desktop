@@ -262,8 +262,10 @@ def validate_messages(messages: list) -> list:
     if not isinstance(messages, list):
         raise HTTPException(400, "messages must be an array")
 
-    if len(messages) > 100:
-        raise HTTPException(400, "Too many messages (max 100)")
+    # Une tâche d'agent (40 étapes × appels d'outils) dépasse vite 100 messages
+    if len(messages) > 2000:
+        raise HTTPException(400, "Too many messages (max 2000)")
+    image_bytes = 0
 
     sanitized = []
     for msg in messages:
@@ -280,6 +282,24 @@ def validate_messages(messages: list) -> list:
             msg = {**msg, "content": ""}
         elif isinstance(content, str) and len(content) > 200_000:
             raise HTTPException(400, "Message trop long (max 200K caractères)")
+        elif isinstance(content, list):
+            # Contenu mixte (texte + images) : seuls ces deux types de blocs passent
+            images = 0
+            for part in content:
+                if not isinstance(part, dict) or part.get("type") not in ("text", "image_url"):
+                    raise HTTPException(400, "Bloc de message non pris en charge")
+                if part["type"] == "text" and len(str(part.get("text", ""))) > 200_000:
+                    raise HTTPException(400, "Message trop long (max 200K caractères)")
+                if part["type"] == "image_url":
+                    images += 1
+                    url = str((part.get("image_url") or {}).get("url", ""))
+                    if not (url.startswith("data:image/") or url.startswith("https://")):
+                        raise HTTPException(400, "Image invalide")
+                    image_bytes += len(url)
+            if images > 8:
+                raise HTTPException(400, "8 images au maximum par message")
+            if image_bytes > 30 * 1024 * 1024:
+                raise HTTPException(400, "Images trop lourdes (30 Mo au maximum par requête)")
 
         sanitized.append(msg)
 
