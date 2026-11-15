@@ -77,6 +77,8 @@ app = FastAPI(
     version=settings.app_version,
     docs_url="/docs" if settings.debug else None,
     redoc_url=None,
+    # En production, la liste des routes n'est pas publiée (moins d'indices pour un attaquant)
+    openapi_url="/openapi.json" if settings.debug else None,
     lifespan=lifespan,
 )
 
