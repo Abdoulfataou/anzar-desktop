@@ -20,6 +20,8 @@ serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "1.8.3", features = [ "path-all", "window-start-dragging", "window-unmaximize", "window-set-focus", "window-minimize", "window-set-fullscreen", "window-set-min-size", "window-close", "window-maximize", "window-set-position", "window-set-size", "updater", "shell-execute", "shell-open", "dialog-all", "protocol-asset", "fs-read-file", "fs-write-file", "fs-copy-file", "fs-create-dir", "fs-rename-file", "fs-remove-file", "fs-remove-dir", "fs-read-dir", "fs-exists", "dialog"] }
 dirs = "5.0"
 blake3 = "1.5"
+# Transport HTTP des serveurs MCP (déjà présent dans les dépendances via l'updater)
+reqwest = { version = "0.11", features = ["json"] }
 tauri-plugin-stronghold = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 
 [features]

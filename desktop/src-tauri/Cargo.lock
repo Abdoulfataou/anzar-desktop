@@ -99,6 +99,7 @@ version = "2.0.0"
 dependencies = [
  "blake3",
  "dirs 5.0.1",
+ "reqwest",
  "serde",
  "serde_json",
  "tauri",

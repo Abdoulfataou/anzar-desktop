@@ -17,11 +17,12 @@ import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
 import { WEB_TOOLS, WEB_TOOL_NAMES, executeWebTool } from '@/services/agent/webTools';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { buildAgentSystemPrompt, memorySection, FORMATTING_GUIDE, VISUALS_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
+import { buildAgentSystemPrompt, memorySection, FORMATTING_GUIDE, VISUALS_GUIDE, CONNECTORS_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
 import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
+import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, callMcpTool, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
 import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall, ToolDefinition } from '@/types';
@@ -469,6 +470,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     const personal = personalInstructionsSection(await loadPersonalInstructions().catch(() => ''));
     // Recherche web (Search / Fetch DeepSeek) : désactivable dans les Paramètres
     const webEnabled = useSettingsStore.getState().settings.webTools !== false;
+    // Connecteurs MCP activés (Context7, Playwright, GitHub…) : un serveur lent ne bloque pas le départ
+    setMcpRoots(workspacePath ? [workspacePath] : []);
+    const mcpTools = await mcpAgentTools({ waitMs: 8_000 }).catch(() => []);
+    const mcpReadOnlyTools = mcpTools.filter((t) => mcpToolRef(t.function.name)?.tool.annotations?.readOnlyHint);
 
     try {
       if (resumeFrom) {
@@ -514,14 +519,14 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct.\n\n' +
               (webEnabled
                 ? "Tu peux chercher sur le web (web_search) et lire une page (read_url) quand la question porte sur une information récente " +
-                  "ou une documentation ; cite alors tes sources avec leur URL. Ce sont tes SEULS outils.\n\n"
+                  "ou une documentation ; cite alors tes sources avec leur URL.\n\n"
                 : '') +
               "AUCUN DOSSIER N'EST OUVERT : tu n'as aucun outil sur les fichiers. Tu ne peux ni lire un fichier, ni lancer une commande, " +
               "ni modifier quoi que ce soit. Ne prétends JAMAIS l'avoir fait, même si l'historique de la conversation " +
               "montre que tu le faisais avant : n'invente aucun résultat de commande, de build ou de test. " +
               "Si la demande exige d'agir sur un projet, dis-le en une phrase et demande d'ouvrir le dossier " +
               "(bouton « Ouvrir un dossier » en haut de la conversation).\n\n" +
-              FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + personal,
+              FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + '\n\n' + CONNECTORS_GUIDE + personal,
           };
           systemHead = (system.content as string).slice(0, (system.content as string).length - personal.length);
           systemRefresh = personal.trim();
@@ -602,10 +607,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         promptTokens += historyTokens();
         const web = webEnabled ? WEB_TOOLS : [];
         const tools = !workspacePath
-          ? (web.length ? web : undefined)
+          ? ([...web, ...mcpTools].length ? [...web, ...mcpTools] : undefined)
           : modeRef.current === 'plan'
-            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : [])]
-            : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : [])];
+            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...mcpReadOnlyTools]
+            : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...mcpTools];
 
         // Une étape coupée par le réseau est réessayée seule : l'historique est intact,
         // donc rien de ce qui a déjà été fait n'est perdu ni refacturé.
@@ -687,16 +692,24 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             ? await commandRisk(convId, workspacePath, String(args.command || '')).catch(() => null)
             : null;
 
+          // Connecteur MCP : lecture déclarée par le serveur, ou action à faire valider
+          const mcpRef = isMcpTool(call.function.name) ? mcpToolRef(call.function.name) : undefined;
+          const mcpReadOnly = !!mcpRef?.tool.annotations?.readOnlyHint;
+          const mcpAsk = !!mcpRef && mcpNeedsApproval(modeRef.current, mcpRef);
+
           // Accord de l'utilisateur selon le mode de permission
           let allowed = true;
           let refusal = "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
-          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !['task_done', 'propose_plan', 'load_skill'].includes(call.function.name)) {
+          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !mcpReadOnly && !['task_done', 'propose_plan', 'load_skill'].includes(call.function.name)) {
             allowed = false;
+          } else if (mcpAsk && background) {
+            allowed = false;
+            refusal = `Refusé automatiquement : l'action « ${mcpRef!.tool.name} » du connecteur ${mcpRef!.serverName} demande un accord, et personne n'est là pendant une automatisation. Signale-le dans ta réponse.`;
           } else if (risk && background) {
             // Automatisation : personne pour valider → refus, expliqué à l'agent
             allowed = false;
             refusal = `Refusé automatiquement : ${risk.reason}. Personne n'est là pour valider pendant une automatisation. Ne contourne pas ce refus ; signale-le dans ta réponse.`;
-          } else if (needsApproval(modeRef.current, call.function.name) || risk) {
+          } else if (needsApproval(modeRef.current, call.function.name) || risk || mcpAsk) {
             allowed = await new Promise<boolean>((resolve) => {
               approvalResolver.current = resolve;
               setApproval({ id: call.id, name: call.function.name, summary: ev.argsSummary, reason: risk?.reason, detail: risk?.detail });
@@ -757,6 +770,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             ? { output: refusal, isError: true }
             : WEB_TOOL_NAMES.has(call.function.name)
             ? await executeWebTool(call.function.name, args, controller.signal)
+            : mcpRef
+            ? await callMcpTool(call.function.name, args, controller.signal)
             : workspacePath
             ? await executeToolCall(call, {
                 projectRoot: workspacePath,

@@ -6,7 +6,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  SquarePen, Search, CalendarClock, Wand2, Folder, FolderOpen, FolderPlus,
+  SquarePen, Search, CalendarClock, Wand2, Plug, Folder, FolderOpen, FolderPlus,
   Hash, Settings, Sun, Moon, Trash2, Plus, X, PanelLeftClose, PanelLeft, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -250,6 +250,7 @@ export default function Sidebar({ className }: { className?: string }) {
           />
           <NavRow icon={CalendarClock} label="Automatisations" onClick={() => { if (location.pathname !== '/automations') navigate('/automations'); }} />
           <NavRow icon={Wand2} label="Skills" onClick={() => { if (location.pathname !== '/skills') navigate('/skills'); }} />
+          <NavRow icon={Plug} label="Connecteurs" onClick={() => { if (location.pathname !== '/connectors') navigate('/connectors'); }} />
         </div>
 
         {expanded && searching && (

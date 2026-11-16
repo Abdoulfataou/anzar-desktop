@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useOffline } from '@/hooks/useOffline';
+import { loadMcpConfig, startServer } from '@/services/mcp/manager';
 
 interface AppLayoutProps {
   className?: string;
@@ -26,7 +27,15 @@ export default function AppLayout({ className }: AppLayoutProps) {
   const { isOnline, isSlowConnection } = useOffline();
   // L'espace de travail dessine ses propres panneaux ; les autres pages reçoivent un cadre unique.
   const { pathname } = useLocation();
-  const framed = pathname.startsWith('/settings') || pathname.startsWith('/skills') || pathname.startsWith('/automations');
+  const framed = pathname.startsWith('/settings') || pathname.startsWith('/skills') || pathname.startsWith('/automations') || pathname.startsWith('/connectors');
+
+  useEffect(() => {
+    // Connecteurs MCP activés : démarrés en arrière-plan, prêts avant le premier message
+    const t = setTimeout(() => {
+      void loadMcpConfig().then((servers) => servers.filter((s) => s.enabled).forEach((s) => void startServer(s.id))).catch(() => {});
+    }, 2_000);
+    return () => clearTimeout(t);
+  }, []);
 
   useEffect(() => {
     // Applique le thème persistant dès que settingsStore est hydraté.
