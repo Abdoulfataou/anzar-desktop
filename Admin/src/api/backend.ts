@@ -54,6 +54,12 @@ export type PaymentIntent = {
   method: string
   status: PaymentStatus
   provider_ref?: string
+  provider?: string
+  provider_tx_id?: string
+  charged_amount?: number
+  charged_currency?: string
+  remote_status?: string
+  failure_reason?: string
   created_at?: string
   updated_at?: string
 }
@@ -235,6 +241,8 @@ export const api = {
   markPaid: (id: string, data: { description: string; provider_ref?: string }) =>
     apiFetch<{ status: string; payment_intent: PaymentIntent }>(`/api/admin/payments/${encodeURIComponent(id)}/mark-paid`,
       post({ provider_ref: '', ...data })),
+  refreshPayment: (id: string) =>
+    apiFetch<{ status: string; payment_intent: PaymentIntent }>(`/api/admin/payments/${encodeURIComponent(id)}/refresh`, post({})),
   cancelPayment: (id: string, reason: string) =>
     apiFetch<{ status: string }>(`/api/admin/payments/${encodeURIComponent(id)}/cancel`, post({ reason })),
 

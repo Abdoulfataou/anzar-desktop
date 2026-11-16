@@ -200,6 +200,14 @@ class PaymentIntent(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False, index=True)
     provider_ref: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     payment_url: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    # Paiement automatique : fournisseur (fedapay|stripe|…, vide = demande manuelle),
+    # identifiant de la transaction chez lui, montant réellement facturé et devise.
+    provider: Mapped[str] = mapped_column(String(32), default="", nullable=False, index=True)
+    provider_tx_id: Mapped[str] = mapped_column(String(255), default="", nullable=False, index=True)
+    charged_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    charged_currency: Mapped[str] = mapped_column(String(8), default="", nullable=False)
+    remote_status: Mapped[str] = mapped_column(String(40), default="", nullable=False)
+    failure_reason: Mapped[str] = mapped_column(String(255), default="", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

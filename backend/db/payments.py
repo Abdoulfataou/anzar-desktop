@@ -95,8 +95,23 @@ async def admin_mark_payment_intent_paid(
                 raise ValueError("Cette référence de paiement a déjà servi pour une autre demande")
         user_email, amount = intent.user_email, float(intent.amount_fcfa)
 
-    # 1) Crédit d'abord, idempotent (external_ref) : un double clic ou une reprise après
-    #    panne ne crédite jamais deux fois. 2) Puis la demande passe à « payée ».
+    await credit_intent(intent_id, user_email, amount,
+                        f"Paiement validé ({admin_email}): {description}", provider_ref=provider_ref)
+
+    # Reload latest
+    Session = get_sessionmaker()
+    async with Session() as session:
+        intent = await session.scalar(select(PaymentIntent).where(PaymentIntent.id == intent_id))
+        return _model_to_dict(intent) if intent else {}
+
+
+async def credit_intent(intent_id: str, user_email: str, amount: float, description: str,
+                        provider_ref: str = "") -> None:
+    """Crédite une demande et la passe à « payée ». Partagé par la validation admin et les webhooks.
+
+    1) Crédit d'abord, idempotent (external_ref) : un double clic, un webhook rejoué ou une
+       reprise après panne ne crédite jamais deux fois. 2) Puis la demande passe à « payée ».
+    """
     from config import settings as _cfg
     bonus_pct = _cfg.get_recharge_bonus_percent(amount)
     bonus_amount = round(amount * bonus_pct / 100) if bonus_pct > 0 else 0
@@ -105,20 +120,17 @@ async def admin_mark_payment_intent_paid(
     await add_credits(
         user_email,
         total_credited,
-        description=f"Paiement validé ({admin_email}): {description}{bonus_label}",
+        description=f"{description}{bonus_label}",
         tx_type="recharge",
         external_ref=f"payment:{intent_id}",
     )
-
+    Session = get_sessionmaker()
     async with Session() as session:
         async with session.begin():
             intent = await session.scalar(select(PaymentIntent).where(PaymentIntent.id == intent_id).with_for_update())
-            intent.status = "paid"
-            intent.provider_ref = provider_ref
-            intent.updated_at = _utcnow()
-
-    # Reload latest
-    Session = get_sessionmaker()
-    async with Session() as session:
-        intent = await session.scalar(select(PaymentIntent).where(PaymentIntent.id == intent_id))
-        return _model_to_dict(intent) if intent else {}
+            if intent:
+                intent.status = "paid"
+                if provider_ref:
+                    intent.provider_ref = provider_ref
+                intent.failure_reason = ""
+                intent.updated_at = _utcnow()

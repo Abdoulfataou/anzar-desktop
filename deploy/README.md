@@ -134,3 +134,40 @@ Après chaque `git push` depuis le Mac :
 | `502` sur l'adresse ANZAR | API d'ANZAR arrêtée ou en erreur | `docker compose ps` puis `docker compose logs api` |
 | Erreur de certificat | DNS pas encore propagé | attendre, puis `docker compose restart caddy` dans `/root/shagostore/deploy` |
 | `FATAL: JWT_SECRET…` au démarrage | `.env` absent ou vide | relancer `./initialiser.sh` (seulement si la base est vide) |
+
+
+## Paiements automatiques (FedaPay, Stripe)
+
+Sans clé, rien ne change : seule la recharge manuelle (validée dans l'admin) est proposée.
+Chaque fournisseur s'active dès que sa clé secrète est dans `/root/anzar/deploy/.env`,
+puis `./mettre-a-jour.sh`.
+
+**FedaPay** (mobile money, compte de l'entreprise au Niger) — tableau de bord FedaPay :
+1. *Développeurs → Clés API* : copie la clé secrète (`sk_sandbox_…` pour tester, `sk_live_…` ensuite).
+2. *Développeurs → Webhooks → Ajouter* : URL `https://anzar-api.issalanhub.com/api/payments/webhook/fedapay`,
+   événements `transaction.*`. Copie la clé secrète du webhook.
+3. Dans `.env` :
+   ```
+   FEDAPAY_SECRET_KEY=sk_sandbox_...
+   FEDAPAY_WEBHOOK_SECRET=wh_sandbox_...
+   FEDAPAY_ENVIRONMENT=sandbox        # live quand le compte est validé
+   ```
+
+**Stripe** (cartes, compte de la LLC américaine) — dashboard Stripe :
+1. *Développeurs → Clés API* : clé secrète (`sk_test_…`, puis `sk_live_…`).
+2. *Développeurs → Webhooks → Ajouter une destination* : URL
+   `https://anzar-api.issalanhub.com/api/payments/webhook/stripe`, événements
+   `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
+   `checkout.session.async_payment_failed`, `checkout.session.expired`. Copie le `whsec_…`.
+3. Dans `.env` :
+   ```
+   STRIPE_SECRET_KEY=sk_test_...
+   STRIPE_WEBHOOK_SECRET=whsec_...
+   STRIPE_CURRENCY=usd
+   STRIPE_FCFA_PER_UNIT=600           # FCFA pour 1 $ ; ajuste selon le cours
+   ```
+
+Sécurité : le serveur ne crédite jamais sur la seule foi du webhook. Il vérifie sa signature,
+relit le statut chez le fournisseur, contrôle montant et devise, puis crédite une seule fois.
+Si un webhook se perd, l'app (pendant l'attente) et un rattrapage toutes les 5 minutes relisent
+le statut ; dans l'admin, « Vérifier » fait la même chose à la demande.

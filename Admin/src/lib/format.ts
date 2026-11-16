@@ -69,6 +69,13 @@ export const METHOD_LABELS: Record<string, string> = {
   mpesa: 'M-Pesa',
   nita_transfert: 'Dépôt Nita',
   amana_transfert: 'Dépôt Amana',
+  mobile_money: 'Mobile money',
+  card: 'Carte bancaire',
+}
+
+export const PROVIDER_LABELS: Record<string, string> = {
+  fedapay: 'FedaPay',
+  stripe: 'Stripe',
 }
 
 export const ROLE_LABELS: Record<string, string> = {

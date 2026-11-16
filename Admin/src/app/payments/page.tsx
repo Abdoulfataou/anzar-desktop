@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { toast } from 'sonner'
 import { useSearchParams } from 'react-router-dom'
 import { RefreshCw, Search } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -28,6 +29,17 @@ export default function PaymentsPage() {
   const settings = useLoad(() => api.settings(), [])
   const [paying, setPaying] = useState<PaymentIntent | null>(null)
   const [cancelling, setCancelling] = useState<PaymentIntent | null>(null)
+  const refresh = async (p: PaymentIntent) => {
+    try {
+      const r = await api.refreshPayment(p.id)
+      const st = r.payment_intent.status
+      toast.success(st === 'paid' ? 'Paiement confirmé : compte crédité' : st === 'pending'
+        ? 'Toujours en attente chez le fournisseur' : `Statut : ${st}`)
+      data.reload()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Vérification impossible')
+    }
+  }
 
   const counts = data.data?.counts ?? {}
   const tabs = base.map((t) => ({
@@ -39,7 +51,7 @@ export default function PaymentsPage() {
     <div>
       <PageHeader
         title="Paiements"
-        description="Demandes de recharge envoyées depuis l'app. Vérifie la réception de l'argent, puis valide : le compte est crédité."
+        description="Recharges depuis l'app. Les paiements automatiques (FedaPay, Stripe) se créditent seuls ; « Vérifier » relit leur statut. Les demandes manuelles se valident après réception de l'argent."
         actions={<Button variant="secondary" leftIcon={<RefreshCw className="h-4 w-4" />} onClick={data.reload}>Actualiser</Button>}
       />
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
@@ -62,7 +74,7 @@ export default function PaymentsPage() {
           {data.data && <span className="text-xs text-foreground-secondary">{data.data.total} demande(s) · {fcfa(data.data.sum_amount_fcfa)}</span>}
         </div>
         <PaymentsTable rows={data.data?.payment_intents ?? []} loading={data.loading} error={data.error}
-          canAct={perms.canManageMoney} onPay={setPaying} onCancel={setCancelling} showUser />
+          canAct={perms.canManageMoney} onPay={setPaying} onCancel={setCancelling} onRefresh={refresh} showUser />
         <Pagination total={data.data?.total ?? 0} limit={LIMIT} offset={offset} onChange={setOffset} />
       </Panel>
       <MarkPaidModal intent={paying} onClose={() => setPaying(null)} onDone={data.reload}

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import select
 
 from db.base import get_sessionmaker, _utcnow, _model_to_dict
@@ -38,6 +39,17 @@ async def add_credits(
         tx_type = "recharge"
     external_ref = (external_ref or "").strip() or None
 
+    try:
+        return await _add_credits_once(email, amount_fcfa, description, tx_type, external_ref)
+    except IntegrityError:
+        # Deux règlements simultanés (webhook + sondage de l'app) : la contrainte unique sur
+        # external_ref a refusé le second, rien n'a été crédité deux fois.
+        if external_ref:
+            return await get_credits(email)
+        raise
+
+
+async def _add_credits_once(email, amount_fcfa, description, tx_type, external_ref):
     Session = get_sessionmaker()
     async with Session() as session:
         async with session.begin():

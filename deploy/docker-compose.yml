@@ -51,6 +51,15 @@ services:
       DEEPSEEK_MARGIN: ${DEEPSEEK_MARGIN:-3.0}
       # Accès strictement payant : aucun crédit offert à l'inscription.
       WELCOME_BONUS_FCFA: ${WELCOME_BONUS_FCFA:-0}
+      # Paiements automatiques (vides = désactivés ; la recharge manuelle reste disponible)
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://anzar-api.issalanhub.com}
+      FEDAPAY_SECRET_KEY: ${FEDAPAY_SECRET_KEY:-}
+      FEDAPAY_ENVIRONMENT: ${FEDAPAY_ENVIRONMENT:-sandbox}
+      FEDAPAY_WEBHOOK_SECRET: ${FEDAPAY_WEBHOOK_SECRET:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_CURRENCY: ${STRIPE_CURRENCY:-usd}
+      STRIPE_FCFA_PER_UNIT: ${STRIPE_FCFA_PER_UNIT:-0}
     networks:
       donnees: {}
       sortie: {}          # Internet : DeepSeek, Brevo

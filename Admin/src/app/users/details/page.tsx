@@ -10,7 +10,7 @@ import {
 import { CancelPaymentModal, CreditModal, MarkPaidModal, bonusFromTiers } from '@/components/actions'
 import { api, AuditEntry, PaymentIntent, Transaction, UsageRecord } from '@/api/backend'
 import {
-  ACTION_LABELS, METHOD_LABELS, PAYMENT_LABELS, TASK_LABELS, TX_LABELS, ago, dateTime, fcfa, label, num,
+  ACTION_LABELS, METHOD_LABELS, PAYMENT_LABELS, PROVIDER_LABELS, TASK_LABELS, TX_LABELS, ago, dateTime, fcfa, label, num,
 } from '@/lib/format'
 
 const LIMIT = 50
@@ -279,9 +279,10 @@ function UserPayments({ email, onChanged }: { email: string; onChanged: () => vo
   )
 }
 
-export function PaymentsTable({ rows, loading, error, canAct, onPay, onCancel, showUser = false }: {
+export function PaymentsTable({ rows, loading, error, canAct, onPay, onCancel, onRefresh, showUser = false }: {
   rows: PaymentIntent[]; loading?: boolean; error?: string | null; canAct: boolean
-  onPay: (p: PaymentIntent) => void; onCancel: (p: PaymentIntent) => void; showUser?: boolean
+  onPay: (p: PaymentIntent) => void; onCancel: (p: PaymentIntent) => void
+  onRefresh?: (p: PaymentIntent) => void; showUser?: boolean
 }) {
   const navigate = useNavigate()
   return (
@@ -296,14 +297,29 @@ export function PaymentsTable({ rows, loading, error, canAct, onPay, onCancel, s
         ...(showUser ? [{ key: 'u', header: 'Compte', render: (r: PaymentIntent) => (
           <button className="hover:text-accent-primary text-left" onClick={() => navigate(`/users/${encodeURIComponent(r.user_email)}`)}>{r.user_email}</button>
         ) }] : []),
-        { key: 'method', header: 'Moyen', render: (r) => label(METHOD_LABELS, r.method) },
+        { key: 'method', header: 'Moyen', render: (r) => (
+          <span>
+            {label(METHOD_LABELS, r.method)}
+            <span className="block text-xs text-foreground-secondary">
+              {r.provider ? `Auto · ${label(PROVIDER_LABELS, r.provider)}` : 'Manuel'}
+            </span>
+          </span>
+        ) },
         { key: 'amount', header: 'Montant', align: 'right', render: (r) => <span className="font-medium">{fcfa(r.amount_fcfa)}</span> },
         { key: 'status', header: 'Statut', render: (r) => (
           <Badge variant={r.status === 'paid' ? 'success' : r.status === 'pending' ? 'warning' : 'default'}>{label(PAYMENT_LABELS, r.status)}</Badge>
         ) },
-        { key: 'ref', header: 'Référence', render: (r) => <span className="font-mono text-xs text-foreground-secondary">{r.provider_ref || '—'}</span> },
+        { key: 'ref', header: 'Référence', render: (r) => (
+          <span className="font-mono text-xs text-foreground-secondary">
+            {r.provider_ref || r.provider_tx_id || '—'}
+            {r.charged_currency && r.charged_currency !== 'xof' && r.charged_amount
+              ? <span className="block font-sans">{r.charged_amount} {r.charged_currency.toUpperCase()}</span> : null}
+            {r.failure_reason ? <span className="block font-sans text-amber-600">{r.failure_reason}</span> : null}
+          </span>
+        ) },
         { key: 'act', header: '', align: 'right', render: (r) => canAct && r.status === 'pending' && (
           <div className="flex justify-end gap-2">
+            {r.provider && onRefresh && <Button size="sm" variant="secondary" onClick={() => onRefresh(r)}>Vérifier</Button>}
             <Button size="sm" onClick={() => onPay(r)}>Valider</Button>
             <Button size="sm" variant="ghost" onClick={() => onCancel(r)}>Annuler</Button>
           </div>

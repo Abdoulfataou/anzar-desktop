@@ -355,6 +355,20 @@ async def admin_payment_cancel(intent_id: str, body: AdminCancelPaymentRequest,
     return {"status": "ok", "payment_intent": intent}
 
 
+@router.post("/payments/{intent_id}/refresh")
+async def admin_payment_refresh(intent_id: str, admin: dict = Depends(require_admin_role("owner", "admin"))):
+    """Relit le statut chez le fournisseur (paiement automatique) et crédite s'il est payé."""
+    from services.payments import refresh_intent
+    from db.base import _model_to_dict
+    intent = await refresh_intent(intent_id)
+    if not intent:
+        raise HTTPException(404, "Demande introuvable")
+    if not intent.provider:
+        raise HTTPException(400, "Demande manuelle : rien à vérifier chez un fournisseur")
+    await audit(admin, "refresh_payment", intent_id, f"status={intent.status}")
+    return {"status": "ok", "payment_intent": _model_to_dict(intent)}
+
+
 # ── Journal d'audit ──
 
 @router.get("/audit")

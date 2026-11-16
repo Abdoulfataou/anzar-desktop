@@ -154,6 +154,29 @@ class Settings(BaseSettings):
         """OTP secret used for hashing OTP codes at rest."""
         return self.otp_secret or self.jwt_secret
 
+    # ─── Paiements automatiques ───
+    # URL publique de l'API (retour après paiement, webhooks déclarés chez les fournisseurs)
+    public_api_url: str = "https://anzar-api.issalanhub.com"
+    # Demandes « manuelles » (validées par un admin) : restent possibles en secours
+    manual_payments_enabled: bool = True
+    # FedaPay — mobile money Afrique de l'Ouest (Niger, Bénin, Côte d'Ivoire, Sénégal, Togo, Mali, Guinée)
+    fedapay_secret_key: str = ""          # sk_sandbox_… ou sk_live_…
+    fedapay_environment: str = "sandbox"  # sandbox | live
+    fedapay_webhook_secret: str = ""      # wh_sandbox_… ou wh_live_…
+    # Stripe — cartes du monde entier (compte de la LLC américaine)
+    stripe_secret_key: str = ""           # sk_test_… ou sk_live_…
+    stripe_webhook_secret: str = ""       # whsec_…
+    stripe_currency: str = "usd"          # usd | eur | xof
+    # FCFA pour 1 unité de la devise Stripe. 0 = valeur par défaut (usd 600, eur 655.957 fixe, xof 1)
+    stripe_fcfa_per_unit: float = 0.0
+
+    @property
+    def effective_stripe_rate(self) -> float:
+        if self.stripe_fcfa_per_unit and self.stripe_fcfa_per_unit > 0:
+            return float(self.stripe_fcfa_per_unit)
+        cur = (self.stripe_currency or "usd").lower()
+        return {"eur": 655.957, "xof": 1.0}.get(cur, 600.0)
+
     # ─── Admin Panel ───
     admin_default_email: str = "admin@anzar.app"
     admin_default_password: str = ""  # Fourni via ADMIN_DEFAULT_PASSWORD (env) uniquement

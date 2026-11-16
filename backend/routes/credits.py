@@ -20,6 +20,8 @@ class PaymentInitiateRequest(BaseModel):
     amount: float = Field(..., gt=0, le=1_000_000)
     currency: str = Field(default="XOF", max_length=8)
     method: str = Field(default="wave", max_length=32)
+    # Fournisseur automatique (fedapay, stripe…). Vide = demande manuelle validée par un admin.
+    provider: str = Field(default="", max_length=32)
 
 
 # ── Credits ──
@@ -67,15 +69,31 @@ async def get_credit_transactions(
 @router.post("/api/payments/initiate")
 async def initiate_payment(body: PaymentInitiateRequest, user: dict = Depends(get_current_user)):
     """
-    Prepare un paiement (Wave/Orange Money).
-    Pour l'instant, on cree juste une demande en DB (payment_intents).
+    Démarre une recharge.
+      - provider renseigné : paiement automatique, renvoie paymentUrl ; le compte est crédité
+        par le webhook signé (ou le sondage de l'app, ou le rattrapage périodique).
+      - provider vide : demande manuelle (Wave, Orange Money…), validée par un admin.
     """
+    from config import settings
+    from services.payments import start_payment
+    from services.payments.base import PaymentError
+
+    if body.provider:
+        try:
+            return await start_payment(user["sub"], body.amount, body.provider)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except PaymentError as e:
+            raise HTTPException(502, str(e))
+
+    if not settings.manual_payments_enabled:
+        raise HTTPException(400, "Choisis un moyen de paiement")
     intent = await create_payment_intent(user["sub"], body.amount, currency=body.currency, method=body.method)
     return {
         "status": "pending",
         "intent_id": intent.get("id"),
         "paymentUrl": None,
-        "message": "Paiement en cours d'intégration. Demande enregistrée; l'admin validera et créditera le compte.",
+        "message": "Demande enregistrée. Envoie le paiement : un admin vérifie la réception et crédite ton compte.",
     }
 
 

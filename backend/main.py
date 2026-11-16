@@ -57,13 +57,29 @@ async def lifespan(app: FastAPI):
             except asyncio.TimeoutError:
                 pass
 
+    async def _payments_loop():
+        # Rattrapage des paiements dont le webhook n'est pas arrivé (toutes les 5 minutes)
+        from services.payments import reconcile_pending
+        while not stop_event.is_set():
+            try:
+                await reconcile_pending()
+            except Exception as e:
+                logger.warning(f"Payments reconcile error: {e}")
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=5 * 60)
+            except asyncio.TimeoutError:
+                pass
+
     housekeeping_task = asyncio.create_task(_housekeeping_loop())
+    payments_task = asyncio.create_task(_payments_loop())
     logger.info(f"ANZAR Backend v{settings.app_version} started on port {settings.effective_port}")
     yield
     stop_event.set()
     housekeeping_task.cancel()
+    payments_task.cancel()
     try:
         await housekeeping_task
+        await payments_task
     except (asyncio.CancelledError, Exception):
         # CancelledError hérite de BaseException (py>=3.8) : il faut l'attraper
         # explicitement, sinon il remonte dans le shutdown de l'app.
@@ -116,7 +132,9 @@ async def security_middleware(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     response.headers["X-XSS-Protection"] = "1; mode=block"
-    response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+    # Une page peut fixer sa propre politique (page de retour après paiement)
+    if "content-security-policy" not in response.headers:
+        response.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
 
     return response
