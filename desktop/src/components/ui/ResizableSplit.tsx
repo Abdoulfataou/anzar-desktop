@@ -16,6 +16,10 @@ interface ResizableSplitProps {
   /** Borne minimale gauche en % (défaut 22) */
   minLeftPct?: number;
   className?: string;
+  /** Masque le panneau droit : le gauche prend toute la largeur */
+  rightHidden?: boolean;
+  /** Clé localStorage : la largeur choisie est retenue d'une ouverture à l'autre */
+  storageKey?: string;
 }
 
 export default function ResizableSplit({
@@ -24,9 +28,24 @@ export default function ResizableSplit({
   initialLeftPct = 38,
   minLeftPct = 22,
   className,
+  rightHidden = false,
+  storageKey,
 }: ResizableSplitProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [leftPct, setLeftPct] = useState(initialLeftPct);
+  const [leftPct, setLeftPctState] = useState(() => {
+    try {
+      const saved = storageKey ? Number(localStorage.getItem(storageKey)) : NaN;
+      if (saved >= minLeftPct && saved <= 100 - minLeftPct) return saved;
+    } catch { /* stockage indisponible */ }
+    return initialLeftPct;
+  });
+  const setLeftPct = useCallback((v: number | ((p: number) => number)) => {
+    setLeftPctState((prev) => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      try { if (storageKey) localStorage.setItem(storageKey, String(Math.round(next * 10) / 10)); } catch { /* ignore */ }
+      return next;
+    });
+  }, [storageKey]);
   const [isDragging, setIsDragging] = useState(false);
 
   const applyPct = useCallback(
@@ -37,7 +56,7 @@ export default function ResizableSplit({
       const pct = ((clientX - rect.left) / rect.width) * 100;
       setLeftPct(Math.min(100 - minLeftPct, Math.max(minLeftPct, pct)));
     },
-    [minLeftPct]
+    [minLeftPct, setLeftPct]
   );
 
   const onPointerDown = useCallback(
@@ -58,6 +77,14 @@ export default function ResizableSplit({
   );
 
   const endDrag = useCallback(() => setIsDragging(false), []);
+
+  if (rightHidden) {
+    return (
+      <div ref={containerRef} className={cn('flex min-h-0 min-w-0 relative', className)}>
+        <div className="flex-1 min-w-0 min-h-0 overflow-hidden">{left}</div>
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className={cn('flex min-h-0 min-w-0 relative', className)}>

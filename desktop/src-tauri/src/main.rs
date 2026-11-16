@@ -4,6 +4,13 @@
 mod mcp;
 
 fn main() {
+    // Une app lancée depuis le Finder ou le Dock ne reçoit pas le PATH du terminal
+    // (/usr/bin:/bin seulement) : node, npm, python de Homebrew ou nvm seraient
+    // introuvables. On relit le PATH du shell de l'utilisateur, puis on complète
+    // avec les emplacements usuels. Les commandes lancées par l'app en héritent.
+    let _ = fix_path_env::fix();
+    std::env::set_var("PATH", mcp::enriched_path());
+
     let app = tauri::Builder::default()
         // Secure storage: Stronghold (encrypted vault)
         .plugin(

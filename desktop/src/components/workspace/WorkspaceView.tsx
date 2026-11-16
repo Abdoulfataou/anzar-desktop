@@ -347,8 +347,10 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
       {/* ── Split chat | workspace ── */}
       <ResizableSplit
         className="flex-1"
-        initialLeftPct={38}
-        minLeftPct={24}
+        initialLeftPct={55}
+        minLeftPct={30}
+        storageKey="anzar.split.chat"
+        rightHidden={!workspacePath}
         left={
           <div className="h-full min-h-0 flex flex-col overflow-hidden rounded-xl border border-border-medium bg-bg-primary">
             {/* En-tête de tâche : titre · projet · branche */}

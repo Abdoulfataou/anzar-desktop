@@ -22,6 +22,8 @@ dirs = "5.0"
 blake3 = "1.5"
 # Transport HTTP des serveurs MCP (déjà présent dans les dépendances via l'updater)
 reqwest = { version = "0.11", features = ["json"] }
+# PATH du shell de l'utilisateur (apps lancées depuis le Finder)
+fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 tauri-plugin-stronghold = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
 
 [features]

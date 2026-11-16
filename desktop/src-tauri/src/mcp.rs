@@ -63,7 +63,7 @@ fn launcher_name(command: &str) -> String {
 
 /// Les apps lancées depuis le Finder ne reçoivent pas le PATH du terminal :
 /// on ajoute les emplacements usuels de Node, Python et Docker.
-fn enriched_path() -> String {
+pub fn enriched_path() -> String {
     let sep = if cfg!(windows) { ";" } else { ":" };
     let mut parts: Vec<String> = std::env::var("PATH")
         .unwrap_or_default()
@@ -78,7 +78,7 @@ fn enriched_path() -> String {
             extra.push(format!("{h}\\AppData\\Roaming\\npm"));
             extra.push(format!("{h}\\.local\\bin"));
         } else {
-            for p in [".local/bin", ".cargo/bin", ".volta/bin", ".bun/bin", ".deno/bin", ".npm-global/bin"] {
+            for p in [".local/bin", ".cargo/bin", ".volta/bin", ".bun/bin", ".deno/bin", ".npm-global/bin", ".asdf/shims", ".pyenv/shims", "Library/pnpm"] {
                 extra.push(format!("{h}/{p}"));
             }
             // nvm : la version de Node la plus récente installée

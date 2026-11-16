@@ -236,6 +236,17 @@ function validatePath(basePath: string, targetPath: string): boolean {
   return true;
 }
 
+/** Programme introuvable : message clair, pour que l'agent ne conclue pas qu'il est absent du projet. */
+function explainSpawnError(error: any, command: string): string {
+  const raw = String(error?.message || error || '');
+  const program = command.trim().split(/\s+/)[0] || 'programme';
+  if (/os error 2|No such file or directory|program not found|cannot find the file/i.test(raw)) {
+    return `Programme « ${program} » introuvable par ANZAR (${raw}). S'il est installé sur l'ordinateur, ANZAR ne le trouve pas dans son PATH : `
+      + `dis-le à l'utilisateur (il peut redémarrer ANZAR) au lieu de conclure qu'il manque au projet.`;
+  }
+  return raw;
+}
+
 // ============================================================================
 // TERMINAL SERVICE
 // ============================================================================
@@ -589,7 +600,7 @@ class TerminalService {
         success: false,
         exitCode: 1,
         stdout: '',
-        stderr: error.message || String(error),
+        stderr: explainSpawnError(error, command),
         durationMs: Date.now() - startTime,
       };
     }
