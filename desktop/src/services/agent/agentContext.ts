@@ -138,14 +138,30 @@ function buildTaskHints(
 // MÉMOIRE PROJET (ANZAR.md)
 // ============================================================================
 
+/**
+ * Instructions du projet au format standard AGENTS.md (agents.md, Linux Foundation) :
+ * les mêmes que lisent Codex, Cursor, Copilot… CLAUDE.md sert de repli.
+ */
+export const INSTRUCTION_FILES = ['AGENTS.md', 'CLAUDE.md'];
+const MAX_INSTRUCTIONS_CHARS = 8_000;
+
+async function readCapped(path: string, max: number, label: string): Promise<string> {
+  if (!(await fileSystemService.exists(path).catch(() => false))) return '';
+  const content = (await fileSystemService.readFile(path).catch(() => '')).trim();
+  return content.length > max ? `${content.slice(0, max)}\n… [${label} tronqué]` : content;
+}
+
+/** Instructions du projet (AGENTS.md, sinon CLAUDE.md) puis mémoire ANZAR (ANZAR.md). */
 export async function loadProjectMemory(projectRoot: string): Promise<string> {
   try {
-    const path = `${projectRoot.replace(/[\\/]+$/, '')}/${MEMORY_FILENAME}`;
-    if (!(await fileSystemService.exists(path))) return '';
-    const content = await fileSystemService.readFile(path);
-    return content.length > MAX_MEMORY_CHARS
-      ? content.slice(0, MAX_MEMORY_CHARS) + '\n… [mémoire tronquée]'
-      : content;
+    const root = projectRoot.replace(/[\\/]+$/, '');
+    let instructions = '';
+    for (const name of INSTRUCTION_FILES) {
+      const text = await readCapped(`${root}/${name}`, MAX_INSTRUCTIONS_CHARS, name);
+      if (text) { instructions = `## Instructions du projet (${name})\n${text}`; break; }
+    }
+    const memory = await readCapped(`${root}/${MEMORY_FILENAME}`, MAX_MEMORY_CHARS, 'mémoire');
+    return [instructions, memory ? `## Mémoire d'ANZAR (${MEMORY_FILENAME})\n${memory}` : ''].filter(Boolean).join('\n\n');
   } catch {
     return '';
   }

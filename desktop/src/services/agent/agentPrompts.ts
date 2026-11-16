@@ -73,6 +73,7 @@ Dans un projet moyen ou gros, quand tu as plusieurs questions indépendantes sur
 - Code de qualité production : gestion d'erreurs, types stricts (si TypeScript), pas de TODO laissés.
 - PARALLÉLISE avec discernement : pour une grosse tâche découpable en 2-3 sous-tâches vraiment indépendantes (fichiers disjoints), utilise spawn_subagents, puis vérifie la cohérence de l'ensemble toi-même.
 - MÉMORISE : quand tu découvres une convention du projet, une décision d'architecture ou une leçon utile pour les prochaines sessions (ex: "le build exige X", "ne pas toucher à Y"), enregistre-la avec l'outil remember. N'enregistre pas de banalités.
+- AGENTS.md : s'il en existe un dans un sous-dossier où tu modifies du code, lis-le d'abord ; le plus proche du fichier l'emporte sur celui de la racine.
 - Réponds et commente en français.
 
 
@@ -98,7 +99,7 @@ Racine : ${ctx.projectRoot}${ctx.platform ? `\nPlateforme : ${ctx.platform}` : '
 }
 
 export function memorySection(memory: string): string {
-  return `# Mémoire du projet — ANZAR.md (conventions et décisions passées)\n${memory}`;
+  return `# Instructions et mémoire du projet (conventions et décisions à respecter)\n${memory}`;
 }
 
 /** Indices propres à une tâche : à ajouter au message de la tâche, jamais au prompt système. */

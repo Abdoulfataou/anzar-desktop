@@ -11,9 +11,11 @@ import { open as shellOpen } from '@tauri-apps/api/shell';
 import { cn } from '@/lib/utils';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import {
-  MCP_PRESETS, mask, parsePairs, slugifyServerId, splitCommandLine,
-  type McpPreset, type McpServerConfig,
+  MCP_PRESETS, PROJECT_MCP_FILES, mask, parsePairs, parseProjectMcp, slugifyServerId, splitCommandLine,
+  type McpPreset, type McpServerConfig, type ProjectServerProposal,
 } from '@/services/mcp/config';
+import { useProjectStore } from '@/stores/projectStore';
+import { fileSystemService } from '@/services/filesystem/fileSystem';
 import {
   loadMcpConfig, removeServer, restartServer, startServer, upsertServer, useMcpStore, type McpRuntime,
 } from '@/services/mcp/manager';
@@ -36,6 +38,23 @@ export default function ConnectorsPage() {
   const runtime = useMcpStore((s) => s.runtime);
   const loaded = useMcpStore((s) => s.loaded);
   const [adding, setAdding] = useState<McpPreset | 'custom' | null>(null);
+  const [prefill, setPrefill] = useState<ProjectServerProposal | null>(null);
+  const activeProject = useProjectStore((s) => s.projects.find((p) => p.id === s.activeProjectId));
+  const projectPath = (activeProject?.metadata?.localPath as string | undefined) || null;
+  const [proposals, setProposals] = useState<ProjectServerProposal[]>([]);
+  useEffect(() => {
+    if (!projectPath) { setProposals([]); return; }
+    let alive = true;
+    void (async () => {
+      const found: ProjectServerProposal[] = [];
+      for (const file of PROJECT_MCP_FILES) {
+        const text = await fileSystemService.readFile(`${projectPath.replace(/[\\/]+$/, '')}/${file}`).catch(() => null);
+        if (text) found.push(...parseProjectMcp(text, file));
+      }
+      if (alive) setProposals(found);
+    })();
+    return () => { alive = false; };
+  }, [projectPath]);
   const [open, setOpen] = useState<string | null>(null);
   const { confirm, ConfirmDialog } = useConfirmModal();
 
@@ -78,10 +97,33 @@ export default function ConnectorsPage() {
         {adding && (
           <AddForm
             preset={adding === 'custom' ? null : adding}
+            prefill={adding === 'custom' ? prefill : null}
             takenIds={servers.map((s) => s.id)}
-            onCancel={() => setAdding(null)}
-            onSaved={(id) => { setAdding(null); setOpen(id); }}
+            onCancel={() => { setAdding(null); setPrefill(null); }}
+            onSaved={(id) => { setAdding(null); setPrefill(null); setOpen(id); }}
           />
+        )}
+
+        {!adding && proposals.some((p) => !servers.some((s) => s.id === slugifyServerId(p.name))) && (
+          <section className="mt-6 rounded-xl border border-border-medium bg-surface-default p-4">
+            <h2 className="text-ui-base font-semibold text-text-primary">Proposés par le projet {activeProject?.name}</h2>
+            <p className="text-ui-sm text-text-muted mt-1 mb-3">
+              Déclarés dans le dépôt (fichiers de Claude Code, Cursor ou VS Code). Rien n'est lancé sans toi : l'import ouvre le formulaire pour que tu relises la commande et complètes les clés.
+            </p>
+            <div className="space-y-2">
+              {proposals.filter((p) => !servers.some((s) => s.id === slugifyServerId(p.name))).map((p) => (
+                <div key={`${p.file}:${p.name}`} className="flex items-center gap-3 rounded-lg border border-border-subtle px-3 py-2">
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-ui-sm font-medium text-text-primary">{p.name} <span className="font-normal text-text-muted font-mono text-ui-caption">· {p.file}</span></span>
+                    <span className="block font-mono text-ui-caption text-text-muted truncate">{p.transport === 'http' ? p.url : [p.command, ...(p.args || [])].join(' ')}</span>
+                    {p.unsupported ? <span className="block text-ui-caption text-accent-error">Non pris en charge : {p.unsupported}</span>
+                      : p.needsSetup ? <span className="block text-ui-caption text-accent-warning">Des valeurs sont à compléter (clés, variables)</span> : null}
+                  </span>
+                  <button disabled={!!p.unsupported} onClick={() => { setPrefill(p); setAdding('custom'); }} className={btnGhost}><Plus size={14} /> Importer</button>
+                </div>
+              ))}
+            </div>
+          </section>
         )}
 
         {!adding && available.length > 0 && (
@@ -224,17 +266,20 @@ function ServerRow({ server, rt, open, onToggleOpen, onToggle, onRemove }: {
   );
 }
 
-function AddForm({ preset, takenIds, onCancel, onSaved }: {
-  preset: McpPreset | null; takenIds: string[]; onCancel: () => void; onSaved: (id: string) => void;
+function AddForm({ preset, prefill, takenIds, onCancel, onSaved }: {
+  preset: McpPreset | null; prefill?: ProjectServerProposal | null; takenIds: string[]; onCancel: () => void; onSaved: (id: string) => void;
 }) {
   const initial = useMemo(() => Object.fromEntries((preset?.fields || []).map((f) => [f.key, f.default ?? (f.kind === 'checkbox' ? false : '')])), [preset]);
   const [values, setValues] = useState<Record<string, string | boolean>>(initial);
   // Personnalisé
-  const [name, setName] = useState('');
-  const [kind, setKind] = useState<'stdio' | 'http'>('stdio');
-  const [commandLine, setCommandLine] = useState('');
-  const [url, setUrl] = useState('');
-  const [pairs, setPairs] = useState('');
+  const quote = (a: string) => (/\s/.test(a) ? `"${a}"` : a);
+  const [name, setName] = useState(prefill?.name || '');
+  const [kind, setKind] = useState<'stdio' | 'http'>(prefill?.transport || 'stdio');
+  const [commandLine, setCommandLine] = useState(prefill?.command ? [prefill.command, ...(prefill.args || [])].map(quote).join(' ') : '');
+  const [url, setUrl] = useState(prefill?.url || '');
+  const [pairs, setPairs] = useState(prefill
+    ? Object.entries(prefill.transport === 'http' ? prefill.headers || {} : prefill.env || {}).map(([k, v]) => `${k}${prefill.transport === 'http' ? ': ' : '='}${v}`).join('\n')
+    : '');
   const [alwaysAsk, setAlwaysAsk] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -272,7 +317,7 @@ function AddForm({ preset, takenIds, onCancel, onSaved }: {
   return (
     <div className="mt-6 rounded-xl border border-border-medium bg-surface-default p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <h2 className="text-ui-lg font-semibold text-text-primary">{preset ? `Ajouter ${preset.name}` : 'Connecteur personnalisé'}</h2>
+        <h2 className="text-ui-lg font-semibold text-text-primary">{preset ? `Ajouter ${preset.name}` : prefill ? `Importer ${prefill.name} (${prefill.file})` : 'Connecteur personnalisé'}</h2>
         <button onClick={onCancel} className="p-1 rounded-md text-text-muted hover:text-text-primary" title="Annuler"><X size={16} /></button>
       </div>
 
