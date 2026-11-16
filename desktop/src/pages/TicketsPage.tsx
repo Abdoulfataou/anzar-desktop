@@ -21,6 +21,7 @@ import { splitIntoTickets, type ProposedTicket } from '@/services/superagent/rou
 import { cleanupMerged, discardTicket, mergeTicket, ticketDiff } from '@/services/superagent/ticketGit';
 import { buildAgentContext } from '@/services/agent/agentContext';
 import type { AIModel } from '@/types';
+import { TICKET_TEMPLATES } from '@/services/templates';
 
 const btn = 'flex items-center gap-1.5 h-8 px-3 rounded-lg text-ui-base font-medium disabled:opacity-50';
 const btnPrimary = `${btn} bg-primary-btn text-primary-btn-fg hover:opacity-90`;
@@ -197,6 +198,17 @@ function TicketForm({ projects, defaultProject, onClose }: { projects: { id: str
         <button onClick={onClose} className="p-1 rounded-md text-text-muted hover:text-text-primary"><X size={16} /></button>
       </div>
       <ProjectSelect projects={projects} value={projectId} onChange={setProjectId} />
+      <div>
+        <span className="text-ui-sm text-text-secondary">Partir d'un modèle</span>
+        <div className="mt-1 flex flex-wrap gap-1.5">
+          {TICKET_TEMPLATES.map((t) => (
+            <button key={t.id} onClick={() => { setTitle(t.title); setDescription(t.description); }}
+              className="h-7 px-2.5 rounded-lg border border-border-medium text-ui-caption text-text-secondary hover:bg-hover-fill">
+              {t.label}
+            </button>
+          ))}
+        </div>
+      </div>
       <label className="block">
         <span className="text-ui-sm text-text-secondary">Titre</span>
         <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ajouter la page « Mes commandes »" className={input} />

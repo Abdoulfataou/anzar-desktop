@@ -212,6 +212,112 @@ Après une modification visible d'une app web (page, formulaire, bouton, appel d
 - Saisir de vrais identifiants, mots de passe ou données de paiement : utilise des données de test.
 - Laisser tourner le serveur si l'utilisateur ne l'utilise pas : stop_dev_server à la fin, sauf s'il veut le garder.`;
 
+const lowBandwidth = `---
+name: app-faible-connexion
+description: Concevoir une app web ou mobile qui marche bien avec une connexion lente, chère ou intermittente (3G, forfaits limités) — poids, cache, hors ligne, reprise.
+---
+
+## Quand l'utiliser
+App destinée à des utilisateurs sur réseau mobile lent ou instable, ou avec des forfaits de données limités (cas fréquent en Afrique de l'Ouest).
+
+## Règles
+1. **Poids** : vise moins de 200 Ko de JavaScript au premier chargement ; images compressées (WebP/AVIF), à la bonne taille, chargées à la demande (loading="lazy").
+2. **Requêtes** : regroupe les appels, pagine les listes (20 éléments), n'envoie que les champs utiles. Compresse les réponses (gzip/brotli côté serveur).
+3. **Cache** : données de référence (catégories, produits) gardées en local avec une date ; affichage immédiat du cache puis mise à jour en arrière-plan.
+4. **Hors ligne** : les actions de l'utilisateur (commande, formulaire) sont mises en file locale et renvoyées au retour du réseau, avec un identifiant unique pour éviter les doublons.
+5. **Délais** : délai d'attente explicite sur chaque requête (15 à 30 s), nouvelle tentative avec attente croissante, bouton « Réessayer ».
+6. **Interface** : squelettes de chargement plutôt que pages blanches ; indicateur « hors ligne » ; jamais de perte de ce que l'utilisateur a saisi.
+
+## Vérifier
+Dans le navigateur, profil réseau « Slow 3G » et mode hors ligne : l'app s'ouvre, affiche le cache, et ne perd aucune saisie.`;
+
+const apiSecurity = `---
+name: securite-api
+description: Sécuriser une API (REST ou GraphQL) — authentification, droits par ressource, validation, limites de débit, secrets, erreurs — avant la mise en ligne.
+---
+
+## Points à vérifier, dans cet ordre
+1. **Droits par ressource** (la faille la plus fréquente) : chaque route qui reçoit un identifiant vérifie que la ressource appartient à l'utilisateur connecté (ou qu'il a le rôle requis). Teste-le : utilisateur A qui demande la commande de B → 403 ou 404.
+2. **Authentification** : jetons signés avec une clé forte venue de l'environnement, durée de vie courte, mots de passe hachés (bcrypt/argon2), limite de tentatives de connexion.
+3. **Validation** : toute entrée est validée côté serveur (types, longueurs, formats) ; on n'accepte que les champs attendus (pas d'affectation en masse de « role » ou « solde »).
+4. **Injections** : requêtes paramétrées ou ORM, jamais de concaténation de SQL ; pas de commande système construite avec une entrée utilisateur.
+5. **Limites de débit** sur connexion, OTP, inscription et routes coûteuses.
+6. **Secrets** : aucun dans le code ni le dépôt ; .env ignoré par git ; clés différentes entre test et production.
+7. **Erreurs** : pas de pile d'appels ni de détail interne dans les réponses ; journal côté serveur.
+8. **CORS** : liste explicite des origines autorisées, pas de « * » avec des cookies.
+
+## Rendu
+Pour chaque point : OK, ou le fichier et la ligne du problème, avec la correction. Corrige les points bloquants (1 à 4) avant le reste.`;
+
+const vpsDeploy = `---
+name: deployer-sur-vps-docker
+description: Déployer une app (API + base de données + front) sur un VPS avec Docker Compose et un proxy HTTPS (Caddy), avec sauvegardes et vérification de santé.
+---
+
+## Étapes
+1. **Images** : un Dockerfile par service, multi-étapes (build puis image d'exécution légère), utilisateur non root, pas de secret dans l'image.
+2. **Compose** : services (api, db, front), volumes nommés pour la base, réseau interne ; la base n'expose aucun port à l'extérieur ; restart: unless-stopped ; healthcheck sur chaque service.
+3. **Configuration** : un fichier .env sur le serveur (jamais dans git) ; un .env.example documenté dans le dépôt.
+4. **HTTPS** : Caddy en frontal (certificats automatiques), un bloc par domaine, reverse_proxy vers le nom du service.
+5. **Migrations** : lancées au démarrage de l'API ou par une commande dédiée, jamais à la main en production.
+6. **Sauvegardes** : dump quotidien de la base, chiffré, gardé hors du serveur ; tester une restauration au moins une fois.
+7. **Mise à jour** : script unique (sauvegarde → git pull → docker compose up -d --build → vérification /health).
+8. **Pare-feu** : seuls les ports 22, 80 et 443 ouverts ; connexion SSH par clé.
+
+## Vérifier
+curl https://domaine/health répond 200 ; redémarrage du serveur → tout revient seul ; un dump de sauvegarde existe.`;
+
+const dbMigration = `---
+name: migration-base-de-donnees
+description: Modifier le schéma d'une base de données en production sans perte de données ni coupure — ajout, renommage, suppression de colonnes, index.
+---
+
+## Principes
+- Une migration = un fichier versionné, appliqué par l'outil du projet (Prisma, Alembic, Django, Knex…), jamais par une modification manuelle.
+- Toujours réversible si possible, et testée sur une copie des données.
+- **Sauvegarde avant** toute migration en production.
+
+## Opérations délicates (en plusieurs déploiements)
+- **Renommer une colonne** : ajouter la nouvelle → écrire dans les deux → copier l'ancien contenu → lire la nouvelle → supprimer l'ancienne plus tard.
+- **Colonne obligatoire** : l'ajouter facultative avec une valeur par défaut, remplir les lignes existantes, puis la rendre obligatoire.
+- **Supprimer** : d'abord ne plus l'utiliser dans le code (déployé), ensuite seulement la supprimer.
+- **Index sur une grosse table** : en mode non bloquant si la base le permet (CREATE INDEX CONCURRENTLY pour PostgreSQL).
+
+## Vérifier
+La migration s'applique sur une base vide ET sur une copie de la base réelle ; l'application fonctionne pendant et après ; le retour arrière a été essayé.`;
+
+const expo = `---
+name: app-mobile-expo
+description: Créer ou faire évoluer une app mobile React Native avec Expo — navigation (Expo Router), stockage, permissions, appels d'API, builds EAS.
+---
+
+## Bonnes pratiques
+1. **Démarrage** : npx create-expo-app ; Expo Router pour la navigation par fichiers (app/), TypeScript.
+2. **Documentation** : vérifie la version d'Expo du projet (package.json) et lis la doc correspondante (connecteur Context7 si disponible) ; les API changent d'une version à l'autre.
+3. **Données** : appels d'API centralisés dans un module ; jeton dans expo-secure-store (jamais AsyncStorage pour un secret) ; cache léger pour l'affichage hors ligne.
+4. **Permissions** (caméra, localisation, notifications) : demandées au moment où on en a besoin, avec une explication, et un repli si refusées.
+5. **Interface** : SafeAreaView, tailles de police accessibles, cibles tactiles d'au moins 44 px, clavier qui ne masque pas les champs (KeyboardAvoidingView).
+6. **Builds** : EAS Build pour Android/iOS ; variables d'environnement par profil (development, preview, production) ; ne jamais mettre de clé secrète dans l'app.
+
+## Vérifier
+npx expo-doctor sans erreur ; l'app démarre sur Android et iOS (ou Expo Go) ; les parcours principaux marchent en mode avion avec le cache.`;
+
+const phoneAuth = `---
+name: connexion-par-telephone
+description: Connexion ou inscription par numéro de téléphone avec code à usage unique (OTP) par SMS ou WhatsApp — sûre, peu coûteuse, adaptée aux numéros africains.
+---
+
+## Règles
+1. **Numéros** : stockés au format international E.164 (+227…) ; validation avec une bibliothèque (libphonenumber), pas une expression régulière maison.
+2. **Code** : 6 chiffres, aléatoire cryptographique, valable 5 à 10 minutes, usage unique ; stocké haché, jamais en clair.
+3. **Limites** : au plus 3 envois par numéro et par heure, et par adresse IP ; au plus 5 essais de code, puis blocage temporaire. Les SMS coûtent de l'argent : une boucle d'envois peut vider le compte.
+4. **Fournisseur** : passer par un agrégateur SMS ou l'API WhatsApp Business ; prévoir un second canal si le premier échoue ; clés uniquement côté serveur.
+5. **Réponse identique** que le numéro existe ou non (pas de fuite sur les comptes existants).
+6. **Session** : après validation, jeton de session à durée limitée ; changement de numéro = nouvelle vérification.
+
+## Tests
+Code expiré, mauvais code 5 fois, renvoi trop fréquent, numéro mal formé, deux demandes simultanées.`;
+
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'brainstorming', markdown: brainstorming },
   { name: 'ecrire-un-plan', markdown: plan },
@@ -221,5 +327,11 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'verifier-une-app-web', markdown: verifyWeb },
   { name: 'revue-de-code', markdown: review },
   { name: 'paiement-mobile-money', markdown: mobileMoney },
+  { name: 'connexion-par-telephone', markdown: phoneAuth },
+  { name: 'securite-api', markdown: apiSecurity },
+  { name: 'app-faible-connexion', markdown: lowBandwidth },
+  { name: 'app-mobile-expo', markdown: expo },
+  { name: 'migration-base-de-donnees', markdown: dbMigration },
+  { name: 'deployer-sur-vps-docker', markdown: vpsDeploy },
   { name: 'ecrire-une-skill', markdown: writeSkill },
 ];

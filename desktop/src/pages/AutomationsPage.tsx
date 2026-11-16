@@ -3,6 +3,7 @@
  * Chaque exécution crée une nouvelle tâche dans le projet (visible dans la barre latérale).
  */
 import { useMemo, useState } from 'react';
+import { AUTOMATION_TEMPLATES } from '@/services/templates';
 import { useNavigate } from 'react-router-dom';
 import { CalendarClock, Plus, Pencil, Trash2, Play, X, Loader2, CheckCircle2, AlertCircle, Info } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -129,6 +130,21 @@ export default function AutomationsPage() {
                 <X size={16} />
               </button>
             </div>
+            {!draft.id && (
+              <div>
+                <span className="text-ui-sm text-text-secondary">Partir d'un modèle</span>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {AUTOMATION_TEMPLATES.map((t) => (
+                    <button key={t.id} title={t.hint}
+                      onClick={() => setDraft({ ...draft, name: t.name, prompt: t.prompt, mode: t.mode, model: t.model, schedule: t.schedule })}
+                      className={cn('h-7 px-2.5 rounded-lg border text-ui-caption',
+                        draft.name === t.name ? 'border-input-border-hover bg-hover-fill text-text-primary' : 'border-border-medium text-text-secondary hover:bg-hover-fill')}>
+                      {t.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <label className="block">
               <span className="text-ui-sm text-text-secondary">Nom</span>
               <input value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} placeholder="Revue du matin" className={inputCls} />
