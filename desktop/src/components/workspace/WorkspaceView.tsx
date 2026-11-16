@@ -27,6 +27,7 @@ import MessageList from '@/components/chat/MessageList';
 import ChatInput from '@/components/chat/ChatInput';
 import ResizableSplit from '@/components/ui/ResizableSplit';
 import WorkspacePanel from './WorkspacePanel';
+import QuestionPanel from '@/components/chat/QuestionPanel';
 import { claimPendingPrompt } from '@/lib/pendingPrompt';
 import { openWorkspaceFolder, createWorkspaceFolder } from '@/lib/openWorkspace';
 import ProjectPicker from './ProjectPicker';
@@ -137,7 +138,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
   ];
 
   // ── Agent chat ──
-  const { sendMessage, stop, isGenerating, approval, resolveApproval, resume, setModeNow } = useAgentChat({
+  const { sendMessage, stop, isGenerating, approval, resolveApproval, question, resolveQuestion, resume, setModeNow } = useAgentChat({
     workspacePath,
     workspaceName: activeProject?.name,
     model: selectedModel,
@@ -399,6 +400,11 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
 
             {/* Messages */}
             <MessageList messages={messages} isLoading={isGenerating} onRegenerateMessage={handleRetry} />
+
+            {/* Questions de l'agent (outil ask_user) */}
+            {question && (
+              <QuestionPanel key={question.id} request={question} onSubmit={(a) => resolveQuestion(a)} onSkip={() => resolveQuestion(null)} />
+            )}
 
             {/* Demande d'accord (modes « Demander » et « Modifier automatiquement ») */}
             {approval && (

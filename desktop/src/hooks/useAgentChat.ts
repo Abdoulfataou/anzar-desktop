@@ -23,6 +23,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
 import { routeRequest, escalate, type Route } from '@/services/ai/autoRouter';
+import { parseQuestions, formatAnswers, type QuestionRequest, type QuestionAnswer } from '@/components/chat/QuestionPanel';
 import { detectDevCommand } from '@/services/agent/devServer';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, callMcpTool, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
@@ -133,6 +134,51 @@ const LOAD_SKILL_TOOL: ToolDefinition = {
   },
 };
 const SKILL_RESULT_PREFIX = '# Skill « ';
+
+/** Questions à choix posées à l'utilisateur (panneau au-dessus de la saisie, comme dans Claude Code). */
+const ASK_USER_TOOL: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'ask_user',
+    description:
+      "Pose 1 à 4 questions à choix à l'utilisateur et attend ses réponses. À utiliser quand une décision lui revient et change ce que tu vas faire " +
+      "(approche, technologie, périmètre, choix de design), avant de te lancer dans un travail coûteux à refaire. " +
+      "Pour chaque question : 2 à 4 options concrètes et courtes, recommended = l'index de celle que tu conseilles. Il peut aussi répondre librement. " +
+      "N'utilise pas cet outil pour ce que tu peux décider toi-même ou trouver dans le code, ni pour demander la permission de continuer.",
+    parameters: {
+      type: 'object',
+      properties: {
+        questions: {
+          type: 'array',
+          description: '1 à 4 questions',
+          items: {
+            type: 'object',
+            properties: {
+              question: { type: 'string', description: 'La question, claire et autonome' },
+              header: { type: 'string', description: 'Étiquette très courte (2 ou 3 mots), ex : « Base de données »' },
+              options: {
+                type: 'array',
+                description: '2 à 4 réponses proposées',
+                items: {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string', description: 'Réponse courte' },
+                    description: { type: 'string', description: 'Ce que ce choix implique, en une ligne' },
+                  },
+                  required: ['label'],
+                },
+              },
+              recommended: { type: 'integer', description: "Index (à partir de 0) de l'option recommandée" },
+              multi_select: { type: 'boolean', description: 'Plusieurs réponses possibles' },
+            },
+            required: ['question', 'options'],
+          },
+        },
+      },
+      required: ['questions'],
+    },
+  },
+};
 
 /** Outil réservé au mode plan : le plan s'affiche dans l'onglet « Plan » (comme ExitPlanMode dans ZCode). */
 const PROPOSE_PLAN_TOOL: ToolDefinition = {
@@ -280,6 +326,8 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
       return (args.tasks || []).length ? `${(args.tasks || []).length} sous-tâches` : '';
     case 'remember':
       return String(args.content || '').slice(0, 80);
+    case 'ask_user':
+      return (args.questions || []).map((q: any) => q?.question).filter(Boolean).join(' · ').slice(0, 140);
     case 'load_skill':
       return args.file ? `${args.name || ''} · ${args.file}` : String(args.name || '');
     case 'task_done':
@@ -340,6 +388,14 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     approvalResolver.current = null;
     setApproval(null);
   }, []);
+  // Questions de l'agent (ask_user) : null = l'utilisateur passe, l'agent décide
+  const [question, setQuestion] = useState<QuestionRequest | null>(null);
+  const questionResolver = useRef<((answers: QuestionAnswer[] | null) => void) | null>(null);
+  const resolveQuestion = useCallback((answers: QuestionAnswer[] | null) => {
+    questionResolver.current?.(answers);
+    questionResolver.current = null;
+    setQuestion(null);
+  }, []);
   const abortRef = useRef<AbortController | null>(null);
   // Historique API complet de la conversation (tool exchanges inclus), par conversation
   const apiHistoryRef = useRef<APIMessage[]>([]);
@@ -370,7 +426,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   const stop = useCallback(() => {
     abortRef.current?.abort();
     resolveApproval(false);
-  }, [resolveApproval]);
+    resolveQuestion(null);
+  }, [resolveApproval, resolveQuestion]);
 
   const sendMessage = useCallback(async (
     content: string,
@@ -640,11 +697,13 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         }
         promptTokens += historyTokens();
         const web = webEnabled ? WEB_TOOLS : [];
+        // Sans personne devant l'écran (automatisations, tickets), pas de question possible
+        const ask = background ? [] : [ASK_USER_TOOL];
         const tools = !workspacePath
-          ? ([...web, ...mcpTools].length ? [...web, ...mcpTools] : undefined)
+          ? ([...web, ...ask, ...mcpTools].length ? [...web, ...ask, ...mcpTools] : undefined)
           : modeRef.current === 'plan'
-            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...mcpReadOnlyTools]
-            : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...mcpTools];
+            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpReadOnlyTools]
+            : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpTools];
 
         // Une étape coupée par le réseau est réessayée seule : l'historique est intact,
         // donc rien de ce qui a déjà été fait n'est perdu ni refacturé.
@@ -740,7 +799,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           // Accord de l'utilisateur selon le mode de permission
           let allowed = true;
           let refusal = "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
-          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !mcpReadOnly && !['task_done', 'propose_plan', 'load_skill'].includes(call.function.name)) {
+          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !mcpReadOnly && !['task_done', 'propose_plan', 'load_skill', 'ask_user'].includes(call.function.name)) {
             allowed = false;
           } else if (mcpAsk && background) {
             allowed = false;
@@ -763,6 +822,34 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           }
 
           // Skill : instructions lues côté app, renvoyées à l'agent
+          // Questions à l'utilisateur : l'agent attend ses réponses
+          if (call.function.name === 'ask_user') {
+            const questions = parseQuestions(args);
+            let output: string;
+            if (!questions.length) {
+              output = "Erreur : il faut au moins une question avec 2 options (questions[].question, questions[].options[].label).";
+              ev.status = 'error';
+            } else if (background) {
+              output = "Personne n'est là pour répondre : prends l'option recommandée (ou la plus prudente), continue, et note ce choix dans ton résumé.";
+              ev.status = 'ok';
+            } else {
+              ev.argsSummary = questions.map((q) => q.question).join(' · ').slice(0, 140);
+              flush();
+              const answers = await new Promise<QuestionAnswer[] | null>((resolve) => {
+                questionResolver.current = resolve;
+                setQuestion({ id: call.id, questions });
+              });
+              output = answers
+                ? formatAnswers(answers)
+                : "L'utilisateur a passé ces questions : décide toi-même (option recommandée), et indique tes choix dans ta réponse.";
+              ev.status = 'ok';
+            }
+            ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+            flush();
+            apiHistoryRef.current.push({ role: 'tool', tool_call_id: call.id, content: output });
+            continue;
+          }
+
           if (call.function.name === 'load_skill') {
             const wanted = String(args.name || '').trim();
             const skill = findSkill(skills, wanted);
@@ -998,6 +1085,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       abortRef.current = null;
       approvalResolver.current = null;
       setApproval(null);
+      questionResolver.current = null;
+      setQuestion(null);
       void refreshCredits();
     }
   }, [isGenerating, ensureConversation, addMessage, updateMessage, setStoreGenerating, background, model, workspacePath, workspaceName, onFileChanged, addUsage, addUsageRecord]);
@@ -1014,5 +1103,5 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   /** Change le mode immédiatement (avant le prochain rendu), ex. à la validation d'un plan. */
   const setModeNow = useCallback((m: PermissionMode) => { modeRef.current = m; }, []);
 
-  return { sendMessage, stop, isGenerating, approval, resolveApproval, resume, setModeNow };
+  return { sendMessage, stop, isGenerating, approval, resolveApproval, question, resolveQuestion, resume, setModeNow };
 }
