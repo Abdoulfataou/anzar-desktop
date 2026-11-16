@@ -13,7 +13,8 @@
  */
 import { useSettingsStore } from '@/stores/settingsStore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Folder, FolderPlus, FileEdit, GitBranch, AlertTriangle } from 'lucide-react';
+import { Folder, FolderOpen, FolderPlus, FileEdit, GitBranch, AlertTriangle } from 'lucide-react';
+import { conversationUsesPersonalSpace, openPersonalSpace } from '@/services/personalSpace';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useAgentChat, type PermissionMode } from '@/hooks/useAgentChat';
@@ -372,6 +373,16 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                 <Folder size={12} className="flex-shrink-0" />
                 <span className="truncate">{workspaceName || 'Ouvrir un dossier'}</span>
               </button>
+              {!workspacePath && conversationUsesPersonalSpace(activeConversation) && (
+                <button
+                  onClick={() => { void openPersonalSpace().catch(() => toast.error("Impossible d'ouvrir le dossier Documents/ANZAR")); }}
+                  title="Ouvrir le dossier Documents/ANZAR : fichiers joints et fichiers produits par ANZAR"
+                  className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors flex-shrink-0"
+                >
+                  <FolderOpen size={12} className="flex-shrink-0" />
+                  <span className="whitespace-nowrap">Espace ANZAR</span>
+                </button>
+              )}
               {branch && (
                 <button
                   onClick={() => window.dispatchEvent(new Event(OPEN_GIT_EVENT))}

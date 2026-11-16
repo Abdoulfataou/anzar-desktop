@@ -29,6 +29,7 @@ import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, callMcpTool, se
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
 import { copyAttachmentsToWorkspace } from '@/services/attachmentFiles';
+import { PERSONAL_SPACE_TOOLS, PERSONAL_SUBDIR, conversationUsesPersonalSpace, ensurePersonalSpace, personalSpaceContext } from '@/services/personalSpace';
 import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall, ToolDefinition } from '@/types';
 
 /** Qui décide avant que l'agent agisse. */
@@ -282,7 +283,7 @@ function withAttachments(content: string, attachments: ChatAttachment[]): string
   let budget = MAX_ATTACHMENTS_TOTAL_CHARS;
   const blocks = attachments.map((a) => {
     const label = `[${a.ref}] ${a.name} (${a.kind})` + (a.projectCopy
-      ? `\nFichier disponible dans le projet : \`${a.projectCopy}\`. Pour le transformer (découper, fusionner, `
+      ? `\nCopie du fichier dans ton dossier de travail : \`${a.projectCopy}\`. Pour le transformer (découper, fusionner, `
         + `convertir, extraire des pages, redimensionner…), écris un script python ou node qui lit ce fichier et `
         + `écris les résultats dans le même dossier, sans jamais écraser l'original. Bibliothèques utiles : pypdf ou `
         + `pdf-lib (PDF), openpyxl (Excel), python-docx (Word), Pillow (images). Si python ou node manque, explique `
@@ -408,6 +409,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   const apiHistoryRef = useRef<APIMessage[]>([]);
   // Mode Auto : réglage de la dernière demande (une suite courte le garde)
   const lastRouteRef = useRef<Route | null>(null);
+  // Conversations sans projet qui travaillent dans l'espace ANZAR
+  const personalConvsRef = useRef<Set<string>>(new Set());
   // Heure du dernier appel au modèle : sert à savoir si le cache DeepSeek est encore chaud
   const lastCallAtRef = useRef(0);
   const activeConvRef = useRef<string | null>(null);
@@ -445,12 +448,25 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   ) => {
     if ((!content.trim() && !resumeFrom) || isGenerating) return;
     const refd = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
-    // Copie des fichiers joints dans le projet : l'agent peut alors les transformer (pas seulement les lire)
-    const attachments = workspacePath && !resumeFrom
-      ? await copyAttachmentsToWorkspace(workspacePath, refd).catch(() => refd)
+    const convId = resumeFrom?.convId ?? opts?.conversationId ?? ensureConversation();
+    // Dossier où l'agent peut agir : le projet ouvert, ou à défaut l'« espace ANZAR » (Documents/ANZAR),
+    // ouvert dès qu'un fichier est joint ou si la conversation l'a déjà utilisé.
+    let agentRoot: string | null = workspacePath;
+    let personalSpace = false;
+    if (!workspacePath && !background) {
+      const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
+      if (refd.some((a) => a.sourcePath) || personalConvsRef.current.has(convId) || conversationUsesPersonalSpace(conv)) {
+        agentRoot = await ensurePersonalSpace().catch(() => null);
+        personalSpace = !!agentRoot;
+        if (personalSpace) personalConvsRef.current.add(convId);
+      }
+    }
+    // Copie des fichiers joints dans le dossier de travail : l'agent peut alors les transformer (pas seulement les lire)
+    const attachments = agentRoot && !resumeFrom
+      ? await copyAttachmentsToWorkspace(agentRoot, refd,
+          personalSpace ? { subdir: PERSONAL_SUBDIR, gitignore: false } : {}).catch(() => refd)
       : refd;
     const apiContent = withAttachments(content, attachments);
-    const convId = resumeFrom?.convId ?? opts?.conversationId ?? ensureConversation();
     if (!resumeFrom) resumeRef.current = null; // un nouveau message rend l'ancienne reprise caduque
 
     // Reset de l'historique API si on change de conversation
@@ -623,15 +639,19 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
                 ? "Tu peux chercher sur le web (web_search) et lire une page (read_url) quand la question porte sur une information récente " +
                   "ou une documentation ; cite alors tes sources avec leur URL.\n\n"
                 : '') +
-              "AUCUN DOSSIER N'EST OUVERT : tu n'as aucun outil sur les fichiers. Tu ne peux ni lire un fichier, ni lancer une commande, " +
-              "ni modifier quoi que ce soit. Ne prétends JAMAIS l'avoir fait, même si l'historique de la conversation " +
-              "montre que tu le faisais avant : n'invente aucun résultat de commande, de build ou de test. " +
-              "Si la demande exige d'agir sur un projet, dis-le en une phrase et demande d'ouvrir le dossier " +
-              "(bouton « Ouvrir un dossier » en haut de la conversation).\n\n" +
+              "AUCUN PROJET N'EST OUVERT. Tu n'as des outils sur les fichiers que si ANZAR t'ouvre l'« espace ANZAR » : il te " +
+              "l'indique alors dans la demande, et ces outils te sont fournis. Sinon, tu ne peux ni lire un fichier, ni lancer " +
+              "une commande, ni modifier quoi que ce soit. Ne prétends JAMAIS avoir agi sans outil, même si l'historique de la " +
+              "conversation montre que tu le faisais avant : n'invente aucun résultat de commande, de build ou de test. " +
+              "Si la demande exige d'agir sur un projet de code, dis-le en une phrase et demande d'ouvrir le dossier " +
+              "(bouton « Ouvrir un dossier » en haut de la conversation). Pour transformer un fichier (PDF, Excel…), " +
+              "propose de le joindre : ANZAR ouvre alors l'espace ANZAR.\n\n" +
               FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + '\n\n' + CONNECTORS_GUIDE + personal,
           };
           systemHead = (system.content as string).slice(0, (system.content as string).length - personal.length);
           systemRefresh = personal.trim();
+          // Espace ANZAR : signalé dans la demande (le prompt système reste identique, donc servi par le cache)
+          if (personalSpace && agentRoot) turnContext += personalSpaceContext(agentRoot);
         }
 
         if (apiHistoryRef.current.length === 0) {
@@ -710,8 +730,12 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         const web = webEnabled ? WEB_TOOLS : [];
         // Sans personne devant l'écran (automatisations, tickets), pas de question possible
         const ask = background ? [] : [ASK_USER_TOOL];
+        const personalTools = personalSpace
+          ? AGENT_TOOLS.filter((t) => PERSONAL_SPACE_TOOLS.has(t.function.name)
+              && (modeRef.current !== 'plan' || READ_ONLY_TOOLS.has(t.function.name)))
+          : [];
         const tools = !workspacePath
-          ? ([...web, ...ask, ...mcpTools].length ? [...web, ...ask, ...mcpTools] : undefined)
+          ? ([...personalTools, ...web, ...ask, ...mcpTools].length ? [...personalTools, ...web, ...ask, ...mcpTools] : undefined)
           : modeRef.current === 'plan'
             ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpReadOnlyTools]
             : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpTools];
@@ -798,8 +822,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             : call.function.name === 'start_dev_server' && workspacePath
             ? String(args.command || (await detectDevCommand(workspacePath).catch(() => null)) || '')
             : '';
-          const risk = riskCommand && workspacePath && modeRef.current !== 'plan'
-            ? await commandRisk(convId, workspacePath, riskCommand).catch(() => null)
+          const risk = riskCommand && agentRoot && modeRef.current !== 'plan'
+            ? await commandRisk(convId, agentRoot, riskCommand).catch(() => null)
             : null;
 
           // Connecteur MCP : lecture déclarée par le serveur, ou action à faire valider
@@ -827,9 +851,9 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           }
 
           // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)
-          if (allowed && workspacePath && ['write_file', 'edit_file', 'delete_file'].includes(call.function.name)) {
-            await noteAgentWrite(convId, workspacePath, args.path || args.file_path).catch(() => {});
-            await snapshotBeforeChange(snapshots, workspacePath, args.path || args.file_path);
+          if (allowed && agentRoot && ['write_file', 'edit_file', 'delete_file'].includes(call.function.name)) {
+            await noteAgentWrite(convId, agentRoot, args.path || args.file_path).catch(() => {});
+            await snapshotBeforeChange(snapshots, agentRoot, args.path || args.file_path);
           }
 
           // Skill : instructions lues côté app, renvoyées à l'agent
@@ -910,11 +934,11 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             ? await executeWebTool(call.function.name, args, controller.signal)
             : mcpRef
             ? await callMcpTool(call.function.name, args, controller.signal)
-            : workspacePath
+            : agentRoot && (workspacePath || PERSONAL_SPACE_TOOLS.has(call.function.name))
             ? await executeToolCall(call, {
-                projectRoot: workspacePath,
+                projectRoot: agentRoot,
                 signal: controller.signal,
-                onFileChanged: (rel, _c, action) => onFileChanged?.(rel, action),
+                onFileChanged: (rel, _c, action) => { if (workspacePath) onFileChanged?.(rel, action); },
               })
             : { output: 'Aucun dossier de travail ouvert.', isError: true };
 
@@ -1032,7 +1056,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         notice: undefined,
         resumable: false,
         toolEvents: [...events],
-        fileChanges: workspacePath ? await collectChanges(assistantId, workspacePath, snapshots).catch(() => undefined) : undefined,
+        fileChanges: agentRoot ? await collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined) : undefined,
       });
 
       // Coût et journal d'usage : une erreur ici ne doit jamais faire échouer la réponse.
@@ -1088,7 +1112,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         isStreaming: false,
         isError: !aborted,
         toolEvents: [...events],
-        fileChanges: workspacePath ? await collectChanges(assistantId, workspacePath, snapshots).catch(() => undefined) : undefined,
+        fileChanges: agentRoot ? await collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined) : undefined,
       });
     } finally {
       setIsGenerating(false);

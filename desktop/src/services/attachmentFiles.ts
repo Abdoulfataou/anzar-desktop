@@ -44,9 +44,12 @@ export function insideWorkspace(workspace: string, file: string): string | null 
 export async function copyAttachmentsToWorkspace(
   workspace: string,
   attachments: ChatAttachment[],
+  opts: { subdir?: string; gitignore?: boolean } = {},
 ): Promise<ChatAttachment[]> {
   if (!attachments.some((a) => a.sourcePath)) return attachments;
-  const dir = join(workspace, ATTACH_DIR);
+  const subdir = opts.subdir ?? ATTACH_DIR;
+  const gitignore = opts.gitignore ?? true;
+  const dir = join(workspace, subdir);
   let ready = false;
   const out: ChatAttachment[] = [];
   for (const a of attachments) {
@@ -57,7 +60,7 @@ export async function copyAttachmentsToWorkspace(
       if (!ready) {
         if (!(await exists(dir))) await createDir(dir, { recursive: true });
         const ignore = join(dir, '.gitignore');
-        if (!(await exists(ignore))) await writeTextFile(ignore, '*\n');
+        if (gitignore && !(await exists(ignore))) await writeTextFile(ignore, '*\n');
         ready = true;
       }
       const base = safeFileName(a.name);
@@ -65,7 +68,7 @@ export async function copyAttachmentsToWorkspace(
       while (n < 100 && (await exists(join(dir, withSuffix(base, n))))) n++;
       const finalName = withSuffix(base, n);
       await copyFile(a.sourcePath, join(dir, finalName));
-      out.push({ ...a, projectCopy: `${ATTACH_DIR}/${finalName}` });
+      out.push({ ...a, projectCopy: `${subdir}/${finalName}` });
     } catch {
       out.push(a); // copie impossible : le texte extrait reste disponible
     }

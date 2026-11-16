@@ -23,7 +23,7 @@ fn main() {
         )
         // Serveurs MCP : transport stdio et HTTP (le protocole est géré par l'app)
         .manage(mcp::McpState::default())
-        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http])
+        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -33,4 +33,22 @@ fn main() {
             mcp::stop_all(handle);
         }
     });
+}
+
+/// Ouvre l'« espace ANZAR » (Documents/ANZAR) dans le Finder ou l'Explorateur.
+/// Sans argument : la page ne peut faire ouvrir aucun autre chemin.
+#[tauri::command]
+fn open_personal_space() -> Result<(), String> {
+    let dir = tauri::api::path::document_dir()
+        .ok_or_else(|| "Dossier Documents introuvable".to_string())?
+        .join("ANZAR");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = std::process::Command::new("explorer");
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = std::process::Command::new("xdg-open");
+    cmd.arg(&dir).spawn().map_err(|e| e.to_string())?;
+    Ok(())
 }
