@@ -22,7 +22,7 @@ import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
-import { listSkills, skillsPromptSection, MAX_SKILL_BODY_CHARS, type Skill } from '@/services/skills';
+import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
 import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall, ToolDefinition } from '@/types';
 
@@ -116,10 +116,13 @@ const LOAD_SKILL_TOOL: ToolDefinition = {
   type: 'function',
   function: {
     name: 'load_skill',
-    description: "Charge les instructions complètes d'une skill de la liste « Skills disponibles ». À utiliser avant d'agir quand une skill correspond à la tâche.",
+    description: "Charge les instructions complètes d'une skill de la liste « Skills disponibles ». À utiliser avant d'agir quand une skill correspond à la tâche. Avec file : lit un fichier joint de la skill.",
     parameters: {
       type: 'object',
-      properties: { name: { type: 'string', description: 'Nom exact de la skill' } },
+      properties: {
+        name: { type: 'string', description: 'Nom exact de la skill' },
+        file: { type: 'string', description: 'Facultatif : chemin d\'un fichier joint, tel que listé après les instructions de la skill' },
+      },
       required: ['name'],
     },
   },
@@ -265,7 +268,7 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
     case 'remember':
       return String(args.content || '').slice(0, 80);
     case 'load_skill':
-      return String(args.name || '');
+      return args.file ? `${args.name || ''} · ${args.file}` : String(args.name || '');
     case 'task_done':
       return String(args.summary || '').slice(0, 100);
     default:
@@ -708,12 +711,24 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
           // Skill : instructions lues côté app, renvoyées à l'agent
           if (call.function.name === 'load_skill') {
-            const wanted = String(args.name || '').trim().toLowerCase();
-            const skill = skills.find((sk) => sk.name === wanted) || skills.find((sk) => sk.name.includes(wanted) && wanted.length > 2);
-            const output = skill
-              ? `${SKILL_RESULT_PREFIX}${skill.name} »\n\n${skill.body.slice(0, MAX_SKILL_BODY_CHARS)}`
-              : `Skill « ${wanted} » introuvable. Skills disponibles : ${skills.map((sk) => sk.name).join(', ') || 'aucune'}.`;
-            ev.status = skill ? 'ok' : 'error';
+            const wanted = String(args.name || '').trim();
+            const skill = findSkill(skills, wanted);
+            const file = typeof args.file === 'string' ? args.file.trim() : '';
+            let output: string;
+            let ok = !!skill;
+            if (!skill) {
+              output = `Skill « ${wanted} » introuvable. Skills disponibles : ${skills.map((sk) => sk.name).join(', ') || 'aucune'}.`;
+            } else if (file) {
+              try {
+                output = `${SKILL_RESULT_PREFIX}${skill.name} » — fichier ${file}\n\n${await readSkillFile(skill, file)}`;
+              } catch (e: any) {
+                ok = false;
+                output = `Lecture impossible de « ${file} » : ${e?.message || e}`;
+              }
+            } else {
+              output = skillToolOutput(skill, SKILL_RESULT_PREFIX);
+            }
+            ev.status = ok ? 'ok' : 'error';
             ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
             flush();
             apiHistoryRef.current.push({ role: 'tool', tool_call_id: call.id, content: output });
