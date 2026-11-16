@@ -171,3 +171,22 @@ Sécurité : le serveur ne crédite jamais sur la seule foi du webhook. Il véri
 relit le statut chez le fournisseur, contrôle montant et devise, puis crédite une seule fois.
 Si un webhook se perd, l'app (pendant l'attente) et un rattrapage toutes les 5 minutes relisent
 le statut ; dans l'admin, « Vérifier » fait la même chose à la demande.
+
+
+## Vitrine getanzar.com
+
+Le dossier `site/` contient la vitrine et la page de téléchargement (`/telecharger/`). Le conteneur
+`anzar-site` les sert ; le Caddy de ShagoStore les publie sur `getanzar.com` (et redirige `www`).
+
+1. **DNS (Cloudflare)** : ajoute `getanzar.com` à Cloudflare (offre gratuite), puis remplace chez Turbify
+   les serveurs de noms par ceux que Cloudflare indique. Ensuite, dans Cloudflare → DNS :
+   - `A` `getanzar.com` → IP du VPS, **nuage gris (DNS only)** ;
+   - `CNAME` `www` → `getanzar.com`, **nuage gris**.
+   Le nuage gris laisse Caddy obtenir le certificat HTTPS lui-même.
+2. **ShagoStore** : pousse le dépôt ShagoStore (bloc getanzar.com du Caddyfile), puis sur le VPS
+   `cd /root/shagostore/deploy && git -C .. pull --ff-only && docker compose restart caddy`.
+3. **ANZAR** : `./mettre-a-jour.sh` construit et lance le conteneur `site`.
+
+La page de téléchargement lit la dernière version publiée sur GitHub
+(`Abdoulfataou/anzar-desktop`, la même que la mise à jour automatique) : publier une version
+suffit, la page suit. Le dépôt et ses versions doivent être publics.

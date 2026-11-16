@@ -1,0 +1,18 @@
+# Sert la vitrine getanzar.com (fichiers statiques) derrière le Caddy du VPS.
+:80 {
+	root * /srv
+	encode zstd gzip
+	try_files {path} {path}/index.html =404
+	file_server
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+		-Server
+	}
+	@pages path / /index.html /telecharger /telecharger/ /telecharger/index.html
+	header @pages Cache-Control "public, max-age=300"
+	@assets path *.css *.js *.png
+	header @assets Cache-Control "public, max-age=86400"
+}
