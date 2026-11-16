@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Settings2, Palette, User, BarChart3, Database, Info, Monitor, Moon, Sun,
-  Zap, Brain, LogOut, Download, Upload, Trash2, ExternalLink, Mail, MessageCircle, Copy, Wallet,
+  Zap, Sparkles, Brain, LogOut, Download, Upload, Trash2, ExternalLink, Mail, MessageCircle, Copy, Wallet,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, isTauri } from '@/lib/utils';
@@ -244,11 +244,11 @@ function GeneralSection() {
   };
   return (
     <Card>
-      <Row label="Modèle par défaut" description="Rapide : réflexion courte, le moins cher. Réflexion : le bon réglage pour la plupart des tâches. Max : tâches difficiles, plus lent et plus cher.">
+      <Row label="Modèle par défaut" description="Auto : ANZAR choisit pour chaque demande (recommandé). Rapide : réflexion courte, le moins cher. Réflexion : la plupart des tâches. Max : tâches difficiles. Pro : le modèle le plus puissant, 3 à 4 fois plus cher.">
         <Segmented
           value={model}
           onChange={(v) => updateSettings({ model: v })}
-          options={[{ id: 'fast', label: 'Rapide', icon: Zap }, { id: 'thinking', label: 'Réflexion', icon: Brain }, { id: 'max', label: 'Max', icon: Brain }]}
+          options={[{ id: 'auto', label: 'Auto', icon: Sparkles }, { id: 'fast', label: 'Rapide', icon: Zap }, { id: 'thinking', label: 'Réflexion', icon: Brain }, { id: 'max', label: 'Max', icon: Brain }, { id: 'pro', label: 'Pro', icon: Brain }]}
         />
       </Row>
       <Row

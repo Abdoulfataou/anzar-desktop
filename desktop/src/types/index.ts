@@ -12,7 +12,8 @@ export type AIProvider = 'deepseek';
 
 /** User-facing mode names (white-labeled) */
 /** Rapide = réflexion courte · Réflexion = effort standard des agents · Max = tâches difficiles */
-export type AIModel = 'fast' | 'thinking' | 'max';
+/** auto : ANZAR choisit pour chaque demande (services/ai/autoRouter.ts) ; pro : deepseek-v4-pro */
+export type AIModel = 'auto' | 'fast' | 'thinking' | 'max' | 'pro';
 
 /** Effort de réflexion DeepSeek (« none » = sans réflexion) */
 export type ReasoningEffort = 'none' | 'low' | 'high' | 'max';
@@ -87,9 +88,10 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
     baseUrl: 'proxy',
     // deepseek-chat / deepseek-reasoner ont été retirés par DeepSeek (24/07/2026) :
     // un seul modèle, deepseek-flash, dont on règle l'effort de réflexion.
-    models: { fast: 'deepseek-flash', thinking: 'deepseek-flash', max: 'deepseek-flash' },
-    reasoningEffort: { fast: 'low', thinking: 'high', max: 'max' },
-    defaultTemperature: { fast: 1.0, thinking: 1.0, max: 1.0 },
+    // « auto » est résolu avant l'appel ; s'il arrive jusqu'ici, il vaut « thinking ».
+    models: { auto: 'deepseek-flash', fast: 'deepseek-flash', thinking: 'deepseek-flash', max: 'deepseek-flash', pro: 'deepseek-v4-pro' },
+    reasoningEffort: { auto: 'high', fast: 'low', thinking: 'high', max: 'max', pro: 'high' },
+    defaultTemperature: { auto: 1.0, fast: 1.0, thinking: 1.0, max: 1.0, pro: 1.0 },
     features: ['Chat', 'Streaming', 'Tool Calling', 'JSON Mode', 'FIM', 'Raisonnement'],
   },
 };
@@ -158,6 +160,8 @@ export interface Message {
   isError?: boolean;
   /** Lien UI vers la timeline d'activité (cowork-style) */
   activitySessionId?: string;
+  /** Mode Auto : réglage choisi pour cette réponse et pourquoi */
+  autoRoute?: { mode: Exclude<AIModel, 'auto'>; reason: string; escalated?: boolean };
   /** Infos de routage (utile pour debug / transparence) */
   routingInfo?: {
     provider: string;

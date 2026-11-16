@@ -22,6 +22,7 @@ import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
+import { routeRequest, escalate, type Route } from '@/services/ai/autoRouter';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, callMcpTool, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
@@ -74,6 +75,8 @@ interface ResumeState {
   completionTokens: number;
   balanceBefore: number | null;
   cost: ServerCost;
+  /** Mode Auto : réglage en cours au moment de la coupure */
+  route?: Route | null;
 }
 
 /** Coûts exacts envoyés par le serveur pour chaque appel au modèle (B6) */
@@ -96,7 +99,7 @@ function closeDanglingToolCalls(history: APIMessage[]): void {
 
 const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember']);
 const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents']);
-const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'web_search', 'read_url']);
+const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'explore', 'web_search', 'read_url']);
 
 function needsApproval(mode: PermissionMode, tool: string): boolean {
   if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);
@@ -264,6 +267,8 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
       return args.url || '';
     case 'run_command':
       return args.command || '';
+    case 'explore':
+      return (args.questions || []).length ? `${(args.questions || []).length} question${(args.questions || []).length > 1 ? 's' : ''} en parallèle` : '';
     case 'spawn_subagents':
       return (args.tasks || []).length ? `${(args.tasks || []).length} sous-tâches` : '';
     case 'remember':
@@ -327,6 +332,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   const abortRef = useRef<AbortController | null>(null);
   // Historique API complet de la conversation (tool exchanges inclus), par conversation
   const apiHistoryRef = useRef<APIMessage[]>([]);
+  // Mode Auto : réglage de la dernière demande (une suite courte le garde)
+  const lastRouteRef = useRef<Route | null>(null);
   // Heure du dernier appel au modèle : sert à savoir si le cache DeepSeek est encore chaud
   const lastCallAtRef = useRef(0);
   const activeConvRef = useRef<string | null>(null);
@@ -371,6 +378,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     if (!resumeFrom && activeConvRef.current !== convId) {
       apiHistoryRef.current = [];
       lastCallAtRef.current = 0;
+      lastRouteRef.current = null;
       activeConvRef.current = convId;
     }
 
@@ -427,6 +435,21 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     // Repli si le serveur n'envoie pas le coût exact (FCFA / 1M tokens, ordre de grandeur)
     const priceIn = 250;
     const priceOut = 1000;
+    // Mode Auto : réglage choisi pour cette demande ; il peut monter d'un cran si l'agent bute
+    let route: Route | null = resumeFrom ? resumeFrom.route ?? null : model === 'auto'
+      ? routeRequest({
+          text: content,
+          workspace: !!workspacePath,
+          planMode: modeRef.current === 'plan',
+          images: attachments.filter((a) => a.kind === 'image').length,
+          attachmentChars: attachments.reduce((n, a) => n + (a.excerpt?.length || 0), 0),
+          previous: lastRouteRef.current?.mode,
+        })
+      : null;
+    const callModel = (): AIModel => (route ? route.mode : model === 'auto' ? 'thinking' : model);
+    if (route) { updateMessage(assistantId, { autoRoute: route }); lastRouteRef.current = route; }
+    let toolErrors = 0;
+    let escalations = 0;
     const historyTokens = () =>
       Math.ceil(apiHistoryRef.current.reduce((n, m) => n + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0) / 4);
 
@@ -620,7 +643,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           stepContent = '';
           stepReasoning = '';
           try {
-            const stream = aiService.chatStream(apiHistoryRef.current, { model, tools, signal: controller.signal });
+            const stream = aiService.chatStream(apiHistoryRef.current, { model: callModel(), tools, signal: controller.signal });
             for await (const delta of stream) {
               if (delta.serverCostFCFA !== undefined) { cost.sum += delta.serverCostFCFA; cost.reports++; continue; }
               if (delta.content) {
@@ -797,6 +820,17 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           }
 
           ev.status = result.isError ? 'error' : 'ok';
+          // Mode Auto : quatre échecs d'outils dans la même demande → un cran au-dessus (deux fois au plus)
+          if (route && allowed && result.isError && ++toolErrors >= 4 && escalations < 2) {
+            const up = escalate(route, `monté après ${toolErrors} échecs (${route.reason})`);
+            if (up) {
+              route = up;
+              escalations++;
+              toolErrors = 0;
+              updateMessage(assistantId, { autoRoute: { ...up, escalated: true } });
+              lastRouteRef.current = up;
+            }
+          }
           ev.output = (result.output || '').slice(0, MAX_TOOL_OUTPUT_DISPLAY);
           flush();
 
@@ -845,7 +879,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             "en français, à partir de ce que tu as déjà lu. Si le travail est incomplet, dis précisément ce qui reste.",
         });
         let finalText = '';
-        for await (const delta of aiService.chatStream(apiHistoryRef.current, { model, signal: controller.signal })) {
+        for await (const delta of aiService.chatStream(apiHistoryRef.current, { model: callModel(), signal: controller.signal })) {
           if (delta.serverCostFCFA !== undefined) { cost.sum += delta.serverCostFCFA; cost.reports++; continue; }
           if (delta.content) {
             finalText += delta.content;
@@ -924,7 +958,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       // On garde de quoi reprendre exactement ici (bouton « Reprendre »)
       resumeRef.current = aborted
         ? null
-        : { convId, assistantId, accContent, timeline: snapshotTimeline(), events, snapshots, promptTokens, completionTokens, balanceBefore, cost };
+        : { convId, assistantId, accContent, timeline: snapshotTimeline(), events, snapshots, promptTokens, completionTokens, balanceBefore, cost, route };
       const errorText = aborted
         ? '_(interrompu)_'
         : `**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`;

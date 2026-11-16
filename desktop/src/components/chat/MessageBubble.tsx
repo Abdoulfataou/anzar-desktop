@@ -8,6 +8,7 @@ import { markdownComponents } from './markdownComponents';
 import { PlanCard } from './PlanView';
 import { cn } from '@/lib/utils';
 import type { Message } from '@/types';
+import { ROUTE_LABELS as AUTO_LABELS } from '@/services/ai/autoRouter';
 
 interface MessageBubbleProps {
   message: Message;
@@ -244,7 +245,11 @@ function MessageBubbleImpl({ message, onCopy, onRegenerate, selectedProjectId = 
 
           {/* Timestamp */}
           <span className="ml-auto text-ui-sm text-text-muted">
-            {message.model === 'thinking' ? 'Réflexion · ' : message.model === 'max' ? 'Max · ' : ''}{formatTime(message.timestamp)}
+            {message.autoRoute ? (
+              <span title={`Choisi par le mode Auto : ${message.autoRoute.reason}`}>
+                Auto · {AUTO_LABELS[message.autoRoute.mode]}{message.autoRoute.escalated ? ' ↑' : ''} ·{' '}
+              </span>
+            ) : message.model === 'thinking' ? 'Réflexion · ' : message.model === 'max' ? 'Max · ' : message.model === 'pro' ? 'Pro · ' : ''}{formatTime(message.timestamp)}
             {typeof message.costFCFA === 'number' && !message.isStreaming && (
               <> · {message.costFCFA < 1 ? '< 1' : Math.round(message.costFCFA).toLocaleString('fr-FR')} FCFA</>
             )}

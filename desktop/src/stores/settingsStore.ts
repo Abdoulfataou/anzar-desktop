@@ -95,7 +95,7 @@ function generateDeviceVaultKey(): string {
 }
 
 const defaultSettings: Settings = {
-  model: 'fast',
+  model: 'auto', // ANZAR choisit pour chaque demande (services/ai/autoRouter.ts)
   provider: 'deepseek',
   backendUrl: import.meta.env.VITE_BACKEND_URL || 'https://anzar-api.issalanhub.com',
   deviceVaultKey: generateDeviceVaultKey(),

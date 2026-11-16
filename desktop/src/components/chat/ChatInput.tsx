@@ -417,9 +417,11 @@ const PERMISSIONS: { id: PermissionMode; label: string; hint: string }[] = [
 ];
 
 const MODELS: { id: AIModel; label: string; hint: string }[] = [
+  { id: 'auto',     label: 'Auto',      hint: "ANZAR choisit pour chaque demande le réglage le moins cher qui suffit, et monte d'un cran si l'agent bute" },
   { id: 'fast',     label: 'Rapide',    hint: 'Réflexion courte : questions, petites modifications. Le moins cher' },
   { id: 'thinking', label: 'Réflexion', hint: "Le bon réglage pour la plupart des tâches d'agent" },
   { id: 'max',      label: 'Max',       hint: 'Réflexion maximale pour les tâches difficiles. Plus lent et plus cher' },
+  { id: 'pro',      label: 'Pro',       hint: 'Le modèle le plus puissant (DeepSeek V4 Pro), pour les tâches les plus dures. Environ 3 à 4 fois plus cher' },
 ];
 
 /** Menu déroulant de la barre du composer (s'ouvre vers le haut). */

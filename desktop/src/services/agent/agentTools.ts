@@ -37,6 +37,8 @@ export interface ToolResult {
   isDone?: boolean;
   /** True si l'exécution a échoué (l'agent verra l'erreur et pourra corriger) */
   isError?: boolean;
+  /** Coût des appels au modèle faits par l'outil (explorateurs), ajouté à celui de la réponse */
+  costFCFA?: number;
 }
 
 // ============================================================================
@@ -131,6 +133,23 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           depth: { type: 'number', description: 'Profondeur (défaut: 2, max: 4)' },
         },
         required: [],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'explore',
+      description:
+        "Lance 1 à 8 explorateurs rapides EN PARALLÈLE, en lecture seule : chacun répond à une question précise sur le code du projet et ne te rend qu'un résumé court avec les fichiers et lignes clés. " +
+        "Utilise-le pour comprendre un projet moyen ou gros sans remplir ton contexte (où est géré X, comment Y est branché, quels fichiers utilisent Z). " +
+        "Pose des questions indépendantes et précises. Inutile pour lire un ou deux fichiers que tu connais déjà : fais-le toi-même.",
+      parameters: {
+        type: 'object',
+        properties: {
+          questions: { type: 'array', items: { type: 'string' }, description: 'Questions indépendantes, une par explorateur (8 au plus)' },
+        },
+        required: ['questions'],
       },
     },
   },
@@ -489,6 +508,21 @@ async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<Too
   return { output: parts.join('\n\n'), isError: !result.success };
 }
 
+async function execExplore(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const questions: string[] = (Array.isArray(args.questions) ? args.questions : [args.questions])
+    .filter((q: any) => typeof q === 'string' && q.trim());
+  if (!questions.length) return { output: 'Erreur: indique au moins une question dans questions.', isError: true };
+  // Import dynamique : explorers importe ce module
+  const { exploreInParallel, formatExploreResults } = await import('./explorers');
+  const { results, costFCFA } = await exploreInParallel(questions, ctx);
+  const failed = results.filter((r) => !r.ok).length;
+  return {
+    output: `${results.length} exploration${results.length > 1 ? 's' : ''} terminée${results.length > 1 ? 's' : ''}${failed ? ` (${failed} sans réponse)` : ''}. Résumés :\n\n${formatExploreResults(results)}\n\n(Vérifie toi-même avec read_file un point précis avant de modifier le code.)`,
+    isError: failed === results.length,
+    costFCFA,
+  };
+}
+
 async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const tasks: string[] = Array.isArray(args.tasks)
     ? args.tasks.filter((t: any) => typeof t === 'string' && t.trim()).slice(0, 3)
@@ -564,6 +598,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   list_dir: execListDir,
   search_files: execSearchFiles,
   get_diagnostics: execGetDiagnostics,
+  explore: execExplore,
   run_command: execRunCommand,
   spawn_subagents: execSpawnSubagents,
   remember: execRemember,

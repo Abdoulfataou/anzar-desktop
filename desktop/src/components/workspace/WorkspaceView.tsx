@@ -47,7 +47,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
   // `true` rendait le composer utilisable hors ligne (échec à l'envoi).
   const { isOnline: onlineStatus } = useOffline();
   // Modèle : celui des Paramètres, et un changement dans la saisie devient le nouveau défaut
-  const [selectedModel, setSelectedModelState] = useState<AIModel>(() => useSettingsStore.getState().settings.model || 'fast');
+  const [selectedModel, setSelectedModelState] = useState<AIModel>(() => useSettingsStore.getState().settings.model || 'auto');
   const setSelectedModel = useCallback((m: AIModel) => {
     setSelectedModelState(m);
     useSettingsStore.getState().updateSettings({ model: m });
