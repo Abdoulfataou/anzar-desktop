@@ -162,6 +162,11 @@ async def cancel_payment_intent(intent_id: str) -> Dict[str, Any]:
 # STATISTIQUES
 # ============================================================================
 
+def _rate(part, total) -> float:
+    total = int(total or 0)
+    return round(int(part or 0) / total, 4) if total > 0 else 0.0
+
+
 async def extra_stats() -> Dict[str, Any]:
     """Compléments du tableau de bord : paiements en attente, dettes, recharges récentes."""
     cutoff_30d = _utcnow() - timedelta(days=30)
@@ -181,6 +186,10 @@ async def extra_stats() -> Dict[str, Any]:
         bonus_30d = float((await session.execute(
             select(func.coalesce(func.sum(Transaction.amount_fcfa), 0))
             .where(Transaction.type == "bonus", Transaction.created_at >= cutoff_30d))).scalar() or 0)
+        cache_row = (await session.execute(
+            select(func.coalesce(func.sum(UsageRecord.cached_input_tokens), 0),
+                   func.coalesce(func.sum(UsageRecord.input_tokens), 0))
+            .where(UsageRecord.created_at >= cutoff_30d))).one()
         anomalies_30d = int((await session.execute(
             select(func.count(UsageRecord.id)).where(
                 UsageRecord.created_at >= cutoff_30d,
@@ -193,6 +202,8 @@ async def extra_stats() -> Dict[str, Any]:
             "recharged_30d": recharged_30d,
             "bonus_30d": bonus_30d,
             "billing_anomalies_30d": anomalies_30d,
+            # Part des jetons d'entrée servis par le cache DeepSeek (0 à 1)
+            "cache_rate_30d": _rate(cache_row[0], cache_row[1]),
         }
 
 
@@ -239,6 +250,7 @@ async def usage_breakdown(days: int = 30, limit: int = 10) -> Dict[str, Any]:
             return (
                 select(col.label("key"), func.count(UsageRecord.id).label("requests"),
                        func.coalesce(func.sum(UsageRecord.input_tokens), 0).label("input_tokens"),
+                       func.coalesce(func.sum(UsageRecord.cached_input_tokens), 0).label("cached_input_tokens"),
                        func.coalesce(func.sum(UsageRecord.output_tokens), 0).label("output_tokens"),
                        func.coalesce(func.sum(UsageRecord.cost_fcfa), 0).label("cost_fcfa"))
                 .where(UsageRecord.created_at >= cutoff).group_by(col)
@@ -250,7 +262,9 @@ async def usage_breakdown(days: int = 30, limit: int = 10) -> Dict[str, Any]:
 
     def clean(rows):
         return [{**dict(r), "cost_fcfa": round(float(r["cost_fcfa"] or 0), 2),
-                 "input_tokens": int(r["input_tokens"] or 0), "output_tokens": int(r["output_tokens"] or 0)} for r in rows]
+                 "input_tokens": int(r["input_tokens"] or 0), "output_tokens": int(r["output_tokens"] or 0),
+                 "cached_input_tokens": int(r["cached_input_tokens"] or 0),
+                 "cache_rate": _rate(r["cached_input_tokens"], r["input_tokens"])} for r in rows]
 
     return {"days": days, "by_model": clean(by_model), "by_task_type": clean(by_task), "top_users": clean(top_users)}
 

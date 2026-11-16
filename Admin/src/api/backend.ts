@@ -84,6 +84,7 @@ export type GlobalStats = {
   recharged_30d: number
   bonus_30d: number
   billing_anomalies_30d: number
+  cache_rate_30d?: number
 }
 
 export type DailyPoint = {
@@ -95,7 +96,10 @@ export type DailyPoint = {
   new_users: number
 }
 
-export type BreakdownRow = { key: string; requests: number; input_tokens: number; output_tokens: number; cost_fcfa: number }
+export type BreakdownRow = {
+  key: string; requests: number; input_tokens: number; output_tokens: number; cost_fcfa: number
+  cached_input_tokens?: number; cache_rate?: number
+}
 export type Breakdown = { days: number; by_model: BreakdownRow[]; by_task_type: BreakdownRow[]; top_users: BreakdownRow[] }
 
 export type AdminAccount = {

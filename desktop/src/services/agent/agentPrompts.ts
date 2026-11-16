@@ -9,7 +9,9 @@ export interface AgentPromptContext {
   fileTree?: string;
   /** Carte du code : fichiers + symboles clés (via codeIndexer) */
   codeMap?: string;
-  /** Fichiers probablement pertinents pour la tâche en cours */
+  /** Fichiers probablement pertinents pour la tâche en cours.
+   *  Jamais dans le prompt système : ils changent à chaque tâche et casseraient le cache
+   *  DeepSeek. Ils vont dans le message de la tâche (voir taskHintsSection). */
   taskHints?: string;
   /** Mémoire projet ANZAR.md (conventions, décisions, leçons) */
   memory?: string;
@@ -36,6 +38,11 @@ Quand un schéma explique mieux que du texte (architecture, flux, étapes, compa
 - \`\`\`widget : visuel INTERACTIF (calculatrice, graphique, simulation, maquette cliquable). Fragment HTML autonome : <style>, éléments, puis <script> en JavaScript pur. Pas de <html>, <head> ni <body>. Aucune requête réseau (fetch interdit) ; bibliothèques seulement via <script src> depuis cdnjs.cloudflare.com ou cdn.jsdelivr.net (Chart.js, D3…). Fond transparent, couleurs avec les variables CSS --fg, --muted, --accent, --border et --surface. Moins de 300 lignes.
 Un visuel accompagne l'explication, il ne la remplace pas. Un seul visuel par idée, et aucun pour une réponse courte. Si l'utilisateur veut du code pour son projet, écris les fichiers avec tes outils ; pour lui MONTRER du code HTML, utilise \`\`\`html (affiché comme code, pas exécuté).`;
 
+/**
+ * Cache DeepSeek : un jeton d'entrée déjà vu au DÉBUT d'une requête précédente coûte
+ * environ 50 fois moins cher. Le prompt système va donc du plus stable au moins stable :
+ * consignes fixes → projet → mémoire → carte du code. Rien qui dépende de la tâche.
+ */
 export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
   const sections: string[] = [];
 
@@ -71,19 +78,23 @@ ${VISUALS_GUIDE}`);
 Nom : ${ctx.projectName}
 Racine : ${ctx.projectRoot}${ctx.platform ? `\nPlateforme : ${ctx.platform}` : ''}`);
 
+  if (ctx.memory) sections.push(memorySection(ctx.memory));
+
   if (ctx.codeMap) {
     sections.push(`# Carte du code (fichiers + symboles clés)\n${ctx.codeMap}`);
   } else if (ctx.fileTree) {
     sections.push(`# Arborescence (aperçu)\n${ctx.fileTree}`);
   }
 
-  if (ctx.taskHints) {
-    sections.push(`# Fichiers probablement pertinents pour cette tâche\n${ctx.taskHints}\n\n(Indices heuristiques — vérifie par toi-même avec read_file.)`);
-  }
-
-  if (ctx.memory) {
-    sections.push(`# Mémoire du projet — ANZAR.md (conventions et décisions passées)\n${ctx.memory}`);
-  }
-
   return sections.join('\n\n');
+}
+
+export function memorySection(memory: string): string {
+  return `# Mémoire du projet — ANZAR.md (conventions et décisions passées)\n${memory}`;
+}
+
+/** Indices propres à une tâche : à ajouter au message de la tâche, jamais au prompt système. */
+export function taskHintsSection(hints?: string): string {
+  if (!hints) return '';
+  return `\n\n---\n# Fichiers probablement pertinents pour cette tâche\n${hints}\n\n(Indices heuristiques — vérifie par toi-même avec read_file.)`;
 }

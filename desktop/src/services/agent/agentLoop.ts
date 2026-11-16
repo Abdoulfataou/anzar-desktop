@@ -17,7 +17,7 @@ import { APIMessage, ToolCall, AIModel, AIProvider } from '@/types';
 import { aiService } from '@/services/ai/ai';
 import { terminalService } from '@/services/terminal';
 import { AGENT_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from './agentTools';
-import { buildAgentSystemPrompt, AgentPromptContext } from './agentPrompts';
+import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from './agentPrompts';
 import { runVerification, VerifyCommandResult } from './agentVerifier';
 import { buildAgentContext } from './agentContext';
 
@@ -144,16 +144,20 @@ function compactHistory(messages: APIMessage[]): APIMessage[] {
   let total = messages.reduce((s, m) => s + (m.content?.length || 0), 0);
   if (total <= MAX_HISTORY_CHARS) return messages;
 
-  const compacted = messages.map((m) => ({ ...m }));
-  // On protège le system prompt, la tâche initiale et les 6 derniers messages
-  for (let i = 2; i < compacted.length - 6 && total > MAX_HISTORY_CHARS; i++) {
-    const m = compacted[i];
+  // Compaction EN UNE FOIS et sur place : l'historique reste ensuite identique d'une étape
+  // à l'autre, donc servi par le cache DeepSeek. Raccourcir un peu à chaque étape décalerait
+  // le point de changement et ferait repayer plein tarif tout ce qui le suit.
+  // On descend à la moitié du budget pour ne pas recompacter à l'étape suivante.
+  // Le system prompt, la tâche initiale et les 6 derniers messages sont protégés.
+  const target = MAX_HISTORY_CHARS / 2;
+  for (let i = 2; i < messages.length - 6 && total > target; i++) {
+    const m = messages[i];
     if (m.role === 'tool' && m.content && m.content.length > 500) {
       total -= m.content.length - 200;
-      m.content = m.content.slice(0, 160) + '\n… [résultat compacté pour économiser le contexte]';
+      messages[i] = { ...m, content: m.content.slice(0, 160) + '\n… [résultat compacté pour économiser le contexte]' };
     }
   }
-  return compacted;
+  return messages;
 }
 
 // ============================================================================
@@ -235,7 +239,7 @@ export async function runAgentSession(options: AgentSessionOptions): Promise<Age
   const messages: APIMessage[] = [
     { role: 'system', content: buildAgentSystemPrompt(effectivePrompt) },
     ...history,
-    { role: 'user', content: task },
+    { role: 'user', content: task + taskHintsSection(effectivePrompt.taskHints) },
   ];
 
   let consecutiveErrors = 0;

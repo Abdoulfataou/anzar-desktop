@@ -53,6 +53,7 @@ function Overview({ days }: { days: number }) {
     { key: 'k', header: keyLabel, render: (r: BreakdownRow) => fmt ? fmt(r.key) : <span className="font-mono text-xs">{r.key}</span> },
     { key: 'n', header: 'Requêtes', align: 'right' as const, render: (r: BreakdownRow) => num(r.requests) },
     { key: 'i', header: 'Entrée', align: 'right' as const, render: (r: BreakdownRow) => num(r.input_tokens) },
+    { key: 'h', header: 'Cache', align: 'right' as const, render: (r: BreakdownRow) => <CacheRate rate={r.cache_rate} /> },
     { key: 'o', header: 'Sortie', align: 'right' as const, render: (r: BreakdownRow) => num(r.output_tokens) },
     { key: 'c', header: 'Facturé', align: 'right' as const, render: (r: BreakdownRow) => fcfa(r.cost_fcfa) },
   ]
@@ -69,16 +70,24 @@ function Overview({ days }: { days: number }) {
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="Par type d'appel" padded={false}>
           <DataTable rows={b.data?.by_task_type ?? []} rowKey={(r) => r.key} loading={b.loading}
-            columns={cols('Type', (k) => label(TASK_LABELS, k)).filter((c) => c.key !== 'i' && c.key !== 'o')} />
+            columns={cols('Type', (k) => label(TASK_LABELS, k)).filter((c) => c.key !== 'i' && c.key !== 'o' && c.key !== 'h')} />
         </Panel>
         <Panel title="Meilleurs clients" padded={false}>
           <DataTable rows={b.data?.top_users ?? []} rowKey={(r) => r.key} loading={b.loading}
             onRowClick={(r) => navigate(`/users/${encodeURIComponent(r.key)}?tab=usage`)}
-            columns={cols('Compte', (k) => k).filter((c) => c.key !== 'i' && c.key !== 'o')} />
+            columns={cols('Compte', (k) => k).filter((c) => c.key !== 'i' && c.key !== 'o' && c.key !== 'h')} />
         </Panel>
       </div>
     </div>
   )
+}
+
+/** Part de l'entrée servie par le cache DeepSeek : au-dessus de 80 %, le préfixe est bien stable. */
+function CacheRate({ rate }: { rate?: number }) {
+  if (rate === undefined) return <span className="text-foreground-muted">—</span>
+  const pct = Math.round(rate * 100)
+  const tone = pct >= 80 ? 'text-accent-success' : pct >= 50 ? 'text-accent-warning' : 'text-accent-error'
+  return <span className={tone}>{pct} %</span>
 }
 
 function Daily({ days }: { days: number }) {

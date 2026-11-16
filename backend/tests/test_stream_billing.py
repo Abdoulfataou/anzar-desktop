@@ -26,7 +26,7 @@ def test_stream_sends_exact_cost_before_done(monkeypatch):
 
     import db
     from services import billing
-    async def record_usage(*a, **kw): billed["record"] = a
+    async def record_usage(*a, **kw): billed["record"] = a; billed["record_kw"] = kw
     async def deduct_credits(email, cost, *a, **kw): billed["deduct"] = cost; billed["kw"] = kw
     monkeypatch.setattr(db, "record_usage", record_usage)
     monkeypatch.setattr(db, "deduct_credits", deduct_credits)
@@ -47,6 +47,7 @@ def test_stream_sends_exact_cost_before_done(monkeypatch):
     assert sent == expected
     assert billed["deduct"] == expected  # le montant affiché est exactement le montant débité
     assert billed["kw"].get("allow_negative") is True  # un coût réel n'est jamais offert
+    assert billed["record_kw"].get("cached_input_tokens") == 1_000_000  # le taux de cache est suivi
 
 
 def test_legacy_deepseek_models_are_converted(monkeypatch):

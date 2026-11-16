@@ -24,6 +24,7 @@ async def record_usage(
     duration_ms: int = 0,
     task_type: str = "chat",
     was_fallback: bool = False,
+    cached_input_tokens: int = 0,
 ) -> int:
     email = email.lower().strip()
     Session = get_sessionmaker()
@@ -35,6 +36,7 @@ async def record_usage(
                 model=model,
                 task_type=task_type,
                 input_tokens=int(input_tokens or 0),
+                cached_input_tokens=max(0, min(int(cached_input_tokens or 0), int(input_tokens or 0))),
                 output_tokens=int(output_tokens or 0),
                 cost_usd=float(cost_usd or 0),
                 cost_fcfa=float(cost_fcfa or 0),

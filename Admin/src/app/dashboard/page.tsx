@@ -79,6 +79,9 @@ export default function DashboardPage() {
           <Stat label="Utilisateurs" value={num(s.users.total)} icon={<Users className="h-4 w-4" />}
             hint={`${num(s.users.active)} actifs · +${num(s.users.new_7d)} cette semaine`} onClick={() => navigate('/users')} />
           <Stat label="Requêtes IA (30 j)" value={compact(s.usage_30d.total_requests)} hint={`${compact(s.usage_30d.total_tokens)} jetons`} />
+          <Stat label="Cache DeepSeek (30 j)" value={`${Math.round((s.cache_rate_30d ?? 0) * 100)} %`}
+            tone={(s.cache_rate_30d ?? 0) >= 0.8 ? 'success' : 'warning'}
+            hint="Part de l'entrée servie par le cache (50 fois moins chère). Objectif : 80 % et plus." onClick={() => navigate('/usage')} />
           <Stat label="Bonus offerts (30 j)" value={fcfa(s.bonus_30d)} tone={s.bonus_30d > 0 ? 'warning' : 'default'} />
           <Stat label="Paiements en attente" value={num(s.payments_pending.count)} tone={s.payments_pending.count ? 'warning' : 'default'}
             hint={fcfa(s.payments_pending.amount_fcfa)} onClick={() => navigate('/payments')} />

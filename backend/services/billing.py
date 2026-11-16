@@ -171,11 +171,12 @@ async def reserve_for_chat(email: str, provider: str, model: str, body: Dict[str
 
 async def _charge(res: Reservation, cost_fcfa: float, cost_usd: float, description: str,
                   provider: str, model: str, input_tokens: int, output_tokens: int,
-                  duration_ms: int, task_type: str) -> None:
+                  duration_ms: int, task_type: str, cached_input_tokens: int = 0) -> None:
     import db
     try:
         await db.record_usage(res.email, provider, model, input_tokens, output_tokens,
-                              cost_usd, cost_fcfa, duration_ms, task_type=task_type)
+                              cost_usd, cost_fcfa, duration_ms, task_type=task_type,
+                              cached_input_tokens=cached_input_tokens)
         if cost_fcfa > 0:
             await db.deduct_credits(res.email, cost_fcfa, description, provider, model,
                                     input_tokens, output_tokens, allow_negative=True)
@@ -188,14 +189,15 @@ async def _charge(res: Reservation, cost_fcfa: float, cost_usd: float, descripti
 
 async def settle(res: Reservation, cost_fcfa: float, cost_usd: float, description: str,
                  provider: str, model: str, input_tokens: int = 0, output_tokens: int = 0,
-                 duration_ms: int = 0, task_type: str = "chat") -> None:
+                 duration_ms: int = 0, task_type: str = "chat", cached_input_tokens: int = 0) -> None:
     """Débite le coût réel puis libère la réservation.
 
     Le débit tourne dans une tâche protégée : si le client coupe la connexion pendant le
     flux (annulation de la requête), le débit va quand même jusqu'au bout.
     """
     task = asyncio.ensure_future(_charge(res, cost_fcfa, cost_usd, description, provider, model,
-                                         input_tokens, output_tokens, duration_ms, task_type))
+                                         input_tokens, output_tokens, duration_ms, task_type,
+                                         cached_input_tokens))
     _pending.add(task)
     task.add_done_callback(_pending.discard)
     await asyncio.shield(task)

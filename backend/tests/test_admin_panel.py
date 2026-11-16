@@ -27,7 +27,7 @@ def _admin_session(client, owner_headers, role):
 
 def test_dashboard_stats_and_series(client, admin_headers):
     s = client.get("/api/admin/stats", headers=admin_headers).json()
-    for key in ("users", "credits", "usage_30d", "payments_pending", "debts", "recharged_30d", "billing_anomalies_30d"):
+    for key in ("users", "credits", "usage_30d", "payments_pending", "debts", "recharged_30d", "billing_anomalies_30d", "cache_rate_30d"):
         assert key in s
     days = client.get("/api/admin/stats/daily?days=14", headers=admin_headers).json()["days"]
     assert len(days) == 14 and {"day", "requests", "cost_fcfa", "recharged_fcfa", "new_users"} <= set(days[0])

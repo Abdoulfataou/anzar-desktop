@@ -103,7 +103,7 @@ async def _proxy_request_with_billing(
     )
     await billing.settle(
         reservation, cost_fcfa, cost_usd, f"Chat {provider}/{model_name}", provider, model_name,
-        input_tokens, output_tokens, duration_ms, task_type,
+        input_tokens, output_tokens, duration_ms, task_type, cached_input_tokens=cached_tokens,
     )
     if isinstance(data, dict):
         data["anzar"] = {"cost_fcfa": cost_fcfa}
@@ -186,7 +186,7 @@ async def _proxy_stream_with_billing(
                     )
                     await billing.settle(
                         reservation, cost_fcfa, cost_usd, f"Stream {provider}/{model_name}", provider, model_name,
-                        input_tokens, output_tokens, duration_ms, task_type,
+                        input_tokens, output_tokens, duration_ms, task_type, cached_input_tokens=cached_tokens,
                     )
             finally:
                 await client.aclose()

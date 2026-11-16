@@ -111,6 +111,8 @@ class UsageRecord(Base):
     model: Mapped[str] = mapped_column(String(64), nullable=False)
     task_type: Mapped[str] = mapped_column(String(50), default="chat")
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    # Part de l'entrée servie par le cache DeepSeek (≈ 2 % du prix) : mesure l'efficacité du préfixe stable
+    cached_input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     cost_fcfa: Mapped[float] = mapped_column(Float, default=0.0)

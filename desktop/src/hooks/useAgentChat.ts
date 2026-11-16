@@ -17,7 +17,7 @@ import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
 import { WEB_TOOLS, WEB_TOOL_NAMES, executeWebTool } from '@/services/agent/webTools';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { buildAgentSystemPrompt, FORMATTING_GUIDE, VISUALS_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
+import { buildAgentSystemPrompt, memorySection, FORMATTING_GUIDE, VISUALS_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
 import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
@@ -163,12 +163,16 @@ const MAX_TOOL_OUTPUT_DISPLAY = 600;
 // À chaque étape, TOUT l'historique est renvoyé au modèle (et facturé). Les
 // anciens résultats d'outils (fichiers lus, sorties de commandes) en sont la
 // plus grosse part et ne servent plus après quelques étapes : on les raccourcit.
-// La modification est faite une fois, sur place : le début de l'historique reste
-// identique d'une étape à l'autre (meilleur cache côté fournisseur).
+// Mais le cache DeepSeek fait payer ~2 % du prix normal tout début de requête déjà
+// envoyé tel quel. Raccourcir un peu à chaque étape modifierait l'historique au milieu
+// et ferait repayer plein tarif tout ce qui suit (×50). On compacte donc RAREMENT et
+// EN UNE FOIS : quand l'historique dépasse le plafond, ou au début d'une demande quand
+// le cache est probablement froid. Entre deux, l'historique ne fait que s'allonger.
 const KEEP_RECENT_TOOL_RESULTS = 6;   // derniers résultats gardés en entier
 const SMALL_RESULT_CHARS = 1_500;     // un résultat court n'est jamais raccourci
 const STUB_CHARS = 600;               // ce qu'on garde d'un ancien résultat
-const SOFT_LIMIT_CHARS = 140_000;     // au-delà, on serre davantage (~35k tokens)
+const SOFT_LIMIT_CHARS = 160_000;     // plafond avant compaction (~40k tokens)
+const CACHE_COLD_MS = 30 * 60 * 1000; // au-delà, le cache fournisseur a pu être vidé
 const SHRUNK_MARK = '[ancien résultat raccourci';
 
 function shrinkText(text: string, keep: number): string {
@@ -319,6 +323,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   const abortRef = useRef<AbortController | null>(null);
   // Historique API complet de la conversation (tool exchanges inclus), par conversation
   const apiHistoryRef = useRef<APIMessage[]>([]);
+  // Heure du dernier appel au modèle : sert à savoir si le cache DeepSeek est encore chaud
+  const lastCallAtRef = useRef(0);
   const activeConvRef = useRef<string | null>(null);
   const resumeRef = useRef<ResumeState | null>(null);
 
@@ -360,6 +366,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     // Reset de l'historique API si on change de conversation
     if (!resumeFrom && activeConvRef.current !== convId) {
       apiHistoryRef.current = [];
+      lastCallAtRef.current = 0;
       activeConvRef.current = convId;
     }
 
@@ -471,6 +478,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         // tâche et le mode plan vont dans le message de la demande, en fin de requête.
         let system: APIMessage;
         let turnContext = '';
+        // Partie fixe du prompt système, et ce qui peut changer en cours de conversation
+        // (mémoire ANZAR.md, skills, instructions personnelles)
+        let systemHead = '';
+        let systemRefresh = '';
         const freshHistory = apiHistoryRef.current.length === 0;
         if (workspacePath) {
           const ctx = await buildAgentContext(workspacePath, content).catch(() => null);
@@ -484,6 +495,9 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             role: 'system',
             content: buildAgentSystemPrompt(promptCtx) + skillsPromptSection(skills) + personal,
           };
+          systemHead = buildAgentSystemPrompt({ ...promptCtx, memory: undefined });
+          systemRefresh = [ctx?.memory ? memorySection(ctx.memory) : '', skillsPromptSection(skills).trim(), personal.trim()]
+            .filter(Boolean).join('\n\n');
           const parts: string[] = [];
           // Carte du code : une fois par conversation (elle reste ensuite dans l'historique)
           if (freshHistory && ctx?.codeMap) parts.push(`## Carte du code (fichiers + symboles clés)\n${ctx.codeMap}`);
@@ -506,6 +520,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               "(bouton « Ouvrir un dossier » en haut de la conversation).\n\n" +
               FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + personal,
           };
+          systemHead = (system.content as string).slice(0, (system.content as string).length - personal.length);
+          systemRefresh = personal.trim();
         }
 
         if (apiHistoryRef.current.length === 0) {
@@ -518,12 +534,25 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             .map((m) => ({ role: m.role, content: m.content.slice(0, 6000) }) as APIMessage);
           apiHistoryRef.current.push(system, ...prior);
         } else {
-          apiHistoryRef.current[0] = system;
+          const prev = apiHistoryRef.current[0];
+          const prevText = typeof prev?.content === 'string' ? prev.content : '';
+          if (prev?.role !== 'system' || !prevText.startsWith(systemHead)) {
+            // Autre projet, passage chat ↔ agent ou nouvelle version de l'app : prompt remplacé
+            apiHistoryRef.current[0] = system;
+          } else if (prevText !== system.content && systemRefresh) {
+            // Seules la mémoire, les skills ou les instructions ont changé : on garde le prompt
+            // d'origine (servi par le cache) et on donne la version à jour dans la demande.
+            turnContext += `\n\n---\n# Contexte mis à jour (remplace celui du début de la conversation)\n${systemRefresh}`;
+          }
           // Si la réponse précédente a été coupée, l'historique doit rester valide pour « continue »
           closeDanglingToolCalls(apiHistoryRef.current);
         }
-        // Les résultats d'outils des demandes précédentes ne servent plus qu'en résumé
-        compactHistory(apiHistoryRef.current, 0, 300);
+        // Les résultats d'outils des demandes précédentes ne servent plus qu'en résumé. On ne
+        // les raccourcit que si le cache est froid ou l'historique trop long : sinon, les garder
+        // tels quels coûte bien moins cher (servis par le cache) que de tout renvoyer modifié.
+        if (Date.now() - lastCallAtRef.current > CACHE_COLD_MS || historyChars(apiHistoryRef.current) > SOFT_LIMIT_CHARS) {
+          compactHistory(apiHistoryRef.current, 0, 300);
+        }
         // Le raisonnement des demandes précédentes n'est plus utile au modèle (DeepSeek accepte
         // qu'on le retire entre deux demandes) : on l'enlève pour ne pas le repayer.
         for (let i = 0; i < apiHistoryRef.current.length; i++) {
@@ -559,10 +588,13 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         let assembler = new Assembler();
         let stepContent = '';
 
-        // Chaque étape renvoie tout l'historique au modèle : on le compte à chaque fois.
-        compactHistory(apiHistoryRef.current, KEEP_RECENT_TOOL_RESULTS, STUB_CHARS);
+        // Chaque étape renvoie tout l'historique au modèle. Compaction en une fois, seulement
+        // au-delà du plafond, pour que le début de la requête reste identique (cache).
         if (historyChars(apiHistoryRef.current) > SOFT_LIMIT_CHARS) {
-          compactHistory(apiHistoryRef.current, 2, 300);
+          compactHistory(apiHistoryRef.current, KEEP_RECENT_TOOL_RESULTS, STUB_CHARS);
+          if (historyChars(apiHistoryRef.current) > SOFT_LIMIT_CHARS * 0.6) {
+            compactHistory(apiHistoryRef.current, 2, 300);
+          }
         }
         promptTokens += historyTokens();
         const web = webEnabled ? WEB_TOOLS : [];
@@ -591,6 +623,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               if (delta.tool_calls) assembler.add(delta.tool_calls);
             }
             cost.calls++;
+            lastCallAtRef.current = Date.now();
             break;
           } catch (e: any) {
             if (controller.signal.aborted) break;
@@ -790,6 +823,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           }
         }
         cost.calls++;
+        lastCallAtRef.current = Date.now();
         if (finalText) {
           accContent += (accContent ? '\n\n' : '') + finalText;
           addText(finalText);
