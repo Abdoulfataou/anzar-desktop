@@ -29,6 +29,7 @@ const ChatPage = lazy(() => import('@/pages/ChatPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const SkillsPage = lazy(() => import('@/pages/SkillsPage'));
 const ConnectorsPage = lazy(() => import('@/pages/ConnectorsPage'));
+const TicketsPage = lazy(() => import('@/pages/TicketsPage'));
 const AutomationsPage = lazy(() => import('@/pages/AutomationsPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
@@ -96,6 +97,7 @@ export default function App() {
               <Route path="settings" element={<SettingsPage />} />
               <Route path="skills" element={<SkillsPage />} />
               <Route path="connectors" element={<ConnectorsPage />} />
+              <Route path="tickets" element={<TicketsPage />} />
               <Route path="automations" element={<AutomationsPage />} />
             </Route>
           </Route>

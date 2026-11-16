@@ -321,9 +321,13 @@ interface UseAgentChatParams {
   onFileChanged?: (relativePath: string, action: 'create' | 'edit' | 'delete') => void;
   /** Exécution en arrière-plan (automatisations) : ne touche pas à l'indicateur global. */
   background?: boolean;
+  /** Après chaque appel au modèle et chaque outil : coût cumulé (FCFA) de la réponse en cours. Sert au watchdog des tickets. */
+  onProgress?: (p: { costFCFA: number }) => void;
 }
 
-export function useAgentChat({ workspacePath, workspaceName, model, permissionMode = 'full', onFileChanged, background = false }: UseAgentChatParams) {
+export function useAgentChat({ workspacePath, workspaceName, model, permissionMode = 'full', onFileChanged, background = false, onProgress }: UseAgentChatParams) {
+  const onProgressRef = useRef(onProgress);
+  onProgressRef.current = onProgress;
   const [isGenerating, setIsGenerating] = useState(false);
   // Le mode peut changer pendant que l'agent travaille : on lit toujours la valeur courante.
   const modeRef = useRef(permissionMode);
@@ -662,6 +666,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             }
             cost.calls++;
             lastCallAtRef.current = Date.now();
+            onProgressRef.current?.({ costFCFA: cost.sum });
             break;
           } catch (e: any) {
             if (controller.signal.aborted) break;
@@ -817,6 +822,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
           // Recherche et lecture web : facturées à part par le serveur, ajoutées au coût de la réponse
           if (result.costFCFA) cost.sum += result.costFCFA;
+          onProgressRef.current?.({ costFCFA: cost.sum });
 
           // B7 : delta de lignes calculé depuis les ARGS de l'outil (l'ancien
           // parse attendait un format qu'aucun exécuteur ne produisait).

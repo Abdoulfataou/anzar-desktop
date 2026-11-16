@@ -166,7 +166,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$|^[\\w./\\- :@{}]+$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$|^[\\w./\\- :@{}]+$"
               }
             ]
           },
@@ -1316,7 +1316,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$"
               }
             ]
           },
@@ -1325,7 +1325,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1337,7 +1337,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1352,7 +1352,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1370,7 +1370,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1391,7 +1391,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1415,7 +1415,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
@@ -1442,7 +1442,7 @@
             "cmd": "git",
             "args": [
               {
-                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|--version)$"
+                "validator": "^(init|clone|add|commit|push|pull|fetch|checkout|branch|merge|rebase|status|log|diff|stash|tag|remote|reset|clean|config|show|rev-parse|describe|worktree|for-each-ref|merge-base|rev-list|ls-files|--version)$"
               },
               {
                 "validator": "^[^\\r\\n]{1,400}$"
