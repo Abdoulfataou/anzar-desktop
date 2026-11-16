@@ -1,4 +1,7 @@
-//! Transport des serveurs MCP (Model Context Protocol).
+//! Transport des serveurs MCP (Model Context Protocol) et des serveurs de langage (LSP).
+//!
+//! Deux cadrages sur stdio : « line » (MCP, une ligne JSON par message) et « lsp »
+//! (en-tête Content-Length puis le corps JSON, utilisé par les diagnostics de code).
 //!
 //! L'app parle le protocole (JSON-RPC) ; ce module ne fait que le transport :
 //! - stdio : lance le serveur (npx, uvx, docker…), écrit une ligne JSON sur son entrée,
@@ -27,6 +30,7 @@ const MAX_HTTP_BODY: usize = 16 * 1024 * 1024;
 struct Proc {
     child: Child,
     stdin: Option<ChildStdin>,
+    lsp: bool,
 }
 
 #[derive(Default)]
@@ -126,6 +130,41 @@ fn hide_window(c: &mut Command) {
     c.process_group(0);
 }
 
+/// Lit des messages LSP : « Content-Length: N » puis une ligne vide, puis N octets de JSON.
+fn pump_lsp<R: std::io::Read + Send + 'static>(reader: R, mut on_message: impl FnMut(String) + Send + 'static) {
+    std::thread::spawn(move || {
+        let mut reader = BufReader::with_capacity(64 * 1024, reader);
+        loop {
+            let mut length: Option<usize> = None;
+            let mut header = String::new();
+            loop {
+                header.clear();
+                match reader.read_line(&mut header) {
+                    Ok(0) | Err(_) => return,
+                    Ok(_) => {}
+                }
+                let h = header.trim_end();
+                if h.is_empty() {
+                    if length.is_some() { break; }
+                    continue;
+                }
+                if let Some(v) = h.strip_prefix("Content-Length:").or_else(|| h.strip_prefix("content-length:")) {
+                    length = v.trim().parse().ok();
+                }
+            }
+            let n = length.unwrap_or(0);
+            if n > MAX_LINE_BYTES {
+                // Message trop gros : lu puis ignoré, pour garder le flux aligné
+                if std::io::copy(&mut std::io::Read::take(&mut reader, n as u64), &mut std::io::sink()).is_err() { return; }
+                continue;
+            }
+            let mut body = vec![0u8; n];
+            if std::io::Read::read_exact(&mut reader, &mut body).is_err() { return; }
+            on_message(String::from_utf8_lossy(&body).to_string());
+        }
+    });
+}
+
 /// Lit des lignes sans limite de taille du tampon système, mais coupe au-delà de MAX_LINE_BYTES.
 fn pump_lines<R: std::io::Read + Send + 'static>(reader: R, mut on_line: impl FnMut(String) + Send + 'static) {
     std::thread::spawn(move || {
@@ -158,7 +197,9 @@ pub fn mcp_spawn(
     args: Vec<String>,
     env: HashMap<String, String>,
     cwd: Option<String>,
+    framing: Option<String>,
 ) -> Result<(), String> {
+    let lsp = framing.as_deref() == Some("lsp");
     if !LAUNCHERS.contains(&launcher_name(&command).as_str()) {
         return Err(format!(
             "Lanceur « {command} » non autorisé. Utilise : {}.",
@@ -192,9 +233,10 @@ pub fn mcp_spawn(
 
     let (app_out, id_out) = (app.clone(), id.clone());
     let procs = state.procs.clone();
-    pump_lines(stdout, move |line| {
+    let emit = move |line: String| {
         let _ = app_out.emit_all("mcp://message", MessageEvent { id: id_out.clone(), line });
-    });
+    };
+    if lsp { pump_lsp(stdout, emit) } else { pump_lines(stdout, emit) }
     let (app_err, id_err) = (app.clone(), id.clone());
     let procs_exit = procs.clone();
     let app_exit = app.clone();
@@ -203,7 +245,7 @@ pub fn mcp_spawn(
         let _ = app_err.emit_all("mcp://log", LogEvent { id: id_err.clone(), line });
     });
     // Enregistré AVANT de surveiller la fin du processus
-    procs.lock().unwrap().insert(id, Proc { child, stdin });
+    procs.lock().unwrap().insert(id, Proc { child, stdin, lsp });
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(500));
         let mut map = procs_exit.lock().unwrap();
@@ -227,12 +269,20 @@ pub fn mcp_send(state: State<'_, McpState>, id: String, line: String) -> Result<
     let mut map = state.procs.lock().unwrap();
     let p = map.get_mut(&id).ok_or("Serveur arrêté")?;
     let stdin = p.stdin.as_mut().ok_or("Entrée du serveur fermée")?;
-    let clean = line.replace(['\r', '\n'], " ");
-    stdin
-        .write_all(clean.as_bytes())
-        .and_then(|_| stdin.write_all(b"\n"))
-        .and_then(|_| stdin.flush())
-        .map_err(|e| format!("Envoi impossible : {e}"))
+    let result = if p.lsp {
+        let body = line.as_bytes();
+        stdin
+            .write_all(format!("Content-Length: {}\r\n\r\n", body.len()).as_bytes())
+            .and_then(|_| stdin.write_all(body))
+            .and_then(|_| stdin.flush())
+    } else {
+        let clean = line.replace(['\r', '\n'], " ");
+        stdin
+            .write_all(clean.as_bytes())
+            .and_then(|_| stdin.write_all(b"\n"))
+            .and_then(|_| stdin.flush())
+    };
+    result.map_err(|e| format!("Envoi impossible : {e}"))
 }
 
 fn stop_proc(procs: &Arc<Mutex<HashMap<String, Proc>>>, id: &str) {

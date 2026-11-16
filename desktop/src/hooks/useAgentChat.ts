@@ -96,7 +96,7 @@ function closeDanglingToolCalls(history: APIMessage[]): void {
 
 const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember']);
 const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents']);
-const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'web_search', 'read_url']);
+const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'web_search', 'read_url']);
 
 function needsApproval(mode: PermissionMode, tool: string): boolean {
   if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);

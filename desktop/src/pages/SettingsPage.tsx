@@ -231,6 +231,7 @@ function GeneralSection() {
   const model = useSettingsStore((s) => s.settings.model);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const webTools = useSettingsStore((s) => s.settings.webTools !== false);
+  const codeDiagnostics = useSettingsStore((s) => s.settings.codeDiagnostics !== false);
   const [mode, setMode] = useState<PermissionMode>(() => {
     try {
       const v = localStorage.getItem('anzar.permissionMode');
@@ -257,6 +258,16 @@ function GeneralSection() {
         <Segmented
           value={webTools ? 'on' : 'off'}
           onChange={(v) => updateSettings({ webTools: v === 'on' })}
+          options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
+        />
+      </Row>
+      <Row
+        label="Vérification du code"
+        description="Après chaque fichier TypeScript, JavaScript ou Python écrit par l'agent, ses erreurs sont vérifiées aussitôt (types, noms inconnus, imports) et l'agent les corrige. Gratuit, sur ton ordinateur ; demande Node.js. Le premier lancement télécharge les vérificateurs."
+      >
+        <Segmented
+          value={codeDiagnostics ? 'on' : 'off'}
+          onChange={(v) => updateSettings({ codeDiagnostics: v === 'on' })}
           options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
         />
       </Row>

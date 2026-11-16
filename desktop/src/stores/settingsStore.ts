@@ -28,6 +28,9 @@ export interface Settings {
   /** L'agent peut chercher sur le web et lire des pages (Search / Fetch DeepSeek) */
   webTools?: boolean;
 
+  /** Erreurs de code (TypeScript, Python) vérifiées après chaque fichier écrit par l'agent */
+  codeDiagnostics?: boolean;
+
   // Interface
   theme: 'light' | 'dark' | 'system';
   language: 'fr' | 'en';
@@ -189,6 +192,7 @@ export const useSettingsStore = create<SettingsStore>()(
         settings: {
           model: state.settings.model,
           webTools: state.settings.webTools,
+          codeDiagnostics: state.settings.codeDiagnostics,
           provider: state.settings.provider,
           backendUrl: state.settings.backendUrl,
           deviceVaultKey: state.settings.deviceVaultKey,

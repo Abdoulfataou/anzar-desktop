@@ -19,6 +19,8 @@ export class StdioTransport implements McpTransport {
     private env: Record<string, string>,
     private cwd?: string,
     private onLog?: (line: string) => void,
+    /** « line » pour MCP, « lsp » (Content-Length) pour les serveurs de langage */
+    private framing: 'line' | 'lsp' = 'line',
   ) {}
 
   async start(onMessage: (m: JsonRpcMessage) => void, onClose: (reason: string) => void): Promise<void> {
@@ -39,7 +41,7 @@ export class StdioTransport implements McpTransport {
       onClose(`Le serveur s'est arrêté (code ${e.payload.code ?? '?'})${last ? ` : ${last}` : ''}`);
     }));
     try {
-      await invoke('mcp_spawn', { id: this.id, command: this.command, args: this.args, env: this.env, cwd: this.cwd ?? null });
+      await invoke('mcp_spawn', { id: this.id, command: this.command, args: this.args, env: this.env, cwd: this.cwd ?? null, framing: this.framing });
     } catch (e) {
       this.dispose();
       throw new McpError(String(e));
