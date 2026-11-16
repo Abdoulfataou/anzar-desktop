@@ -343,6 +343,11 @@ const LEGACY_OFFICE_EXTS = ['doc', 'ppt', 'xls'];
  * Utilisé par le bouton trombone ET le drag & drop.
  */
 async function processFilePath(filePath: string): Promise<ChatAttachment> {
+  // Le chemin d'origine permet ensuite d'en placer une copie dans le projet (agent)
+  return { ...(await extractFromPath(filePath)), sourcePath: filePath };
+}
+
+async function extractFromPath(filePath: string): Promise<ChatAttachment> {
   const name = filePath.split(/[/\\]/).pop() || 'fichier';
   const ext = name.split('.').pop()?.toLowerCase() || '';
   const kind = detectAttachmentKind(name);

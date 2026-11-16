@@ -130,6 +130,10 @@ export interface ChatAttachment {
   meta?: Record<string, any>;
   /** Image : contenu en data URL, envoyé au modèle (jamais sauvegardé dans l'historique) */
   dataUrl?: string;
+  /** Chemin d'origine sur le disque (jamais sauvegardé dans l'historique) */
+  sourcePath?: string;
+  /** Copie dans le projet ouvert (chemin relatif), sur laquelle l'agent peut travailler */
+  projectCopy?: string;
 }
 
 export interface Message {

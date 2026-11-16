@@ -28,6 +28,7 @@ import { detectDevCommand } from '@/services/agent/devServer';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, callMcpTool, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
+import { copyAttachmentsToWorkspace } from '@/services/attachmentFiles';
 import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall, ToolDefinition } from '@/types';
 
 /** Qui décide avant que l'agent agisse. */
@@ -280,7 +281,13 @@ function withAttachments(content: string, attachments: ChatAttachment[]): string
   if (attachments.length === 0) return content;
   let budget = MAX_ATTACHMENTS_TOTAL_CHARS;
   const blocks = attachments.map((a) => {
-    const label = `[${a.ref}] ${a.name} (${a.kind})`;
+    const label = `[${a.ref}] ${a.name} (${a.kind})` + (a.projectCopy
+      ? `\nFichier disponible dans le projet : \`${a.projectCopy}\`. Pour le transformer (découper, fusionner, `
+        + `convertir, extraire des pages, redimensionner…), écris un script python ou node qui lit ce fichier et `
+        + `écris les résultats dans le même dossier, sans jamais écraser l'original. Bibliothèques utiles : pypdf ou `
+        + `pdf-lib (PDF), openpyxl (Excel), python-docx (Word), Pillow (images). Si python ou node manque, explique `
+        + `à l'utilisateur comment l'installer. Donne-lui à la fin le chemin des fichiers produits.`
+      : '');
     if (a.kind === 'image') {
       return a.dataUrl
         ? `${label}\n(Image jointe : elle t'est montrée à la suite de ce message.)`
@@ -437,7 +444,11 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     opts?: { conversationId?: string },
   ) => {
     if ((!content.trim() && !resumeFrom) || isGenerating) return;
-    const attachments = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
+    const refd = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
+    // Copie des fichiers joints dans le projet : l'agent peut alors les transformer (pas seulement les lire)
+    const attachments = workspacePath && !resumeFrom
+      ? await copyAttachmentsToWorkspace(workspacePath, refd).catch(() => refd)
+      : refd;
     const apiContent = withAttachments(content, attachments);
     const convId = resumeFrom?.convId ?? opts?.conversationId ?? ensureConversation();
     if (!resumeFrom) resumeRef.current = null; // un nouveau message rend l'ancienne reprise caduque
@@ -462,7 +473,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       timestamp: Date.now(),
       // Affichage : nom et type seulement (le contenu part au modèle, pas dans l'historique local)
       attachments: attachments.length
-        ? attachments.map(({ excerpt: _excerpt, dataUrl: _data, ...rest }) => rest)
+        ? attachments.map(({ excerpt: _excerpt, dataUrl: _data, sourcePath: _src, ...rest }) => rest)
         : undefined,
     };
     if (!resumeFrom) addMessage(userMsg, convId);
