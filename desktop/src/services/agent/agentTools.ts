@@ -139,6 +139,77 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'start_dev_server',
+      description:
+        "Lance en arrière-plan le serveur de développement du projet (npm run dev, npm start…) et renvoie son adresse locale. " +
+        "Sans command, la commande est devinée depuis package.json. Un seul serveur par projet : s'il tourne déjà, son adresse est renvoyée. " +
+        "À utiliser avant check_page pour vérifier une app web que tu as modifiée.",
+      parameters: {
+        type: 'object',
+        properties: { command: { type: 'string', description: 'Commande de lancement (facultative), ex : npm run dev' } },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'dev_server_logs',
+      description: "Dernières lignes du serveur de développement lancé par start_dev_server : erreurs de compilation, requêtes reçues, plantages côté serveur.",
+      parameters: { type: 'object', properties: { lines: { type: 'number', description: 'Nombre de lignes (60 par défaut)' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'stop_dev_server',
+      description: 'Arrête le serveur de développement lancé par start_dev_server.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_page',
+      description:
+        "Ouvre une page dans un vrai navigateur (sans fenêtre) et rapporte : titre, erreurs et avertissements de la console, requêtes en échec, " +
+        "et le contenu de la page sous forme d'arbre avec des repères ref=… (pour page_action). Sans url : l'adresse du serveur lancé par start_dev_server. " +
+        "Utilise-le pour VÉRIFIER une app web après tes modifications, comme le ferait l'utilisateur.",
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Adresse complète, ex : http://localhost:5173/connexion (facultative)' },
+          wait_for_text: { type: 'string', description: 'Texte à attendre avant de lire la page (facultatif)' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'page_action',
+      description:
+        "Agit sur la page ouverte par check_page, puis rapporte son nouvel état (console, requêtes, contenu). " +
+        "click : cliquer ; type : saisir du texte (submit:true appuie sur Entrée) ; select : choisir une option ; press : touche (key) ; wait : attendre un texte ou quelques secondes. " +
+        "target est le repère ref=… de l'élément, tel qu'il apparaît dans le contenu de la page.",
+      parameters: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['click', 'type', 'select', 'press', 'wait'] },
+          target: { type: 'string', description: 'Repère de l\'élément, ex : e12' },
+          element: { type: 'string', description: "Description lisible de l'élément, ex : bouton « Se connecter »" },
+          text: { type: 'string', description: 'Texte à saisir (type), option (select) ou texte attendu (wait)' },
+          submit: { type: 'boolean', description: 'type : appuyer sur Entrée après la saisie' },
+          values: { type: 'array', items: { type: 'string' }, description: 'select : options à choisir' },
+          key: { type: 'string', description: 'press : touche, ex : Enter, Escape, ArrowDown' },
+          seconds: { type: 'number', description: 'wait : durée maximale en secondes (30 au plus)' },
+        },
+        required: ['action'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'explore',
       description:
         "Lance 1 à 8 explorateurs rapides EN PARALLÈLE, en lecture seule : chacun répond à une question précise sur le code du projet et ne te rend qu'un résumé court avec les fichiers et lignes clés. " +
@@ -508,6 +579,37 @@ async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<Too
   return { output: parts.join('\n\n'), isError: !result.success };
 }
 
+// ── Vérification web : serveur de développement et navigateur intégré ──
+async function execStartDevServer(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const { startDevServer } = await import('./devServer');
+  const command = typeof args.command === 'string' && args.command.trim() ? args.command.trim() : undefined;
+  if (command && precheckCommand(command)) return { output: precheckCommand(command)!, isError: true };
+  const r = await startDevServer(ctx.projectRoot, command);
+  return { output: r.output, isError: r.isError };
+}
+
+async function execDevServerLogs(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const { devServerLogs } = await import('./devServer');
+  return devServerLogs(ctx.projectRoot, Number(args.lines) || 60);
+}
+
+async function execStopDevServer(_args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const { stopDevServer } = await import('./devServer');
+  return stopDevServer(ctx.projectRoot);
+}
+
+async function execCheckPage(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const [{ checkPage }, { devServerUrl }] = await Promise.all([import('./browserCheck'), import('./devServer')]);
+  const url = typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot);
+  if (!url) return { output: "Indique url, ou lance d'abord le serveur du projet avec start_dev_server.", isError: true };
+  return checkPage(url, { waitForText: args.wait_for_text, signal: ctx.signal });
+}
+
+async function execPageAction(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const { pageAction } = await import('./browserCheck');
+  return pageAction(args, ctx.signal);
+}
+
 async function execExplore(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const questions: string[] = (Array.isArray(args.questions) ? args.questions : [args.questions])
     .filter((q: any) => typeof q === 'string' && q.trim());
@@ -599,6 +701,11 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   search_files: execSearchFiles,
   get_diagnostics: execGetDiagnostics,
   explore: execExplore,
+  start_dev_server: execStartDevServer,
+  dev_server_logs: execDevServerLogs,
+  stop_dev_server: execStopDevServer,
+  check_page: execCheckPage,
+  page_action: execPageAction,
   run_command: execRunCommand,
   spawn_subagents: execSpawnSubagents,
   remember: execRemember,

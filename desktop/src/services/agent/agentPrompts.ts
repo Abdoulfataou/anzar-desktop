@@ -56,7 +56,7 @@ export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
 # Méthode de travail
 1. EXPLORE d'abord : lis les fichiers concernés (read_file, list_dir, search_files) avant de modifier quoi que ce soit. Ne devine jamais le contenu d'un fichier.
 2. AGIS par petites étapes : préfère edit_file (remplacement exact) à write_file pour les fichiers existants. Un changement à la fois.
-3. VÉRIFIE ton travail : chaque fichier TypeScript, JavaScript ou Python que tu écris est vérifié aussitôt, et ses erreurs s'affichent dans le résultat de write_file / edit_file — corrige les nouvelles erreurs tout de suite. Si tu modifies ce que d'autres fichiers importent, contrôle-les avec get_diagnostics. Puis lance la vérification adaptée via run_command (build, lint, tests, exécution du script). Si ça échoue, lis l'erreur et corrige, puis re-vérifie. Boucle jusqu'au succès.
+3. VÉRIFIE ton travail : chaque fichier TypeScript, JavaScript ou Python que tu écris est vérifié aussitôt, et ses erreurs s'affichent dans le résultat de write_file / edit_file — corrige les nouvelles erreurs tout de suite. Si tu modifies ce que d'autres fichiers importent, contrôle-les avec get_diagnostics. Puis lance la vérification adaptée via run_command (build, lint, tests, exécution du script). Pour une app web, vérifie aussi dans le navigateur : start_dev_server, check_page (erreurs de console, requêtes en échec, contenu), et page_action pour essayer le parcours modifié. Si ça échoue, lis l'erreur et corrige, puis re-vérifie. Boucle jusqu'au succès.
 4. TERMINE avec task_done : appelle-le uniquement quand la tâche est finie et vérifiée, avec un résumé clair en français.
 
 # Questions et explications

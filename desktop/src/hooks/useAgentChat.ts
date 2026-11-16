@@ -23,6 +23,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
 import { routeRequest, escalate, type Route } from '@/services/ai/autoRouter';
+import { detectDevCommand } from '@/services/agent/devServer';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, callMcpTool, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
@@ -98,8 +99,8 @@ function closeDanglingToolCalls(history: APIMessage[]): void {
 }
 
 const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember']);
-const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents']);
-const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'explore', 'web_search', 'read_url']);
+const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents', 'start_dev_server']);
+const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'explore', 'dev_server_logs', 'web_search', 'read_url']);
 
 function needsApproval(mode: PermissionMode, tool: string): boolean {
   if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);
@@ -267,6 +268,12 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
       return args.url || '';
     case 'run_command':
       return args.command || '';
+    case 'start_dev_server':
+      return args.command || 'commande du projet';
+    case 'check_page':
+      return args.url || 'serveur du projet';
+    case 'page_action':
+      return [args.action, args.element || args.target, args.text].filter(Boolean).join(' · ');
     case 'explore':
       return (args.questions || []).length ? `${(args.questions || []).length} question${(args.questions || []).length > 1 ? 's' : ''} en parallèle` : '';
     case 'spawn_subagents':
@@ -711,8 +718,13 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
           // Commande qui exécute du code écrit par l'agent, ou script npm sensible :
           // accord demandé même en « Accès complet » (garde S3)
-          const risk = call.function.name === 'run_command' && workspacePath && modeRef.current !== 'plan'
-            ? await commandRisk(convId, workspacePath, String(args.command || '')).catch(() => null)
+          const riskCommand = call.function.name === 'run_command'
+            ? String(args.command || '')
+            : call.function.name === 'start_dev_server' && workspacePath
+            ? String(args.command || (await detectDevCommand(workspacePath).catch(() => null)) || '')
+            : '';
+          const risk = riskCommand && workspacePath && modeRef.current !== 'plan'
+            ? await commandRisk(convId, workspacePath, riskCommand).catch(() => null)
             : null;
 
           // Connecteur MCP : lecture déclarée par le serveur, ou action à faire valider

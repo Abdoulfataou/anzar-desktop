@@ -188,12 +188,37 @@ description: Déployer l'API sur le VPS — build Docker, migration, vérificati
 - Pas de secret, de mot de passe ni de clé dans une skill.
 - Emplacement : .anzar/skills/ pour le projet (versionné avec git). Pour tous les projets, l'utilisateur la crée dans la page Skills d'ANZAR.`;
 
+const verifyWeb = `---
+name: verifier-une-app-web
+description: Vérifier dans un vrai navigateur une app web qu'on vient de modifier — lancer le serveur, ouvrir la page, essayer le parcours, corriger les erreurs de console et de réseau.
+---
+
+## Quand l'utiliser
+Après une modification visible d'une app web (page, formulaire, bouton, appel d'API), avant d'annoncer que c'est terminé.
+
+## Boucle de vérification
+1. **Build d'abord** : les diagnostics du code doivent être propres. Une page ne s'affiche pas si le code ne compile pas.
+2. **Serveur** : start_dev_server (commande devinée depuis package.json). S'il s'arrête, lis sa sortie, corrige, relance.
+3. **Page** : check_page sur l'adresse de la page modifiée (par exemple /connexion), pas seulement l'accueil.
+4. **Lire le rapport** :
+   - erreurs de console : chacune est un bug à corriger, sauf favicon manquant ;
+   - requêtes en échec : 404 = mauvaise route ou mauvaise adresse d'API, 401/403 = authentification, 500 = regarde dev_server_logs côté serveur ;
+   - contenu : le texte, les boutons et les champs attendus sont-ils là ?
+5. **Parcours** : avec page_action, fais ce que ferait l'utilisateur (remplir le formulaire, cliquer le bouton), puis vérifie le résultat affiché.
+6. **Corriger puis revérifier** : après chaque correction, recharge avec check_page. Boucle jusqu'à une console propre et un parcours qui marche.
+
+## À éviter
+- Annoncer « ça marche » sans avoir ouvert la page.
+- Saisir de vrais identifiants, mots de passe ou données de paiement : utilise des données de test.
+- Laisser tourner le serveur si l'utilisateur ne l'utilise pas : stop_dev_server à la fin, sauf s'il veut le garder.`;
+
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'brainstorming', markdown: brainstorming },
   { name: 'ecrire-un-plan', markdown: plan },
   { name: 'tdd', markdown: tdd },
   { name: 'debogage-systematique', markdown: debug },
   { name: 'verification-avant-de-conclure', markdown: verify },
+  { name: 'verifier-une-app-web', markdown: verifyWeb },
   { name: 'revue-de-code', markdown: review },
   { name: 'paiement-mobile-money', markdown: mobileMoney },
   { name: 'ecrire-une-skill', markdown: writeSkill },
