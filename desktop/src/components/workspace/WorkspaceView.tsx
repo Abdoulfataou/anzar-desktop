@@ -64,6 +64,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
   }, []);
   const balance = useAccountStore((s) => s.credits.remaining);
   const [showRecharge, setShowRecharge] = useState(false);
+  const [draft, setDraft] = useState<string | undefined>(undefined);
 
   // ── Workspace : path depuis le projet actif (persisté) ──
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
@@ -200,6 +201,12 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
     const pending = claimPendingPrompt();
     if (!pending) return;
     replayedRef.current = true;
+    // Sans crédit, l'envoi échouerait : l'idée reste dans le champ et la recharge s'ouvre.
+    if (useAccountStore.getState().credits.remaining <= 0) {
+      setDraft(pending.prompt);
+      setShowRecharge(true);
+      return;
+    }
     // Laisse la conversation s'initialiser avant l'envoi
     setTimeout(() => { void sendMessage(pending.prompt); }, 300);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -466,6 +473,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                 />
               )}
               <ChatInput
+                draft={draft}
                 onSendMessage={async (msg, attachments) => { await sendMessage(msg, await withMentionedFiles(msg, attachments || [])); }}
                 mentionFiles={mentionFiles}
                 commands={workspacePath ? commands : []}

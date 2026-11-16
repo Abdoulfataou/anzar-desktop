@@ -6,7 +6,7 @@
  */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowUp, FolderOpen } from 'lucide-react';
+import { ArrowUp, Wallet } from 'lucide-react';
 import TitleBar from '@/components/layout/TitleBar';
 import { savePendingPrompt } from '@/lib/pendingPrompt';
 import { cn } from '@/lib/utils';
@@ -89,8 +89,14 @@ export default function WelcomePage() {
           </div>
 
           <p className="mt-8 text-[11px] text-text-muted flex items-center gap-1.5">
-            <FolderOpen size={12} />
-            Payez à l'usage en FCFA. Sans abonnement. <span className="text-credit font-medium">1 000 FCFA offerts</span> pour démarrer.
+            <Wallet size={12} />
+            Payez à l'usage en FCFA, sans abonnement : rechargez par Mobile Money.
+          </p>
+          <p className="mt-3 text-[13px] text-text-secondary">
+            Déjà un compte ?{' '}
+            <button onClick={() => navigate('/login')} className="font-medium text-text-primary underline-offset-4 hover:underline">
+              Se connecter
+            </button>
           </p>
         </div>
       </main>

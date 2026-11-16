@@ -21,6 +21,8 @@ import { imageToDataUrl, imageMimeFromName } from '@/lib/imageAttach';
 import { readTextFile, readBinaryFile } from '@tauri-apps/api/fs';
 
 interface ChatInputProps {
+  /** Texte placé dans le champ (ex. idée saisie avant la connexion, non envoyée faute de crédit) */
+  draft?: string;
   onSendMessage: (message: string, attachments?: ChatAttachment[]) => Promise<void> | void;
   onStopGeneration?: () => void;
   isLoading?: boolean;
@@ -495,8 +497,10 @@ export default function ChatInput({
   mentionFiles = [],
   commands = [],
   onCommand,
+  draft,
 }: ChatInputProps) {
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(draft ?? '');
+  useEffect(() => { if (draft) setMessage(draft); }, [draft]);
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
