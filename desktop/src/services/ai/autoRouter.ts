@@ -117,3 +117,10 @@ export const ROUTE_LABELS: Record<ConcreteModel, string> = {
   max: 'Max',
   pro: 'Pro',
 };
+
+/** true si la demande est une CRÉATION (visuel, pub, vidéo, site…) — sert au
+ *  routage ET à l'ouverture automatique de l'espace ANZAR. */
+export function looksLikeCreation(text: string): boolean {
+  const t = norm(text || '');
+  return /\b(cr[ée]{1,2}|cree|gen[ée]r\w*|fais[- ]moi|con[çc]ois|maquett\w*|publicit\w*|\bpub\b|animat\w*|vid[ée]o\w*|visuel\w*|affiche|logo|banni[èe]re|story|reel|motion|landing|mockup)\b/.test(t);
+}

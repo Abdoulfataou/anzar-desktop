@@ -22,7 +22,7 @@ import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
-import { routeRequest, escalate, type Route } from '@/services/ai/autoRouter';
+import { routeRequest, escalate, looksLikeCreation, type Route } from '@/services/ai/autoRouter';
 import { parseQuestions, formatAnswers, type QuestionRequest, type QuestionAnswer } from '@/components/chat/QuestionPanel';
 import { detectDevCommand } from '@/services/agent/devServer';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, callMcpTool, setMcpRoots } from '@/services/mcp/manager';
@@ -467,6 +467,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   const personalConvsRef = useRef<Set<string>>(new Set());
   // Heure du dernier appel au modèle : sert à savoir si le cache DeepSeek est encore chaud
   const lastCallAtRef = useRef(0);
+  // Demande initiale (garantie d'export motion)
+  const userRequestRef = useRef('');
   const activeConvRef = useRef<string | null>(null);
   const resumeRef = useRef<ResumeState | null>(null);
 
@@ -503,13 +505,18 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     if ((!content.trim() && !resumeFrom) || isGenerating) return;
     const refd = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
     const convId = resumeFrom?.convId ?? opts?.conversationId ?? ensureConversation();
+    if (!resumeFrom) userRequestRef.current = content.slice(0, 2000);
     // Dossier où l'agent peut agir : le projet ouvert, ou à défaut l'« espace ANZAR » (Documents/ANZAR),
     // ouvert dès qu'un fichier est joint ou si la conversation l'a déjà utilisé.
     let agentRoot: string | null = workspacePath;
     let personalSpace = false;
     if (!workspacePath && !background) {
       const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-      if (refd.some((a) => a.sourcePath) || personalConvsRef.current.has(convId) || conversationUsesPersonalSpace(conv)) {
+      // Création (pub, animation, visuel, site…) SANS projet → l'espace ANZAR
+      // s'ouvre AUTOMATIQUEMENT : aucun dossier à choisir, l'agent travaille
+      // tout de suite dans son espace sûr (Documents/ANZAR).
+      const creationRequest = looksLikeCreation(content);
+      if (refd.some((a) => a.sourcePath) || personalConvsRef.current.has(convId) || conversationUsesPersonalSpace(conv) || creationRequest) {
         agentRoot = await ensurePersonalSpace().catch(() => null);
         personalSpace = !!agentRoot;
         if (personalSpace) {
@@ -708,11 +715,11 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               "Si la demande exige d'agir sur un projet de code, dis-le en une phrase et demande d'ouvrir le dossier " +
               "(bouton « Ouvrir un dossier » en haut de la conversation). Pour transformer un fichier (PDF, Excel…), " +
               "propose de le joindre : ANZAR ouvre alors l'espace ANZAR.\n\n" +
-              "CRÉATION DE VISUELS/VIDÉOS SANS PROJET : les blocs ```widget ne sont qu'un APERÇU rapide. " +
-              "Pour un vrai travail motion design (GSAP, capture, export MP4/GIF, sous-agents spécialisés), il te faut " +
-              "l'espace ANZAR : demande UNE fois à l'utilisateur de le joindre (n'importe quel fichier) ou d'ouvrir un dossier, " +
-              "puis attends sa réponse — ne produit pas des widgets par défaut quand la demande porte sur des pubs, animations " +
-              "ou vidéos destinées à être exportées.\n\n" +
+              "CRÉATION DE VISUELS/VIDÉOS SANS PROJET : les blocs ```widget ne sont qu'un APERÇU rapide. Pour une création, " +
+              "ANZAR ouvre AUTOMATIQUEMENT l'espace ANZAR (il te l'indique dans la demande) — utilise-le directement : " +
+              "crée les fichiers dedans, vérifie avec capture_page, exporte avec export_animation. Ne produis PAS des widgets " +
+              "quand la demande porte sur des pubs, animations ou vidéos à livrer. Si l'espace n'est PAS ouvert et que la " +
+              "création l'exige, propose UNE fois à l'utilisateur d'ouvrir un dossier.\n\n" +
               FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + '\n\n' + CONNECTORS_GUIDE + personal,
           };
           systemHead = (system.content as string).slice(0, (system.content as string).length - personal.length);
@@ -1110,6 +1117,62 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         if (last && last.text.length > 200) {
           const heading = /^#{1,3}\s+(.+)$/m.exec(last.text)?.[1];
           updateMessage(assistantId, { plan: { title: (heading || 'Plan proposé').slice(0, 80), markdown: last.text, status: 'pending' } });
+        }
+      }
+
+      // ── Garantie d'export : la tâche porte sur des animations/vidéos et AUCUN
+      // export n'a réussi (budget brûlé en retouches) → UNE passe supplémentaire
+      // où seul export_animation est permis, avant la synthèse finale. La vidéo
+      // doit toujours être livrée.
+      const motionDeliverable = /vid[ée]o|animation|motion|\bpub\b|publicit|reel|story|format (mp4|gif)|export/i.test(userRequestRef.current || '');
+      const hasExport = events.some((e) => e.name === 'export_animation' && e.status === 'ok');
+      let exportRescueDone = false;
+      if (!answered && !controller.signal.aborted && motionDeliverable && !hasExport && agentRoot) {
+        exportRescueDone = true;
+        const EXPORT_ONLY = AGENT_TOOLS.filter((t) => t.function.name === 'export_animation');
+        apiHistoryRef.current.push({
+          role: 'user',
+          content:
+            "BUDGET D'ÉTAPES ÉPUISÉ — SAUF pour exporter. Appelle MAINTENANT export_animation pour CHAQUE animation " +
+            "ou vidéo demandée (la vidéo doit être livrée), puis conclus en texte. Aucune autre modification : " +
+            "la version actuelle des pages fait foi.",
+        });
+        for (let rescue = 0; rescue < 4; rescue++) {
+          if (controller.signal.aborted) break;
+          const assembler = new Assembler();
+          let rescueText = '';
+          try {
+            const stream = aiService.chatStream(apiHistoryRef.current, { model: callModel(), tools: EXPORT_ONLY, signal: controller.signal });
+            for await (const delta of stream) {
+              if (delta.content) { rescueText += delta.content; flushLive(rescueText); }
+              if (delta.tool_calls) assembler.add(delta.tool_calls);
+            }
+          } catch { break; }
+          if (rescueText) { accContent += (accContent ? '\n\n' : '') + rescueText; addText(rescueText); }
+          if (!assembler.hasCalls) break;
+          for (const call of assembler.finish()) {
+            let args: Record<string, any> = {};
+            try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
+            const ev: ToolEvent = {
+              id: call.id, name: call.function.name,
+              argsSummary: summarizeArgs(call.function.name, args),
+              filePath: toolFilePath(call.function.name, args),
+              status: 'running',
+            };
+            events.push(ev);
+            addToolToTimeline(ev.id);
+            flush();
+            const result = await executeToolCall(call, {
+              projectRoot: agentRoot,
+              signal: controller.signal,
+              onFileChanged: (rel: string, _c: string, action: 'create' | 'edit' | 'delete') => { if (workspacePath) onFileChanged?.(rel, action); },
+            });
+            ev.status = result.isError ? 'error' : 'ok';
+            ev.output = (result.output || '').slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+            flush();
+            apiHistoryRef.current.push({ role: 'assistant', content: rescueText || null, tool_calls: [call] });
+            apiHistoryRef.current.push({ role: 'tool', tool_call_id: call.id, content: result.output || '(vide)' });
+          }
         }
       }
 
