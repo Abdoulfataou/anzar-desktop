@@ -4,7 +4,7 @@
  * Clavier : 1 à 4 pour choisir, Entrée pour valider, Échap pour passer.
  */
 import { useEffect, useMemo, useState } from 'react';
-import { Check, ChevronLeft, MessageCircleQuestion, X } from 'lucide-react';
+import { Check, ChevronLeft, MessageCircleQuestion, Timer, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface AgentQuestionOption {
@@ -30,7 +30,12 @@ export interface QuestionAnswer {
   question: string;
   selected: string[];
   other?: string;
+  /** true = choix par défaut validé automatiquement après le délai d'attente */
+  auto?: boolean;
 }
+
+/** Délai avant réponse automatique (options recommandées), en secondes. */
+export const QUESTION_TIMEOUT_S = 25;
 
 export default function QuestionPanel({ request, onSubmit, onSkip }: {
   request: QuestionRequest;
@@ -43,6 +48,24 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
   const [other, setOther] = useState<string[]>(() => qs.map(() => ''));
   const q = qs[step];
   const last = step === qs.length - 1;
+
+  // ── Compte à rebours : si l'utilisateur ne répond pas, on valide les options
+  //    recommandées automatiquement (une question ne bloque jamais indéfiniment).
+  const [left, setLeft] = useState(QUESTION_TIMEOUT_S);
+  useEffect(() => {
+    const t = setInterval(() => setLeft((n) => n - 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (left > 0) return;
+    // Temps écoulé → submit des valeurs par défaut
+    onSubmit(qs.map((q) => ({
+      question: q.question,
+      selected: [q.options[q.recommended ?? 0]?.label].filter(Boolean) as string[],
+      auto: true,
+    })));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [left]);
 
   const answered = (i: number) => picked[i].length > 0 || other[i].trim().length > 0;
   const allAnswered = qs.every((_, i) => answered(i));
@@ -89,6 +112,8 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
 
   return (
     <div className="mx-4 mb-1 rounded-xl border border-border-medium bg-surface-elevated flex-shrink-0 overflow-hidden">
+      {/* Délai avant réponse automatique */}
+      <div className="h-0.5 -mt-px mb-1 rounded-full overflow-hidden bg-border-subtle"><div className="h-full bg-accent-secondary/60 transition-all duration-1000 ease-linear" style={{ width: `${(left / QUESTION_TIMEOUT_S) * 100}%` }} /></div>
       <div className="flex items-center gap-2 px-3 pt-2.5">
         <MessageCircleQuestion size={15} className="text-text-secondary flex-shrink-0" />
         {qs.length > 1 ? (
@@ -146,7 +171,16 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
           />
         </div>
 
-        <div className="flex items-center justify-end gap-2 mt-2.5">
+        <div className="flex items-center gap-2 mt-2.5">
+          {/* Compte à rebours : réponse auto (options recommandées) à 0 */}
+          <span className={cn(
+            'flex items-center gap-1.5 text-ui-caption tabular-nums select-none',
+            left <= 5 ? 'text-credit' : 'text-text-muted'
+          )} title="Sans réponse, les options recommandées seront validées automatiquement">
+            <Timer size={12} />
+            {left > 0 ? `${left}s` : '…'}
+          </span>
+          <div className="flex-1" />
           {step > 0 && (
             <button onClick={() => setStep(step - 1)} className="flex items-center gap-1 h-7 px-2 rounded-lg text-ui-caption text-text-secondary hover:bg-hover-fill">
               <ChevronLeft size={13} /> Précédente
@@ -191,7 +225,8 @@ export function parseQuestions(args: any): AgentQuestion[] {
 
 /** Texte renvoyé à l'agent. */
 export function formatAnswers(answers: QuestionAnswer[]): string {
-  return `Réponses de l'utilisateur :\n${answers.map((a) => {
+  const auto = answers.some((a) => a.auto);
+  return `Réponses de l'utilisateur${auto ? ' (validées automatiquement après le délai — options recommandées)' : ''} :\n${answers.map((a) => {
     const parts = [...a.selected, ...(a.other ? [`« ${a.other} »`] : [])];
     return `- ${a.question}\n  → ${parts.join(' ; ') || '(pas de réponse)'}`;
   }).join('\n')}\nSuis ces choix.`;

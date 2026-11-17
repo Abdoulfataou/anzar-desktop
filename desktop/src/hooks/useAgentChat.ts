@@ -149,8 +149,10 @@ const ASK_USER_TOOL: ToolDefinition = {
     description:
       "Pose 1 à 4 questions à choix à l'utilisateur et attend ses réponses. À utiliser quand une décision lui revient et change ce que tu vas faire " +
       "(approche, technologie, périmètre, choix de design), avant de te lancer dans un travail coûteux à refaire. " +
-      "Pour chaque question : 2 à 4 options concrètes et courtes, recommended = l'index de celle que tu conseilles. Il peut aussi répondre librement. " +
-      "N'utilise pas cet outil pour ce que tu peux décider toi-même ou trouver dans le code, ni pour demander la permission de continuer.",
+      "Pour chaque question : 2 à 4 options concrètes et courtes, recommended = l'index de celle que tu conseilles — OBLIGATOIRE et pertinent : " +
+      "sans réponse de l'utilisateur après ~25 secondes, les options recommandées sont validées automatiquement et le travail continue. " +
+      "Il peut aussi répondre librement. N'utilise pas cet outil pour ce que tu peux décider toi-même ou trouver dans le code, " +
+      "ni pour demander la permission de continuer (demande-la seulement via une question avec un défaut sûr).",
     parameters: {
       type: 'object',
       properties: {
