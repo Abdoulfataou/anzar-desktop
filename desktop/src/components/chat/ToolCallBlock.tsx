@@ -262,6 +262,16 @@ export default function ToolCallBlock({ event }: { event: ToolEvent }) {
                   'block truncate',
                   sa.status === 'done' ? 'text-text-muted line-through decoration-text-muted/40' : 'text-text-secondary'
                 )}>
+                  {sa.role === 'motion-designer' && (
+                    <span className="mr-1.5 px-1.5 py-px rounded text-ui-xs font-semibold text-accent-secondary bg-accent-secondary/10 border border-accent-secondary/20">
+                      motion designer
+                    </span>
+                  )}
+                  {sa.role === 'redaction' && (
+                    <span className="mr-1.5 px-1.5 py-px rounded text-ui-xs font-semibold text-text-secondary bg-surface-hover border border-border-subtle">
+                      rédaction
+                    </span>
+                  )}
                   {sa.task}
                 </span>
                 {sa.status === 'running' && sa.current && (

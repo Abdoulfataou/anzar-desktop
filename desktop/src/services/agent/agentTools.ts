@@ -17,6 +17,8 @@ import { appendProjectMemory } from './agentContext';
 import { diagnoseChange, diagnoseFile, formatDiagnostics, languageOf, warmUp } from '@/services/lsp/manager';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { vendorLibs } from '@/services/skillsPack/vendorLibs';
+import { SUBAGENT_ROLE_PROMPTS, detectSubagentRole, type SubagentRole } from './agentPrompts';
+import { BUILTIN_SKILLS } from '@/services/skillsPack';
 
 // ============================================================================
 // TYPES
@@ -25,6 +27,8 @@ import { vendorLibs } from '@/services/skillsPack/vendorLibs';
 /** Progression en direct d'un sous-agent (affichée dans le chat pendant l'exécution). */
 export interface SubagentProgress {
   task: string;
+  /** Spécialisation affichée dans l'UI (motion-designer, dev, redaction) */
+  role?: SubagentRole;
   status: 'running' | 'done' | 'error';
   /** Action en cours (dernier outil appelé) */
   current?: string;
@@ -348,14 +352,21 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'spawn_subagents',
       description:
-        "Lance 2 à 3 sous-agents EN PARALLÈLE pour des sous-tâches INDÉPENDANTES (fichiers différents, aucun chevauchement). Chaque sous-agent a les mêmes outils mais un budget réduit et pas de vérification finale — c'est TOI qui vérifies après. À utiliser uniquement pour les grosses tâches parallélisables (ex: créer 3 pages distinctes). Renvoie le résumé de chaque sous-agent.",
+        "Lance 2 à 3 sous-agents EN PARALLÈLE pour des sous-tâches INDÉPENDANTES (fichiers différents, aucun chevauchement). Chaque sous-agent a les mêmes outils mais un budget réduit et pas de vérification finale — c'est TOI qui vérifies après consolidation. " +
+        "Précise le rôle de chacun : 'motion-designer' (visuels/animations/vidéos — reçoit automatiquement les skills motion-system et gsap-cookbook), 'redaction' (textes), 'dev' (code, défaut). Idéal pour plusieurs variantes de visuels en parallèle.",
       parameters: {
         type: 'object',
         properties: {
           tasks: {
             type: 'array',
-            items: { type: 'string' },
-            description: '2 à 3 sous-tâches indépendantes, chacune décrite précisément (fichiers cibles inclus)',
+            items: {
+              type: 'object',
+              properties: {
+                task: { type: 'string', description: 'La sous-tâche complète et autonome (fichiers cibles inclus)' },
+                role: { type: 'string', enum: ['motion-designer', 'dev', 'redaction'], description: 'Spécialisation (défaut : déduite de la tâche)' },
+              },
+              required: ['task'],
+            },
           },
         },
         required: ['tasks'],
@@ -947,20 +958,41 @@ async function execExplore(args: any, ctx: ToolExecutionContext): Promise<ToolRe
 }
 
 async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const tasks: string[] = Array.isArray(args.tasks)
-    ? args.tasks.filter((t: any) => typeof t === 'string' && t.trim()).slice(0, 3)
-    : [];
+  // Tâches : objets {task, role} (ou chaînes simples, rôle déduit)
+  const rawTasks: any[] = Array.isArray(args.tasks) ? args.tasks.slice(0, 3) : [];
+  const tasks: { task: string; role: SubagentRole }[] = rawTasks
+    .map((t: any) => {
+      const text = typeof t === 'string' ? t : typeof t?.task === 'string' ? t.task : '';
+      if (!text.trim()) return null;
+      const role: SubagentRole =
+        t?.role === 'motion-designer' || t?.role === 'dev' || t?.role === 'redaction'
+          ? t.role
+          : detectSubagentRole(text);
+      return { task: text.trim(), role };
+    })
+    .filter(Boolean) as { task: string; role: SubagentRole }[];
   if (tasks.length < 2) {
-    return { output: 'Erreur: spawn_subagents requiert 2 à 3 sous-tâches indépendantes. Pour une seule tâche, fais-la toi-même.', isError: true };
+    return { output: 'Erreur: spawn_subagents requiert 2 à 3 sous-tâches indépendantes (objets {task, role}). Pour une seule tâche, fais-la toi-même.', isError: true };
   }
+
+  // Rôle motion-designer → les deux skills motion injectées dans son prompt système
+  const motionSkills = ['motion-system', 'gsap-cookbook']
+    .map((n) => BUILTIN_SKILLS.find((sk) => sk.name === n)?.markdown)
+    .filter(Boolean)
+    .join('\n\n---\n\n');
+  const extraFor = (role: SubagentRole): string | undefined =>
+    role === 'motion-designer' && motionSkills
+      ? SUBAGENT_ROLE_PROMPTS[role] + '\n\n# SKILLS OBLIGATOIRES (applique-les à la lettre)\n' + motionSkills
+      : SUBAGENT_ROLE_PROMPTS[role] || undefined;
 
   // Import dynamique pour éviter le cycle agentTools ↔ agentLoop
   const { runAgentSession } = await import('./agentLoop');
   const projectName = ctx.projectRoot.split(/[\\/]/).filter(Boolean).pop() || 'projet';
 
   // Progression en direct vers l'UI (une ligne par sous-agent, action courante)
-  const progress: SubagentProgress[] = tasks.map((task) => ({
+  const progress: SubagentProgress[] = tasks.map(({ task, role }) => ({
     task: task.length > 90 ? task.slice(0, 87) + '…' : task,
+    role,
     status: 'running' as const,
     steps: 0,
   }));
@@ -972,10 +1004,11 @@ async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise
   };
 
   const results = await Promise.all(
-    tasks.map((task, i) =>
+    tasks.map(({ task, role }, i) =>
       runAgentSession({
         prompt: { projectName, projectRoot: ctx.projectRoot },
         task,
+        systemPromptExtra: extraFor(role),
         maxSteps: 15,
         gitCheckpoint: false,   // le checkpoint parent couvre déjà la session
         autoVerify: false,      // le parent vérifie après consolidation
@@ -1000,7 +1033,7 @@ async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise
           filesChanged: [] as string[],
         };
       })
-      .then(r => ({ index: i + 1, task, ...r }))
+      .then(r => ({ index: i + 1, task, role, ...r }))
     )
   );
 

@@ -69,6 +69,8 @@ export interface AgentSessionOptions {
   autoVerify?: boolean;
   /** Nombre max de cycles vérification-correction (défaut: 3) */
   maxVerifyAttempts?: number;
+  /** Prompt système additionnel (rôle du sous-agent, skills injectées…) */
+  systemPromptExtra?: string;
   /** Callback événements (UI) */
   onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
@@ -237,7 +239,7 @@ export async function runAgentSession(options: AgentSessionOptions): Promise<Age
 
   // ─── Construction des messages ───
   const messages: APIMessage[] = [
-    { role: 'system', content: buildAgentSystemPrompt(effectivePrompt) },
+    { role: 'system', content: buildAgentSystemPrompt(effectivePrompt) + (options.systemPromptExtra || '') },
     ...history,
     { role: 'user', content: task + taskHintsSection(effectivePrompt.taskHints) },
   ];

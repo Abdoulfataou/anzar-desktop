@@ -117,3 +117,36 @@ export function taskHintsSection(hints?: string): string {
   if (!hints) return '';
   return `\n\n---\n# Fichiers probablement pertinents pour cette tâche\n${hints}\n\n(Indices heuristiques — vérifie par toi-même avec read_file.)`;
 }
+
+
+// ============================================================================
+// RÔLES DE SOUS-AGENTS (spawn_subagents)
+// ============================================================================
+
+export type SubagentRole = 'motion-designer' | 'dev' | 'redaction';
+
+/** Prompt additionnel injecté au sous-agent selon son rôle. */
+export const SUBAGENT_ROLE_PROMPTS: Record<SubagentRole, string> = {
+  'motion-designer': `
+
+# RÔLE : Directeur artistique MOTION DESIGNER
+Tu concevais des visuels et vidéos animés qui doivent sembler créer par un studio.
+- Respecte la skill motion-system (durées, courbes expo.out, cascade 25-40 ms, UNE animation héros, respiration avant CTA).
+- Assemble depuis les recettes de gsap-cookbook plutôt qu'en inventer.
+- Toujours vendor_lib pour GSAP — JAMAIS de CDN.
+- PRNG seedé (mulberry32), document.fonts.ready avant la timeline.
+- Vérifie ton rendu : capture_page (frames début/milieu/fin), critique DA exigeante, corrige (2 rounds max).
+- export_animation est TOUJOURS ta dernière action après toute modification.`,
+  dev: ``,
+  redaction: `
+
+# RÔLE : Rédacteur
+Tu écris les textes (titres, slogans, descriptions) : court, concret, français naturel, chiffres quand possible. Pas de superlatifs creux.`,
+};
+
+/** Détecte un rôle depuis l'énoncé de la tâche quand l'agent principal ne l'a pas précisé. */
+export function detectSubagentRole(task: string): SubagentRole {
+  if (/motion|animat|vid[ée]o|pub |publicit|visuel|banni[èe]re|logo|motion ?design|reel|story|affiche/i.test(task)) return 'motion-designer';
+  if (/texte|slogan|r[ée]daction|description|copywriting|contenu du site/i.test(task)) return 'redaction';
+  return 'dev';
+}
