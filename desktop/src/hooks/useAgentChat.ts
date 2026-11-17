@@ -329,7 +329,7 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
     case 'check_page':
       return args.url || 'serveur du projet';
     case 'export_animation':
-      return String(args.output || `export/animation.${args.format === 'gif' ? 'gif' : 'mp4'}`);
+      return String(args.output || (args.format === 'png' ? 'export/visuel.png' : `export/animation.${args.format === 'gif' ? 'gif' : 'mp4'}`));
     case 'capture_page':
       return `${args.url || 'page ouverte'}${Array.isArray(args.frames) && args.frames.length ? ` · ${args.frames.length} instants` : ''}`;
     case 'page_action':

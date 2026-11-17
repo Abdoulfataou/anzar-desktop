@@ -70,13 +70,13 @@ Jamais `linear` pour un mouvement (seulement pour une rotation continue ou une b
 - **CSS** (`@keyframes`, `transition`) : le premier choix, léger, figeable par `capture_page`.
 - **Web Animations API** (`element.animate()`) : pour piloter en JavaScript, aussi figeable.
 - **Framer Motion** dans un projet React (ses animations de `transform` et `opacity` passent par les Web Animations, donc figeables).
-- **GSAP** pour des séquences complexes (timeline) : figeable aussi, à condition de créer les animations sur la timeline globale (comportement par défaut) et de charger GSAP dans la page (`window.gsap`).
-- Les animations en `canvas`, three.js ou `requestAnimationFrame` maison ne sont pas figeables : captures et exports en temps réel, moins précis. Préfère CSS, Web Animations ou GSAP quand c'est possible.
-- **Lottie** pour une animation fournie par un graphiste.
+- **GSAP** pour des séquences complexes (timeline).
+- **Canvas, three.js, particules** pour les effets riches.
+- Tout est vérifiable et exportable image par image : `capture_page` et `export_animation` utilisent une horloge virtuelle (requestAnimationFrame, setTimeout, Date et les animations CSS avancent ensemble, au rythme exact). Seuls une vidéo ou un GIF animé intégrés dans la page ne la suivent pas.
 
 ## 7. Vérifier image par image
 
-Après avoir animé, appelle `capture_page` avec `frames` : le début, un ou deux instants pendant le mouvement, et la fin (par exemple `[0, 120, 300, 800]`). Vérifie :
+Après avoir animé, appelle `capture_page` avec `frames` (et `file` pour un fichier HTML, sans serveur) : le début, un ou deux instants pendant le mouvement, et la fin (par exemple `[0, 120, 300, 800]`). Vérifie :
 - Rien ne saute ni ne déborde à mi-parcours.
 - L'état final est propre et identique à la page sans animation.
 - L'ordre d'arrivée des éléments est celui que tu voulais.

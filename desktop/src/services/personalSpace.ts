@@ -14,6 +14,8 @@ export const PERSONAL_SUBDIR = 'fichiers';
 /** Outils sur les fichiers ouverts dans l'espace (pas de serveur de dev, de navigateur ni d'exploration de code). */
 export const PERSONAL_SPACE_TOOLS = new Set([
   'read_file', 'write_file', 'edit_file', 'delete_file', 'list_dir', 'search_files', 'run_command',
+  // Visuels et vidéos : le moteur de rendu ouvre directement les fichiers HTML du dossier
+  'capture_page', 'export_animation',
 ]);
 
 let cached: string | null = null;
@@ -56,7 +58,7 @@ export async function openPersonalSpace(): Promise<void> {
 export function personalSpaceContext(root: string): string {
   return `\n\n---\n# Espace ANZAR (dossier de travail de cette conversation)\n`
     + `Aucun projet n'est ouvert, mais ANZAR t'ouvre le dossier \`${root}\`. Tu y as des outils sur les fichiers `
-    + `(read_file, write_file, edit_file, delete_file, list_dir, search_files, run_command), avec des chemins `
+    + `(read_file, write_file, edit_file, delete_file, list_dir, search_files, run_command, et capture_page / export_animation avec file pour voir un visuel et l'exporter en vidéo), avec des chemins `
     + `relatifs à ce dossier, et seulement dans ce dossier. Les fichiers joints sont copiés dans \`${PERSONAL_SUBDIR}/\`. `
     + `Range ce que tu produis dans \`${PERSONAL_SUBDIR}/\`, sans jamais écraser un fichier existant. `
     + `À la fin, dis à l'utilisateur quels fichiers tu as créés et qu'il les retrouve avec le bouton « Espace ANZAR » `

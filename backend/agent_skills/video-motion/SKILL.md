@@ -25,11 +25,13 @@ On construit la vidéo comme une page web animée aux dimensions exactes, puis `
 
 ## 3. Vérifier puis exporter
 
-1. Lance un serveur : `start_dev_server` avec `npx -y serve -l 4321 .`
-2. Vérifie les moments clés avec `capture_page` et `frames` (un instant par plan, plus la fin).
-3. Exporte : `export_animation` avec `size: "story"` (ou `carre`, `portrait`, `paysage`), `duration_ms` égale à la durée du script, `fps: 30`, `output: "export/nom-clair.mp4"`.
-4. Regarde les images clés renvoyées : début, milieu, fin. Corrige et réexporte si besoin.
-5. Donne à l'utilisateur le chemin de la vidéo : il la voit dans l'onglet Fichiers d'ANZAR.
+Aucun serveur nécessaire : les outils ouvrent directement le fichier HTML (`file`).
+1. Vérifie les moments clés avec `capture_page`, `file` et `frames` (un instant par plan, plus la fin).
+2. Exporte : `export_animation` avec `file`, `size: "story"` (ou `carre`, `portrait`, `paysage`), `duration_ms` égale à la durée du script, `fps: 30`, `output: "export/nom-clair.mp4"`.
+3. Regarde les images clés renvoyées : début, milieu, fin. Corrige et réexporte si besoin.
+4. Donne à l'utilisateur le chemin de la vidéo : il la voit dans l'onglet Fichiers d'ANZAR (ou dans Documents/ANZAR sans projet ouvert).
+
+Le rendu utilise une horloge virtuelle : CSS, GSAP, canvas, three.js et le JavaScript maison (setTimeout, requestAnimationFrame) sont rendus image par image, au rythme exact. N'utilise pas d'horloge réelle extérieure (vidéo intégrée, GIF animé dans la page, chargement réseau pendant l'animation) : ces éléments-là ne suivent pas l'horloge virtuelle.
 
 ## 4. Le son
 

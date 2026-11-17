@@ -39,12 +39,11 @@ Pour les stories, garde le texte important à l'écart des 250 px du haut et du 
 
 ## 4. Exporter
 
-- Lance un petit serveur : `start_dev_server` avec la commande `npx -y serve -l 4321 .`
-- Vérifie avec `capture_page` (format ordinateur, page entière si besoin) et corrige.
-- Pour produire le fichier final à la bonne taille, écris un script avec Playwright :
-  `npx -y playwright screenshot --viewport-size=1080,1080 http://localhost:4321/visuel.html visuel.png`
-  (adapte la taille au format ; ajoute `--full-page` pour une affiche). Si le navigateur manque : `npx -y playwright install chromium`.
-- Range les images produites dans un dossier `export/` et donne leurs chemins à l'utilisateur.
+- Vérifie le visuel avec `capture_page` et `file` (le chemin du fichier HTML, aucun serveur nécessaire), puis corrige.
+- Exporte l'image finale avec `export_animation`, `format: "png"`, `file`, le bon `size` (`carre`, `portrait`, `story`, `paysage`, `a4`) ou `width`/`height`, et `output: "export/nom-clair.png"`.
+- Si le visuel a une animation d'entrée, `duration_ms` indique l'instant capturé (par défaut 1500 ms, quand tout est en place).
+- Pour une version animée du même visuel, exporte aussi en MP4 (skill `video-motion`).
+- Donne à l'utilisateur les chemins des fichiers : il les voit dans l'onglet Fichiers d'ANZAR, ou dans Documents/ANZAR s'il n'a pas de projet ouvert.
 
 ## 5. Vérifier avant de livrer
 

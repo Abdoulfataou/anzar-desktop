@@ -192,13 +192,14 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       description:
         "Prend des captures d'écran d'une page et te les MONTRE, pour juger le rendu visuel comme un designer : mise en page, typographie, " +
         "couleurs, contraste, débordements, version téléphone. Pour une animation, donne frames (instants en millisecondes, ex [0, 150, 400, 1000]) : " +
-        "les animations CSS et Web Animations sont figées à chaque instant exact. Sans url : la page ouverte, sinon le serveur lancé par start_dev_server. " +
-        "Pour un simple fichier HTML, lance d'abord un serveur avec start_dev_server (commande : npx -y serve -l 4321 .). " +
+        "toutes les animations (CSS, GSAP, canvas, three.js, JavaScript) sont figées à chaque instant exact grâce à une horloge virtuelle. " +
+        "Pour un fichier HTML du projet, donne file (aucun serveur nécessaire). Sans url ni file : le serveur lancé par start_dev_server, sinon la page ouverte par check_page. " +
         "À utiliser après TOUTE création ou modification visuelle (interface, page, affiche, animation), puis corriger ce que tu vois.",
       parameters: {
         type: 'object',
         properties: {
           url: { type: 'string', description: 'Adresse complète, ex : http://localhost:5173/ (facultative)' },
+          file: { type: 'string', description: 'Fichier HTML du projet à capturer, ex : pub/index.html (facultatif, remplace url)' },
           viewports: { type: 'array', items: { type: 'string', enum: ['desktop', 'mobile'] }, description: 'Formats : desktop (1280×800) et/ou mobile (390×844). Par défaut les deux.' },
           frames: { type: 'array', items: { type: 'number' }, description: 'Animation : instants à capturer, en ms (6 au plus)' },
           full_page: { type: 'boolean', description: 'Capturer toute la hauteur de la page (sans frames)' },
@@ -211,19 +212,20 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'export_animation',
       description:
-        "Exporte une page animée en VIDÉO MP4 (ou GIF) : la page est enregistrée image par image au rythme exact (fps), animations CSS, " +
-        "Web Animations et GSAP figées à chaque instant, puis assemblée en vidéo dans l'app (rien à installer). Pas de son. " +
+        "Exporte une page animée en VIDÉO MP4 (ou GIF) : la page est enregistrée image par image au rythme exact (fps) avec une horloge " +
+        "virtuelle (CSS, GSAP, canvas, three.js, JavaScript : tout est déterministe), puis assemblée en vidéo dans l'app (rien à installer). Pas de son. " +
         "Formats : story (1080×1920, Reels, TikTok, statut WhatsApp), carre (1080×1080), portrait (1080×1350), paysage (1920×1080), " +
-        "ou width/height. Tu reçois ensuite 4 images clés de la vidéo pour la vérifier. Sans url : le serveur lancé par start_dev_server.",
+        "ou width/height. Tu reçois ensuite 4 images clés de la vidéo pour la vérifier. Pour un fichier HTML du projet, donne file (aucun serveur nécessaire).",
       parameters: {
         type: 'object',
         properties: {
           url: { type: 'string', description: 'Page à enregistrer, ex : http://localhost:4321/pub.html (facultative)' },
-          format: { type: 'string', enum: ['mp4', 'gif'], description: 'mp4 (défaut) ou gif (court, léger, sans son)' },
-          size: { type: 'string', enum: ['story', 'carre', 'portrait', 'paysage'], description: 'Format de la vidéo (défaut : story)' },
+          file: { type: 'string', description: 'Fichier HTML du projet à enregistrer, ex : pub/index.html (remplace url)' },
+          format: { type: 'string', enum: ['mp4', 'gif', 'png'], description: 'mp4 (défaut), gif (court, léger) ou png (une seule image : visuel fixe, affiche, publication)' },
+          size: { type: 'string', enum: ['story', 'carre', 'portrait', 'paysage', 'a4'], description: 'Format (défaut : story ; a4 = affiche 2480×3508)' },
           width: { type: 'number', description: 'Largeur en px (remplace size)' },
           height: { type: 'number', description: 'Hauteur en px (remplace size)' },
-          duration_ms: { type: 'number', description: 'Durée en ms (défaut 4000, 20000 au plus)' },
+          duration_ms: { type: 'number', description: 'Durée en ms (défaut 4000, 20000 au plus). En png : instant capturé (défaut 1500)' },
           fps: { type: 'number', description: 'Images par seconde (défaut 30 en mp4, 15 en gif ; 60 au plus)' },
           output: { type: 'string', description: 'Fichier à créer dans le projet, ex : export/pub-boutique.mp4 (défaut : export/animation.mp4)' },
         },
@@ -653,8 +655,21 @@ async function execCheckPage(args: any, ctx: ToolExecutionContext): Promise<Tool
 }
 
 async function execCapturePage(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const [{ capturePage }, { devServerUrl }] = await Promise.all([import('./browserCheck'), import('./devServer')]);
-  const url = typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot) || undefined;
+  const [{ capturePage }, { devServerUrl }, { captureWithRenderer }] = await Promise.all([
+    import('./browserCheck'), import('./devServer'), import('@/services/motion/captures'),
+  ]);
+  const file = typeof args.file === 'string' && args.file.trim() ? resolvePath(ctx.projectRoot, args.file) : undefined;
+  const url = file ? undefined : typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot) || undefined;
+  if (file || url) {
+    const viaRenderer = await captureWithRenderer({
+      url, file, root: ctx.projectRoot,
+      viewports: Array.isArray(args.viewports) ? args.viewports : undefined,
+      frames: Array.isArray(args.frames) ? args.frames.map(Number) : undefined,
+      fullPage: !!args.full_page,
+      signal: ctx.signal,
+    });
+    if (viaRenderer) return viaRenderer;
+  }
   return capturePage({
     url,
     viewports: Array.isArray(args.viewports) ? args.viewports : undefined,
@@ -665,27 +680,47 @@ async function execCapturePage(args: any, ctx: ToolExecutionContext): Promise<To
 }
 
 const ANIM_SIZES: Record<string, [number, number]> = {
-  story: [1080, 1920], carre: [1080, 1080], portrait: [1080, 1350], paysage: [1920, 1080],
+  story: [1080, 1920], carre: [1080, 1080], portrait: [1080, 1350], paysage: [1920, 1080], a4: [2480, 3508],
 };
 
 async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const [{ captureFrames }, { devServerUrl }, { encodeFrames }] = await Promise.all([
     import('./browserCheck'), import('./devServer'), import('@/services/motion/encode'),
   ]);
-  const url = typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot);
-  if (!url) return { output: "Indique url, ou lance d'abord un serveur avec start_dev_server (ex : npx -y serve -l 4321 .).", isError: true };
+  const file = typeof args.file === 'string' && args.file.trim() ? resolvePath(ctx.projectRoot, args.file) : undefined;
+  const url = file ? undefined : typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot);
+  if (!url && !file) return { output: 'Indique file (fichier HTML du projet) ou url.', isError: true };
   const format: 'mp4' | 'gif' = args.format === 'gif' ? 'gif' : 'mp4';
+  // (png : image fixe, traitée par exportStill)
   const [dw, dh] = ANIM_SIZES[String(args.size || 'story')] || ANIM_SIZES.story;
   const width = Math.min(3840, Math.max(64, Math.round(Number(args.width) || dw)));
   const height = Math.min(3840, Math.max(64, Math.round(Number(args.height) || dh)));
   const durationMs = Math.min(20_000, Math.max(200, Number(args.duration_ms) || 4000));
   const fps = Math.min(60, Math.max(1, Math.round(Number(args.fps) || (format === 'gif' ? 15 : 30))));
+  if (args.format === 'png') return exportStill({ url, file, width, height, at: Number(args.duration_ms) || 1500, output: args.output, ctx });
   if ((durationMs / 1000) * fps > 900) return { output: 'Trop d\'images (900 au plus) : réduis la durée ou les fps.', isError: true };
   let rel = String(args.output || `export/animation.${format}`).replace(/\\/g, '/');
   if (!/\.(mp4|webm|gif)$/i.test(rel)) rel += `.${format}`;
   const abs = resolvePath(ctx.projectRoot, rel);
 
-  const shot = await captureFrames({ url, width, height, durationMs, fps, signal: ctx.signal });
+  // Moteur de rendu (horloge virtuelle, rapide) ; navigateur intégré en secours pour une url
+  const { renderFrames, readFrame, cleanupRender, isPageError } = await import('@/services/motion/renderer');
+  const count = Math.max(1, Math.round((durationMs / 1000) * fps));
+  const times = Array.from({ length: count }, (_, i) => (i * 1000) / fps);
+  let shot: { frames: Blob[]; realTime: boolean; error?: string };
+  const r = await renderFrames({ url, file, root: ctx.projectRoot, width, height, times }, { signal: ctx.signal });
+  try {
+    if (!r.error) {
+      shot = { frames: await Promise.all(r.files.filter(Boolean).map(readFrame)), realTime: false };
+      if (r.pageErrors.length) shot.error = `erreurs JavaScript de la page : ${r.pageErrors.slice(0, 3).join(' | ')}`;
+    } else if (isPageError(r.code) || file || !url) {
+      return { output: r.error, isError: true };
+    } else {
+      shot = await captureFrames({ url, width, height, durationMs, fps, signal: ctx.signal });
+    }
+  } finally {
+    await cleanupRender(r);
+  }
   if (shot.error && !shot.frames.length) return { output: shot.error, isError: true };
   let encoded;
   try {
@@ -715,10 +750,37 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
     output: `Vidéo créée : ${rel} (${encoded.format.toUpperCase()}, ${width}×${height}, ${(shot.frames.length / fps).toFixed(1)} s, ${fps} images/s, ${mo} Mo).` +
       (encoded.format === 'webm' ? ' Ce système n\'encode pas le H.264 : vidéo enregistrée en WebM.' : '') +
       (shot.realTime ? ' Attention : animations non figeables (canvas, requestAnimationFrame), capturées en temps réel : le rythme peut être irrégulier.' : '') +
-      (shot.error ? ` Enregistrement interrompu : ${shot.error}` : '') +
+      (shot.error ? ` À signaler : ${shot.error}` : '') +
       ' Les images clés te sont montrées : vérifie le début, le milieu et la fin, puis donne le chemin de la vidéo à l\'utilisateur (il peut l\'ouvrir dans l\'onglet Fichiers).',
     images,
   };
+}
+
+/** Export d'une image PNG unique (visuel, affiche, publication) à l'instant `at`. */
+async function exportStill(o: { url?: string; file?: string; width: number; height: number; at: number; output?: string; ctx: ToolExecutionContext }): Promise<ToolResult> {
+  const { renderFrames, cleanupRender } = await import('@/services/motion/renderer');
+  let rel = String(o.output || 'export/visuel.png').replace(/\\/g, '/');
+  if (!/\.png$/i.test(rel)) rel = rel.replace(/\.[a-z0-9]+$/i, '') + '.png';
+  const r = await renderFrames({ url: o.url, file: o.file, root: o.ctx.projectRoot, width: o.width, height: o.height, times: [Math.max(0, o.at)], imageType: 'png' }, { signal: o.ctx.signal });
+  try {
+    if (r.error || !r.files[0]) return { output: r.error || 'Aucune image produite.', isError: true };
+    const { readBinaryFile, writeBinaryFile, createDir } = await import('@tauri-apps/api/fs');
+    const bytes = await readBinaryFile(r.files[0]);
+    const abs = resolvePath(o.ctx.projectRoot, rel);
+    await createDir(abs.replace(/[\\/][^\\/]+$/, ''), { recursive: true }).catch(() => {});
+    const existed = await fileSystemService.exists(abs);
+    await writeBinaryFile(abs, bytes);
+    o.ctx.onFileChanged?.(rel, '', existed ? 'edit' : 'create');
+    const { imageToDataUrl } = await import('@/lib/imageAttach');
+    const preview = await imageToDataUrl(new Blob([bytes as unknown as BlobPart], { type: 'image/png' }));
+    return {
+      output: `Image créée : ${rel} (PNG, ${o.width}×${o.height}, ${Math.max(1, Math.round(bytes.byteLength / 1024))} Ko). Elle t'est montrée : vérifie-la, puis donne son chemin à l'utilisateur.` +
+        (r.pageErrors.length ? ` Erreurs JavaScript de la page : ${r.pageErrors.slice(0, 3).join(' | ')}` : ''),
+      images: [{ label: `PNG ${o.width}×${o.height}`, dataUrl: preview }],
+    };
+  } finally {
+    await cleanupRender(r);
+  }
 }
 
 async function execPageAction(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
