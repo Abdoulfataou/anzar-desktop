@@ -44,9 +44,9 @@ export async function ensurePersonalSpace(): Promise<string> {
 }
 
 /** La conversation (sans projet) a-t-elle déjà travaillé dans l'espace ANZAR ? */
-export function conversationUsesPersonalSpace(conv: Pick<Conversation, 'messages' | 'projectId'> | undefined | null): boolean {
+export function conversationUsesPersonalSpace(conv: Pick<Conversation, 'messages' | 'projectId' | 'personalSpace'> | undefined | null): boolean {
   if (!conv || conv.projectId) return false;
-  return conv.messages.some((m) => m.attachments?.some((a) => a.projectCopy?.startsWith(`${PERSONAL_SUBDIR}/`)));
+  return !!conv.personalSpace || conv.messages.some((m) => m.attachments?.some((a) => a.projectCopy?.startsWith(`${PERSONAL_SUBDIR}/`)));
 }
 
 export async function openPersonalSpace(): Promise<void> {
@@ -61,6 +61,7 @@ export function personalSpaceContext(root: string): string {
     + `(read_file, write_file, edit_file, delete_file, list_dir, search_files, run_command, et capture_page / export_animation avec file pour voir un visuel et l'exporter en vidéo), avec des chemins `
     + `relatifs à ce dossier, et seulement dans ce dossier. Les fichiers joints sont copiés dans \`${PERSONAL_SUBDIR}/\`. `
     + `Range ce que tu produis dans \`${PERSONAL_SUBDIR}/\`, sans jamais écraser un fichier existant. `
-    + `À la fin, dis à l'utilisateur quels fichiers tu as créés et qu'il les retrouve avec le bouton « Espace ANZAR » `
-    + `en haut de la conversation (dossier Documents/ANZAR).`;
+    + `Pour transformer un fichier, écris un script (.mjs) avec write_file puis lance-le avec run_command ; jamais de \`node -e\` ni de \`python -c\` `
+    + `(les guillemets cassent selon le système). Les vidéos et images exportées s'affichent d'elles-mêmes dans la conversation, `
+    + `avec un bouton pour ouvrir le dossier : à la fin, donne juste les noms des fichiers créés, en une ou deux phrases.`;
 }

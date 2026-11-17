@@ -203,6 +203,8 @@ export interface Conversation {
   provider?: AIProvider;
   projectId?: string;
   tags?: string[];
+  /** Conversation sans projet qui travaille dans l'espace ANZAR (Documents/ANZAR) */
+  personalSpace?: boolean;
 }
 
 // ============================================================================

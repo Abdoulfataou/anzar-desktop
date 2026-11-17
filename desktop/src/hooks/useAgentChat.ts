@@ -44,6 +44,8 @@ export interface ApprovalRequest {
   reason?: string;
   /** Ce qui va réellement s'exécuter (corps d'un script npm) */
   detail?: string;
+  /** Portée de l'accord quand elle dépasse cette seule action */
+  scope?: string;
 }
 
 /** Attente avant chaque nouvelle tentative quand une étape est coupée (ms). */
@@ -212,6 +214,10 @@ export interface ToolEvent {
   output?: string;
   /** Delta de lignes pour edit_file/write_file : [ajoutées, supprimées] */
   delta?: [number, number];
+  /** Chemin de fichier ouvrable en un clic (éditeur / visionneuse média) */
+  filePath?: string;
+  /** Vidéo ou image produite par l'outil (chemin absolu), montrée en lecteur sous la réponse */
+  media?: { path: string; kind: 'video' | 'image' };
 }
 
 const MAX_STEPS = 40;
@@ -307,6 +313,23 @@ function withAttachments(content: string, attachments: ChatAttachment[]): string
   return `${content}\n\n# Pièces jointes\n\n${blocks.join('\n\n')}`;
 }
 
+/** Chemin cliquable d'un outil (ouvre l'éditeur ou la visionneuse média). */
+function toolFilePath(name: string, args: Record<string, any>): string | undefined {
+  switch (name) {
+    case 'read_file':
+    case 'write_file':
+    case 'edit_file':
+      return args.path || args.file_path || undefined;
+    case 'export_animation': {
+      if (args.output) return String(args.output);
+      const ext = args.format === 'png' ? 'png' : args.format === 'gif' ? 'gif' : 'mp4';
+      return `export/animation.${ext}`;
+    }
+    default:
+      return undefined;
+  }
+}
+
 function summarizeArgs(name: string, args: Record<string, any>): string {
   switch (name) {
     case 'read_file':
@@ -329,9 +352,9 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
     case 'check_page':
       return args.url || 'serveur du projet';
     case 'export_animation':
-      return String(args.output || (args.format === 'png' ? 'export/visuel.png' : `export/animation.${args.format === 'gif' ? 'gif' : 'mp4'}`));
+      return `${args.file ? `${args.file} → ` : ''}${String(args.output || (args.format === 'png' ? 'export/visuel.png' : `export/animation.${args.format === 'gif' ? 'gif' : 'mp4'}`))}`;
     case 'capture_page':
-      return `${args.url || 'page ouverte'}${Array.isArray(args.frames) && args.frames.length ? ` · ${args.frames.length} instants` : ''}`;
+      return `${args.file || args.url || 'page ouverte'}${Array.isArray(args.frames) && args.frames.length ? ` · ${args.frames.length} instants` : ''}`;
     case 'page_action':
       return [args.action, args.element || args.target, args.text].filter(Boolean).join(' · ');
     case 'explore':
@@ -396,6 +419,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   modeRef.current = permissionMode;
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
   const approvalResolver = useRef<((ok: boolean) => void) | null>(null);
+  /** Conversations de l'espace ANZAR où l'utilisateur a déjà autorisé le code écrit par l'agent */
+  const trustedConvsRef = useRef<Set<string>>(new Set());
 
   const resolveApproval = useCallback((ok: boolean) => {
     approvalResolver.current?.(ok);
@@ -464,7 +489,15 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       if (refd.some((a) => a.sourcePath) || personalConvsRef.current.has(convId) || conversationUsesPersonalSpace(conv)) {
         agentRoot = await ensurePersonalSpace().catch(() => null);
         personalSpace = !!agentRoot;
-        if (personalSpace) personalConvsRef.current.add(convId);
+        if (personalSpace) {
+          personalConvsRef.current.add(convId);
+          // Mémorisé dans la conversation : l'espace reste ouvert après un redémarrage de l'app
+          if (!conv?.personalSpace) {
+            useChatStore.setState((st) => ({
+              conversations: st.conversations.map((c) => (c.id === convId ? { ...c, personalSpace: true } : c)),
+            }));
+          }
+        }
       }
     }
     // Copie des fichiers joints dans le dossier de travail : l'agent peut alors les transformer (pas seulement les lire)
@@ -822,6 +855,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             id: call.id,
             name: call.function.name,
             argsSummary: summarizeArgs(call.function.name, args),
+            filePath: toolFilePath(call.function.name, args),
             status: 'running',
           };
           events.push(ev);
@@ -856,11 +890,20 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             // Automatisation : personne pour valider → refus, expliqué à l'agent
             allowed = false;
             refusal = `Refusé automatiquement : ${risk.reason}. Personne n'est là pour valider pendant une automatisation. Ne contourne pas ce refus ; signale-le dans ta réponse.`;
-          } else if (needsApproval(modeRef.current, call.function.name) || risk || mcpAsk) {
+          } else if (
+            // Espace ANZAR : dossier de travail à part, modifications annulables → pas d'accord
+            // à chaque fichier ni à chaque commande. Seul le code écrit par l'agent demande un accord,
+            // une seule fois par conversation.
+            (!personalSpace && needsApproval(modeRef.current, call.function.name))
+            || (risk && !(personalSpace && trustedConvsRef.current.has(convId)))
+            || mcpAsk
+          ) {
+            const scope = personalSpace && risk ? "Autoriser vaut pour toute cette conversation dans l'espace ANZAR." : undefined;
             allowed = await new Promise<boolean>((resolve) => {
               approvalResolver.current = resolve;
-              setApproval({ id: call.id, name: call.function.name, summary: ev.argsSummary, reason: risk?.reason, detail: risk?.detail });
+              setApproval({ id: call.id, name: call.function.name, summary: ev.argsSummary, reason: risk?.reason, detail: risk?.detail, scope });
             });
+            if (allowed && personalSpace && risk) trustedConvsRef.current.add(convId);
           }
 
           // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)
@@ -941,7 +984,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             break;
           }
 
-          const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[] } = !allowed
+          const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[]; media?: ToolEvent['media'] } = !allowed
             ? { output: refusal, isError: true }
             : WEB_TOOL_NAMES.has(call.function.name)
             ? await executeWebTool(call.function.name, args, controller.signal)
@@ -973,6 +1016,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           }
 
           ev.status = result.isError ? 'error' : 'ok';
+          if (!result.isError && result.media) ev.media = result.media;
           // Mode Auto : quatre échecs d'outils dans la même demande → un cran au-dessus (deux fois au plus)
           if (route && allowed && result.isError && ++toolErrors >= 4 && escalations < 2) {
             const up = escalate(route, `monté après ${toolErrors} échecs (${route.reason})`);

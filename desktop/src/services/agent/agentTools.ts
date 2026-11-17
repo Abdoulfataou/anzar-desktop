@@ -41,6 +41,8 @@ export interface ToolResult {
   costFCFA?: number;
   /** Captures d'écran à montrer au modèle juste après le résultat (capture_page) */
   images?: { label: string; dataUrl: string }[];
+  /** Vidéo ou image produite (chemin absolu) : affichée en lecteur dans la conversation */
+  media?: { path: string; kind: 'video' | 'image' };
 }
 
 // ============================================================================
@@ -810,8 +812,9 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
       (musicNote ? ` ${musicNote}` : '') +
       (realTime ? ' Attention : animations non figeables, capturées en temps réel : le rythme peut être irrégulier.' : '') +
       (warning ? ` À signaler : ${warning}` : '') +
-      ' Les images clés te sont montrées : vérifie le début, le milieu et la fin, puis donne le chemin de la vidéo à l\'utilisateur (il peut l\'ouvrir dans l\'onglet Fichiers).',
+      ' Les images clés te sont montrées : vérifie le début, le milieu et la fin. La vidéo s\'affiche déjà dans la conversation avec un lecteur : ne la décris pas en détail, donne juste son nom. Si tu modifies encore la page, réexporte la vidéo avant de finir.',
     images,
+    media: { path: abs, kind: encoded.format === 'gif' ? 'image' : 'video' },
   };
 }
 
@@ -833,9 +836,10 @@ async function exportStill(o: { url?: string; file?: string; width: number; heig
     const { imageToDataUrl } = await import('@/lib/imageAttach');
     const preview = await imageToDataUrl(new Blob([bytes as unknown as BlobPart], { type: 'image/png' }));
     return {
-      output: `Image créée : ${rel} (PNG, ${o.width}×${o.height}, ${Math.max(1, Math.round(bytes.byteLength / 1024))} Ko). Elle t'est montrée : vérifie-la, puis donne son chemin à l'utilisateur.` +
+      output: `Image créée : ${rel} (PNG, ${o.width}×${o.height}, ${Math.max(1, Math.round(bytes.byteLength / 1024))} Ko). Elle t'est montrée : vérifie-la. Elle s'affiche déjà dans la conversation : donne juste son nom.` +
         (r.pageErrors.length ? ` Erreurs JavaScript de la page : ${r.pageErrors.slice(0, 3).join(' | ')}` : ''),
       images: [{ label: `PNG ${o.width}×${o.height}`, dataUrl: preview }],
+      media: { path: abs, kind: 'image' },
     };
   } finally {
     await cleanupRender(r);

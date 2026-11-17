@@ -6,10 +6,64 @@ import type { Components } from 'react-markdown';
 import CodeBlock from './CodeBlock';
 import { MermaidBlock, SvgBlock, WidgetBlock, getVisualKind } from './VisualBlock';
 import { openExternalUrl } from '@/services/infra/externalLinks';
+import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
+
+// ============================================================================
+// CHEMINS DE FICHIERS CLIQUABLES dans le texte des réponses
+// (« j'ai modifié index.html » → clic → ouvre l'éditeur / la visionneuse)
+// ============================================================================
+
+const FILE_PATH_RE = /(?:^|[\s(`«"]|→\s?)((?:\.?\/)?[\w@./-]+\.(?:html?|css|scss|js|jsx|ts|tsx|py|json|md|svg|png|jpe?g|webp|gif|mp4|webm|mov|m4v|csv|xlsx|pdf|txt|yml|yaml|toml|sh))(?=$|[\s).,;:!?`»"])/g;
+
+/** Vrai si l'occurrence n'est PAS l'hôte d'une URL (précédée de ://). */
+function isStandalonePath(text: string, matchIndex: number, pathStart: number): boolean {
+  const before = text.slice(0, pathStart);
+  return !before.endsWith('://') && !/https?$/.test(before.slice(-6));
+}
+
+/** Découpe les segments texte d'un nœud et rend les chemins cliquables. */
+function linkifyNode(node: React.ReactNode, keyPrefix: string): React.ReactNode {
+  if (typeof node === 'string') {
+    const parts: React.ReactNode[] = [];
+    let last = 0;
+    FILE_PATH_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    let i = 0;
+    while ((m = FILE_PATH_RE.exec(node)) !== null) {
+      const path = m[1];
+      const pathStart = m.index + m[0].indexOf(path);
+      if (!isStandalonePath(node, m.index, pathStart)) continue;
+      if (pathStart > last) parts.push(node.slice(last, pathStart));
+      parts.push(
+        <span
+          key={`${keyPrefix}-f${i++}`}
+          role="button"
+          tabIndex={0}
+          title={`Ouvrir ${path}`}
+          onClick={() => window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: path }))}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: path })); } }}
+          className="font-mono text-ui-sm text-link underline decoration-transparent underline-offset-2 hover:decoration-current cursor-pointer transition-colors"
+        >
+          {path}
+        </span>
+      );
+      last = pathStart + path.length;
+    }
+    if (parts.length === 0) return node;
+    if (last < node.length) parts.push(node.slice(last));
+    return parts;
+  }
+  if (Array.isArray(node)) return node.map((child, i) => linkifyNode(child, `${keyPrefix}-${i}`));
+  return node;
+}
 
 export function markdownComponents({ hideCodeActions = false }: { hideCodeActions?: boolean } = {}): Components {
   return {
-  p: ({ children }) => <p className="text-ui-base leading-[1.7] my-3 first:mt-0 last:mb-0">{children}</p>,
+  p: ({ children }) => (
+    <p className="text-ui-base leading-[1.7] my-3 first:mt-0 last:mb-0">
+      {linkifyNode(children, 'p')}
+    </p>
+  ),
   a: ({ href, children }) => (
     <a
       href={href}
@@ -58,7 +112,7 @@ export function markdownComponents({ hideCodeActions = false }: { hideCodeAction
   },
   ul: ({ children }) => <ul className="my-3 first:mt-0 last:mb-0 list-outside list-disc space-y-1.5 pl-5 marker:text-text-muted [&_ul]:my-1.5 [&_ol]:my-1.5">{children}</ul>,
   ol: ({ children }) => <ol className="my-3 first:mt-0 last:mb-0 list-inside list-decimal space-y-1.5 pl-0 marker:text-text-muted [&_ul]:my-1.5 [&_ol]:my-1.5">{children}</ol>,
-  li: ({ children }) => <li className="pl-1 leading-[1.7] [&>p]:my-0 [&>p]:inline">{children}</li>,
+  li: ({ children }) => <li className="pl-1 leading-[1.7] [&>p]:my-0 [&>p]:inline">{linkifyNode(children, 'li')}</li>,
   hr: () => <hr className="my-6 border-border-medium" />,
   strong: ({ children }) => <strong className="font-semibold text-text-primary">{children}</strong>,
   blockquote: ({ children }) => (

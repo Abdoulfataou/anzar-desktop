@@ -12,10 +12,16 @@
 import React, { useState } from 'react';
 import {
   FileText, FilePlus, FileEdit, FileMinus, FolderOpen, Search,
-  Terminal, ChevronRight, ListChecks, Wand2, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles, Globe, Link2,
+  Terminal, ChevronRight, ListChecks, Wand2, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles, Globe, Link2, ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolEvent } from '@/hooks/useAgentChat';
+import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
+
+/** Ouvre un fichier du projet dans l'éditeur / la visionneuse média. */
+function openProjectFile(path: string) {
+  window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: path }));
+}
 
 const ICONS: Record<string, React.ReactNode> = {
   read_file: <FileText size={16} />,
@@ -94,10 +100,37 @@ export default function ToolCallBlock({ event }: { event: ToolEvent }) {
           {LABELS[event.name] ?? event.name}
         </span>
 
-        {/* Détail (chemin, commande…) */}
+        {/* Détail (chemin, commande…) — cliquable quand c'est un fichier du projet */}
         {event.argsSummary && (
-          <span className="min-w-0 truncate text-text-muted group-hover/tool:text-text-secondary transition-colors">
-            {event.argsSummary}
+          event.filePath ? (
+            <span
+              role="button"
+              tabIndex={0}
+              title={`Ouvrir ${event.filePath}`}
+              onClick={(e) => { e.stopPropagation(); openProjectFile(event.filePath!); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); openProjectFile(event.filePath!); } }}
+              className="min-w-0 truncate text-link underline decoration-transparent underline-offset-2 hover:decoration-current cursor-pointer transition-colors"
+            >
+              {event.argsSummary}
+            </span>
+          ) : (
+            <span className="min-w-0 truncate text-text-muted group-hover/tool:text-text-secondary transition-colors">
+              {event.argsSummary}
+            </span>
+          )
+        )}
+
+        {/* Bouton d'ouverture explicite au survol (fichiers uniquement) */}
+        {event.filePath && (
+          <span
+            role="button"
+            tabIndex={-1}
+            aria-label={`Ouvrir ${event.filePath}`}
+            title={`Ouvrir ${event.filePath}`}
+            onClick={(e) => { e.stopPropagation(); openProjectFile(event.filePath!); }}
+            className="flex-shrink-0 opacity-0 group-hover/tool:opacity-100 text-text-muted hover:text-text-primary transition-all cursor-pointer"
+          >
+            <ExternalLink size={12} />
           </span>
         )}
 
