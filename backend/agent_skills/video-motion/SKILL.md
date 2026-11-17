@@ -29,9 +29,24 @@ Aucun serveur nécessaire : les outils ouvrent directement le fichier HTML (`fil
 1. Vérifie les moments clés avec `capture_page`, `file` et `frames` (un instant par plan, plus la fin).
 2. Exporte : `export_animation` avec `file`, `size: "story"` (ou `carre`, `portrait`, `paysage`), `duration_ms` égale à la durée du script, `fps: 30`, `output: "export/nom-clair.mp4"`.
 3. Regarde les images clés renvoyées : début, milieu, fin. Corrige et réexporte si besoin.
-4. Donne à l'utilisateur le chemin de la vidéo : il la voit dans l'onglet Fichiers d'ANZAR (ou dans Documents/ANZAR sans projet ouvert).
+4. **L'export est toujours la dernière étape.** Après toute modification de la page, même minime, réexporte avant de finir : la vidéo livrée doit correspondre à la dernière version. Ne demande jamais à l'utilisateur de dire « réexporte ».
+5. La vidéo s'affiche d'elle-même dans la conversation, avec un lecteur et un bouton pour ouvrir le dossier. Termine en une ou deux phrases : le nom du fichier, la durée, et une proposition de retouche. Pas de longue liste de ce que tu as fait.
+
+Pour tout traitement annexe (redimensionner le logo, lire une image), écris un script `.mjs` avec write_file puis lance-le ; jamais `node -e` ni `python -c`.
 
 Le rendu utilise une horloge virtuelle : CSS, GSAP, canvas, three.js et le JavaScript maison (setTimeout, requestAnimationFrame) sont rendus image par image, au rythme exact. N'utilise pas d'horloge réelle extérieure (vidéo intégrée, GIF animé dans la page, chargement réseau pendant l'animation) : ces éléments-là ne suivent pas l'horloge virtuelle.
+
+## 3 bis. Réglages de netteté et de déterminisme
+
+- **Aléa seedé obligatoire** : jamais `Math.random()` nu. Utilise un PRNG seedé (même seed = même vidéo après retouche) :
+  ```js
+  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+  const rand = mulberry32(42);
+  ```
+- **Polices prêtes avant la première frame** : `display=block` sur le lien Google Fonts, puis `await document.fonts.ready` avant de lancer la timeline GSAP. Police non chargée = première frame floue, vidéo gâchée.
+- **Tailles d'images explicites** (`width`/`height` ou `aspect-ratio`) : pas de reflow en pleine capture.
+- **`will-change: transform`** sur les éléments animés (compositing GPU, frames régulières) ; animer `transform` et `opacity`, jamais `top/left/width`.
+- **GSAP** : appelle `vendor_lib` (libs vendues dans ANZAR, hors ligne, version figée) plutôt qu'un CDN — un CDN lent ou coupé ruine la capture. Les recettes prêtes sont dans la skill `gsap-cookbook`, les règles de rythme dans `motion-system`.
 
 ## 4. Le son
 

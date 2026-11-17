@@ -16,6 +16,7 @@ import { terminalService } from '@/services/terminal';
 import { appendProjectMemory } from './agentContext';
 import { diagnoseChange, diagnoseFile, formatDiagnostics, languageOf, warmUp } from '@/services/lsp/manager';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { vendorLibs } from '@/services/skillsPack/vendorLibs';
 
 // ============================================================================
 // TYPES
@@ -347,6 +348,29 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           },
         },
         required: ['tasks'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'vendor_lib',
+      description:
+        "Copie des bibliothèques d'animation VENDÉES dans ANZAR (hors ligne, version figée) dans libs/ du projet : " +
+        "'gsap' (core), 'split-text' (typo par lignes/mots/lettres), 'draw-svg' (SVG tracé), 'morph-svg' (morphing), " +
+        "'scramble-text' (texte brouillé), 'flip' (transitions layout), 'custom-ease', ou 'all' pour tout GSAP 3.13. " +
+        "Renvoie les balises <script> exactes et le gsap.registerPlugin à insérer. Utilise-le pour toute page animée " +
+        "au lieu d'un CDN (capture reproductible, jamais coupée par le réseau).",
+      parameters: {
+        type: 'object',
+        properties: {
+          libs: {
+            type: 'array',
+            items: { type: 'string' },
+            description: "Libs à copier, ex : ['gsap','split-text','draw-svg'] ou ['all']",
+          },
+        },
+        required: ['libs'],
       },
     },
   },
@@ -933,7 +957,14 @@ async function execTaskDone(args: any): Promise<ToolResult> {
 
 type ToolExecutor = (args: any, ctx: ToolExecutionContext) => Promise<ToolResult>;
 
+async function execVendorLib(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const names = Array.isArray(args.libs) ? args.libs.map(String) : [];
+  if (!names.length) return { output: "Indique libs, ex : ['gsap','split-text'] ou ['all'].", isError: true };
+  return vendorLibs(ctx.projectRoot, names);
+}
+
 const EXECUTORS: Record<string, ToolExecutor> = {
+  vendor_lib: execVendorLib,
   read_file: execReadFile,
   write_file: execWriteFile,
   edit_file: execEditFile,

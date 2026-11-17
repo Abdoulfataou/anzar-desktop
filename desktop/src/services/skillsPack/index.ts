@@ -318,6 +318,159 @@ description: Connexion ou inscription par numéro de téléphone avec code à us
 ## Tests
 Code expiré, mauvais code 5 fois, renvoi trop fréquent, numéro mal formé, deux demandes simultanées.`;
 
+const gsapCookbook = `---
+name: gsap-cookbook
+description: Recettes GSAP 3.13 prêtes à l'emploi (SplitText, DrawSVG, timelines) pour créer des animations professionnelles — à assembler plutôt qu'inventer.
+---
+
+## Quand l'utiliser
+Dès qu'une page, pub ou visuel doit être animé. GSAP 3.13 est intégralement gratuit (plugins compris) et VENDÉ dans ANZAR.
+
+## Mise en place (toujours la même)
+1. Appelle \`vendor_lib\` avec \`["gsap","split-text","draw-svg","custom-ease"]\` (ajoute \`morph-svg\`, \`scramble-text\`, \`flip\` si besoin) et insère EXACTEMENT les balises <script> renvoyées.
+2. Charge les polices AVANT la première frame : \`<link href="https://fonts.googleapis.com/css2?family=...&display=block">\` puis \`await document.fonts.ready\` avant de lancer la timeline.
+3. Tout dans UNE timeline GSAP avec des labels — jamais de setTimeout ni de délais CSS dispersés.
+
+## Recettes (à copier puis ajuster)
+
+### 1. Titre qui se révèle mot à mot (le classique pub)
+\`\`\`js
+const split = new SplitText("h1", { type: "words,chars" });
+gsap.timeline({ defaults: { ease: "expo.out" } })
+  .from(split.chars, { yPercent: 120, opacity: 0, stagger: 0.02, duration: 0.8 })
+  .from(".sous-titre", { y: 24, opacity: 0, duration: 0.6 }, "-=0.3");
+\`\`\`
+
+### 2. Logo SVG qui se dessine (DrawSVG)
+\`\`\`js
+gsap.registerPlugin(DrawSVGPlugin);
+gsap.from("#logo path", { drawSVG: "0%", duration: 1.6, stagger: 0.15, ease: "power2.inOut" });
+\`\`\`
+
+### 3. Masque qui glisse (révélation d'image)
+\`\`\`css
+.cache { overflow: hidden; }
+\`\`\`
+\`\`\`js
+gsap.timeline()
+  .fromTo(".cache", { clipPath: "inset(0 100% 0 0)" }, { clipPath: "inset(0 0% 0 0)", duration: 1, ease: "expo.inOut" })
+  .from(".cache img", { scale: 1.3, duration: 1.4, ease: "power2.out" }, 0);
+\`\`\`
+
+### 4. Compteur qui monte
+\`\`\`js
+const obj = { v: 0 };
+gsap.to(obj, { v: 12500, duration: 1.6, ease: "power2.out",
+  onUpdate: () => { compteur.textContent = Math.round(obj.v).toLocaleString("fr-FR") + " F"; } });
+\`\`\`
+
+### 5. Fond aurora organique (sans lib)
+\`\`\`js
+gsap.to(".blob", { x: "random(-80,80)", y: "random(-60,60)", scale: "random(0.9,1.3)",
+  duration: 6, repeat: -1, yoyo: true, ease: "sine.inOut", stagger: { each: 0.4, from: "random" } });
+\`\`\`
+(CSS : blobs flous \`filter: blur(60px)\` + \`will-change: transform\`)
+
+### 6. Texte brouillé qui se résout (ScrambleText)
+\`\`\`js
+gsap.registerPlugin(ScrambleTextPlugin);
+gsap.to(".annonce", { scrambleText: { text: "Ouverture samedi", chars: "upperCase", speed: 0.4 }, duration: 1.4 });
+\`\`\`
+
+### 7. Cartes en cascade (Flip — réordonnancement fluide)
+\`\`\`js
+gsap.registerPlugin(Flip);
+const state = Flip.getItem(".cartes", props);
+// … après changement du DOM (filtre, tri) :
+Flip.from(state, { duration: 0.7, ease: "expo.out", stagger: 0.04, absolute: true });
+\`\`\`
+
+### 8. Morphing de forme (MorphSVG)
+\`\`\`js
+gsap.registerPlugin(MorphSVGPlugin);
+gsap.to("#forme1", { morphSVG: "#forme2", duration: 1.2, ease: "expo.inOut" });
+\`\`\`
+
+### 9. Courbe signature maison (CustomEase)
+\`\`\`js
+gsap.registerPlugin(CustomEase);
+CustomEase.create("anzar", "0.22, 1, 0.36, 1"); // easeOutExpo — le « feel » pro
+gsap.to(".hero", { y: 0, duration: 0.9, ease: "anzar" });
+\`\`\`
+
+### 10. Séquence complète type « pub 6 s » (à adapter)
+\`\`\`js
+const tl = gsap.timeline();
+tl.addLabel("intro")
+  .from(".fond", { scale: 1.15, duration: 2.5, ease: "power1.out" }, "intro")
+  .from(split.chars, { yPercent: 120, stagger: 0.025, duration: 0.7, ease: "expo.out" }, "intro+=0.2")
+  .addLabel("produit")
+  .from(".produit", { y: 40, opacity: 0, duration: 0.8, ease: "anzar" }, "produit+=0.3")
+  .from(".prix", { scale: 0.6, opacity: 0, duration: 0.5, ease: "back.out(2)" }, "produit+=0.8")
+  .addLabel("cta")
+  .fromTo(".cta", { scale: 0.9 }, { scale: 1, duration: 0.6, ease: "elastic.out(1, 0.5)" }, "cta")
+  .to({}, { duration: 1.2 }); // respiration finale
+\`\`\`
+
+## Pièges
+- Ne JAMAIS charger GSAP depuis un CDN (réseau coupé = capture ratée) : \`vendor_lib\` d'abord.
+- \`clip-path\`, \`transform\`, \`opacity\` = GPU ; éviter \`top/left/width\` animés.
+- Une seule animation « héros » à la fois : le reste accompagne en discret.
+- Après toute modification, RÉEXPORTER (règle de \`export_animation\`).
+- Vérifie avec \`capture_page\` aux moments clés (début, milieu, fin) AVANT d'exporter.`;
+
+const motionSystem = `---
+name: motion-system
+description: Les règles de design du mouvement d'ANZAR — durées, courbes, cascade, hiérarchie. Ce qui différencie un rendu designer d'un rendu template.
+---
+
+## Quand l'utiliser
+Toute création ou retouche animée (pub, landing, visuel, vidéo). À charger avec gsap-cookbook.
+
+## L'échelle des durées (jamais d'à-peu-près)
+| Durée | Usage |
+|---|---|
+| 120–180 ms | Micro-feedback (hover, puce) |
+| 300–450 ms | Apparition d'un élément secondaire |
+| 600–900 ms | Animation HÉROS (titre, produit) |
+| 1000–1600 ms | Grand mouvement de caméra / masque plein écran |
+
+Règle : une vidéo de 4-8 s = 3 à 5 moments, pas 15.
+
+## Les courbes (le « feel »)
+- **Sortie** (apparaît) : \`expo.out\` ou CustomEase \`"0.22, 1, 0.36, 1"\` — rapide au départ, frein doux. 80 % des animations.
+- **Entrée-sortie** (masque, caméra) : \`expo.inOut\`.
+- **Rebond d'accent** (prix, CTA) : \`back.out(1.8)\` ou \`elastic.out(1, 0.4)\` — UNE fois par vidéo maximum.
+- Jamais \`linear\` sauf défilement continu (marquee).
+
+## La cascade (stagger)
+- Éléments liés (lettres, cartes) : décalage **25-40 ms**, toujours du même sens.
+- Ordre de entrées : fond → titre → sous-titre → visuel produit → prix → CTA. Chaque élément commence quand le précédent atteint ~60 % (chevauchement \`"-=0.3"\`).
+- Le tout doit tenir dans une SEULE timeline avec labels.
+
+## Hiérarchie d'attention (le plus important)
+1. UN seul héros animé fort par écran/plan.
+2. Le reste : opacité + 8-24 px de déplacement, discret.
+3. Le silence visuel est un outil : 0,5-1 s de respiration avant le CTA final.
+4. Contraste de RYTHME : rapide (reveal) → lent (travaille) → net (CTA).
+
+## Déterminisme (re-renders identiques)
+- Bruit/aléa : PRNG seedé, jamais \`Math.random()\` nu —
+\`\`\`js
+const rand = mulberry32(42); // même seed = même vidéo à chaque export
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+\`\`\`
+- GSAP \`"random(min,max)"\` : préfère un \`random: { y: [min,max] }\` seedé ou fige les valeurs une fois calculées.
+- Polices : \`display=block\` + \`await document.fonts.ready\` avant la timeline.
+- Images : dimensions explicites (pas de reflow en pleine capture).
+
+## Anti-patterns (ce qui fait « cheap »)
+- Tout qui fade-in en même temps (aucune cascade).
+- Easings différents à chaque élément.
+- Rebonds élastiques sur 5 éléments.
+- Durées rondes identiques partout (400 ms partout = template).
+- Mouvement pendant que du texte se lit : l'œil ne suit qu'un seul flux.`;
+
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'brainstorming', markdown: brainstorming },
   { name: 'ecrire-un-plan', markdown: plan },
@@ -334,4 +487,6 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'migration-base-de-donnees', markdown: dbMigration },
   { name: 'deployer-sur-vps-docker', markdown: vpsDeploy },
   { name: 'ecrire-une-skill', markdown: writeSkill },
+  { name: 'gsap-cookbook', markdown: gsapCookbook },
+  { name: 'motion-system', markdown: motionSystem },
 ];
