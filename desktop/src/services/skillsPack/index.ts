@@ -331,7 +331,61 @@ Dès qu'une page, pub ou visuel doit être animé. GSAP 3.13 est intégralement 
 2. Charge les polices AVANT la première frame : \`<link href="https://fonts.googleapis.com/css2?family=...&display=block">\` puis \`await document.fonts.ready\` avant de lancer la timeline.
 3. Tout dans UNE timeline GSAP avec des labels — jamais de setTimeout ni de délais CSS dispersés.
 
-## Recettes (à copier puis ajuster)
+## Recette 0 — Page de départ complète (copie CE squelette d'abord)
+\`\`\`\`\`html
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&display=block" rel="stylesheet">
+  <!-- Balises renvoyées par vendor_lib — JAMAIS de CDN -->
+  <script src="libs/gsap.min.js"></script>
+  <script src="libs/SplitText.min.js"></script>
+  <script src="libs/CustomEase.min.js"></script>
+  <style>
+    * { margin: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; background: #0B0B0C; color: #EDEDEF;
+      font-family: 'Archivo', sans-serif; }
+    img { max-width: 100%; height: auto; } /* tailles explicites si possible */
+    .hero, .cache { will-change: transform; }
+  </style>
+</head>
+<body>
+  <main class="scene">
+    <h1 class="hero">Ton titre</h1>
+    <p class="sous-titre">Ta promesse en une ligne</p>
+    <img class="produit" src="fichiers/produit.png" width="540" height="540" alt="">
+    <p class="prixcta">12 500 F</p>
+  </main>
+  <script>
+    gsap.registerPlugin(SplitText, CustomEase);
+    CustomEase.create("anzar", "0.22, 1, 0.36, 1");
+    // Aléa seedé : même vidéo à chaque export
+    function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+    const rand = mulberry32(42);
+
+    document.fonts.ready.then(() => {
+      const split = new SplitText(".hero", { type: "words,chars" });
+      const tl = gsap.timeline();
+      tl.addLabel("intro")
+        .from(split.chars, { yPercent: 120, opacity: 0, stagger: 0.025, duration: 0.8, ease: "anzar" }, "intro")
+        .from(".sous-titre", { y: 24, opacity: 0, duration: 0.6, ease: "anzar" }, "intro+=0.4")
+        .addLabel("produit")
+        .from(".produit", { y: 48, opacity: 0, scale: 0.92, duration: 0.9, ease: "anzar" }, "produit+=0.3")
+        .from(".prixcta", { scale: 0.6, opacity: 0, duration: 0.5, ease: "back.out(1.8)" }, "produit+=0.8")
+        .to({}, { duration: 1.0 }); // respiration finale
+    });
+  </script>
+</body>
+</html>
+\`\`\`\`\`
+Tout y est : polices \`display=block\` + \`fonts.ready\`, PRNG seedé, courbe signature, cascade labelisée, respiration finale. Adapte textes/images/durées — ne réinvente pas la structure.
+
+## Autres recettes (à copier puis ajuster)
 
 ### 1. Titre qui se révèle mot à mot (le classique pub)
 \`\`\`js

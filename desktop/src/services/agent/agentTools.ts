@@ -714,6 +714,43 @@ const ANIM_SIZES: Record<string, [number, number]> = {
   story: [1080, 1920], carre: [1080, 1080], portrait: [1080, 1350], paysage: [1920, 1080], a4: [2480, 3508],
 };
 
+/**
+ * Garde-fou qualité pour les pages animées exportées :
+ * - un <script>/<link> externe (CDN) = capture cassée si le réseau flanche → refus
+ *   avec la marche à suivre (vendor_lib). Les polices Google sont autorisées.
+ * - Math.random() nu = vidéo non reproductible après retouche → avertissement.
+ */
+async function checkMotionHtml(absFile: string): Promise<{ output?: string; isError?: boolean; note?: string }> {
+  try {
+    const { readTextFile } = await import('@tauri-apps/api/fs');
+    const html = await readTextFile(absFile);
+    const externals: string[] = [];
+    const re = /<(script|link)\b[^>]*?(?:src|href)=["'](https?:\/\/[^"']+)["']/gi;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(html)) !== null) {
+      const u = m[2];
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:|\/)/i.test(u)) continue;      // serveur local du projet
+      if (/fonts\.(googleapis|gstatic)\.com/i.test(u)) continue;                     // polices : autorisées
+      externals.push(u);
+    }
+    if (externals.length) {
+      return {
+        isError: true,
+        output:
+          `La page charge des ressources externes (interdit : une capture coupée par le réseau ruine la vidéo) :\n` +
+          externals.map((u) => `- ${u}`).join('\n') +
+          `\nRemédiation : appelle vendor_lib (ex : ["gsap","split-text"]) et remplace ces balises par les <script src="libs/…"> locaux renvoyés.`,
+      };
+    }
+    if (/Math\.random\s*\(/.test(html) && !/mulberry32|seedrandom|xorshift/i.test(html)) {
+      return { note: 'Math.random() détecté sans PRNG seedé : la vidéo ne sera pas identique après retouche. Utilise mulberry32 (skill motion-system).' };
+    }
+    return {};
+  } catch {
+    return {}; // fichier illisible : le renderer donnera l'erreur réelle
+  }
+}
+
 async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const [{ captureFrames }, { devServerUrl }, { createStreamEncoder }, renderer] = await Promise.all([
     import('./browserCheck'), import('./devServer'), import('@/services/motion/encode'), import('@/services/motion/renderer'),
@@ -721,6 +758,10 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
   const file = typeof args.file === 'string' && args.file.trim() ? resolvePath(ctx.projectRoot, args.file) : undefined;
   const url = file ? undefined : typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot);
   if (!url && !file) return { output: 'Indique file (fichier HTML du projet) ou url.', isError: true };
+  if (file) {
+    const guard = await checkMotionHtml(file);
+    if (guard.isError && guard.output) return { output: guard.output, isError: true };
+  }
   const [dw, dh] = ANIM_SIZES[String(args.size || 'story')] || ANIM_SIZES.story;
   const width = Math.min(3840, Math.max(64, Math.round(Number(args.width) || dw)));
   const height = Math.min(3840, Math.max(64, Math.round(Number(args.height) || dh)));
@@ -844,6 +885,10 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
 
 /** Export d'une image PNG unique (visuel, affiche, publication) à l'instant `at`. */
 async function exportStill(o: { url?: string; file?: string; width: number; height: number; at: number; output?: string; ctx: ToolExecutionContext }): Promise<ToolResult> {
+  if (o.file) {
+    const guard = await checkMotionHtml(o.file);
+    if (guard.isError && guard.output) return { output: guard.output, isError: true };
+  }
   const { renderFrames, cleanupRender } = await import('@/services/motion/renderer');
   let rel = String(o.output || 'export/visuel.png').replace(/\\/g, '/');
   if (!/\.png$/i.test(rel)) rel = rel.replace(/\.[a-z0-9]+$/i, '') + '.png';
