@@ -216,6 +216,8 @@ export interface ToolEvent {
   delta?: [number, number];
   /** Chemin de fichier ouvrable en un clic (éditeur / visionneuse média) */
   filePath?: string;
+  /** Sous-agents en cours (spawn_subagents) — progression en direct */
+  subagents?: import('@/services/agent/agentTools').SubagentProgress[];
   /** Vidéo ou image produite par l'outil (chemin absolu), montrée en lecteur sous la réponse */
   media?: { path: string; kind: 'video' | 'image' };
 }
@@ -818,7 +820,12 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
                 stepContent += delta.content;
                 flushLive(stepContent);
               }
-              if (delta.reasoning_content) stepReasoning += delta.reasoning_content;
+              if (delta.reasoning_content) {
+                stepReasoning += delta.reasoning_content;
+                // Le raisonnement remonte AUSSI en direct (sinon « réfléchit… »
+                // sans détail pendant toute la phase de réflexion)
+                flushLive(stepContent);
+              }
               if (delta.tool_calls) assembler.add(delta.tool_calls);
             }
             cost.calls++;
@@ -1014,6 +1021,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
                 projectRoot: agentRoot,
                 signal: controller.signal,
                 onFileChanged: (rel, _c, action) => { if (workspacePath) onFileChanged?.(rel, action); },
+                // Sous-agents : progression en direct dans le bloc d'outil
+                onSubagentProgress: call.function.name === 'spawn_subagents'
+                  ? (progress) => { ev.subagents = progress; flush(''); }
+                  : undefined,
               })
             : { output: 'Aucun dossier de travail ouvert.', isError: true };
 

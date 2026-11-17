@@ -22,6 +22,15 @@ import { vendorLibs } from '@/services/skillsPack/vendorLibs';
 // TYPES
 // ============================================================================
 
+/** Progression en direct d'un sous-agent (affichée dans le chat pendant l'exécution). */
+export interface SubagentProgress {
+  task: string;
+  status: 'running' | 'done' | 'error';
+  /** Action en cours (dernier outil appelé) */
+  current?: string;
+  steps: number;
+}
+
 export interface ToolExecutionContext {
   /** Racine absolue du projet — toutes les opérations sont relatives à elle */
   projectRoot: string;
@@ -29,6 +38,8 @@ export interface ToolExecutionContext {
   signal?: AbortSignal;
   /** Callback appelé quand un fichier est écrit/modifié (pour rafraîchir l'UI) */
   onFileChanged?: (relativePath: string, content: string, action: 'create' | 'edit' | 'delete') => void;
+  /** Progression en direct des sous-agents (spawn_subagents) pour l'UI */
+  onSubagentProgress?: (progress: SubagentProgress[]) => void;
 }
 
 export interface ToolResult {
@@ -947,6 +958,19 @@ async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise
   const { runAgentSession } = await import('./agentLoop');
   const projectName = ctx.projectRoot.split(/[\\/]/).filter(Boolean).pop() || 'projet';
 
+  // Progression en direct vers l'UI (une ligne par sous-agent, action courante)
+  const progress: SubagentProgress[] = tasks.map((task) => ({
+    task: task.length > 90 ? task.slice(0, 87) + '…' : task,
+    status: 'running' as const,
+    steps: 0,
+  }));
+  const pushProgress = () => ctx.onSubagentProgress?.(progress.map((p) => ({ ...p })));
+  pushProgress();
+  const shortAction = (name: string, args: Record<string, any>): string => {
+    const a = args.path || args.file_path || args.command || args.query || args.url || args.output || '';
+    return a ? `${name} · ${String(a).slice(0, 60)}` : name;
+  };
+
   const results = await Promise.all(
     tasks.map((task, i) =>
       runAgentSession({
@@ -957,13 +981,26 @@ async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise
         autoVerify: false,      // le parent vérifie après consolidation
         signal: ctx.signal,
         onFileChanged: ctx.onFileChanged,
-      }).catch((e: any) => ({
-        stopReason: 'error' as const,
-        summary: e?.message || String(e),
-        steps: 0,
-        messages: [],
-        filesChanged: [] as string[],
-      })).then(r => ({ index: i + 1, task, ...r }))
+        onEvent: (ev) => {
+          const p = progress[i];
+          if (!p) return;
+          if (ev.type === 'step_start') { p.steps = ev.step; pushProgress(); }
+          else if (ev.type === 'tool_call') { p.current = shortAction(ev.name, ev.args); pushProgress(); }
+          else if (ev.type === 'done') { p.status = 'done'; p.current = undefined; p.steps = ev.steps; pushProgress(); }
+          else if (ev.type === 'error') { p.status = 'error'; p.current = ev.message.slice(0, 80); pushProgress(); }
+        },
+      }).catch((e: any) => {
+        progress[i] = { ...progress[i], status: 'error', current: e?.message?.slice(0, 80) };
+        pushProgress();
+        return {
+          stopReason: 'error' as const,
+          summary: e?.message || String(e),
+          steps: 0,
+          messages: [],
+          filesChanged: [] as string[],
+        };
+      })
+      .then(r => ({ index: i + 1, task, ...r }))
     )
   );
 

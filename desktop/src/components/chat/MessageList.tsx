@@ -149,14 +149,25 @@ export default function MessageList({ messages, isLoading = false, selectedProje
         ))}
       </div>
 
-      {/* Loading indicator */}
-      {isLoading && visibleMessages.length > 0 && !visibleMessages[visibleMessages.length - 1]?.activitySessionId && (
-        <div className="flex justify-start mt-3">
-          <div className="animate-in fade-in duration-300">
-            <StreamingDots variant="thinking" />
+      {/* Loading indicator — avec la dernière pensée en direct (style ZCode) */}
+      {isLoading && visibleMessages.length > 0 && (() => {
+        const last = visibleMessages[visibleMessages.length - 1];
+        if (last?.activitySessionId) return null;
+        const thought = last?.reasoning?.[last.reasoning.length - 1] || last?.thinking || '';
+        const liveThought = thought.length > 160 ? '…' + thought.slice(-160) : thought;
+        return (
+          <div className="flex flex-col items-start gap-1 mt-3">
+            <div className="animate-in fade-in duration-300">
+              <StreamingDots variant="thinking" />
+            </div>
+            {liveThought && !last?.content && (
+              <p className="max-w-[90%] font-mono text-ui-sm text-text-muted/70 leading-snug animate-fade-in">
+                {liveThought}
+              </p>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Scroll anchor */}
       <div ref={bottomRef} className="h-1" />

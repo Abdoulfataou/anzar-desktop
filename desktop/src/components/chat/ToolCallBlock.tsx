@@ -245,6 +245,35 @@ export default function ToolCallBlock({ event }: { event: ToolEvent }) {
         )}
       </button>
 
+      {/* Sous-agents en parallèle : une ligne par agent, action courante (style ZCode) */}
+      {event.subagents && event.subagents.length > 0 && (
+        <div className="mt-1 mb-1.5 ml-1 pl-3 border-l border-border-medium space-y-1">
+          {event.subagents.map((sa, i) => (
+            <div key={i} className="flex items-start gap-2 font-mono text-ui-sm leading-snug">
+              {sa.status === 'running' ? (
+                <Loader2 size={12} className="animate-spin mt-0.5 text-accent-primary flex-shrink-0" />
+              ) : sa.status === 'done' ? (
+                <CheckCircle2 size={12} className="mt-0.5 text-accent-success flex-shrink-0" />
+              ) : (
+                <AlertCircle size={12} className="mt-0.5 text-accent-error flex-shrink-0" />
+              )}
+              <span className="min-w-0 flex-1">
+                <span className={cn(
+                  'block truncate',
+                  sa.status === 'done' ? 'text-text-muted line-through decoration-text-muted/40' : 'text-text-secondary'
+                )}>
+                  {sa.task}
+                </span>
+                {sa.status === 'running' && sa.current && (
+                  <span className="block truncate text-text-muted/80 text-ui-xs">{sa.current}</span>
+                )}
+              </span>
+              <span className="text-ui-xs text-text-muted tabular-nums flex-shrink-0">{sa.steps}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Média exporté : lecteur INLINE dès la fin de l'export (vidéo/visuel) */}
       {event.status === 'ok' && event.name === 'export_animation' && event.filePath && /\.(mp4|webm|mov|m4v|gif|png|jpe?g|webp)$/i.test(event.filePath) && (
         <InlineExportMedia relPath={event.filePath} />
