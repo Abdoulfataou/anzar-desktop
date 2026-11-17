@@ -103,7 +103,9 @@ function closeDanglingToolCalls(history: APIMessage[]): void {
 
 const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember']);
 const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents', 'start_dev_server']);
-const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'explore', 'dev_server_logs', 'web_search', 'read_url']);
+const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'explore', 'dev_server_logs', 'web_search', 'read_url', 'capture_page']);
+/** Début du message qui montre au modèle les captures d'écran de capture_page */
+const CAPTURE_MARK = "[Captures d'écran de capture_page]";
 
 function needsApproval(mode: PermissionMode, tool: string): boolean {
   if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);
@@ -326,6 +328,8 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
       return args.command || 'commande du projet';
     case 'check_page':
       return args.url || 'serveur du projet';
+    case 'capture_page':
+      return `${args.url || 'page ouverte'}${Array.isArray(args.frames) && args.frames.length ? ` · ${args.frames.length} instants` : ''}`;
     case 'page_action':
       return [args.action, args.element || args.target, args.text].filter(Boolean).join(' · ');
     case 'explore':
@@ -692,7 +696,12 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           if (m.role === 'user' && Array.isArray(m.content)) {
             const text = m.content.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text).join('\n');
             const n = m.content.filter((p) => p.type === 'image_url').length;
-            apiHistoryRef.current[i] = { ...apiHistoryRef.current[i], content: `${text}\n\n(${n} image${n > 1 ? 's' : ''} jointe${n > 1 ? 's' : ''} à cette demande, déjà analysée${n > 1 ? 's' : ''} dans ta réponse.)` };
+            apiHistoryRef.current[i] = {
+              ...apiHistoryRef.current[i],
+              content: text.startsWith(CAPTURE_MARK)
+                ? `(${n} capture${n > 1 ? 's' : ''} d'écran prise${n > 1 ? 's' : ''} par capture_page, déjà examinée${n > 1 ? 's' : ''}.)`
+                : `${text}\n\n(${n} image${n > 1 ? 's' : ''} jointe${n > 1 ? 's' : ''} à cette demande, déjà analysée${n > 1 ? 's' : ''} dans ta réponse.)`,
+            };
           }
         }
         // Images jointes : envoyées au modèle (deepseek-flash est multimodal)
@@ -800,6 +809,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           tool_calls: toolCalls,
         });
 
+        // Captures d'écran rendues par les outils de cette étape : montrées au modèle après tous les résultats
+        const stepImages: { label: string; dataUrl: string }[] = [];
         for (const call of toolCalls) {
           if (controller.signal.aborted) break;
           let args: Record<string, any> = {};
@@ -928,7 +939,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             break;
           }
 
-          const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number } = !allowed
+          const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[] } = !allowed
             ? { output: refusal, isError: true }
             : WEB_TOOL_NAMES.has(call.function.name)
             ? await executeWebTool(call.function.name, args, controller.signal)
@@ -979,6 +990,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             tool_call_id: call.id,
             content: result.output || '(vide)',
           });
+          if (result.images?.length) stepImages.push(...result.images);
 
           // task_done → son résumé EST la réponse finale
           if (result.isDone) {
@@ -991,6 +1003,15 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             flush();
             break;
           }
+        }
+        if (!answered && stepImages.length) {
+          apiHistoryRef.current.push({
+            role: 'user',
+            content: [
+              { type: 'text', text: `${CAPTURE_MARK} ${stepImages.map((im, i) => `${i + 1}. ${im.label}`).join(' ; ')}` },
+              ...stepImages.slice(0, 8).map((im) => ({ type: 'image_url' as const, image_url: { url: im.dataUrl, detail: 'auto' as const } })),
+            ],
+          });
         }
         if (answered) break;
 

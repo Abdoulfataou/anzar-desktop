@@ -214,3 +214,125 @@ export async function pageAction(args: {
     return { output: `Navigateur indisponible : ${e?.message || e}`, isError: true };
   }
 }
+
+// ── Captures d'écran : l'agent VOIT ce qu'il a produit ─────────────────────
+
+export type Viewport = 'mobile' | 'desktop';
+const VIEWPORTS: Record<Viewport, { width: number; height: number; label: string }> = {
+  desktop: { width: 1280, height: 800, label: 'ordinateur 1280×800' },
+  mobile: { width: 390, height: 844, label: 'téléphone 390×844' },
+};
+const MAX_FRAMES = 6;
+const MAX_IMAGES = 8;
+
+export interface Capture { label: string; dataUrl: string }
+
+/** Lit une capture enregistrée par le navigateur, la réduit (moins de données à envoyer) puis la supprime. */
+async function loadCapture(path: string): Promise<string> {
+  const { readBinaryFile, removeFile } = await import('@tauri-apps/api/fs');
+  const bytes = await readBinaryFile(path);
+  void removeFile(path).catch(() => {});
+  const { imageToDataUrl } = await import('@/lib/imageAttach');
+  return imageToDataUrl(new Blob([bytes as unknown as BlobPart], { type: 'image/jpeg' }));
+}
+
+/** Fige toutes les animations CSS / Web Animations à l'instant `ms`. Retourne leur nombre. */
+const FREEZE_AT = (ms: number) =>
+  `() => { const a = document.getAnimations(); a.forEach((x) => { try { x.pause(); x.currentTime = ${Math.max(0, Math.round(ms))}; } catch (e) {} }); return a.length; }`;
+const RESUME = `() => { document.getAnimations().forEach((x) => { try { x.play(); } catch (e) {} }); return true; }`;
+
+/**
+ * Captures d'une page : formats ordinateur et/ou téléphone ; pour une animation, plusieurs
+ * instants (en ms). Les animations CSS et Web Animations sont figées à l'instant exact ; les
+ * animations pilotées en JavaScript (GSAP, requestAnimationFrame) sont capturées en temps réel.
+ */
+export async function capturePage(opts: {
+  url?: string; viewports?: Viewport[]; frames?: number[]; fullPage?: boolean; signal?: AbortSignal;
+}): Promise<{ output: string; isError: boolean; images: Capture[] }> {
+  const signal = opts.signal;
+  const views = (opts.viewports?.length ? opts.viewports : ['desktop', 'mobile'] as Viewport[])
+    .filter((v, i, all) => VIEWPORTS[v] && all.indexOf(v) === i);
+  const frames = (opts.frames || []).filter((n) => Number.isFinite(n) && n >= 0 && n <= 30_000)
+    .slice(0, MAX_FRAMES).sort((a, b) => a - b);
+  if (opts.url && !isAllowedUrl(opts.url)) {
+    return { output: `Adresse invalide : ${opts.url}. Exemple : http://localhost:5173`, isError: true, images: [] };
+  }
+  try {
+    const dir = await outputDir();
+    const images: Capture[] = [];
+    const notes: string[] = [];
+    let realTime = false;
+
+    const open = async () => {
+      if (!opts.url) return true;
+      const nav = await call('browser_navigate', { url: opts.url }, signal);
+      if (nav.isError) {
+        const msg = text(nav);
+        notes.push(/ERR_CONNECTION_REFUSED|ECONNREFUSED/i.test(msg)
+          ? `Rien ne répond à ${opts.url}. Lance d'abord start_dev_server.`
+          : `Ouverture impossible de ${opts.url} : ${msg.slice(0, 500)}`);
+        return false;
+      }
+      return true;
+    };
+    const shoot = async (label: string, full: boolean) => {
+      if (images.length >= MAX_IMAGES) return;
+      const file = `${dir}/capture-${Date.now()}-${images.length}.jpeg`;
+      const r = await call('browser_take_screenshot', { type: 'jpeg', filename: file, fullPage: full }, signal);
+      if (r.isError) { notes.push(`Capture « ${label} » impossible : ${text(r).slice(0, 300)}`); return; }
+      images.push({ label, dataUrl: await loadCapture(file) });
+    };
+
+    if (!opts.url && (!client || client.isClosed)) {
+      return { output: "Aucune page ouverte : indique url, ou lance d'abord le serveur du projet avec start_dev_server.", isError: true, images: [] };
+    }
+    if (!(await open())) return { output: notes.join('\n'), isError: true, images: [] };
+    for (const v of views) {
+      const vp = VIEWPORTS[v];
+      await call('browser_resize', { width: vp.width, height: vp.height }, signal);
+      if (!frames.length) {
+        await call('browser_wait_for', { time: 0.6 }, signal); // polices et animations d'entrée
+        await shoot(`${vp.label}${opts.fullPage ? ', page entière' : ''}`, !!opts.fullPage);
+        continue;
+      }
+      if (!realTime) {
+        const count = Number(text(await call('browser_evaluate', { function: FREEZE_AT(frames[0]) }, signal)).match(/### Result\s*\n\s*(\d+)/)?.[1] || 0);
+        if (count === 0) {
+          realTime = true;
+          notes.push("Aucune animation CSS ou Web Animations détectée : instants capturés en temps réel depuis le chargement (approximatifs).");
+        }
+      }
+      if (realTime) {
+        if (!(await open())) break;
+        await call('browser_resize', { width: vp.width, height: vp.height }, signal);
+        let elapsed = 0;
+        for (const t of frames) {
+          const wait = Math.max(0, t - elapsed) / 1000;
+          if (wait > 0) await call('browser_wait_for', { time: Math.min(30, wait) }, signal);
+          elapsed = t;
+          await shoot(`${vp.label}, ≈${t} ms`, false);
+        }
+      } else {
+        for (const t of frames) {
+          await call('browser_evaluate', { function: FREEZE_AT(t) }, signal);
+          await shoot(`${vp.label}, ${t} ms`, false);
+        }
+        await call('browser_evaluate', { function: RESUME }, signal);
+      }
+    }
+
+    if (!images.length) return { output: notes.join('\n') || 'Aucune capture prise.', isError: true, images: [] };
+    const list = images.map((im, i) => `${i + 1}. ${im.label}`).join('\n');
+    return {
+      output: `${images.length} capture(s) prise(s) ; elles te sont montrées juste après ce résultat :\n${list}` +
+        (notes.length ? `\n\n${notes.join('\n')}` : '') +
+        "\n\nExamine-les comme un directeur artistique exigeant : texte qui déborde ou se chevauche, contraste insuffisant, " +
+        "alignements, espacements irréguliers, hiérarchie peu claire, éléments coupés sur téléphone, mouvement saccadé ou incohérent. " +
+        'Corrige ce qui ne va pas, puis recapture pour vérifier (deux rounds de corrections au plus).',
+      isError: false,
+      images,
+    };
+  } catch (e: any) {
+    return { output: `Navigateur indisponible : ${e?.message || e}. Node.js doit être installé.`, isError: true, images: [] };
+  }
+}

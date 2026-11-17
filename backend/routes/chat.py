@@ -206,6 +206,12 @@ def _require_legacy_routes():
 
 # ── Routes ──
 
+def has_images(messages: list) -> bool:
+    return any(isinstance(m, dict) and isinstance(m.get("content"), list)
+               and any(isinstance(p, dict) and p.get("type") == "image_url" for p in m["content"])
+               for m in messages)
+
+
 @router.post("/api/{provider}/chat/completions")
 async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_current_user)):
     """
@@ -228,6 +234,9 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
     # Modèle verrouillé côté serveur (le prix en dépend) : seuls les identifiants connus passent.
     allowed = {settings.deepseek_model, settings.deepseek_pro_model}
     if body.get("model") not in allowed:
+        body["model"] = settings.deepseek_model
+    # Images (pièces jointes, captures d'écran de l'agent) : seul Flash les accepte
+    if body["model"] != settings.deepseek_model and has_images(body["messages"]):
         body["model"] = settings.deepseek_model
 
     # Une seule réponse par requête (n>1 multiplierait le coût de sortie réservé)

@@ -39,6 +39,8 @@ export interface ToolResult {
   isError?: boolean;
   /** Coût des appels au modèle faits par l'outil (explorateurs), ajouté à celui de la réponse */
   costFCFA?: number;
+  /** Captures d'écran à montrer au modèle juste après le résultat (capture_page) */
+  images?: { label: string; dataUrl: string }[];
 }
 
 // ============================================================================
@@ -179,6 +181,27 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         properties: {
           url: { type: 'string', description: 'Adresse complète, ex : http://localhost:5173/connexion (facultative)' },
           wait_for_text: { type: 'string', description: 'Texte à attendre avant de lire la page (facultatif)' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'capture_page',
+      description:
+        "Prend des captures d'écran d'une page et te les MONTRE, pour juger le rendu visuel comme un designer : mise en page, typographie, " +
+        "couleurs, contraste, débordements, version téléphone. Pour une animation, donne frames (instants en millisecondes, ex [0, 150, 400, 1000]) : " +
+        "les animations CSS et Web Animations sont figées à chaque instant exact. Sans url : la page ouverte, sinon le serveur lancé par start_dev_server. " +
+        "Pour un simple fichier HTML, lance d'abord un serveur avec start_dev_server (commande : npx -y serve -l 4321 .). " +
+        "À utiliser après TOUTE création ou modification visuelle (interface, page, affiche, animation), puis corriger ce que tu vois.",
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Adresse complète, ex : http://localhost:5173/ (facultative)' },
+          viewports: { type: 'array', items: { type: 'string', enum: ['desktop', 'mobile'] }, description: 'Formats : desktop (1280×800) et/ou mobile (390×844). Par défaut les deux.' },
+          frames: { type: 'array', items: { type: 'number' }, description: 'Animation : instants à capturer, en ms (6 au plus)' },
+          full_page: { type: 'boolean', description: 'Capturer toute la hauteur de la page (sans frames)' },
         },
       },
     },
@@ -605,6 +628,18 @@ async function execCheckPage(args: any, ctx: ToolExecutionContext): Promise<Tool
   return checkPage(url, { waitForText: args.wait_for_text, signal: ctx.signal });
 }
 
+async function execCapturePage(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const [{ capturePage }, { devServerUrl }] = await Promise.all([import('./browserCheck'), import('./devServer')]);
+  const url = typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot) || undefined;
+  return capturePage({
+    url,
+    viewports: Array.isArray(args.viewports) ? args.viewports : undefined,
+    frames: Array.isArray(args.frames) ? args.frames.map(Number) : undefined,
+    fullPage: !!args.full_page,
+    signal: ctx.signal,
+  });
+}
+
 async function execPageAction(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const { pageAction } = await import('./browserCheck');
   return pageAction(args, ctx.signal);
@@ -705,6 +740,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   dev_server_logs: execDevServerLogs,
   stop_dev_server: execStopDevServer,
   check_page: execCheckPage,
+  capture_page: execCapturePage,
   page_action: execPageAction,
   run_command: execRunCommand,
   spawn_subagents: execSpawnSubagents,

@@ -16,6 +16,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useOffline } from '@/hooks/useOffline';
 import { loadMcpConfig, startServer } from '@/services/mcp/manager';
+import { prefetchRemoteSkills } from '@/services/remoteSkills';
 
 interface AppLayoutProps {
   className?: string;
@@ -34,6 +35,7 @@ export default function AppLayout({ className }: AppLayoutProps) {
     // Connecteurs MCP activés : démarrés en arrière-plan, prêts avant le premier message
     const t = setTimeout(() => {
       void loadMcpConfig().then((servers) => servers.filter((s) => s.enabled).forEach((s) => void startServer(s.id))).catch(() => {});
+      prefetchRemoteSkills(); // skills du serveur : copie locale à jour avant la première demande
     }, 2_000);
     return () => clearTimeout(t);
   }, []);

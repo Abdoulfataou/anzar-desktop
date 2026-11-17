@@ -17,6 +17,7 @@
  * - personnel : dossier de données de l'app (store/skills), puis ~/.agents/skills et ~/.dsh/skills
  * - intégré   : le pack fourni avec ANZAR (services/skillsPack)
  */
+import { getRemoteSkills } from '@/services/remoteSkills';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { ensureDir, removeDirEntry, storeRoot, writeText } from '@/lib/fileStore';
 import { BUILTIN_SKILLS } from '@/services/skillsPack';
@@ -190,10 +191,13 @@ export async function listSkills(workspacePath: string | null): Promise<Skill[]>
     ...(home ? HOME_SKILL_DIRS.map((d) => readSkillsRoot(join(home, d), 'personal', `~/${d}`, false)) : []),
   ]);
   const builtin: Skill[] = BUILTIN_SKILLS.map((s) => ({ ...parseSkill(s.markdown, s.name), source: 'builtin', origin: 'ANZAR', files: [], editable: false }));
+  // Skills du serveur : prioritaires sur celles intégrées à l'app (versions plus récentes)
+  const remote: Skill[] = (await getRemoteSkills().catch(() => []))
+    .map((s) => ({ ...parseSkill(s.markdown, s.name), source: 'builtin' as const, origin: 'ANZAR', files: [], editable: false }));
 
   const seen = new Set<string>();
   const result: Skill[] = [];
-  for (const skill of [...batches.flat(), ...builtin]) {
+  for (const skill of [...batches.flat(), ...remote, ...builtin]) {
     if (seen.has(skill.name)) continue;
     seen.add(skill.name);
     result.push(skill);
