@@ -17,6 +17,7 @@ import { terminalService, onDevServerUrl } from '@/services/terminal';
 import StudioFileTree from '@/components/vibecoding/StudioFileTree';
 import StudioEditor from '@/components/vibecoding/StudioEditor';
 import StudioPreview from '@/components/vibecoding/StudioPreview';
+import MediaViewer, { isMediaFile } from './MediaViewer';
 import type { StudioFile } from '@/types/studio';
 import type { FileNode } from '@/types/file-project';
 import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
@@ -160,6 +161,17 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
   /** Lit un fichier ; `trackChange` garde l'ancienne version pour la vue diff. */
   const loadContent = useCallback(async (path: string, trackChange = false) => {
     if (!workspacePath) return;
+    if (isMediaFile(path)) {
+      // Image ou vidéo : affichée par MediaViewer, jamais lue comme du texte
+      setFiles((prev) => {
+        const f = prev.get(path);
+        if (!f || f.loaded) return prev;
+        const next = new Map(prev);
+        next.set(path, { ...f, content: '', loaded: true });
+        return next;
+      });
+      return;
+    }
     let text: string;
     try {
       text = await fileSystemService.readFile(`${workspacePath.replace(/[\\/]+$/, '')}/${path}`);
@@ -417,6 +429,12 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
               <div className="flex items-center justify-center h-full text-text-muted text-ui-caption">
                 <Loader2 size={14} className="animate-spin mr-2" /> Lecture du fichier…
               </div>
+            ) : files.has(active.path) && isMediaFile(active.path) ? (
+              <MediaViewer
+                absPath={`${workspacePath.replace(/[\\/]+$/, '')}/${active.path}`}
+                name={active.path.split('/').pop() || active.path}
+                version={refreshKey}
+              />
             ) : files.has(active.path) ? (
               <StudioEditor
                 files={filesList}

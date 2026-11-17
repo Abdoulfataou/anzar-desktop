@@ -209,6 +209,30 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'export_animation',
+      description:
+        "Exporte une page animée en VIDÉO MP4 (ou GIF) : la page est enregistrée image par image au rythme exact (fps), animations CSS, " +
+        "Web Animations et GSAP figées à chaque instant, puis assemblée en vidéo dans l'app (rien à installer). Pas de son. " +
+        "Formats : story (1080×1920, Reels, TikTok, statut WhatsApp), carre (1080×1080), portrait (1080×1350), paysage (1920×1080), " +
+        "ou width/height. Tu reçois ensuite 4 images clés de la vidéo pour la vérifier. Sans url : le serveur lancé par start_dev_server.",
+      parameters: {
+        type: 'object',
+        properties: {
+          url: { type: 'string', description: 'Page à enregistrer, ex : http://localhost:4321/pub.html (facultative)' },
+          format: { type: 'string', enum: ['mp4', 'gif'], description: 'mp4 (défaut) ou gif (court, léger, sans son)' },
+          size: { type: 'string', enum: ['story', 'carre', 'portrait', 'paysage'], description: 'Format de la vidéo (défaut : story)' },
+          width: { type: 'number', description: 'Largeur en px (remplace size)' },
+          height: { type: 'number', description: 'Hauteur en px (remplace size)' },
+          duration_ms: { type: 'number', description: 'Durée en ms (défaut 4000, 20000 au plus)' },
+          fps: { type: 'number', description: 'Images par seconde (défaut 30 en mp4, 15 en gif ; 60 au plus)' },
+          output: { type: 'string', description: 'Fichier à créer dans le projet, ex : export/pub-boutique.mp4 (défaut : export/animation.mp4)' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'page_action',
       description:
         "Agit sur la page ouverte par check_page, puis rapporte son nouvel état (console, requêtes, contenu). " +
@@ -640,6 +664,63 @@ async function execCapturePage(args: any, ctx: ToolExecutionContext): Promise<To
   });
 }
 
+const ANIM_SIZES: Record<string, [number, number]> = {
+  story: [1080, 1920], carre: [1080, 1080], portrait: [1080, 1350], paysage: [1920, 1080],
+};
+
+async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const [{ captureFrames }, { devServerUrl }, { encodeFrames }] = await Promise.all([
+    import('./browserCheck'), import('./devServer'), import('@/services/motion/encode'),
+  ]);
+  const url = typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot);
+  if (!url) return { output: "Indique url, ou lance d'abord un serveur avec start_dev_server (ex : npx -y serve -l 4321 .).", isError: true };
+  const format: 'mp4' | 'gif' = args.format === 'gif' ? 'gif' : 'mp4';
+  const [dw, dh] = ANIM_SIZES[String(args.size || 'story')] || ANIM_SIZES.story;
+  const width = Math.min(3840, Math.max(64, Math.round(Number(args.width) || dw)));
+  const height = Math.min(3840, Math.max(64, Math.round(Number(args.height) || dh)));
+  const durationMs = Math.min(20_000, Math.max(200, Number(args.duration_ms) || 4000));
+  const fps = Math.min(60, Math.max(1, Math.round(Number(args.fps) || (format === 'gif' ? 15 : 30))));
+  if ((durationMs / 1000) * fps > 900) return { output: 'Trop d\'images (900 au plus) : réduis la durée ou les fps.', isError: true };
+  let rel = String(args.output || `export/animation.${format}`).replace(/\\/g, '/');
+  if (!/\.(mp4|webm|gif)$/i.test(rel)) rel += `.${format}`;
+  const abs = resolvePath(ctx.projectRoot, rel);
+
+  const shot = await captureFrames({ url, width, height, durationMs, fps, signal: ctx.signal });
+  if (shot.error && !shot.frames.length) return { output: shot.error, isError: true };
+  let encoded;
+  try {
+    encoded = await encodeFrames(shot.frames, { fps, width, height, format });
+  } catch (e: any) {
+    return { output: `Assemblage de la vidéo impossible : ${e?.message || e}`, isError: true };
+  }
+  if (encoded.format === 'webm') { rel = rel.replace(/\.mp4$/i, '.webm'); }
+  const finalAbs = encoded.format === 'webm' ? abs.replace(/\.mp4$/i, '.webm') : abs;
+  const { writeBinaryFile, createDir } = await import('@tauri-apps/api/fs');
+  const parent = finalAbs.replace(/[\\/][^\\/]+$/, '');
+  await createDir(parent, { recursive: true }).catch(() => {});
+  const existed = await fileSystemService.exists(finalAbs);
+  await writeBinaryFile(finalAbs, encoded.bytes);
+  ctx.onFileChanged?.(rel, '', existed ? 'edit' : 'create');
+
+  // Quatre images clés pour que l'agent vérifie le résultat
+  const { imageToDataUrl } = await import('@/lib/imageAttach');
+  const picks = [0, Math.floor(shot.frames.length / 3), Math.floor((2 * shot.frames.length) / 3), shot.frames.length - 1]
+    .filter((n, i, all) => n >= 0 && all.indexOf(n) === i);
+  const images = await Promise.all(picks.map(async (n) => ({
+    label: `${encoded!.format.toUpperCase()}, image à ${Math.round((n * 1000) / fps)} ms`,
+    dataUrl: await imageToDataUrl(shot.frames[n]),
+  })));
+  const mo = (encoded.bytes.byteLength / 1048576).toFixed(1).replace('.', ',');
+  return {
+    output: `Vidéo créée : ${rel} (${encoded.format.toUpperCase()}, ${width}×${height}, ${(shot.frames.length / fps).toFixed(1)} s, ${fps} images/s, ${mo} Mo).` +
+      (encoded.format === 'webm' ? ' Ce système n\'encode pas le H.264 : vidéo enregistrée en WebM.' : '') +
+      (shot.realTime ? ' Attention : animations non figeables (canvas, requestAnimationFrame), capturées en temps réel : le rythme peut être irrégulier.' : '') +
+      (shot.error ? ` Enregistrement interrompu : ${shot.error}` : '') +
+      ' Les images clés te sont montrées : vérifie le début, le milieu et la fin, puis donne le chemin de la vidéo à l\'utilisateur (il peut l\'ouvrir dans l\'onglet Fichiers).',
+    images,
+  };
+}
+
 async function execPageAction(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const { pageAction } = await import('./browserCheck');
   return pageAction(args, ctx.signal);
@@ -741,6 +822,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   stop_dev_server: execStopDevServer,
   check_page: execCheckPage,
   capture_page: execCapturePage,
+  export_animation: execExportAnimation,
   page_action: execPageAction,
   run_command: execRunCommand,
   spawn_subagents: execSpawnSubagents,

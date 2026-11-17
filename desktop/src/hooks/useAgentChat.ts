@@ -101,7 +101,7 @@ function closeDanglingToolCalls(history: APIMessage[]): void {
   }
 }
 
-const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember']);
+const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember', 'export_animation']);
 const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents', 'start_dev_server']);
 const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'explore', 'dev_server_logs', 'web_search', 'read_url', 'capture_page']);
 /** Début du message qui montre au modèle les captures d'écran de capture_page */
@@ -328,6 +328,8 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
       return args.command || 'commande du projet';
     case 'check_page':
       return args.url || 'serveur du projet';
+    case 'export_animation':
+      return String(args.output || `export/animation.${args.format === 'gif' ? 'gif' : 'mp4'}`);
     case 'capture_page':
       return `${args.url || 'page ouverte'}${Array.isArray(args.frames) && args.frames.length ? ` · ${args.frames.length} instants` : ''}`;
     case 'page_action':

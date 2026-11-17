@@ -237,9 +237,15 @@ async function loadCapture(path: string): Promise<string> {
 }
 
 /** Fige toutes les animations CSS / Web Animations à l'instant `ms`. Retourne leur nombre. */
-const FREEZE_AT = (ms: number) =>
-  `() => { const a = document.getAnimations(); a.forEach((x) => { try { x.pause(); x.currentTime = ${Math.max(0, Math.round(ms))}; } catch (e) {} }); return a.length; }`;
-const RESUME = `() => { document.getAnimations().forEach((x) => { try { x.play(); } catch (e) {} }); return true; }`;
+const FREEZE_AT = (ms: number) => {
+  const t = Math.max(0, Math.round(ms));
+  return `() => { const a = document.getAnimations(); a.forEach((x) => { try { x.pause(); x.currentTime = ${t}; } catch (e) {} });
+    let n = a.length; const g = window.gsap;
+    if (g && g.globalTimeline) { try { g.globalTimeline.pause(); g.globalTimeline.time(${t / 1000}, false); n++; } catch (e) {} }
+    return n; }`;
+};
+const RESUME = `() => { document.getAnimations().forEach((x) => { try { x.play(); } catch (e) {} });
+  const g = window.gsap; if (g && g.globalTimeline) { try { g.globalTimeline.resume(); } catch (e) {} } return true; }`;
 
 /**
  * Captures d'une page : formats ordinateur et/ou téléphone ; pour une animation, plusieurs
@@ -299,7 +305,7 @@ export async function capturePage(opts: {
         const count = Number(text(await call('browser_evaluate', { function: FREEZE_AT(frames[0]) }, signal)).match(/### Result\s*\n\s*(\d+)/)?.[1] || 0);
         if (count === 0) {
           realTime = true;
-          notes.push("Aucune animation CSS ou Web Animations détectée : instants capturés en temps réel depuis le chargement (approximatifs).");
+          notes.push("Aucune animation CSS, Web Animations ou GSAP détectée : instants capturés en temps réel depuis le chargement (approximatifs).");
         }
       }
       if (realTime) {
@@ -335,4 +341,52 @@ export async function capturePage(opts: {
   } catch (e: any) {
     return { output: `Navigateur indisponible : ${e?.message || e}. Node.js doit être installé.`, isError: true, images: [] };
   }
+}
+
+
+/**
+ * Enregistre une animation image par image, au rythme exact (fps) : à chaque instant, toutes
+ * les animations CSS, Web Animations et GSAP sont figées puis capturées. Le rendu ne dépend donc
+ * pas de la vitesse de l'ordinateur. Les animations d'un autre type (canvas, three.js) ne sont
+ * pas figeables : elles sont alors capturées en temps réel, de façon approximative.
+ */
+export async function captureFrames(opts: {
+  url: string; width: number; height: number; durationMs: number; fps: number;
+  signal?: AbortSignal; onProgress?: (done: number, total: number) => void;
+}): Promise<{ frames: Blob[]; realTime: boolean; error?: string }> {
+  if (!isAllowedUrl(opts.url)) return { frames: [], realTime: false, error: `Adresse invalide : ${opts.url}` };
+  const nav = await call('browser_navigate', { url: opts.url }, opts.signal);
+  if (nav.isError) {
+    const msg = text(nav);
+    return { frames: [], realTime: false, error: /ERR_CONNECTION_REFUSED|ECONNREFUSED/i.test(msg)
+      ? `Rien ne répond à ${opts.url}. Lance d'abord start_dev_server.` : `Ouverture impossible : ${msg.slice(0, 400)}` };
+  }
+  await call('browser_resize', { width: opts.width, height: opts.height }, opts.signal);
+  const { readBinaryFile, removeFile } = await import('@tauri-apps/api/fs');
+  const dir = await outputDir();
+  const total = Math.max(1, Math.round((opts.durationMs / 1000) * opts.fps));
+  const count = Number(text(await call('browser_evaluate', { function: FREEZE_AT(0) }, opts.signal)).match(/### Result\s*\n\s*(\d+)/)?.[1] || 0);
+  const realTime = count === 0;
+  if (realTime) await call('browser_navigate', { url: opts.url }, opts.signal);
+  const frames: Blob[] = [];
+  const started = Date.now();
+  for (let i = 0; i < total; i++) {
+    if (opts.signal?.aborted) break;
+    const t = (i * 1000) / opts.fps;
+    if (realTime) {
+      const wait = t - (Date.now() - started);
+      if (wait > 20) await new Promise((r) => setTimeout(r, wait));
+    } else {
+      await call('browser_evaluate', { function: FREEZE_AT(t) }, opts.signal);
+    }
+    const file = `${dir}/frame-${Date.now()}-${i}.jpeg`;
+    const r = await call('browser_take_screenshot', { type: 'jpeg', filename: file }, opts.signal);
+    if (r.isError) return { frames, realTime, error: `Capture impossible à ${Math.round(t)} ms : ${text(r).slice(0, 300)}` };
+    const bytes = await readBinaryFile(file);
+    void removeFile(file).catch(() => {});
+    frames.push(new Blob([bytes as unknown as BlobPart], { type: 'image/jpeg' }));
+    opts.onProgress?.(i + 1, total);
+  }
+  if (!realTime) await call('browser_evaluate', { function: RESUME }, opts.signal);
+  return { frames, realTime };
 }

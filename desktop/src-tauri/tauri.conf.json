@@ -1671,7 +1671,7 @@
       }
     },
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:* https://anzar-api.issalanhub.com https://*.railway.app https://github.com https://api.github.com https://*.ingest.sentry.io https://*.sentry.io; frame-src asset: https://asset.localhost;"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' http://localhost:* ws://localhost:* wss://localhost:* https://anzar-api.issalanhub.com https://*.railway.app https://github.com https://api.github.com https://*.ingest.sentry.io https://*.sentry.io; frame-src asset: https://asset.localhost;"
     },
     "updater": {
       "active": true,
