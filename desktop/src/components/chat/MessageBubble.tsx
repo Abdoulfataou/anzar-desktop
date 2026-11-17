@@ -23,6 +23,8 @@ interface MessageBubbleProps {
 // à chaque render, et chaque flush de streaming re-parseait TOUTES les bulles).
 const MD_COMPONENTS_FULL = markdownComponents({ hideCodeActions: false });
 const MD_COMPONENTS_HIDE_ACTIONS = markdownComponents({ hideCodeActions: true });
+// Pendant le streaming : les widgets incomplets → shimmer (pas de code brut)
+const MD_COMPONENTS_STREAMING = markdownComponents({ hideCodeActions: true, streaming: true });
 
 function MessageBubbleImpl({ message, onCopy, onRegenerate, selectedProjectId = null, selectedProjectPath }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false);
@@ -93,7 +95,9 @@ function MessageBubbleImpl({ message, onCopy, onRegenerate, selectedProjectId = 
   }
 
   // Rendu Markdown partagé (chat, onglet Plan)
-  const mdComponents = isVibecoding ? MD_COMPONENTS_HIDE_ACTIONS : MD_COMPONENTS_FULL;
+  const mdComponents = message.isStreaming
+    ? MD_COMPONENTS_STREAMING
+    : isVibecoding ? MD_COMPONENTS_HIDE_ACTIONS : MD_COMPONENTS_FULL;
 
   // ===== RÉPONSE DE L'AGENT — à gauche, sans bulle, même colonne que l'utilisateur =====
   return (

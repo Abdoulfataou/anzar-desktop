@@ -38,6 +38,9 @@ const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 /** Signes d'une tâche difficile, avec leur poids. */
 const HARD: [RegExp, number, string][] = [
   [/\b(architecture|concevoir|conception|design system|schema de (base|donnees)|modelisation)\b/, 2, 'conception'],
+  // Création / motion design : jamais « question courte » — ces tâches produisent
+  // de gros contenus et exigent réflexion (le routage fast ruinait la qualité).
+  [/\b(cr[ée]{1,2}|cree|gen[ée]r\w*|fais[- ]moi|con[çc]ois|maquett\w*|publicit\w*|\bpub\b|animat\w*|vid[ée]o\w*|visuel\w*|affiche|logo|banni[èe]re|story|reel|motion|landing|mockup)\b/, 2, 'création'],
   [/\b(refactor\w*|refonte|reecri\w*|restructur\w*|migr\w*)\b/, 2, 'refonte'],
   [/\b(securite|faille|vulnerab\w*|injection|authentification|permissions?|chiffr\w*)\b/, 2, 'sécurité'],
   [/\b(performance|lent(e|eur)?|optimis\w*|fuite memoire|memory leak|concurren\w*|race condition|deadlock)\b/, 2, 'performance'],

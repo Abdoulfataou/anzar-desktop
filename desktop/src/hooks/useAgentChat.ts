@@ -706,6 +706,11 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               "Si la demande exige d'agir sur un projet de code, dis-le en une phrase et demande d'ouvrir le dossier " +
               "(bouton « Ouvrir un dossier » en haut de la conversation). Pour transformer un fichier (PDF, Excel…), " +
               "propose de le joindre : ANZAR ouvre alors l'espace ANZAR.\n\n" +
+              "CRÉATION DE VISUELS/VIDÉOS SANS PROJET : les blocs ```widget ne sont qu'un APERÇU rapide. " +
+              "Pour un vrai travail motion design (GSAP, capture, export MP4/GIF, sous-agents spécialisés), il te faut " +
+              "l'espace ANZAR : demande UNE fois à l'utilisateur de le joindre (n'importe quel fichier) ou d'ouvrir un dossier, " +
+              "puis attends sa réponse — ne produit pas des widgets par défaut quand la demande porte sur des pubs, animations " +
+              "ou vidéos destinées à être exportées.\n\n" +
               FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + '\n\n' + CONNECTORS_GUIDE + personal,
           };
           systemHead = (system.content as string).slice(0, (system.content as string).length - personal.length);

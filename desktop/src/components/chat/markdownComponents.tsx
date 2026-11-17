@@ -57,7 +57,7 @@ function linkifyNode(node: React.ReactNode, keyPrefix: string): React.ReactNode 
   return node;
 }
 
-export function markdownComponents({ hideCodeActions = false }: { hideCodeActions?: boolean } = {}): Components {
+export function markdownComponents({ hideCodeActions = false, streaming = false }: { hideCodeActions?: boolean; streaming?: boolean } = {}): Components {
   return {
   p: ({ children }) => (
     <p className="text-ui-base leading-[1.7] my-3 first:mt-0 last:mb-0">
@@ -100,7 +100,21 @@ export function markdownComponents({ hideCodeActions = false }: { hideCodeAction
     const visualKind = getVisualKind(language, raw);
     if (visualKind === 'mermaid') return <MermaidBlock code={raw} />;
     if (visualKind === 'svg') return <SvgBlock code={raw} />;
-    if (visualKind === 'widget') return <WidgetBlock code={raw} />;
+    if (visualKind === 'widget') {
+      // Pendant le streaming, la clôture ``` n'est pas encore arrivée : le bloc
+      // est incomplet. On affiche un shimmer au lieu du code brut/flickering,
+      // l'animation apparaît d'un coup propre à la clôture de la balise.
+      if (streaming) {
+        return (
+          <div className="my-3 rounded-xl border border-border-subtle bg-surface-default/60 p-4 flex items-center gap-3">
+            <span className="inline-block h-2 w-2 rounded-full bg-accent-secondary animate-pulse" />
+            <span className="shimmer h-3 rounded-full flex-1" />
+            <span className="text-ui-caption text-text-muted whitespace-nowrap">animation en préparation…</span>
+          </div>
+        );
+      }
+      return <WidgetBlock code={raw} />;
+    }
 
     return (
       <CodeBlock
