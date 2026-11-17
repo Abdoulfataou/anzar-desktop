@@ -9,7 +9,7 @@
  *
  * États : running (spinner), ok, error. Clic → déplie la sortie tronquée.
  */
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FileText, FilePlus, FileEdit, FileMinus, FolderOpen, Search,
   Terminal, ChevronRight, ListChecks, Wand2, CheckCircle2, AlertCircle, Loader2, Brain, GitBranch, Sparkles, Globe, Link2, ExternalLink,
@@ -17,10 +17,96 @@ import {
 import { cn } from '@/lib/utils';
 import type { ToolEvent } from '@/hooks/useAgentChat';
 import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
+import { useProjectStore } from '@/stores/projectStore';
 
 /** Ouvre un fichier du projet dans l'éditeur / la visionneuse média. */
 function openProjectFile(path: string) {
   window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: path }));
+}
+
+/** Ouvre le dossier contenant un fichier dans le Finder / Explorateur. */
+async function revealFolder(absPath: string) {
+  try {
+    const { open } = await import('@tauri-apps/api/shell');
+    await open(absPath.substring(0, absPath.lastIndexOf('/')));
+  } catch {
+    // allowlist Tauri : fallback silencieux, l'onglet interne reste disponible
+  }
+}
+
+/**
+ * Lecteur média INLINE sous la ligne d'outil (vidéo export/export_animation,
+ * visuel PNG) : la vidéo s'affiche dans la conversation, avec un lecteur et
+ * un bouton pour ouvrir le dossier — sans quitter le chat.
+ */
+function InlineExportMedia({ relPath }: { relPath: string }) {
+  const workspacePath = useProjectStore((s) => {
+    const p = s.projects.find((x) => x.id === s.activeProjectId);
+    return (p?.metadata?.localPath as string | undefined) || null;
+  });
+  const absPath = workspacePath ? `${workspacePath.replace(/[\\/]+$/, '')}/${relPath}` : relPath;
+  const name = relPath.split('/').pop() || relPath;
+  const isVideo = /\.(mp4|webm|mov|m4v)$/i.test(name);
+  const version = 0;
+
+  const [url, setSize] = useObjectUrl(absPath, name, version);
+  if (!url) {
+    return (
+      <div className="mt-1 mb-2 flex items-center gap-2 text-ui-caption text-text-muted">
+        <Loader2 size={12} className="animate-spin" /> Chargement de {name}…
+      </div>
+    );
+  }
+  return (
+    <div className="mt-1.5 mb-2 max-w-md rounded-lg border border-border-subtle overflow-hidden bg-bg-secondary/40">
+      {isVideo ? (
+        <video src={url} controls loop muted playsInline className="w-full max-h-72 bg-black" />
+      ) : (
+        <img src={url} alt={name} className="w-full max-h-72 object-contain bg-black/20" />
+      )}
+      <div className="flex items-center gap-2 px-2.5 py-1.5 border-t border-border-subtle">
+        <span className="text-ui-caption font-mono text-text-secondary truncate flex-1" title={relPath}>{name}</span>
+        <button
+          onClick={() => openProjectFile(relPath)}
+          className="text-[10.5px] px-2 py-0.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          Ouvrir
+        </button>
+        <button
+          onClick={() => void revealFolder(absPath)}
+          className="text-[10.5px] px-2 py-0.5 rounded-md text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors"
+        >
+          Dossier
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Charge un fichier binaire du projet en URL d'objet (image/vidéo), avec révocation. */
+function useObjectUrl(absPath: string, name: string, version: number): [string | null, number] {
+  const [state, setState] = useState<{ url: string | null; size: number }>({ url: null, size: 0 });
+  useEffect(() => {
+    let alive = true;
+    let objectUrl: string | null = null;
+    (async () => {
+      try {
+        const { readBinaryFile } = await import('@tauri-apps/api/fs');
+        const bytes = await readBinaryFile(absPath);
+        const ext = name.split('.').pop()?.toLowerCase() || '';
+        const MIME: Record<string, string> = {
+          png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp',
+          mp4: 'video/mp4', m4v: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+        };
+        objectUrl = URL.createObjectURL(new Blob([bytes as unknown as BlobPart], { type: MIME[ext] || 'application/octet-stream' }));
+        if (alive) setState({ url: objectUrl, size: bytes.byteLength });
+      } catch {
+        if (alive) setState({ url: null, size: 0 });
+      }
+    })();
+    return () => { alive = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [absPath, name, version]);
+  return [state.url, state.size];
 }
 
 const ICONS: Record<string, React.ReactNode> = {
@@ -154,6 +240,11 @@ export default function ToolCallBlock({ event }: { event: ToolEvent }) {
           />
         )}
       </button>
+
+      {/* Média exporté : lecteur INLINE dès la fin de l'export (vidéo/visuel) */}
+      {event.status === 'ok' && event.name === 'export_animation' && event.filePath && /\.(mp4|webm|mov|m4v|gif|png|jpe?g|webp)$/i.test(event.filePath) && (
+        <InlineExportMedia relPath={event.filePath} />
+      )}
 
       {/* Sortie dépliée */}
       {open && event.output && (
