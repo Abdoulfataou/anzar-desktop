@@ -110,6 +110,7 @@ export type ChatAttachmentKind =
   | 'text'
   | 'code'
   | 'image'
+  | 'audio'
   | 'binary';
 
 /**

@@ -62,6 +62,7 @@ function detectAttachmentKind(filename: string): ChatAttachmentKind {
   if (ext === 'csv') return 'csv';
   if (ext === 'tsv') return 'tsv';
   if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext)) return 'image';
+  if (['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'].includes(ext)) return 'audio';
   if (['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'html', 'css', 'json', 'yaml', 'yml', 'md', 'txt', 'sql', 'xml'].includes(ext)) return 'code';
   return 'binary';
 }
@@ -361,6 +362,10 @@ async function extractFromPath(filePath: string): Promise<ChatAttachment> {
   }
 
   try {
+    if (kind === 'audio') {
+      // Musique : rien à lire en texte ; une copie est placée dans le dossier de travail pour l'agent
+      return { id: generateId(), name, kind, excerpt: '[Fichier audio joint : utilisable comme musique de fond d\'une vidéo (export_animation, paramètre music).]' };
+    }
     if (kind === 'image') {
       const bytes = await readBinaryFile(filePath);
       const dataUrl = await imageToDataUrl(new Blob([bytes as unknown as BlobPart], { type: imageMimeFromName(name) }));
@@ -808,6 +813,7 @@ export default function ChatInput({
                           { name: 'Données', extensions: ['csv', 'tsv', 'xlsx', 'xls', 'json', 'xml'] },
                           { name: 'Code', extensions: ['ts', 'tsx', 'js', 'jsx', 'py', 'rs', 'go', 'java', 'c', 'cpp', 'h', 'html', 'css', 'yaml', 'sql'] },
                           { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'] },
+                          { name: 'Musique', extensions: ['mp3', 'm4a', 'aac', 'wav', 'ogg', 'flac'] },
                           { name: 'Tous', extensions: ['*'] },
                         ],
                       });

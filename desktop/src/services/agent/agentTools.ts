@@ -215,7 +215,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         "Exporte une page animée en VIDÉO MP4 (ou GIF) : la page est enregistrée image par image au rythme exact (fps) avec une horloge " +
         "virtuelle (CSS, GSAP, canvas, three.js, JavaScript : tout est déterministe), puis assemblée en vidéo dans l'app (rien à installer). Pas de son. " +
         "Formats : story (1080×1920, Reels, TikTok, statut WhatsApp), carre (1080×1080), portrait (1080×1350), paysage (1920×1080), " +
-        "ou width/height. Tu reçois ensuite 4 images clés de la vidéo pour la vérifier. Pour un fichier HTML du projet, donne file (aucun serveur nécessaire).",
+        "ou width/height. Musique de fond possible (music : fichier MP3, M4A ou WAV fourni par l'utilisateur ; découpée à la durée, en boucle si trop courte, avec fondus). " +
+        "Tu reçois ensuite 4 images clés de la vidéo pour la vérifier. Pour un fichier HTML du projet, donne file (aucun serveur nécessaire).",
       parameters: {
         type: 'object',
         properties: {
@@ -228,6 +229,10 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           duration_ms: { type: 'number', description: 'Durée en ms (défaut 4000 ; 60000 au plus en mp4, 20000 en gif). En png : instant capturé (défaut 1500)' },
           fps: { type: 'number', description: 'Images par seconde (défaut 30 en mp4, 15 en gif ; 60 au plus)' },
           output: { type: 'string', description: 'Fichier à créer dans le projet, ex : export/pub-boutique.mp4 (défaut : export/animation.mp4)' },
+          music: { type: 'string', description: "Musique de fond (MP3, M4A ou WAV) : chemin d'un fichier du projet, ex : .anzar/fichiers/musique.mp3 (mp4 seulement)" },
+          music_start_ms: { type: 'number', description: 'Où commencer dans la musique, en ms (défaut 0)' },
+          music_volume: { type: 'number', description: 'Volume de la musique, de 0 à 1 (défaut 1)' },
+          fade_out_ms: { type: 'number', description: 'Fondu de sortie de la musique, en ms (défaut 800)' },
         },
       },
     },
@@ -703,9 +708,34 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
   let rel = String(args.output || `export/animation.${format}`).replace(/\\/g, '/');
   if (!/\.(mp4|webm|gif)$/i.test(rel)) rel += `.${format}`;
 
+  // Musique de fond (fichier fourni par l'utilisateur), préparée à la durée exacte de la vidéo
+  let audio: AudioBuffer | undefined;
+  let musicNote = '';
+  if (typeof args.music === 'string' && args.music.trim()) {
+    if (format === 'gif') {
+      musicNote = 'Un GIF ne contient pas de son : la musique n\'a pas été ajoutée (exporte en mp4 pour l\'avoir).';
+    } else {
+      try {
+        const musicAbs = resolvePath(ctx.projectRoot, args.music);
+        const { readBinaryFile } = await import('@tauri-apps/api/fs');
+        const bytes = await readBinaryFile(musicAbs);
+        if (bytes.byteLength > 80 * 1048576) throw new Error('fichier audio trop lourd (80 Mo au plus)');
+        const { prepareSoundtrack } = await import('@/services/motion/audio');
+        audio = await prepareSoundtrack(bytes, {
+          durationSec: count / fps,
+          startMs: Number(args.music_start_ms) || 0,
+          volume: args.music_volume === undefined ? 1 : Number(args.music_volume),
+          fadeOutMs: args.fade_out_ms === undefined ? undefined : Number(args.fade_out_ms),
+        });
+      } catch (e: any) {
+        return { output: `Musique inutilisable (${args.music}) : ${e?.message || e}`, isError: true };
+      }
+    }
+  }
+
   let enc;
   try {
-    enc = await createStreamEncoder({ fps, width, height, format });
+    enc = await createStreamEncoder({ fps, width, height, format, audio });
   } catch (e: any) {
     return { output: `Assemblage de la vidéo impossible : ${e?.message || e}`, isError: true };
   }
@@ -775,6 +805,9 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
   return {
     output: `Vidéo créée : ${rel} (${encoded.format.toUpperCase()}, ${width}×${height}, ${(added / fps).toFixed(1)} s, ${fps} images/s, ${mo} Mo).` +
       (encoded.format === 'webm' ? ' Ce système n\'encode pas le H.264 : vidéo enregistrée en WebM.' : '') +
+      (audio && encoded.hasAudio ? ` Musique incluse (${args.music}).` : '') +
+      (encoded.audioNote ? ` Son : ${encoded.audioNote}.` : '') +
+      (musicNote ? ` ${musicNote}` : '') +
       (realTime ? ' Attention : animations non figeables, capturées en temps réel : le rythme peut être irrégulier.' : '') +
       (warning ? ` À signaler : ${warning}` : '') +
       ' Les images clés te sont montrées : vérifie le début, le milieu et la fin, puis donne le chemin de la vidéo à l\'utilisateur (il peut l\'ouvrir dans l\'onglet Fichiers).',

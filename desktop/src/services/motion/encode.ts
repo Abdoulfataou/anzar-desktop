@@ -7,7 +7,13 @@
  * puis oubliée, donc la mémoire reste faible quelle que soit la durée de la vidéo.
  */
 export type AnimFormat = 'mp4' | 'gif';
-export interface Encoded { bytes: Uint8Array; format: 'mp4' | 'webm' | 'gif' }
+export interface Encoded {
+  bytes: Uint8Array;
+  format: 'mp4' | 'webm' | 'gif';
+  /** Bande-son incluse ; sinon `audioNote` explique pourquoi */
+  hasAudio: boolean;
+  audioNote?: string;
+}
 export interface StreamEncoder {
   /** Format réel (webm si le H.264 n'est pas disponible) */
   format: 'mp4' | 'webm' | 'gif';
@@ -34,14 +40,26 @@ async function draw(ctx: CanvasRenderingContext2D, frame: Blob, width: number, h
   bitmap.close();
 }
 
-export async function createStreamEncoder(opts: { fps: number; width: number; height: number; format: AnimFormat }): Promise<StreamEncoder> {
+export interface EncoderOptions { fps: number; width: number; height: number; format: AnimFormat; audio?: AudioBuffer }
+
+export async function createStreamEncoder(opts: EncoderOptions): Promise<StreamEncoder> {
   return opts.format === 'gif' ? gifEncoder(opts) : videoEncoder(opts);
+}
+
+let aacPolyfill: Promise<void> | null = null;
+/** AAC : encodeur du système si possible, sinon encodeur WebAssembly de secours (chargé une fois). */
+async function ensureAac(mb: typeof import('mediabunny'), channels: number, sampleRate: number): Promise<boolean> {
+  const cfg = { numberOfChannels: channels, sampleRate, bitrate: 128_000 };
+  if (await mb.canEncodeAudio('aac', cfg)) return true;
+  aacPolyfill ??= import('@mediabunny/aac-encoder').then((m) => m.registerAacEncoder());
+  await aacPolyfill;
+  return mb.canEncodeAudio('aac', cfg);
 }
 
 /** Toutes les images d'un coup (petites vidéos, navigateur intégré en secours). */
 export async function encodeFrames(
   frames: Blob[],
-  opts: { fps: number; width: number; height: number; format: AnimFormat; onProgress?: (done: number) => void },
+  opts: EncoderOptions & { onProgress?: (done: number) => void },
 ): Promise<Encoded> {
   if (!frames.length) throw new Error('aucune image à assembler');
   const enc = await createStreamEncoder(opts);
@@ -52,7 +70,7 @@ export async function encodeFrames(
   return enc.finish();
 }
 
-async function videoEncoder(opts: { fps: number; width: number; height: number }): Promise<StreamEncoder> {
+async function videoEncoder(opts: EncoderOptions): Promise<StreamEncoder> {
   const mb = await import('mediabunny');
   const width = even(opts.width);
   const height = even(opts.height);
@@ -72,6 +90,22 @@ async function videoEncoder(opts: { fps: number; width: number; height: number }
   // Qualité moyenne : nette sur téléphone, et un fichier assez léger pour WhatsApp
   const source = new mb.CanvasSource(canvas, { codec, bitrate: mb.QUALITY_MEDIUM, keyFrameInterval: 2 });
   output.addVideoTrack(source, { frameRate: opts.fps });
+
+  // Bande-son : AAC dans le MP4, Opus dans le WebM de secours
+  let audioSource: InstanceType<typeof mb.AudioBufferSource> | null = null;
+  let audioNote: string | undefined;
+  if (opts.audio) {
+    const a = opts.audio;
+    const ok = format === 'mp4'
+      ? await ensureAac(mb, a.numberOfChannels, a.sampleRate).catch(() => false)
+      : await mb.canEncodeAudio('opus', { numberOfChannels: a.numberOfChannels, sampleRate: a.sampleRate, bitrate: 128_000 });
+    if (ok) {
+      audioSource = new mb.AudioBufferSource({ codec: format === 'mp4' ? 'aac' : 'opus', bitrate: 128_000 });
+      output.addAudioTrack(audioSource);
+    } else {
+      audioNote = "ce système ne sait pas encoder le son : vidéo enregistrée sans la musique";
+    }
+  }
   await output.start();
   let n = 0;
   return {
@@ -83,14 +117,19 @@ async function videoEncoder(opts: { fps: number; width: number; height: number }
     },
     async finish() {
       if (!n) throw new Error('aucune image à assembler');
+      if (audioSource && opts.audio) {
+        const { trimBuffer } = await import('./audio');
+        await audioSource.add(trimBuffer(opts.audio, n / opts.fps));
+        audioSource.close();
+      }
       await output.finalize();
       if (!target.buffer) throw new Error('vidéo vide');
-      return { bytes: new Uint8Array(target.buffer), format };
+      return { bytes: new Uint8Array(target.buffer), format, hasAudio: !!audioSource, audioNote };
     },
   };
 }
 
-async function gifEncoder(opts: { fps: number; width: number; height: number }): Promise<StreamEncoder> {
+async function gifEncoder(opts: EncoderOptions): Promise<StreamEncoder> {
   const { GIFEncoder, quantize, applyPalette } = await import('gifenc');
   // Un GIF lourd ne se partage pas : largeur bornée à 720 px
   const scale = Math.min(1, 720 / opts.width);
@@ -112,7 +151,7 @@ async function gifEncoder(opts: { fps: number; width: number; height: number }):
     async finish() {
       if (!n) throw new Error('aucune image à assembler');
       gif.finish();
-      return { bytes: gif.bytes(), format: 'gif' };
+      return { bytes: gif.bytes(), format: 'gif', hasAudio: false, audioNote: opts.audio ? 'un GIF ne contient pas de son' : undefined };
     },
   };
 }

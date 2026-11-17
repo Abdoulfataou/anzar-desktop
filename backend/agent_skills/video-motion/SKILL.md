@@ -35,9 +35,14 @@ Le rendu utilise une horloge virtuelle : CSS, GSAP, canvas, three.js et le JavaS
 
 ## 4. Le son
 
-`export_animation` produit une vidéo **sans son**. Dis-le à l'utilisateur et propose-lui d'ajouter la musique ou la voix dans CapCut ou directement dans TikTok, Instagram ou WhatsApp, qui proposent des musiques libres de droits.
-
-Pour une vidéo longue avec voix off et musique intégrées, Remotion (vidéos en React, rendu MP4 par `npx remotion render`) est l'outil adapté. Préviens alors l'utilisateur que sa licence est gratuite pour les particuliers et les très petites entreprises, mais payante au-delà.
+- **Musique fournie par l'utilisateur** : s'il a joint un fichier audio (MP3, M4A ou WAV), passe son chemin dans `music` à `export_animation` (le chemin de la copie, indiqué dans la pièce jointe, par exemple `.anzar/fichiers/musique.mp3` ou `fichiers/musique.mp3`). La musique est coupée à la durée de la vidéo, rejouée en boucle si elle est trop courte, avec un léger fondu d'entrée et un fondu de sortie (`fade_out_ms`, 800 ms par défaut).
+  - `music_start_ms` pour commencer au bon moment (sauter une introduction lente, démarrer sur le refrain).
+  - `music_volume` (0 à 1) si la musique est trop forte.
+  - Cale les moments forts de l'animation (apparition du prix, du logo) sur les temps forts de la musique quand l'utilisateur te les indique.
+- **Sans fichier audio** : propose à l'utilisateur d'en joindre un, ou d'ajouter la musique ensuite dans CapCut, TikTok, Instagram ou WhatsApp, qui proposent des musiques libres de droits.
+- **Droits** : n'utilise que de la musique que l'utilisateur a le droit d'utiliser (achetée, libre de droits, ou créée par lui). Rappelle-le en une phrase si la vidéo est destinée à une publicité.
+- Un GIF ne contient jamais de son.
+- Pour une voix off, Remotion (vidéos en React, rendu MP4 par `npx remotion render`) est l'outil adapté. Préviens alors l'utilisateur que sa licence est gratuite pour les particuliers et les très petites entreprises, mais payante au-delà.
 
 ## 5. Avant de livrer
 
