@@ -78,7 +78,7 @@ pub fn path_with_node(base: String) -> String {
 
 /// Recalcule le PATH du processus (au démarrage et après une installation).
 pub fn apply_path() {
-    std::env::set_var("PATH", path_with_node(crate::mcp::enriched_path()));
+    std::env::set_var("PATH", crate::programs::path_with_git(path_with_node(crate::mcp::enriched_path())));
 }
 
 #[derive(Serialize)]

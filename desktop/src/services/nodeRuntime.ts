@@ -55,6 +55,10 @@ async function confirmDownload(reason?: string): Promise<boolean> {
   }
 }
 
+export async function installNodeNow(): Promise<{ ok: boolean; version?: string; error?: string }> {
+  return install();
+}
+
 async function install(): Promise<{ ok: boolean; version?: string; error?: string }> {
   const { listen } = await import('@tauri-apps/api/event');
   const id = toast.loading('Téléchargement de Node.js…');

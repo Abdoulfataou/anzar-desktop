@@ -287,9 +287,9 @@ function withAttachments(content: string, attachments: ChatAttachment[]): string
     const label = `[${a.ref}] ${a.name} (${a.kind})` + (a.projectCopy
       ? `\nCopie du fichier dans ton dossier de travail : \`${a.projectCopy}\`. Pour le transformer (découper, fusionner, `
         + `convertir, extraire des pages, redimensionner…), écris un script python ou node qui lit ce fichier et `
-        + `écris les résultats dans le même dossier, sans jamais écraser l'original. Bibliothèques utiles : pypdf ou `
-        + `pdf-lib (PDF), openpyxl (Excel), python-docx (Word), Pillow (images). Si python ou node manque, explique `
-        + `à l'utilisateur comment l'installer. Donne-lui à la fin le chemin des fichiers produits.`
+        + `écris les résultats dans le même dossier, sans jamais écraser l'original. Préfère Node.js, toujours disponible `
+        + `avec ANZAR : installe avec npm dans le dossier de travail pdf-lib (PDF), exceljs (Excel), docx (Word) ou sharp (images), `
+        + `puis lance un script .mjs avec node. Python seulement s'il est déjà installé. Donne à la fin le chemin des fichiers produits.`
       : '');
     if (a.kind === 'image') {
       return a.dataUrl

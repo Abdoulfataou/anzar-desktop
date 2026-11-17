@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Settings2, Palette, User, BarChart3, Database, Info, Monitor, Moon, Sun,
   Zap, Sparkles, Brain, LogOut, Download, Upload, Trash2, ExternalLink, Mail, MessageCircle, Copy, Wallet,
+  Wrench, CheckCircle2, XCircle, RefreshCw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, isTauri } from '@/lib/utils';
@@ -25,8 +26,10 @@ import RechargeModal from '@/components/billing/RechargeModal';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import type { Conversation, Project } from '@/types';
 import type { PermissionMode } from '@/hooks/useAgentChat';
+import { installAppleDevTools, installCommand, installGitNow, platform, programsStatus, type ProgramInfo } from '@/services/programs';
+import { installNodeNow } from '@/services/nodeRuntime';
 
-type SectionId = 'general' | 'appearance' | 'personalization' | 'account' | 'usage' | 'data' | 'about';
+type SectionId = 'general' | 'appearance' | 'personalization' | 'programs' | 'account' | 'usage' | 'data' | 'about';
 
 const GROUPS: { title: string; sections: { id: SectionId; label: string; icon: React.ElementType }[] }[] = [
   {
@@ -38,7 +41,10 @@ const GROUPS: { title: string; sections: { id: SectionId; label: string; icon: R
   },
   {
     title: 'Agent',
-    sections: [{ id: 'personalization', label: 'Personnalisation', icon: User }],
+    sections: [
+      { id: 'personalization', label: 'Personnalisation', icon: User },
+      { id: 'programs', label: 'Programmes', icon: Wrench },
+    ],
   },
   {
     title: 'Compte et données',
@@ -215,6 +221,7 @@ export default function SettingsPage() {
           {section === 'general' && <GeneralSection />}
           {section === 'appearance' && <AppearanceSection />}
           {section === 'personalization' && <PersonalizationSection />}
+          {section === 'programs' && <ProgramsSection />}
           {section === 'account' && <AccountSection confirm={confirm} />}
           {section === 'usage' && <UsageSection />}
           {section === 'data' && <DataSection confirm={confirm} />}
@@ -515,6 +522,89 @@ function DataSection({ confirm }: { confirm: Confirm }) {
           <button onClick={() => void clearAll()} disabled={taskCount === 0} className={btnDanger}><Trash2 size={14} /> Tout supprimer</button>
         </Row>
       </Card>
+    </div>
+  );
+}
+
+/** Programmes utilisés par l'agent : état, installation par ANZAR ou commande à copier. */
+function ProgramsSection() {
+  const [list, setList] = useState<ProgramInfo[] | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const reload = async () => { setList(null); setList(await programsStatus(true)); };
+  useEffect(() => { void reload(); }, []);
+  const p = platform();
+
+  const install = async (prog: ProgramInfo) => {
+    setBusy(prog.id);
+    try {
+      if (prog.id === 'node') await installNodeNow();
+      else if (prog.id === 'git' && p === 'windows') await installGitNow();
+      else if ((prog.id === 'git' || prog.id === 'python') && p === 'mac') await installAppleDevTools();
+    } finally {
+      setBusy(null);
+      await reload();
+    }
+  };
+  const copy = async (text: string) => {
+    try { await navigator.clipboard.writeText(text); toast.success('Commande copiée'); } catch { toast.error('Copie impossible'); }
+  };
+
+  if (!isTauri()) return <p className="text-ui-sm text-text-secondary">Disponible dans l'app installée.</p>;
+  if (!list) return <p className="text-ui-sm text-text-secondary">Vérification des programmes…</p>;
+  if (!list.length) return <p className="text-ui-sm text-text-secondary">Vérification impossible.</p>;
+
+  const essential = list.filter((x) => ['node', 'git', 'python', 'chrome'].includes(x.id));
+  const others = list.filter((x) => !['node', 'git', 'python', 'chrome'].includes(x.id));
+  const row = (prog: ProgramInfo) => {
+    const ok = prog.status === 'ok';
+    const { command, where, link } = installCommand(prog.id, p);
+    const canAuto = !ok && (prog.id === 'node' || (prog.id === 'git' && p === 'windows'));
+    const canApple = !ok && p === 'mac' && (prog.id === 'git' || prog.id === 'python');
+    const description = ok
+      ? <>{prog.version}{prog.note ? <span className="text-text-muted"> · {prog.note}</span> : null}</>
+      : prog.id === 'python'
+        ? "Facultatif : sans Python, l'agent traite les PDF, Excel et images avec Node.js."
+        : prog.id === 'chrome'
+          ? 'Téléchargé automatiquement au premier besoin.'
+          : command ? <>Pour l'installer, dans {where} : <code className="font-mono text-ui-sm">{command}</code></> : "Non installé : télécharge-le sur son site officiel.";
+    return (
+      <Row key={prog.id} label={prog.name} description={description}>
+        <div className="flex items-center gap-2">
+          {ok
+            ? <CheckCircle2 size={16} className="text-accent-success" aria-label="Installé" />
+            : <XCircle size={16} className="text-text-muted" aria-label="Non installé" />}
+          {canAuto && (
+            <button onClick={() => void install(prog)} disabled={busy !== null} className={btnPrimary}>
+              {busy === prog.id ? 'Installation…' : 'Installer'}
+            </button>
+          )}
+          {canApple && (
+            <button onClick={() => void install(prog)} disabled={busy !== null} className={btn}>
+              Outils Apple
+            </button>
+          )}
+          {!ok && !canAuto && command && (
+            <button onClick={() => void copy(command)} className={btn}><Copy size={14} /> Copier</button>
+          )}
+          {!ok && !canAuto && !command && link && prog.id !== 'chrome' && (
+            <button onClick={() => openExternalUrl(link)} className={btn}><ExternalLink size={14} /> Site officiel</button>
+          )}
+        </div>
+      </Row>
+    );
+  };
+  return (
+    <div className="space-y-6">
+      <p className="text-ui-sm text-text-secondary leading-relaxed">
+        Les outils de l'agent (vidéos, captures, vérification du code, connecteurs, historique Git) s'appuient sur ces programmes.
+        Node.js et Git (sur Windows) sont téléchargés par ANZAR dans ses propres fichiers, sans rien installer sur le système.
+      </p>
+      <Card>{essential.map(row)}</Card>
+      <div>
+        <div className="mb-2 text-ui-sm font-medium text-text-secondary">Pour les développeurs</div>
+        <Card>{others.map(row)}</Card>
+      </div>
+      <button onClick={() => void reload()} className={btn}><RefreshCw size={14} /> Revérifier</button>
     </div>
   );
 }

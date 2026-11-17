@@ -133,6 +133,7 @@ const BLOCKED_PATTERNS = [
 /** Validate a command is safe before execution */
 import { isPathWithin } from '@/lib/pathGuard';
 import { ensureNode, manualNodeHelp, needsNode } from '@/services/nodeRuntime';
+import { checkPython, ensureGit, isPython } from '@/services/programs';
 
 function validateCommand(command: string): { safe: boolean; reason?: string } {
   // Block empty commands
@@ -238,6 +239,24 @@ function validatePath(basePath: string, targetPath: string): boolean {
 }
 
 /** Programme introuvable : message clair, pour que l'agent ne conclue pas qu'il est absent du projet. */
+/** Programme manquant (Node, Git, Python) : installation proposée ou explication. null si tout va bien. */
+async function programGate(program: string, interactive = true): Promise<string | null> {
+  const p = program.trim().split(/[\s/\\]+/).pop()?.toLowerCase().replace(/\.(exe|cmd)$/, '') || '';
+  if (needsNode(p)) {
+    const node = await ensureNode({ reason: `lancer « ${p} »`, interactive });
+    return node.ok ? null : node.message || 'Node.js est nécessaire.';
+  }
+  if (p === 'git') {
+    const git = await ensureGit('cette action', interactive);
+    return git.ok ? null : git.message || 'Git est nécessaire.';
+  }
+  if (isPython(p)) {
+    const py = await checkPython(p);
+    return py.ok ? null : py.message || 'Python est nécessaire.';
+  }
+  return null;
+}
+
 function explainSpawnError(error: any, command: string): string {
   const raw = String(error?.message || error || '');
   const program = command.trim().split(/\s+/)[0] || 'programme';
@@ -325,14 +344,12 @@ class TerminalService {
     const startTime = Date.now();
     options.onProcessId?.(processId);
 
-    // Node.js absent : proposé au téléchargement, sinon explication et commande à copier
-    if (needsNode(command.trim().split(/\s+/)[0] || '')) {
-      const node = await ensureNode({ reason: `lancer « ${command.trim().split(/\s+/)[0]} »` });
-      if (!node.ok) {
-        this.emitOutput(processId, 'error', node.message || 'Node.js est nécessaire.');
-        this.eventBus.emit({ type: 'process-error', processId, error: node.message || 'Node.js est nécessaire.' });
-        return processId;
-      }
+    // Programme manquant (Node, Git, Python) : installation proposée, sinon explication et commande à copier
+    const missing = await programGate(command.trim().split(/\s+/)[0] || '');
+    if (missing) {
+      this.emitOutput(processId, 'error', missing);
+      this.eventBus.emit({ type: 'process-error', processId, error: missing });
+      return processId;
     }
 
     // ─── SECURITY: Validate command before execution ───
@@ -543,11 +560,8 @@ class TerminalService {
     options: { cwd?: string; timeout?: number; silent?: boolean } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
-    const program = command.trim().split(/\s+/)[0] || '';
-    if (needsNode(program)) {
-      const node = await ensureNode({ reason: `lancer « ${program} »` });
-      if (!node.ok) return { success: false, exitCode: 1, stdout: '', stderr: node.message || 'Node.js est nécessaire.', durationMs: 0 };
-    }
+    const missing = await programGate(command.trim().split(/\s+/)[0] || '');
+    if (missing) return { success: false, exitCode: 1, stdout: '', stderr: missing, durationMs: 0 };
 
     // ─── SECURITY: Validate command ───
     const validation = validateCommand(command);
@@ -636,10 +650,9 @@ class TerminalService {
     options: { cwd?: string; timeout?: number } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
-    if (needsNode(program)) {
-      const node = await ensureNode({ reason: `lancer « ${program} »` });
-      if (!node.ok) return { success: false, exitCode: 1, stdout: '', stderr: node.message || 'Node.js est nécessaire.', durationMs: 0 };
-    }
+    // Appelé par l'app elle-même (panneau Git, tickets) : jamais de fenêtre d'installation ici
+    const missing = await programGate(program, false);
+    if (missing) return { success: false, exitCode: 1, stdout: '', stderr: missing, durationMs: 0 };
     const base = COMMAND_NAME_MAP[program.toLowerCase()];
     const fail = (stderr: string): CommandResult => ({ success: false, exitCode: 1, stdout: '', stderr, durationMs: Date.now() - startTime });
     if (!base) return fail('⛔ Commande non autorisée (exécutable non allowlisté)');

@@ -3,6 +3,7 @@
 
 mod mcp;
 mod node_runtime;
+mod programs;
 
 fn main() {
     // Une app lancée depuis le Finder ou le Dock ne reçoit pas le PATH du terminal
@@ -26,7 +27,7 @@ fn main() {
         )
         // Serveurs MCP : transport stdio et HTTP (le protocole est géré par l'app)
         .manage(mcp::McpState::default())
-        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space, node_runtime::node_status, node_runtime::node_install])
+        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
