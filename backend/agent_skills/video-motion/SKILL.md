@@ -13,7 +13,7 @@ On construit la vidéo comme une page web animée aux dimensions exactes, puis `
 - **0 à 1,5 s : l'accroche.** Ce qui arrête le défilement : un prix, une question, un produit en gros plan, un mouvement fort. Sur TikTok, tout se joue ici.
 - **Le cœur : 1 à 3 idées,** une par plan, 1,5 à 3 s chacune. Un texte court par plan (6 mots au plus), lisible à environ 3 mots par seconde.
 - **La fin : l'action et la marque,** au moins 1,5 s immobile : logo, numéro WhatsApp, « Commande maintenant ».
-- Durée totale : 6 à 15 s pour une pub de réseau social. Une boucle de 4 à 8 s pour un statut ou un logo animé.
+- Durée totale : 6 à 15 s pour une pub de réseau social. Une boucle de 4 à 8 s pour un statut ou un logo animé. Jusqu'à 60 s pour une présentation de produit ou un statut long (`export_animation` accepte 60 s au plus en MP4, 20 s en GIF). Compte environ 2 minutes de production pour 60 s ; préviens l'utilisateur pour une vidéo longue.
 
 ## 2. Construire la page
 

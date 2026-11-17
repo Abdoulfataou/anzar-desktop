@@ -41,7 +41,14 @@ export interface RenderResult {
 
 const join = (a: string, b: string) => `${a.replace(/[\\/]+$/, '')}/${b}`;
 
-async function renderOnce(job: RenderJob, opts: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void }): Promise<RenderResult> {
+export interface RenderOptions {
+  signal?: AbortSignal;
+  onProgress?: (done: number, total: number) => void;
+  /** Appelé pour chaque image dès qu'elle est prête, dans l'ordre (assemblage au fur et à mesure) */
+  onFrame?: (index: number, file: string) => void;
+}
+
+async function renderOnce(job: RenderJob, opts: RenderOptions): Promise<RenderResult> {
   const { appDataDir } = await import('@tauri-apps/api/path');
   const { createDir, writeTextFile } = await import('@tauri-apps/api/fs');
   const base = join(await appDataDir(), 'render');
@@ -77,6 +84,7 @@ async function renderOnce(job: RenderJob, opts: { signal?: AbortSignal; onProgre
         try { msg = JSON.parse(e.payload.line); } catch { return; }
         if (msg.type === 'frame' && typeof msg.file === 'string') {
           files[msg.i] = msg.file;
+          opts.onFrame?.(msg.i, msg.file);
           opts.onProgress?.(files.filter(Boolean).length, job.times.length);
         } else if (msg.type === 'log') {
           if (pageErrors.length < 10) pageErrors.push(String(msg.message));
@@ -110,7 +118,7 @@ async function renderOnce(job: RenderJob, opts: { signal?: AbortSignal; onProgre
 }
 
 /** Rend les images demandées ; télécharge Chromium une fois si aucun navigateur n'est installé. */
-export async function renderFrames(job: RenderJob, opts: { signal?: AbortSignal; onProgress?: (done: number, total: number) => void } = {}): Promise<RenderResult> {
+export async function renderFrames(job: RenderJob, opts: RenderOptions = {}): Promise<RenderResult> {
   const first = await renderOnce(job, opts);
   if (first.code !== 'NO_BROWSER') return first;
   await cleanupRender(first);

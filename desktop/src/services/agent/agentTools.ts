@@ -225,7 +225,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           size: { type: 'string', enum: ['story', 'carre', 'portrait', 'paysage', 'a4'], description: 'Format (défaut : story ; a4 = affiche 2480×3508)' },
           width: { type: 'number', description: 'Largeur en px (remplace size)' },
           height: { type: 'number', description: 'Hauteur en px (remplace size)' },
-          duration_ms: { type: 'number', description: 'Durée en ms (défaut 4000, 20000 au plus). En png : instant capturé (défaut 1500)' },
+          duration_ms: { type: 'number', description: 'Durée en ms (défaut 4000 ; 60000 au plus en mp4, 20000 en gif). En png : instant capturé (défaut 1500)' },
           fps: { type: 'number', description: 'Images par seconde (défaut 30 en mp4, 15 en gif ; 60 au plus)' },
           output: { type: 'string', description: 'Fichier à créer dans le projet, ex : export/pub-boutique.mp4 (défaut : export/animation.mp4)' },
         },
@@ -684,73 +684,99 @@ const ANIM_SIZES: Record<string, [number, number]> = {
 };
 
 async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const [{ captureFrames }, { devServerUrl }, { encodeFrames }] = await Promise.all([
-    import('./browserCheck'), import('./devServer'), import('@/services/motion/encode'),
+  const [{ captureFrames }, { devServerUrl }, { createStreamEncoder }, renderer] = await Promise.all([
+    import('./browserCheck'), import('./devServer'), import('@/services/motion/encode'), import('@/services/motion/renderer'),
   ]);
   const file = typeof args.file === 'string' && args.file.trim() ? resolvePath(ctx.projectRoot, args.file) : undefined;
   const url = file ? undefined : typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot);
   if (!url && !file) return { output: 'Indique file (fichier HTML du projet) ou url.', isError: true };
-  const format: 'mp4' | 'gif' = args.format === 'gif' ? 'gif' : 'mp4';
-  // (png : image fixe, traitée par exportStill)
   const [dw, dh] = ANIM_SIZES[String(args.size || 'story')] || ANIM_SIZES.story;
   const width = Math.min(3840, Math.max(64, Math.round(Number(args.width) || dw)));
   const height = Math.min(3840, Math.max(64, Math.round(Number(args.height) || dh)));
-  const durationMs = Math.min(20_000, Math.max(200, Number(args.duration_ms) || 4000));
-  const fps = Math.min(60, Math.max(1, Math.round(Number(args.fps) || (format === 'gif' ? 15 : 30))));
   if (args.format === 'png') return exportStill({ url, file, width, height, at: Number(args.duration_ms) || 1500, output: args.output, ctx });
-  if ((durationMs / 1000) * fps > 900) return { output: 'Trop d\'images (900 au plus) : réduis la durée ou les fps.', isError: true };
+  const format: 'mp4' | 'gif' = args.format === 'gif' ? 'gif' : 'mp4';
+  const maxMs = format === 'gif' ? 20_000 : 60_000;
+  const durationMs = Math.min(maxMs, Math.max(200, Number(args.duration_ms) || 4000));
+  const fps = Math.min(60, Math.max(1, Math.round(Number(args.fps) || (format === 'gif' ? 15 : 30))));
+  const count = Math.max(1, Math.round((durationMs / 1000) * fps));
+  if (count > 1800) return { output: `Trop d'images (${count}, 1800 au plus) : réduis la durée ou les fps (60 s à 30 images/s au plus).`, isError: true };
   let rel = String(args.output || `export/animation.${format}`).replace(/\\/g, '/');
   if (!/\.(mp4|webm|gif)$/i.test(rel)) rel += `.${format}`;
-  const abs = resolvePath(ctx.projectRoot, rel);
 
-  // Moteur de rendu (horloge virtuelle, rapide) ; navigateur intégré en secours pour une url
-  const { renderFrames, readFrame, cleanupRender, isPageError } = await import('@/services/motion/renderer');
-  const count = Math.max(1, Math.round((durationMs / 1000) * fps));
-  const times = Array.from({ length: count }, (_, i) => (i * 1000) / fps);
-  let shot: { frames: Blob[]; realTime: boolean; error?: string };
-  const r = await renderFrames({ url, file, root: ctx.projectRoot, width, height, times }, { signal: ctx.signal });
+  let enc;
   try {
-    if (!r.error) {
-      shot = { frames: await Promise.all(r.files.filter(Boolean).map(readFrame)), realTime: false };
-      if (r.pageErrors.length) shot.error = `erreurs JavaScript de la page : ${r.pageErrors.slice(0, 3).join(' | ')}`;
-    } else if (isPageError(r.code) || file || !url) {
-      return { output: r.error, isError: true };
-    } else {
-      shot = await captureFrames({ url, width, height, durationMs, fps, signal: ctx.signal });
-    }
-  } finally {
-    await cleanupRender(r);
-  }
-  if (shot.error && !shot.frames.length) return { output: shot.error, isError: true };
-  let encoded;
-  try {
-    encoded = await encodeFrames(shot.frames, { fps, width, height, format });
+    enc = await createStreamEncoder({ fps, width, height, format });
   } catch (e: any) {
     return { output: `Assemblage de la vidéo impossible : ${e?.message || e}`, isError: true };
   }
-  if (encoded.format === 'webm') { rel = rel.replace(/\.mp4$/i, '.webm'); }
-  const finalAbs = encoded.format === 'webm' ? abs.replace(/\.mp4$/i, '.webm') : abs;
-  const { writeBinaryFile, createDir } = await import('@tauri-apps/api/fs');
-  const parent = finalAbs.replace(/[\\/][^\\/]+$/, '');
-  await createDir(parent, { recursive: true }).catch(() => {});
-  const existed = await fileSystemService.exists(finalAbs);
-  await writeBinaryFile(finalAbs, encoded.bytes);
+  // Assemblage au fur et à mesure : chaque image est encodée puis oubliée (mémoire faible, même à 60 s)
+  const picks = new Set([0, Math.floor(count / 3), Math.floor((2 * count) / 3), count - 1]);
+  const keyFrames = new Map<number, Blob>();
+  let added = 0;
+  let encodeError = '';
+  let chain: Promise<void> = Promise.resolve();
+  const { removeFile, writeBinaryFile, createDir } = await import('@tauri-apps/api/fs');
+  const addFrame = (i: number, blob: Blob) => {
+    if (picks.has(i)) keyFrames.set(i, blob);
+    return enc.add(blob).then(() => { added++; });
+  };
+
+  let realTime = false;
+  let warning = '';
+  const times = Array.from({ length: count }, (_, i) => (i * 1000) / fps);
+  const r = await renderer.renderFrames({ url, file, root: ctx.projectRoot, width, height, times }, {
+    signal: ctx.signal,
+    onFrame: (i, path) => {
+      chain = chain.then(async () => {
+        if (encodeError) return;
+        await addFrame(i, await renderer.readFrame(path));
+        void removeFile(path).catch(() => {});
+      }).catch((e: any) => { encodeError = String(e?.message || e); });
+    },
+  });
+  await chain;
+  await renderer.cleanupRender(r);
+  if (r.pageErrors.length) warning = `erreurs JavaScript de la page : ${r.pageErrors.slice(0, 3).join(' | ')}`;
+  if (r.error) {
+    if (renderer.isPageError(r.code) || file || !url || r.code === 'ABORT') return { output: r.error, isError: true };
+    // Moteur indisponible : navigateur intégré en secours (plus lent, 20 s au plus)
+    if (durationMs > 20_000) return { output: `${r.error}\nSans le moteur de rendu, 20 s au plus : réduis la durée.`, isError: true };
+    const shot = await captureFrames({ url, width, height, durationMs, fps, signal: ctx.signal });
+    if (shot.error && !shot.frames.length) return { output: shot.error, isError: true };
+    realTime = shot.realTime;
+    if (shot.error) warning = shot.error;
+    for (let i = 0; i < shot.frames.length && !encodeError; i++) {
+      try { await addFrame(i, shot.frames[i]); } catch (e: any) { encodeError = String(e?.message || e); }
+    }
+  }
+  if (encodeError) return { output: `Assemblage de la vidéo impossible : ${encodeError}`, isError: true };
+  if (!added) return { output: 'Aucune image enregistrée.', isError: true };
+
+  let encoded;
+  try {
+    encoded = await enc.finish();
+  } catch (e: any) {
+    return { output: `Assemblage de la vidéo impossible : ${e?.message || e}`, isError: true };
+  }
+  if (encoded.format === 'webm') rel = rel.replace(/\.mp4$/i, '.webm');
+  const abs = resolvePath(ctx.projectRoot, rel);
+  await createDir(abs.replace(/[\\/][^\\/]+$/, ''), { recursive: true }).catch(() => {});
+  const existed = await fileSystemService.exists(abs);
+  await writeBinaryFile(abs, encoded.bytes);
   ctx.onFileChanged?.(rel, '', existed ? 'edit' : 'create');
 
   // Quatre images clés pour que l'agent vérifie le résultat
   const { imageToDataUrl } = await import('@/lib/imageAttach');
-  const picks = [0, Math.floor(shot.frames.length / 3), Math.floor((2 * shot.frames.length) / 3), shot.frames.length - 1]
-    .filter((n, i, all) => n >= 0 && all.indexOf(n) === i);
-  const images = await Promise.all(picks.map(async (n) => ({
-    label: `${encoded!.format.toUpperCase()}, image à ${Math.round((n * 1000) / fps)} ms`,
-    dataUrl: await imageToDataUrl(shot.frames[n]),
+  const images = await Promise.all([...keyFrames.entries()].sort((x, y) => x[0] - y[0]).map(async ([n, blob]) => ({
+    label: `${encoded.format.toUpperCase()}, image à ${Math.round((n * 1000) / fps)} ms`,
+    dataUrl: await imageToDataUrl(blob),
   })));
   const mo = (encoded.bytes.byteLength / 1048576).toFixed(1).replace('.', ',');
   return {
-    output: `Vidéo créée : ${rel} (${encoded.format.toUpperCase()}, ${width}×${height}, ${(shot.frames.length / fps).toFixed(1)} s, ${fps} images/s, ${mo} Mo).` +
+    output: `Vidéo créée : ${rel} (${encoded.format.toUpperCase()}, ${width}×${height}, ${(added / fps).toFixed(1)} s, ${fps} images/s, ${mo} Mo).` +
       (encoded.format === 'webm' ? ' Ce système n\'encode pas le H.264 : vidéo enregistrée en WebM.' : '') +
-      (shot.realTime ? ' Attention : animations non figeables (canvas, requestAnimationFrame), capturées en temps réel : le rythme peut être irrégulier.' : '') +
-      (shot.error ? ` À signaler : ${shot.error}` : '') +
+      (realTime ? ' Attention : animations non figeables, capturées en temps réel : le rythme peut être irrégulier.' : '') +
+      (warning ? ` À signaler : ${warning}` : '') +
       ' Les images clés te sont montrées : vérifie le début, le milieu et la fin, puis donne le chemin de la vidéo à l\'utilisateur (il peut l\'ouvrir dans l\'onglet Fichiers).',
     images,
   };
