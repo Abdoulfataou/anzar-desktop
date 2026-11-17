@@ -18,10 +18,11 @@ import { cn } from '@/lib/utils';
 import type { ToolEvent } from '@/hooks/useAgentChat';
 import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
 import { useProjectStore } from '@/stores/projectStore';
+import { resolveChatAbsPath, openFromChat } from '@/lib/openFromChat';
 
-/** Ouvre un fichier du projet dans l'éditeur / la visionneuse média. */
+/** Ouvre un fichier du chat : onglet workspace (projet) ou Finder (espace ANZAR). */
 function openProjectFile(path: string) {
-  window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: path }));
+  void openFromChat(path);
 }
 
 /** Ouvre le dossier contenant un fichier dans le Finder / Explorateur. */
@@ -40,17 +41,19 @@ async function revealFolder(absPath: string) {
  * un bouton pour ouvrir le dossier — sans quitter le chat.
  */
 function InlineExportMedia({ relPath }: { relPath: string }) {
-  const workspacePath = useProjectStore((s) => {
-    const p = s.projects.find((x) => x.id === s.activeProjectId);
-    return (p?.metadata?.localPath as string | undefined) || null;
-  });
-  const absPath = workspacePath ? `${workspacePath.replace(/[\\/]+$/, '')}/${relPath}` : relPath;
+  // Racine : projet ouvert, sinon espace ANZAR (chat simple) — résolu async
+  const [absPath, setAbsPath] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    void resolveChatAbsPath(relPath).then((p) => { if (alive) setAbsPath(p); });
+    return () => { alive = false; };
+  }, [relPath]);
   const name = relPath.split('/').pop() || relPath;
   const isVideo = /\.(mp4|webm|mov|m4v)$/i.test(name);
   const version = 0;
 
   const [url, setSize] = useObjectUrl(absPath, name, version);
-  if (!url) {
+  if (!absPath || !url) {
     return (
       <div className="mt-1 mb-2 flex items-center gap-2 text-ui-caption text-text-muted">
         <Loader2 size={12} className="animate-spin" /> Chargement de {name}…
@@ -84,11 +87,12 @@ function InlineExportMedia({ relPath }: { relPath: string }) {
 }
 
 /** Charge un fichier binaire du projet en URL d'objet (image/vidéo), avec révocation. */
-function useObjectUrl(absPath: string, name: string, version: number): [string | null, number] {
+function useObjectUrl(absPath: string | null, name: string, version: number): [string | null, number] {
   const [state, setState] = useState<{ url: string | null; size: number }>({ url: null, size: 0 });
   useEffect(() => {
     let alive = true;
     let objectUrl: string | null = null;
+    if (!absPath) return;
     (async () => {
       try {
         const { readBinaryFile } = await import('@tauri-apps/api/fs');

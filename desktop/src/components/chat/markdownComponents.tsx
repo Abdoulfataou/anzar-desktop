@@ -6,7 +6,7 @@ import type { Components } from 'react-markdown';
 import CodeBlock from './CodeBlock';
 import { MermaidBlock, SvgBlock, WidgetBlock, getVisualKind } from './VisualBlock';
 import { openExternalUrl } from '@/services/infra/externalLinks';
-import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
+import { openFromChat } from '@/lib/openFromChat';
 
 // ============================================================================
 // CHEMINS DE FICHIERS CLIQUABLES dans le texte des réponses
@@ -40,8 +40,8 @@ function linkifyNode(node: React.ReactNode, keyPrefix: string): React.ReactNode 
           role="button"
           tabIndex={0}
           title={`Ouvrir ${path}`}
-          onClick={() => window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: path }))}
-          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); window.dispatchEvent(new CustomEvent(OPEN_FILE_EVENT, { detail: path })); } }}
+          onClick={() => void openFromChat(path)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); void openFromChat(path); } }}
           className="font-mono text-ui-sm text-link underline decoration-transparent underline-offset-2 hover:decoration-current cursor-pointer transition-colors"
         >
           {path}

@@ -410,6 +410,26 @@ interface UseAgentChatParams {
   onProgress?: (p: { costFCFA: number }) => void;
 }
 
+// Conversations où l'utilisateur a déjà autorisé l'exécution du code écrit par
+// l'agent dans l'espace ANZAR : UN accord par conversation, persistant entre
+// les remontées de vue et les redémarrages de l'app (avant : Set en mémoire,
+// perdu à chaque navigation → re-demandes à répétition).
+const TRUSTED_CONVS_KEY = 'anzar.trustedConvs';
+function loadTrustedConvs(): Set<string> {
+  try {
+    const raw = localStorage.getItem(TRUSTED_CONVS_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch { return new Set(); }
+}
+const trustedConvs = loadTrustedConvs();
+function trustConversation(id: string) {
+  trustedConvs.add(id);
+  try {
+    const arr = [...trustedConvs].slice(-300); // borne mémoire
+    localStorage.setItem(TRUSTED_CONVS_KEY, JSON.stringify(arr));
+  } catch { /* stockage indisponible */ }
+}
+
 export function useAgentChat({ workspacePath, workspaceName, model, permissionMode = 'full', onFileChanged, background = false, onProgress }: UseAgentChatParams) {
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
@@ -420,8 +440,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
   const [approval, setApproval] = useState<ApprovalRequest | null>(null);
   const approvalResolver = useRef<((ok: boolean) => void) | null>(null);
   /** Conversations de l'espace ANZAR où l'utilisateur a déjà autorisé le code écrit par l'agent */
-  const trustedConvsRef = useRef<Set<string>>(new Set());
-
+  
   const resolveApproval = useCallback((ok: boolean) => {
     approvalResolver.current?.(ok);
     approvalResolver.current = null;
@@ -895,7 +914,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             // à chaque fichier ni à chaque commande. Seul le code écrit par l'agent demande un accord,
             // une seule fois par conversation.
             (!personalSpace && needsApproval(modeRef.current, call.function.name))
-            || (risk && !(personalSpace && trustedConvsRef.current.has(convId)))
+            || (risk && !(personalSpace && trustedConvs.has(convId)))
             || mcpAsk
           ) {
             const scope = personalSpace && risk ? "Autoriser vaut pour toute cette conversation dans l'espace ANZAR." : undefined;
@@ -903,7 +922,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               approvalResolver.current = resolve;
               setApproval({ id: call.id, name: call.function.name, summary: ev.argsSummary, reason: risk?.reason, detail: risk?.detail, scope });
             });
-            if (allowed && personalSpace && risk) trustedConvsRef.current.add(convId);
+            if (allowed && personalSpace && risk) trustConversation(convId);
           }
 
           // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)

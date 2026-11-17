@@ -135,6 +135,20 @@ import { isPathWithin } from '@/lib/pathGuard';
 import { ensureNode, manualNodeHelp, needsNode } from '@/services/nodeRuntime';
 import { checkPython, ensureGit, isPython } from '@/services/programs';
 
+/** Message clair et actionnable pour une commande bloquée. */
+function blockedReason(command: string, pattern: RegExp): string {
+  if (/node\s+-e|deno eval|bun -e/i.test(command)) {
+    return "node -e est refusé (guillemets et échappements cassés selon le système). Écris ton code dans un fichier script (.mjs) avec write_file, puis lance `node script.mjs`.";
+  }
+  if (/python3?\s+-c/i.test(command)) {
+    return "python -c est refusé. Écris ton code dans un fichier .py avec write_file, puis lance `python script.py`.";
+  }
+  if (/\|\s*sh|curl[^|]*\|/i.test(command)) {
+    return 'Les pipes vers un shell sont refusés. Télécharge avec curl, écris un script avec write_file, puis exécute-le séparément.';
+  }
+  return `Commande bloquée (motif: ${pattern.source}). Utilise une seule commande simple de la liste autorisée.`;
+}
+
 function validateCommand(command: string): { safe: boolean; reason?: string } {
   // Block empty commands
   if (!command.trim()) {
@@ -146,10 +160,11 @@ function validateCommand(command: string): { safe: boolean; reason?: string } {
     return { safe: false, reason: 'Commande trop longue (max 2000 caractères)' };
   }
 
-  // Check against blocked patterns
+  // Check against blocked patterns — message ACTIONNABLE pour l'agent
+  // (avant : le motif regex brut était renvoyé, l'agent réessayait sans comprendre)
   for (const pattern of BLOCKED_PATTERNS) {
     if (pattern.test(command)) {
-      return { safe: false, reason: `Commande bloquée pour raison de sécurité: ${pattern.source}` };
+      return { safe: false, reason: blockedReason(command, pattern) };
     }
   }
 

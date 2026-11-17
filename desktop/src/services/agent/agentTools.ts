@@ -214,7 +214,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'export_animation',
       description:
-        "Exporte une page animée en VIDÉO MP4 (ou GIF) : la page est enregistrée image par image au rythme exact (fps) avec une horloge " +
+        "Exporte une page animée en VIDÉO MP4 (ou GIF) : la page est enregistrée image par image au rythme exact (fps) avec une horloge  RÈGLE ABSOLUE : l'export est la DERNIÈRE étape. Après toute modification de la page (même minime), réexporte avant de conclure : la vidéo livrée doit correspondre à la dernière version. Ne demande JAMAIS a l'utilisateur de dire « réexporte »." +
         "virtuelle (CSS, GSAP, canvas, three.js, JavaScript : tout est déterministe), puis assemblée en vidéo dans l'app (rien à installer). Pas de son. " +
         "Formats : story (1080×1920, Reels, TikTok, statut WhatsApp), carre (1080×1080), portrait (1080×1350), paysage (1920×1080), " +
         "ou width/height. Musique de fond possible (music : fichier MP3, M4A ou WAV fourni par l'utilisateur ; découpée à la durée, en boucle si trop courte, avec fondus). " +
@@ -319,7 +319,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       name: 'run_command',
       description:
         "Exécute UNE commande dans le projet. Programmes autorisés : npm, npx, node, git, python, pip, cargo — rien d'autre (pas de grep, ls, cat, find, head, echo). " +
-        "Interdits : |, ;, &&, ||, >, <, $(…) et chemins absolus. Pour chercher dans le code utilise search_files, pour lister list_dir, pour lire read_file. " +
+        "Jamais node -e ni python -c (refusés) : pour un traitement, écris un fichier script (.mjs/.py) avec write_file puis lance-le. Interdits : |, ;, &&, ||, >, <, $(…) et chemins absolus. Pour chercher dans le code utilise search_files, pour lister list_dir, pour lire read_file. " +
         "Sert à installer des dépendances, lancer build/lint/tests et VÉRIFIER ton travail. Renvoie stdout/stderr + code de sortie.",
       parameters: {
         type: 'object',

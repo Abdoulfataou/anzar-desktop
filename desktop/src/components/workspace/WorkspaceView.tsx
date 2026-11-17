@@ -447,8 +447,9 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
               </div>
             )}
 
-            {/* Tâche qui a travaillé sur un projet, mais aucun dossier ouvert : l'agent n'a pas d'outils */}
-            {!workspacePath && taskNeedsFolder && (
+            {/* Tâche qui a travaillé sur un projet, mais aucun dossier ouvert : l'agent n'a pas d'outils.
+                PAS dans l'espace ANZAR (personalSpace) : l'agent y travaille bel et bien. */}
+            {!workspacePath && taskNeedsFolder && !activeConversation?.personalSpace && (
               <div className="mx-4 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl border border-accent-warning/30 bg-accent-warning/10 flex-shrink-0">
                 <AlertTriangle size={16} className="flex-shrink-0 text-accent-warning" />
                 <p className="flex-1 text-ui-caption text-text-primary">
