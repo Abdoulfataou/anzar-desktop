@@ -119,6 +119,9 @@ async function renderOnce(job: RenderJob, opts: RenderOptions): Promise<RenderRe
 
 /** Rend les images demandées ; télécharge Chromium une fois si aucun navigateur n'est installé. */
 export async function renderFrames(job: RenderJob, opts: RenderOptions = {}): Promise<RenderResult> {
+  const { ensureNode } = await import('@/services/nodeRuntime');
+  const node = await ensureNode({ reason: 'créer des captures et des vidéos' });
+  if (!node.ok) return { files: [], pageErrors: [], workDir: '', error: node.message, code: 'NO_NODE' };
   const first = await renderOnce(job, opts);
   if (first.code !== 'NO_BROWSER') return first;
   await cleanupRender(first);
@@ -134,6 +137,7 @@ export async function readFrame(path: string): Promise<Blob> {
 }
 
 export async function cleanupRender(r: Pick<RenderResult, 'workDir'>): Promise<void> {
+  if (!r.workDir) return;
   try {
     const { removeDir } = await import('@tauri-apps/api/fs');
     await removeDir(r.workDir, { recursive: true });
@@ -141,4 +145,4 @@ export async function cleanupRender(r: Pick<RenderResult, 'workDir'>): Promise<v
 }
 
 /** Erreurs qui viennent de la page elle-même (inutile de réessayer autrement). */
-export const isPageError = (code?: string) => code === 'REFUSED' || code === 'LOAD' || code === 'FILE' || code === 'URL';
+export const isPageError = (code?: string) => code === 'REFUSED' || code === 'LOAD' || code === 'FILE' || code === 'URL' || code === 'NO_NODE';

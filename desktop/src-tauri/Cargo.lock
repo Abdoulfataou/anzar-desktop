@@ -100,12 +100,16 @@ dependencies = [
  "blake3",
  "dirs 5.0.1",
  "fix-path-env",
+ "flate2",
  "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
+ "tar",
  "tauri",
  "tauri-build",
  "tauri-plugin-stronghold",
+ "zip",
 ]
 
 [[package]]
@@ -5604,6 +5608,7 @@ dependencies = [
  "byteorder",
  "crc32fast",
  "crossbeam-utils",
+ "flate2",
 ]
 
 [[package]]

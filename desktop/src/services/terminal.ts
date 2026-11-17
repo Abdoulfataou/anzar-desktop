@@ -132,6 +132,7 @@ const BLOCKED_PATTERNS = [
 
 /** Validate a command is safe before execution */
 import { isPathWithin } from '@/lib/pathGuard';
+import { ensureNode, manualNodeHelp, needsNode } from '@/services/nodeRuntime';
 
 function validateCommand(command: string): { safe: boolean; reason?: string } {
   // Block empty commands
@@ -240,9 +241,12 @@ function validatePath(basePath: string, targetPath: string): boolean {
 function explainSpawnError(error: any, command: string): string {
   const raw = String(error?.message || error || '');
   const program = command.trim().split(/\s+/)[0] || 'programme';
+  if (/os error 2|No such file or directory|program not found|cannot find the file/i.test(raw) && needsNode(program)) {
+    return manualNodeHelp(`lancer « ${program} »`);
+  }
   if (/os error 2|No such file or directory|program not found|cannot find the file/i.test(raw)) {
-    return `Programme « ${program} » introuvable par ANZAR (${raw}). S'il est installé sur l'ordinateur, ANZAR ne le trouve pas dans son PATH : `
-      + `dis-le à l'utilisateur (il peut redémarrer ANZAR) au lieu de conclure qu'il manque au projet.`;
+    return `Programme « ${program} » introuvable (${raw}). Soit il n'est pas installé sur l'ordinateur, soit ANZAR ne le trouve pas : `
+      + `explique-le simplement à l'utilisateur, donne-lui la commande d'installation adaptée à son système, et précise qu'il faudra ensuite redémarrer ANZAR.`;
   }
   return raw;
 }
@@ -320,6 +324,16 @@ class TerminalService {
     const processId = `proc-${++this.processCounter}-${Date.now()}`;
     const startTime = Date.now();
     options.onProcessId?.(processId);
+
+    // Node.js absent : proposé au téléchargement, sinon explication et commande à copier
+    if (needsNode(command.trim().split(/\s+/)[0] || '')) {
+      const node = await ensureNode({ reason: `lancer « ${command.trim().split(/\s+/)[0]} »` });
+      if (!node.ok) {
+        this.emitOutput(processId, 'error', node.message || 'Node.js est nécessaire.');
+        this.eventBus.emit({ type: 'process-error', processId, error: node.message || 'Node.js est nécessaire.' });
+        return processId;
+      }
+    }
 
     // ─── SECURITY: Validate command before execution ───
     const validation = validateCommand(command);
@@ -529,6 +543,11 @@ class TerminalService {
     options: { cwd?: string; timeout?: number; silent?: boolean } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
+    const program = command.trim().split(/\s+/)[0] || '';
+    if (needsNode(program)) {
+      const node = await ensureNode({ reason: `lancer « ${program} »` });
+      if (!node.ok) return { success: false, exitCode: 1, stdout: '', stderr: node.message || 'Node.js est nécessaire.', durationMs: 0 };
+    }
 
     // ─── SECURITY: Validate command ───
     const validation = validateCommand(command);
@@ -617,6 +636,10 @@ class TerminalService {
     options: { cwd?: string; timeout?: number } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
+    if (needsNode(program)) {
+      const node = await ensureNode({ reason: `lancer « ${program} »` });
+      if (!node.ok) return { success: false, exitCode: 1, stdout: '', stderr: node.message || 'Node.js est nécessaire.', durationMs: 0 };
+    }
     const base = COMMAND_NAME_MAP[program.toLowerCase()];
     const fail = (stderr: string): CommandResult => ({ success: false, exitCode: 1, stdout: '', stderr, durationMs: Date.now() - startTime });
     if (!base) return fail('⛔ Commande non autorisée (exécutable non allowlisté)');

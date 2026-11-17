@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod mcp;
+mod node_runtime;
 
 fn main() {
     // Une app lancée depuis le Finder ou le Dock ne reçoit pas le PATH du terminal
@@ -10,6 +11,8 @@ fn main() {
     // avec les emplacements usuels. Les commandes lancées par l'app en héritent.
     let _ = fix_path_env::fix();
     std::env::set_var("PATH", mcp::enriched_path());
+    // Node.js géré par ANZAR, s'il a été téléchargé et que celui du système manque ou est trop ancien
+    node_runtime::apply_path();
 
     let app = tauri::Builder::default()
         // Secure storage: Stronghold (encrypted vault)
@@ -23,7 +26,7 @@ fn main() {
         )
         // Serveurs MCP : transport stdio et HTTP (le protocole est géré par l'app)
         .manage(mcp::McpState::default())
-        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space])
+        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space, node_runtime::node_status, node_runtime::node_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

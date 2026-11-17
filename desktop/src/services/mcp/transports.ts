@@ -3,6 +3,7 @@
  * - stdio : serveur local lancé par l'app (npx, uvx, docker…), une ligne JSON par message
  * - HTTP  : « Streamable HTTP » de la spécification, réponse JSON ou SSE
  */
+import { ensureNode, needsNode } from '@/services/nodeRuntime';
 import { invoke } from '@tauri-apps/api/tauri';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { McpError, parseHttpMessages, type JsonRpcMessage, type McpTransport } from './client';
@@ -40,6 +41,10 @@ export class StdioTransport implements McpTransport {
       const last = this.logs.slice(-3).join(' · ');
       onClose(`Le serveur s'est arrêté (code ${e.payload.code ?? '?'})${last ? ` : ${last}` : ''}`);
     }));
+    if (needsNode(this.command)) {
+      const node = await ensureNode({ reason: 'cet outil' });
+      if (!node.ok) { this.dispose(); throw new McpError(node.message || 'Node.js est nécessaire.'); }
+    }
     try {
       await invoke('mcp_spawn', { id: this.id, command: this.command, args: this.args, env: this.env, cwd: this.cwd ?? null, framing: this.framing });
     } catch (e) {
