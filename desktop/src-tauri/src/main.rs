@@ -75,22 +75,32 @@ const KEYCHAIN_ACCOUNT: &str = "vault-key";
 
 /// Clé du coffre Stronghold, conservée par le trousseau du système.
 #[tauri::command]
-fn vault_key_get() -> Result<Option<String>, String> {
-    match keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
-        Ok(entry) => match entry.get_password() {
-            Ok(key) => Ok(Some(key)),
-            Err(keyring::Error::NoEntry) => Ok(None),
+async fn vault_key_get() -> Result<Option<String>, String> {
+    // Le trousseau peut afficher une autorisation macOS et bloquer l'appel :
+    // jamais sur le thread principal Tauri, sinon la fenêtre ne s'affiche pas.
+    tauri::async_runtime::spawn_blocking(|| {
+        match keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+            Ok(entry) => match entry.get_password() {
+                Ok(key) => Ok(Some(key)),
+                Err(keyring::Error::NoEntry) => Ok(None),
+                Err(e) => Err(e.to_string()),
+            },
             Err(e) => Err(e.to_string()),
-        },
-        Err(e) => Err(e.to_string()),
-    }
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Enregistre (ou remplace) la clé du coffre dans le trousseau du système.
 #[tauri::command]
-fn vault_key_set(key: String) -> Result<(), String> {
-    keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
-        .map_err(|e| e.to_string())?
-        .set_password(&key)
-        .map_err(|e| e.to_string())
+async fn vault_key_set(key: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+            .map_err(|e| e.to_string())?
+            .set_password(&key)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
