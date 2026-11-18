@@ -107,7 +107,7 @@ async function renderOnce(job: RenderJob, opts: RenderOptions): Promise<RenderRe
       }));
       try {
         await invoke('mcp_spawn', {
-          id, command: 'npx', args: ['-y', '-p', PLAYWRIGHT_CORE, 'node', script, jobFile],
+          id, serverId: null, command: 'npx', args: ['-y', '-p', PLAYWRIGHT_CORE, 'node', script, jobFile],
           env: {}, cwd: null, framing: 'line',
         });
       } catch (err: any) {

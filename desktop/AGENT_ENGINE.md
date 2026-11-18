@@ -46,7 +46,7 @@ Le desktop n'avait aucun test. `vitest` est installé et la CI exécute désorma
 npm test
 ```
 
-Couverture actuelle (103 tests) :
+Couverture actuelle (105 tests) :
 
 - `toolCallAssembler.test.ts` : fragments, multi-appels, id généré ;
 - `history.test.ts` : `shrinkText`, compaction, protection des résultats récents,

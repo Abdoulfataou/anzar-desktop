@@ -58,7 +58,8 @@
         "**/id_rsa*",
         "**/id_ed25519*",
         "**/vault-key.dat",
-        "**/*.hold"
+        "**/*.hold",
+        "**/mcp.json"
       ]
     },
     "core:window:allow-maximize",

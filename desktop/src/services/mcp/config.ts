@@ -2,7 +2,7 @@
  * Connecteurs MCP enregistrés : store/mcp.json dans le dossier de données de l'app.
  * Les jetons (GitHub…) y sont stockés localement et ne sont jamais envoyés au modèle.
  */
-import { readText, writeText } from '@/lib/fileStore';
+import { invoke } from '@tauri-apps/api/core';
 
 export type McpTransportKind = 'stdio' | 'http';
 
@@ -86,8 +86,6 @@ export const MCP_PRESETS: McpPreset[] = [
   },
 ];
 
-const FILE = 'mcp.json';
-
 export function slugifyServerId(raw: string): string {
   return raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
     .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24);
@@ -95,21 +93,17 @@ export function slugifyServerId(raw: string): string {
 
 export async function loadServers(): Promise<McpServerConfig[]> {
   try {
-    const raw = await readText(FILE);
-    const data = raw ? JSON.parse(raw) : null;
-    return Array.isArray(data?.servers) ? data.servers.filter((s: any) => s && typeof s.id === 'string') : [];
+    const servers = await invoke<McpServerConfig[]>('mcp_config_load');
+    return Array.isArray(servers) ? servers.filter((s) => s && typeof s.id === 'string') : [];
   } catch {
     return [];
   }
 }
 
 export async function saveServers(servers: McpServerConfig[]): Promise<void> {
-  await writeText(FILE, JSON.stringify({ version: 1, servers }, null, 2));
-  // Ce fichier peut contenir des jetons : jamais 0644.
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('secure_app_secrets');
-  } catch { /* hors Tauri */ }
+  // Le renderer n'écrit jamais mcp.json directement : Rust valide, fusionne les
+  // secrets masqués et écrit le fichier en 0600.
+  await invoke('mcp_config_save', { servers });
 }
 
 /** Découpe une ligne de commande en programme + arguments (guillemets respectés). */

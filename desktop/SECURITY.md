@@ -53,7 +53,7 @@ barrière.
 - Clé de coffre : plus aucun repli `vault-key.dat` ; fichier local supprimé du chemin de lecture.
 - Permissions `0700`/`0600` appliquées au démarrage et après écriture d'un secret (`secure_app_secrets`).
 
-Reste P1 : `store/mcp.json` contient encore les en-têtes MCP en clair (0600), le scope FS renderer reste large, et le garde-fou des installations/pousses doit encore être testé en conditions réelles.
+Reste P1 : le scope FS renderer reste large, et le garde-fou des installations/pousses doit encore être testé en conditions réelles. `mcp.json` est désormais réservé à Rust (lecture masquée côté renderer, fichier 0600).
 
 ## 2. CSP Tauri
 
@@ -144,7 +144,7 @@ npx tauri build --debug --no-bundle
 | Tauri 1.8.3 (fin de maintenance) | **corrigé** | migré en Tauri 2.12.6 |
 | `shell.open` sans scope / API large | **corrigé** | opener + capabilities + scope |
 | Clé du coffre dans un fichier local | **corrigé** | trousseau système uniquement, aucun repli fichier |
-| Secrets des connecteurs MCP en clair (`store/mcp.json`) | **ouvert** | Coffre système ou Stronghold |
+| Secrets des connecteurs MCP (`store/mcp.json`) | **corrigé côté renderer** | broker Rust, valeurs masquées, fichier 0600 ; chiffrement au repos P2 |
 | LSP et Playwright lancés via `npx` | **atténué** | paquets npx allowlistés ; épingler les versions `@latest` restantes |
 | Jeton lisible par une XSS qui a déjà l'IPC Tauri | **atténué** | PDF.js corrigé, Mermaid filtré, CSP, capabilities ; scope FS encore large |
 | Processus enfants non tués en groupe | **corrigé** | `processGroup: true` dans le plugin shell |

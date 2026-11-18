@@ -12,7 +12,7 @@
 //! celui de l'app plus les variables du serveur (jamais affichées), et tous les
 //! processus sont arrêtés à la fermeture de l'app.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -338,11 +338,138 @@ fn pump_lines<R: std::io::Read + Send + 'static>(reader: R, mut on_line: impl Fn
     });
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+pub struct StoredServer {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub transport: String,
+    #[serde(default)]
+    pub command: Option<String>,
+    #[serde(default)]
+    pub args: Vec<String>,
+    #[serde(default)]
+    pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub headers: HashMap<String, String>,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(rename = "alwaysAsk", default)]
+    pub always_ask: Option<bool>,
+    #[serde(default)]
+    pub preset: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct McpConfigFile {
+    #[serde(default)]
+    version: u32,
+    #[serde(default)]
+    servers: Vec<StoredServer>,
+}
+
+fn config_path(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    Ok(dir.join("store").join("mcp.json"))
+}
+
+fn read_config(app: &AppHandle) -> Result<McpConfigFile, String> {
+    let path = config_path(app)?;
+    if !path.exists() { return Ok(McpConfigFile::default()); }
+    let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| format!("Configuration MCP illisible : {e}"))
+}
+
+fn write_config(app: &AppHandle, config: &McpConfigFile) -> Result<(), String> {
+    let path = config_path(app)?;
+    let dir = path.parent().ok_or("Dossier MCP introuvable")?;
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(config).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut p = std::fs::metadata(&path).map_err(|e| e.to_string())?.permissions();
+        p.set_mode(0o600);
+        let _ = std::fs::set_permissions(&path, p);
+    }
+    Ok(())
+}
+
+fn redact_server(mut server: StoredServer) -> StoredServer {
+    for value in server.env.values_mut() { *value = "••••".into(); }
+    for value in server.headers.values_mut() { *value = "••••".into(); }
+    server
+}
+
+fn merge_secrets(incoming: &mut StoredServer, existing: &StoredServer) {
+    // Le renderer ne reçoit que des valeurs masquées : on conserve les secrets
+    // existants quand il renvoie une valeur masquée ou vide.
+    for (k, v) in &existing.env {
+        let keep = incoming.env.get(k).map(|x| x.is_empty() || x.contains("••••")).unwrap_or(true);
+        if keep { incoming.env.insert(k.clone(), v.clone()); }
+    }
+    for (k, v) in &existing.headers {
+        let keep = incoming.headers.get(k).map(|x| x.is_empty() || x.contains("••••")).unwrap_or(true);
+        if keep { incoming.headers.insert(k.clone(), v.clone()); }
+    }
+}
+
+fn validate_stored_server(server: &StoredServer) -> Result<(), String> {
+    if server.id.is_empty() || server.id.len() > 64 || !server.id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+        return Err("Identifiant de serveur MCP invalide.".into());
+    }
+    if server.transport == "stdio" {
+        let command = server.command.as_deref().ok_or("Commande MCP manquante.")?;
+        validate_launcher(command)?;
+        validate_args(&launcher_name(command), &server.args)?;
+        for key in server.env.keys() {
+            if !env_key_allowed(key) { return Err(format!("Variable MCP refusée : {key}.")); }
+        }
+    } else if server.transport == "http" {
+        let url = reqwest::Url::parse(server.url.as_deref().ok_or("URL MCP manquante.")?).map_err(|_| "URL MCP invalide.".to_string())?;
+        validate_backend_url(&url)?;
+        for key in server.headers.keys() {
+            if matches!(key.to_ascii_lowercase().as_str(), "host" | "content-length" | "transfer-encoding") {
+                return Err(format!("En-tête MCP refusé : {key}."));
+            }
+        }
+    } else {
+        return Err("Transport MCP inconnu.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn mcp_config_load(app: AppHandle) -> Result<Vec<StoredServer>, String> {
+    Ok(read_config(&app)?.servers.into_iter().map(redact_server).collect())
+}
+
+#[tauri::command]
+pub fn mcp_config_save(app: AppHandle, servers: Vec<StoredServer>) -> Result<(), String> {
+    let existing = read_config(&app)?;
+    let mut out = Vec::with_capacity(servers.len());
+    for mut server in servers {
+        if let Some(old) = existing.servers.iter().find(|s| s.id == server.id) {
+            merge_secrets(&mut server, old);
+        }
+        validate_stored_server(&server)?;
+        out.push(server);
+    }
+    write_config(&app, &McpConfigFile { version: 1, servers: out })
+}
+
 #[tauri::command]
 pub fn mcp_spawn(
     app: AppHandle,
     state: State<'_, McpState>,
     id: String,
+    server_id: Option<String>,
     command: String,
     args: Vec<String>,
     env: HashMap<String, String>,
@@ -350,6 +477,15 @@ pub fn mcp_spawn(
     framing: Option<String>,
 ) -> Result<(), String> {
     let lsp = framing.as_deref() == Some("lsp");
+    let (command, args, env) = if let Some(sid) = server_id {
+        let cfg = read_config(&app)?;
+        let server = cfg.servers.into_iter().find(|s| s.id == sid).ok_or("Connecteur MCP inconnu.")?;
+        if !server.enabled { return Err("Connecteur MCP désactivé.".into()); }
+        if server.transport != "stdio" { return Err("Ce connecteur n'est pas un serveur stdio.".into()); }
+        (server.command.unwrap_or_default(), server.args, server.env)
+    } else {
+        (command, args, env)
+    };
     validate_launcher(&command)?;
     validate_args(&launcher_name(&command), &args)?;
     if id.is_empty() || id.len() > 128 || !id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
@@ -505,11 +641,26 @@ pub struct HttpResponse {
 /// Un message MCP par HTTP. La réponse (JSON ou SSE) est renvoyée telle quelle à l'app.
 #[tauri::command]
 pub async fn mcp_http(
+    app: AppHandle,
+    server_id: Option<String>,
     url: String,
     headers: HashMap<String, String>,
     body: Option<String>,
     method: Option<String>,
 ) -> Result<HttpResponse, String> {
+    let (url, mut merged_headers) = if let Some(sid) = server_id {
+        let cfg = read_config(&app)?;
+        let server = cfg.servers.into_iter().find(|s| s.id == sid).ok_or("Connecteur MCP inconnu.")?;
+        if !server.enabled { return Err("Connecteur MCP désactivé.".into()); }
+        if server.transport != "http" { return Err("Ce connecteur n'est pas un serveur HTTP.".into()); }
+        (server.url.unwrap_or_default(), server.headers)
+    } else {
+        (url, HashMap::new())
+    };
+    // Les en-têtes de session (Mcp-Session-Id, MCP-Protocol-Version) viennent du
+    // transport ; les en-têtes du connecteur (dont Authorization) restent côté Rust.
+    for (k, v) in headers { merged_headers.insert(k, v); }
+    let headers = merged_headers;
     let parsed = reqwest::Url::parse(&url).map_err(|_| "Adresse invalide".to_string())?;
     validate_backend_url(&parsed)?;
     ensure_public_host(parsed.host_str().unwrap_or_default().to_string(), parsed.port_or_known_default().unwrap_or(443)).await?;
@@ -587,6 +738,40 @@ mod security_tests {
         assert!(!env_key_allowed("pythonpath"));
         assert!(env_key_allowed("GITHUB_TOKEN"));
         assert!(env_key_allowed("CONTEXT7_API_KEY"));
+    }
+
+    #[test]
+    fn redacts_and_merges_mcp_secrets() {
+        let mut env = HashMap::new();
+        env.insert("GITHUB_TOKEN".to_string(), "ghp_secret".to_string());
+        let mut headers = HashMap::new();
+        headers.insert("Authorization".to_string(), "Bearer secret".to_string());
+        let server = StoredServer {
+            id: "github".into(), name: "GitHub".into(), transport: "http".into(),
+            command: None, args: vec![], env, url: Some("https://example.com/mcp".into()),
+            headers, enabled: true, always_ask: Some(true), preset: None,
+        };
+        let redacted = redact_server(server.clone());
+        assert_eq!(redacted.env["GITHUB_TOKEN"], "••••");
+        assert_eq!(redacted.headers["Authorization"], "••••");
+
+        let mut incoming = redacted;
+        merge_secrets(&mut incoming, &server);
+        assert_eq!(incoming.env["GITHUB_TOKEN"], "ghp_secret");
+        assert_eq!(incoming.headers["Authorization"], "Bearer secret");
+    }
+
+    #[test]
+    fn rejects_unsafe_saved_mcp_config() {
+        let mut server = StoredServer {
+            id: "x".into(), name: "X".into(), transport: "stdio".into(),
+            command: Some("node".into()), args: vec!["script.js".into()], env: HashMap::new(),
+            url: None, headers: HashMap::new(), enabled: true, always_ask: Some(true), preset: None,
+        };
+        assert!(validate_stored_server(&server).is_err());
+        server.command = Some("npx".into());
+        server.args = vec!["evil-package".into()];
+        assert!(validate_stored_server(&server).is_err());
     }
 
     #[test]

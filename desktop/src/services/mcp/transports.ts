@@ -22,6 +22,8 @@ export class StdioTransport implements McpTransport {
     private onLog?: (line: string) => void,
     /** « line » pour MCP, « lsp » (Content-Length) pour les serveurs de langage */
     private framing: 'line' | 'lsp' = 'line',
+    /** Connecteur configuré : Rust lit la commande, les arguments et les secrets. */
+    private serverId?: string,
   ) {}
 
   async start(onMessage: (m: JsonRpcMessage) => void, onClose: (reason: string) => void): Promise<void> {
@@ -46,7 +48,15 @@ export class StdioTransport implements McpTransport {
       if (!node.ok) { this.dispose(); throw new McpError(node.message || 'Node.js est nécessaire.'); }
     }
     try {
-      await invoke('mcp_spawn', { id: this.id, command: this.command, args: this.args, env: this.env, cwd: this.cwd ?? null, framing: this.framing });
+      await invoke('mcp_spawn', {
+        id: this.id,
+        serverId: this.serverId ?? null,
+        command: this.serverId ? '' : this.command,
+        args: this.serverId ? [] : this.args,
+        env: this.serverId ? {} : this.env,
+        cwd: this.cwd ?? null,
+        framing: this.framing,
+      });
     } catch (e) {
       this.dispose();
       throw new McpError(String(e));
@@ -82,7 +92,7 @@ export class HttpTransport implements McpTransport {
   private onMessage: ((m: JsonRpcMessage) => void) | null = null;
   private onClose: ((reason: string) => void) | null = null;
 
-  constructor(private url: string, private headers: Record<string, string>) {}
+  constructor(private serverId: string, private url: string) {}
 
   async start(onMessage: (m: JsonRpcMessage) => void, onClose: (reason: string) => void): Promise<void> {
     this.onMessage = onMessage;
@@ -94,14 +104,14 @@ export class HttpTransport implements McpTransport {
   }
 
   private requestHeaders(): Record<string, string> {
-    const h: Record<string, string> = { ...this.headers, Accept: 'application/json, text/event-stream' };
+    const h: Record<string, string> = { Accept: 'application/json, text/event-stream' };
     if (this.sessionId) h['Mcp-Session-Id'] = this.sessionId;
     if (this.protocolVersion) h['MCP-Protocol-Version'] = this.protocolVersion;
     return h;
   }
 
   async send(msg: JsonRpcMessage): Promise<void> {
-    const res = await invoke<HttpResponse>('mcp_http', { url: this.url, headers: this.requestHeaders(), body: JSON.stringify(msg), method: 'POST' })
+    const res = await invoke<HttpResponse>('mcp_http', { serverId: this.serverId, url: '', headers: this.requestHeaders(), body: JSON.stringify(msg), method: 'POST' })
       .catch((e) => { throw new McpError(String(e)); });
     const sid = res.headers['mcp-session-id'];
     if (sid) this.sessionId = sid;
@@ -127,7 +137,7 @@ export class HttpTransport implements McpTransport {
 
   async close(): Promise<void> {
     if (!this.sessionId) return;
-    await invoke('mcp_http', { url: this.url, headers: this.requestHeaders(), body: null, method: 'DELETE' }).catch(() => {});
+    await invoke('mcp_http', { serverId: this.serverId, url: '', headers: this.requestHeaders(), body: null, method: 'DELETE' }).catch(() => {});
     this.sessionId = null;
   }
 }

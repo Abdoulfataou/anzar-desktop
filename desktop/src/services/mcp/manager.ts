@@ -89,8 +89,8 @@ export function startServer(id: string): Promise<void> {
     if (!config) return;
     setRuntime(id, { status: 'starting', error: undefined });
     const transport = config.transport === 'http'
-      ? new HttpTransport(config.url || '', config.headers || {})
-      : new StdioTransport(`mcp-${id}`, config.command || '', config.args || [], config.env || {}, undefined, (l) => pushLog(id, l));
+      ? new HttpTransport(config.id, config.url || '')
+      : new StdioTransport(`mcp-${id}`, config.command || '', config.args || [], config.env || {}, undefined, (l) => pushLog(id, l), 'line', config.id);
     const client = new McpClient(transport, () => roots);
     client.onToolsChanged = () => { void client.listTools().then((tools) => setRuntime(id, { tools })).catch(() => {}); };
     client.onClosed = (reason) => {

@@ -52,7 +52,7 @@ export const hooks = {
         if (e.payload.id === id) finish(e.payload.code === 0);
       }).then((unlisten) => {
         setTimeout(() => { unlisten(); finish(false); }, 10 * 60_000);
-        invoke('mcp_spawn', { id, command: 'npx', args: ['-y', '-p', PLAYWRIGHT_MCP, 'playwright', 'install', 'chromium'], env: {}, cwd: null, framing: 'line' })
+        invoke('mcp_spawn', { id, serverId: null, command: 'npx', args: ['-y', '-p', PLAYWRIGHT_MCP, 'playwright', 'install', 'chromium'], env: {}, cwd: null, framing: 'line' })
           .catch(() => finish(false));
       });
     });
