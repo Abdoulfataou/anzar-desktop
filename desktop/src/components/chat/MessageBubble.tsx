@@ -13,7 +13,7 @@ import { ROUTE_LABELS as AUTO_LABELS } from '@/services/ai/autoRouter';
 interface MessageBubbleProps {
   message: Message;
   onCopy?: (text: string) => void;
-  onRegenerate?: () => void;
+  onRegenerate?: (messageId: string) => void;
   selectedProjectId?: string | null;
   selectedProjectPath?: string;
 }
@@ -208,7 +208,7 @@ function MessageBubbleImpl({ message, onCopy, onRegenerate, selectedProjectId = 
         {message.isError && !message.isStreaming && onRegenerate &&
           (message.resumable || (!message.toolEvents?.length && !message.fileChanges?.length)) && (
           <button
-            onClick={onRegenerate}
+            onClick={() => onRegenerate(message.id)}
             className="mt-2 inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
           >
             <RefreshCw size={13} />

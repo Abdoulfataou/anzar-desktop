@@ -294,21 +294,31 @@ function GeneralSection() {
   );
 }
 
+const FONT_SIZES = [12, 13, 14, 15, 16];
+
 function AppearanceSection() {
   const theme = useThemeStore((s) => s.theme);
   const setTheme = useThemeStore((s) => s.setTheme);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
+  const fontSize = useSettingsStore((s) => s.settings.fontSize);
   return (
     <Card>
       <Row label="Thème" description="Système suit le réglage clair ou sombre de ton Mac.">
         <Segmented
           value={theme}
-          onChange={(t) => { setTheme(t); updateSettings({ theme: t }); }}
+          onChange={(t) => setTheme(t)}
           options={[
             { id: 'system', label: 'Système', icon: Monitor },
             { id: 'light', label: 'Clair', icon: Sun },
             { id: 'dark', label: 'Sombre', icon: Moon },
           ]}
+        />
+      </Row>
+      <Row label="Taille du texte" description="Taille de base de l'interface ; les blocs de code gardent leur taille.">
+        <Segmented
+          value={String(fontSize)}
+          onChange={(v) => updateSettings({ fontSize: Number(v) })}
+          options={FONT_SIZES.map((n) => ({ id: String(n), label: String(n) }))}
         />
       </Row>
     </Card>

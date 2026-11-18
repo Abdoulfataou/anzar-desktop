@@ -132,29 +132,28 @@ class ErrorBoundary extends React.Component<
   }
 }
 
-// Initialiser le thème depuis localStorage avant le rendu
-// Le themeStore persiste sous la clé 'anzar-theme-store'
+// Appliquer le thème persisté AVANT le rendu (évite le flash clair/sombre).
+// Source de vérité : Zustand persist 'anzar-settings' (state.settings.theme).
 try {
-  const savedThemeStore = localStorage.getItem('anzar-theme-store');
-  const savedThemeDirect = localStorage.getItem('theme');
-  if (savedThemeStore) {
-    const parsed = JSON.parse(savedThemeStore);
-    const theme = parsed.state?.theme;
-    if (theme === 'dark' || theme === 'light') {
-      document.documentElement.className = theme;
-    } else {
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.className = prefersDark ? 'dark' : 'light';
-    }
-  } else if (savedThemeDirect === 'dark' || savedThemeDirect === 'light') {
-    document.documentElement.className = savedThemeDirect;
-  } else {
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.className = prefersDark ? 'dark' : 'light';
+  const raw = localStorage.getItem('anzar-settings') || localStorage.getItem('anzar-theme-store');
+  const parsed = raw ? JSON.parse(raw) : null;
+  const stored = parsed?.state?.settings?.theme
+    ?? parsed?.state?.theme
+    ?? localStorage.getItem('theme');
+  const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const theme = stored === 'dark' || stored === 'light' ? stored : prefersDark ? 'dark' : 'light';
+  document.documentElement.classList.remove('light', 'dark');
+  document.documentElement.classList.add(theme);
+  document.documentElement.style.colorScheme = theme;
+  const storedSize = parsed?.state?.settings?.fontSize;
+  if (typeof storedSize === 'number') {
+    const n = Math.min(18, Math.max(11, storedSize));
+    document.documentElement.style.setProperty('--ui-font-size', `${n}px`);
   }
 } catch (e) {
   console.error('Theme init error:', e);
-  document.documentElement.className = 'dark';
+  document.documentElement.classList.remove('light', 'dark');
+  document.documentElement.classList.add('dark');
 }
 
 // Monter React

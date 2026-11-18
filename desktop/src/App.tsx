@@ -14,6 +14,7 @@ import { autoCheckOncePerDay } from '@/services/infra/updateService';
 import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useSettingsStore } from '@/stores/settingsStore';
+import { useThemeStore } from '@/stores/themeStore';
 import { initUndoIndex } from '@/services/agent/fileChanges';
 
 /** L'historique est lu sur le disque (asynchrone) : on attend qu'il soit chargé avant d'afficher l'app. */
@@ -65,6 +66,13 @@ function RequireAuth() {
 
 export default function App() {
   const [booting, setBooting] = useState(true);
+  const fontSize = useSettingsStore((s) => s.settings.fontSize);
+
+  // La taille de texte est un réglage persisté : on l'applique au DOM.
+  useEffect(() => {
+    const n = Math.min(18, Math.max(11, Number(fontSize) || 14));
+    document.documentElement.style.setProperty('--ui-font-size', `${n}px`);
+  }, [fontSize]);
 
   useEffect(() => {
     let alive = true;
@@ -74,6 +82,8 @@ export default function App() {
         // (URL backend, ancienne clé de coffre) et ne doit pas travailler sur
         // les valeurs par défaut.
         await storesHydrated();
+        // Les réglages sont hydratés : on réapplique le thème persisté au DOM.
+        useThemeStore.getState().initializeTheme();
         await authService.bootstrapSession();
       } finally {
         if (alive) setBooting(false);

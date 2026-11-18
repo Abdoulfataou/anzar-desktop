@@ -3,7 +3,7 @@
  * Réponses proposées (dont une recommandée), choix multiple si demandé, et réponse libre.
  * Clavier : 1 à 4 pour choisir, Entrée pour valider, Échap pour passer.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, MessageCircleQuestion, Timer, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -52,18 +52,32 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
   // ── Compte à rebours : si l'utilisateur ne répond pas, on valide les options
   //    recommandées automatiquement (une question ne bloque jamais indéfiniment).
   const [left, setLeft] = useState(QUESTION_TIMEOUT_S);
+  // Toute interaction repousse l'échéance : le temps restant ne s'écoule plus
+  // pendant que l'utilisateur lit ou tape sa réponse.
+  const autoSubmitted = useRef(false);
+  const resetTimer = () => {
+    autoSubmitted.current = false;
+    setLeft(QUESTION_TIMEOUT_S);
+  };
   useEffect(() => {
-    const t = setInterval(() => setLeft((n) => n - 1), 1000);
+    const t = setInterval(() => setLeft((n) => (n > 0 ? n - 1 : 0)), 1000);
     return () => clearInterval(t);
   }, []);
   useEffect(() => {
-    if (left > 0) return;
-    // Temps écoulé → submit des valeurs par défaut
-    onSubmit(qs.map((q) => ({
-      question: q.question,
-      selected: [q.options[q.recommended ?? 0]?.label].filter(Boolean) as string[],
-      auto: true,
-    })));
+    if (left > 0 || autoSubmitted.current) return;
+    autoSubmitted.current = true;
+    // Temps écoulé : on garde les choix déjà faits, sinon les recommandés.
+    onSubmit(qs.map((q, i) => {
+      const labels = picked[i].length
+        ? picked[i].map((o) => q.options[o]?.label)
+        : [q.options[q.recommended ?? 0]?.label];
+      return {
+        question: q.question,
+        selected: labels.filter((x): x is string => !!x),
+        other: other[i].trim() || undefined,
+        auto: true,
+      };
+    }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [left]);
 
@@ -71,6 +85,7 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
   const allAnswered = qs.every((_, i) => answered(i));
 
   const toggle = (opt: number) => {
+    resetTimer();
     setPicked((prev) => prev.map((sel, i) => {
       if (i !== step) return sel;
       if (q.multiSelect) return sel.includes(opt) ? sel.filter((x) => x !== opt) : [...sel, opt];
@@ -89,6 +104,7 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
   };
 
   const next = () => {
+    resetTimer();
     if (!answered(step)) return;
     if (last) { if (allAnswered) submit(); }
     else setStep(step + 1);
@@ -111,7 +127,12 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
   const headers = useMemo(() => qs.map((x, i) => x.header?.trim() || `Question ${i + 1}`), [qs]);
 
   return (
-    <div className="mx-4 mb-1 rounded-xl border border-border-medium bg-surface-elevated flex-shrink-0 overflow-hidden">
+    <div
+      role="region"
+      aria-label="Questions de l'agent"
+      onPointerDown={resetTimer}
+      className="mx-4 mb-1 rounded-xl border border-border-medium bg-surface-elevated flex-shrink-0 overflow-hidden"
+    >
       {/* Délai avant réponse automatique */}
       <div className="h-0.5 -mt-px mb-1 rounded-full overflow-hidden bg-border-subtle"><div className="h-full bg-accent-secondary/60 transition-all duration-1000 ease-linear" style={{ width: `${(left / QUESTION_TIMEOUT_S) * 100}%` }} /></div>
       <div className="flex items-center gap-2 px-3 pt-2.5">
@@ -119,7 +140,7 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
         {qs.length > 1 ? (
           <div className="flex items-center gap-1 flex-1 min-w-0 overflow-x-auto">
             {headers.map((h, i) => (
-              <button key={i} onClick={() => setStep(i)}
+              <button key={i} onClick={() => { resetTimer(); setStep(i); }}
                 className={cn('flex items-center gap-1 h-6 px-2 rounded-md text-ui-caption whitespace-nowrap',
                   i === step ? 'bg-hover-fill text-text-primary' : 'text-text-muted hover:text-text-secondary')}>
                 {answered(i) && <Check size={11} className="text-accent-success" />}{h}
@@ -161,6 +182,7 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
           <input
             value={other[step]}
             onChange={(e) => {
+              resetTimer();
               const v = e.target.value;
               setOther((prev) => prev.map((t, i) => (i === step ? v : t)));
               if (v && !q.multiSelect) setPicked((prev) => prev.map((sel, i) => (i === step ? [] : sel)));
@@ -182,7 +204,7 @@ export default function QuestionPanel({ request, onSubmit, onSkip }: {
           </span>
           <div className="flex-1" />
           {step > 0 && (
-            <button onClick={() => setStep(step - 1)} className="flex items-center gap-1 h-7 px-2 rounded-lg text-ui-caption text-text-secondary hover:bg-hover-fill">
+            <button onClick={() => { resetTimer(); setStep(step - 1); }} className="flex items-center gap-1 h-7 px-2 rounded-lg text-ui-caption text-text-secondary hover:bg-hover-fill">
               <ChevronLeft size={13} /> Précédente
             </button>
           )}

@@ -31,6 +31,22 @@ const applyTheme = (theme: 'dark' | 'light') => {
   html.style.colorScheme = theme;
 };
 
+
+let systemListenerInstalled = false;
+
+/** Listener système installé une seule fois ; il n'agit qu'en mode « system ». */
+function ensureSystemListener(): void {
+  if (systemListenerInstalled || typeof window === 'undefined') return;
+  systemListenerInstalled = true;
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  mediaQuery.addEventListener('change', (e) => {
+    if (useThemeStore.getState().theme !== 'system') return;
+    const next = e.matches ? 'dark' : 'light';
+    useThemeStore.setState({ effectiveTheme: next });
+    applyTheme(next);
+  });
+}
+
 export const useThemeStore = create<ThemeStore>()(
   (set, get) => ({
     theme: 'system',
@@ -45,19 +61,7 @@ export const useThemeStore = create<ThemeStore>()(
 
       set({ theme, effectiveTheme });
       applyTheme(effectiveTheme);
-
-      // Listen for system theme changes (only in system mode)
-      if (theme === 'system') {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        const handleChange = (e: MediaQueryListEvent) => {
-          const next = e.matches ? 'dark' : 'light';
-          set({ effectiveTheme: next });
-          applyTheme(next);
-        };
-
-        mediaQuery.addEventListener('change', handleChange);
-        return () => mediaQuery.removeEventListener('change', handleChange);
-      }
+      ensureSystemListener();
     },
 
     toggleTheme: () => {
@@ -72,6 +76,7 @@ export const useThemeStore = create<ThemeStore>()(
 
       set({ theme, effectiveTheme });
       applyTheme(effectiveTheme);
+      ensureSystemListener();
 
       // Sync to settings store so SettingsPage + persistence stay consistent.
       try {

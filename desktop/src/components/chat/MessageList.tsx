@@ -111,8 +111,13 @@ export default function MessageList({ messages, isLoading = false, selectedProje
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
+      role="region"
+      aria-label="Conversation"
       className="flex-1 min-h-0 overflow-y-auto px-2 sm:px-4 py-4 w-full"
     >
+      <div className="sr-only" role="status" aria-live="polite">
+        {isLoading ? 'ANZAR travaille…' : ''}
+      </div>
       {hasHidden && (
         <div className="flex justify-center mb-4">
           <button
@@ -139,7 +144,7 @@ export default function MessageList({ messages, isLoading = false, selectedProje
               <div>
                 <MessageBubble
                   message={item.message}
-                  onRegenerate={item.message.role === 'assistant' ? () => onRegenerateMessage?.(item.message.id) : undefined}
+                  onRegenerate={item.message.role === 'assistant' ? onRegenerateMessage : undefined}
                   selectedProjectId={selectedProjectId}
                   selectedProjectPath={selectedProjectPath}
                 />
