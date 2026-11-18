@@ -48,6 +48,11 @@ tauri_plugin_stronghold::Builder::new(...).build()
 - `invoke` et `convertFileSrc` passent par `@tauri-apps/api/core`.
 - `Command.create()` remplace `new Command()` ; le nom de scope (`npm-2`)
   reste utilisé pour que la validation des arguments reste exacte.
+- `spawn()` exige `shell:allow-spawn` (scope identique à `execute`) et
+  `child.kill()` exige `shell:allow-kill`.
+- `plugins.fs.requireLiteralLeadingDot = false` rétablit le comportement v1
+  (fichiers `.probe`, dossiers cachés) ; la clé du coffre est renommée
+  `vault-key.dat` pour ne pas être bloquée par la deny list `*.key`.
 - `processGroup: true` tue désormais l'arbre de processus (npm, npx, dev
   servers), pas seulement le parent.
 - Stronghold utilise le client JS v2 (`Stronghold.load`, `loadClient`,
@@ -66,6 +71,8 @@ tauri_plugin_stronghold::Builder::new(...).build()
 | Stronghold v2 | réécrit sur le client JS v2 |
 | Updater v2 | réécrit, ressources `Update` conservées |
 | Capabilities | build Tauri validé |
+| FS + Stronghold runtime | `readDir`, écriture `vault-key.dat`, ouverture du coffre |
+| Shell runtime | `npm --version` via `Command.create`/`spawn` : code 0 |
 | CSP | `object-src`, `base-uri`, `frame-ancestors`, `form-action` |
 | `$DOCUMENTS` v1 invalide en v2 | remplacé par `$DOCUMENT` |
 

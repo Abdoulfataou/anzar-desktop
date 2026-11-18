@@ -66,8 +66,9 @@ Le fichier `src-tauri/capabilities/migrated.json` remplace l'allowlist v1 :
 - **FS** : scope limité aux dossiers Documents/Bureau/Téléchargements/Projects/
   Developer, à `$APPDATA` et aux skills ; deny list `.ssh`, `.aws`, `.env`,
   `*.pem`, `*.key`, identifiants Git/npm…
-- **Shell** : `shell:allow-execute` avec les **120 entrées** v1 (`npm-2`,
-  `python-3`…) ; `shell:allow-open` a été retiré (les liens passent par
+- **Shell** : `shell:allow-execute` **et** `shell:allow-spawn` avec les mêmes
+  **120 entrées** v1 (`npm-2`, `python-3`…), plus `shell:allow-kill` pour
+  l'arrêt des processus. `shell:allow-open` a été retiré (les liens passent par
   l'opener).
 - **Opener** : `opener:default` + `opener:allow-open-path`, avec un scope limité
   à `$HOME`, `$APPDATA`, `$DOCUMENT`, `$DESKTOP`, `$DOWNLOAD` et une deny list
@@ -144,7 +145,10 @@ Effectuée sur macOS :
 - `npm run build` ;
 - `cargo check` ;
 - `npx tauri build --debug --no-bundle` ;
-- lancement du binaire : webview chargée, pas de crash.
+- lancement du binaire : webview chargée, pas de crash ;
+- sondes runtime : `readDir` sur le dossier de données, `npm --version` via
+  `Command.create`/`spawn` (code 0), écriture de la clé de coffre et ouverture
+  Stronghold.
 
 **Restent à tester manuellement sur macOS et Windows** : login OTP puis
 redémarrage (restauration Stronghold), ouverture de dossier, éditeur, terminal
