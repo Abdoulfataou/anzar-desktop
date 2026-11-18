@@ -35,6 +35,10 @@ jobs:
         run: npm ci
 
       - name: Build Windows installer (NSIS .exe)
+        env:
+          # Signature Tauri 2 (repli sur les anciens noms de secrets)
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_KEY_PASSWORD }}
         run: npm run tauri:build -- --bundles nsis
 
       - name: Upload artifact (NSIS)

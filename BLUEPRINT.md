@@ -80,7 +80,7 @@
 | `db/` | 13 modules : users, credits, payments, projects, otp, admin, memory, skills, usage, rate_limits, tokens (révocation jti), password (PBKDF2 600k), base (engine/init/migration) |
 | `tests/` | **21 tests pytest** (auth 10, crédits 6, JWT 6) — CI GitHub Actions |
 
-### 3.2 `desktop/` — Client principal (Tauri 1.8.3)
+### 3.2 `desktop/` — Client principal (Tauri 2.12.6)
 
 | Chemin | Rôle |
 |---|---|
@@ -174,7 +174,7 @@ POST /api/projects/plan · /{id}/execute (SSE) · /{id}/iterate · /{id}/review
 
 ### Moyen terme (produit)
 - [ ] **Intégration Mobile Money réelle** (Wave/Orange Money API + webhook signé) — principal écart produit ; toute la couche scaffolding existe (intents, statuts, mark-paid)
-- [ ] Migration Tauri 2 (1.x plus maintenu — doc `MIGRATION_TAURI2.md` existant) ou suppression du doc
+- [x] Migration Tauri 2 (faite sur `security/tauri2` : capabilities, plugins v2, Stronghold v2, updater v2 ; validation macOS + build CI à compléter sur Windows)
 - [ ] Décision mobile : Expo SDK 50+ ou gel explicite
 - [ ] Étendre les tests : proxy billing `chat.py`, pipeline projets SSE, OTP
 

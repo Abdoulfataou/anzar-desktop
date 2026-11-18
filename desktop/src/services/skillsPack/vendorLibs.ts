@@ -96,7 +96,7 @@ export async function vendorLibs(
   names: string[]
 ): Promise<{ output: string; isError?: boolean }> {
   const { join, dirname } = await import('@tauri-apps/api/path');
-  const { writeTextFile, createDir, exists } = await import('@tauri-apps/api/fs');
+  const { writeTextFile, createDir, exists } = await import('@/lib/tauriFs');
   const { isTauri } = await import('@/lib/utils');
   if (!isTauri()) return { output: "vendor_lib est disponible uniquement dans l'app desktop.", isError: true };
 

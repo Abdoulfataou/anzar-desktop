@@ -7,7 +7,7 @@
  * système, aucun mot de passe). Si l'utilisateur refuse ou si le téléchargement échoue, le
  * message d'erreur explique quoi faire, avec la commande à copier pour son système.
  */
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import toast from 'react-hot-toast';
 
 export interface NodeStatus { active: string | null; source: 'system' | 'managed' | 'none'; system: string | null; managed: string | null; min_major: number }
@@ -43,12 +43,12 @@ export function manualNodeHelp(reason?: string): string {
 
 async function confirmDownload(reason?: string): Promise<boolean> {
   try {
-    const { ask } = await import('@tauri-apps/api/dialog');
+    const { ask } = await import('@/lib/tauriDialog');
     return await ask(
       `ANZAR a besoin de Node.js${reason ? ` pour ${reason}` : ''}.\n\n`
       + "Il va le télécharger depuis le site officiel (environ 60 Mo, une seule fois) et le ranger dans ses propres fichiers. "
       + "Rien n'est installé sur le système et aucun mot de passe n'est demandé.\n\nTélécharger maintenant ?",
-      { title: 'Installer Node.js', type: 'info' },
+      { title: 'Installer Node.js', kind: 'info' },
     );
   } catch {
     return false;

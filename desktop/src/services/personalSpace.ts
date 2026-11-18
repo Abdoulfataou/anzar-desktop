@@ -6,7 +6,7 @@
  * les pièces jointes y sont copiées dans fichiers/, l'agent les transforme (découper un PDF,
  * convertir un Excel…) et range les résultats au même endroit. Il reste enfermé dans ce dossier.
  */
-import { createDir, exists, writeTextFile } from '@tauri-apps/api/fs';
+import { createDir, exists, writeTextFile } from '@/lib/tauriFs';
 import type { Conversation } from '@/types';
 
 export const PERSONAL_SUBDIR = 'fichiers';
@@ -51,7 +51,7 @@ export function conversationUsesPersonalSpace(conv: Pick<Conversation, 'messages
 
 export async function openPersonalSpace(): Promise<void> {
   await ensurePersonalSpace();
-  const { invoke } = await import('@tauri-apps/api/tauri');
+  const { invoke } = await import('@tauri-apps/api/core');
   await invoke('open_personal_space');
 }
 

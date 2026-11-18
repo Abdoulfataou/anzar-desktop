@@ -1,7 +1,7 @@
 # Sécurité — Desktop ANZAR
 
-État : **novembre 2026**, après le durcissement « axe 1 » (jeton + CSP).
-Périmètre : application Tauri du dossier `desktop/`.
+État : **novembre 2026** — Tauri **2.12.6**, durcissement du jeton/CSP et
+migration Tauri 2 effectués. Périmètre : `desktop/`.
 
 ---
 
@@ -10,40 +10,40 @@ Périmètre : application Tauri du dossier `desktop/`.
 ### Ce qui est garanti aujourd'hui
 
 - **Aucune clé IA dans le client.** Toutes les requêtes passent par le proxy
-  FastAPI, authentifié par JWT. Le bundle neutralise même `VITE_DEEPSEEK_API_KEY`
+  FastAPI, authentifié par JWT. Le bundle neutralise `VITE_DEEPSEEK_API_KEY`
   (`vite.config.ts`).
 - **Le JWT n'est jamais écrit dans `localStorage`.** Il est stocké dans le coffre
   chiffré Stronghold (`anzar.vault.hold`). En cas d'indisponibilité du coffre,
   il reste **en mémoire** pour la session en cours, et n'est pas persisté.
 - **La clé du coffre a quitté `localStorage`.** Elle vit dans
-  `store/vault.key`, dans le dossier de données de l'application. L'ancienne clé
+  `store/vault-key.dat`, dans le dossier de données de l'application. L'ancienne clé
   `settings.deviceVaultKey` est migrée automatiquement au premier démarrage,
   puis effacée des réglages persistés.
 - **Nettoyage des anciennes installations** : l'ancien jeton base64
   `anzar_tkn_fb` est supprimé de `localStorage` à chaque démarrage et à la
   déconnexion (`secureTokenStore.purgeLegacyToken()`).
 - **Ordre de démarrage sûr** : les stores (réglages compris) sont hydratés
-  **avant** la restauration de session, sinon l'URL backend et l'ancienne clé
-  de coffre seraient lues sur leurs valeurs par défaut.
+  **avant** la restauration de session.
 - **Délai d'authentification** : toutes les requêtes d'auth sont bornées à 10 s
   (AbortController), pour qu'un serveur muet ne bloque plus le splash.
+- **Coffre Tauri 2** : Stronghold utilise désormais le client JS v2
+  (`Stronghold.load`, `loadClient`, `getStore`), avec un repli mémoire explicite.
 
 ### Limite connue
 
-`store/vault.key` protège le jeton d'une lecture de `localStorage` (scraping,
-export de données, XSS qui ne lit que le stockage web). Il ne protège pas d'un
-attaquant local capable de lire le dossier de données de l'application, ni d'une
-XSS qui disposerait des permissions Tauri FS.
+`store/vault-key.dat` protège le jeton d'une lecture de `localStorage`. Il ne protège
+pas d'un attaquant local capable de lire le dossier de données de l'application,
+ni d'une XSS qui disposerait des permissions Tauri FS.
 
-**Correctif prévu** : déplacer cette clé dans le trousseau du système
-(Keychain macOS / Credential Manager Windows) lors de la migration Tauri 2, et
-restreindre les capabilities FS.
+**Correctif restant** : déplacer cette clé dans le trousseau du système
+(Keychain macOS / Credential Manager Windows). C'est indépendant de Tauri 2 et
+reste dans la feuille de route.
 
 ---
 
 ## 2. CSP Tauri
 
-La CSP de `src-tauri/tauri.conf.json` est fermée :
+La CSP (`app.security.csp`) est fermée :
 
 ```text
 default-src 'self'
@@ -54,26 +54,49 @@ form-action 'self'
 frame-ancestors 'none'
 ```
 
-`connect-src` n'autorise que le backend ANZAR, GitHub (updater/liens), Sentry et
-le dev server local. L'ancien domaine `*.railway.app` a été retiré.
+`connect-src` n'autorise que le backend ANZAR, GitHub (updater/liens), Sentry,
+le dev server local et l'IPC Tauri. L'ancien domaine `*.railway.app` a été retiré.
 
 ---
 
-## 3. Liens externes
+## 3. Surface Tauri 2 (capabilities)
+
+Le fichier `src-tauri/capabilities/migrated.json` remplace l'allowlist v1 :
+
+- **FS** : scope limité aux dossiers Documents/Bureau/Téléchargements/Projects/
+  Developer, à `$APPDATA` et aux skills ; deny list `.ssh`, `.aws`, `.env`,
+  `*.pem`, `*.key`, identifiants Git/npm…
+- **Shell** : `shell:allow-execute` avec les **120 entrées** v1 (`npm-2`,
+  `python-3`…) ; `shell:allow-open` a été retiré (les liens passent par
+  l'opener).
+- **Opener** : `opener:default` + `opener:allow-open-path`, avec un scope limité
+  à `$HOME`, `$APPDATA`, `$DOCUMENT`, `$DESKTOP`, `$DOWNLOAD` et une deny list
+  de fichiers sensibles.
+- **Dialog / OS / Updater / Process / Stronghold** : permissions explicites ;
+  `stronghold:allow-remove-store-record` est ajouté pour la déconnexion.
+- **Fenêtre** : les commandes utilisées par la barre de titre
+  (`is-maximized`, `toggle-maximize`, drag, close…) sont autorisées.
+
+Le plugin shell v2 résout une commande par le **nom de son entrée de scope**
+(`npm-2`), pas par le binaire : `terminal.ts` conserve donc ce nom pour que les
+validateurs d'arguments restent exacts.
+
+---
+
+## 4. Liens externes
 
 Un seul point de sortie applicatif : `openExternalUrl()`
 (`src/services/infra/externalLinks.ts`). Il :
 
-- refuse tout schéma autre que `http(s)` ;
+- refuse tout schéma autre que `http(s)` et `mailto:` ;
 - confirme l'ouverture d'un hôte inconnu ;
 - mémorise l'accord pour la session.
 
-Les pages Connecteurs et l'aperçu du workspace passent désormais par ce
-garde-fou au lieu d'appeler `shell.open` directement.
+Les pages Connecteurs et l'aperçu du workspace passent par ce garde-fou.
 
 ---
 
-## 4. Garde-fou automatique
+## 5. Garde-fou automatique
 
 `scripts/check-security.mjs` est exécuté par `npm run lint` (donc par la CI) et
 échoue si :
@@ -84,52 +107,46 @@ garde-fou au lieu d'appeler `shell.open` directement.
 - la CSP perd `object-src`, `base-uri`, `frame-ancestors` ou `form-action` ;
 - `*.railway.app` réapparaît.
 
+Le script lit la CSP v2 (`app.security.csp`) et accepte encore l'ancien chemin
+v1 (`tauri.security.csp`) pour les garde-fous historiques.
+
 Commandes de vérification :
 
 ```bash
 cd desktop
-npm run lint        # sécurité + TypeScript strict
-npm run build       # build Vite
+npm run lint                 # sécurité + TypeScript strict
+npm run build                # build Vite
+cd src-tauri && cargo check  # runtime Rust
+npx tauri build --debug --no-bundle
 ```
 
 ---
 
-## 5. Risques résiduels et prochaines étapes (Tauri 2)
+## 6. Risques résiduels
 
 | Risque | État | Correctif prévu |
 |---|---|---|
-| Tauri 1.8.3 (fin de maintenance) | **ouvert** | Migration Tauri 2 + capabilities |
-| `shell.open` sans scope, `path.all`, FS large | **ouvert** | Capacités Tauri 2 + allowlist de chemins |
+| Tauri 1.8.3 (fin de maintenance) | **corrigé** | migré en Tauri 2.12.6 |
+| `shell.open` sans scope / API large | **corrigé** | opener + capabilities + scope |
 | Clé du coffre dans un fichier local | **atténué** | Keychain / Credential Manager |
 | Secrets des connecteurs MCP en clair (`store/mcp.json`) | **ouvert** | Coffre système ou Stronghold |
 | LSP et Playwright lancés via `npx …@latest` | **ouvert** | Épingler les versions |
-| Jeton lisible par une XSS qui a déjà l'IPC Tauri | **atténué** | Capabilities + CSP + audit du rendu Markdown |
-| Processus enfants non tués en groupe | **ouvert** | `portable-pty` / kill par groupe |
+| Jeton lisible par une XSS qui a déjà l'IPC Tauri | **atténué** | capabilities + CSP + audit du rendu Markdown |
+| Processus enfants non tués en groupe | **corrigé** | `processGroup: true` dans le plugin shell |
 
-### Inventaire de migration Tauri 2 (mesuré sur le code actuel)
+---
 
-| API v1 | Occurrences | Cible v2 |
-|---|---:|---|
-| `@tauri-apps/api/fs` | 30 | `@tauri-apps/plugin-fs` (API `readDir` différente : `isDirectory`) |
-| `@tauri-apps/api/path` | 14 | inchangé |
-| `@tauri-apps/api/dialog` | 11 | `@tauri-apps/plugin-dialog` |
-| `@tauri-apps/api/tauri` (`invoke`) | 9 | inchangé |
-| `@tauri-apps/api/event` | 6 | inchangé |
-| `@tauri-apps/api/shell` | 3 (dont 1 `open` centralisé) | `@tauri-apps/plugin-shell` (`Command.create`) |
-| `@tauri-apps/api/updater` | 2 | `@tauri-apps/plugin-updater` |
-| `@tauri-apps/api/os` | 2 | `@tauri-apps/plugin-os` |
-| `@tauri-apps/api/window` / `process` | 2 | plugins v2 |
+## 7. Validation de la migration
 
-Points de rupture à traiter dans la migration :
+Effectuée sur macOS :
 
-1. `readDir` v2 ne renvoie plus d'arborescence `children` : réécrire
-   `fileSystem.readDirectoryTree`.
-2. Shell : convertir les 120 validateurs de `tauri.conf.json` en capabilities
-   `shell:allow-execute` (une entrée par binaire et par nombre d'arguments).
-3. Stronghold : l'API v2 diffère ; réécrire `secureTokenStore` sur le client v2.
-4. Updater : nouvelle API et nouvelles clés de signature.
-5. Config : `tauri.conf.json` v2 + `src-tauri/capabilities/default.json`.
-6. Validation obligatoire sur **macOS et Windows** avant fusion.
+- `npm run lint` (garde-fou + `tsc --noEmit`) ;
+- `npm run build` ;
+- `cargo check` ;
+- `npx tauri build --debug --no-bundle` ;
+- lancement du binaire : webview chargée, pas de crash.
 
-La migration doit être faite sur une branche dédiée (`security/tauri2`), avec un
-build signé de chaque plateforme. Elle n'est pas incluse dans ce durcissement.
+**Restent à tester manuellement sur macOS et Windows** : login OTP puis
+redémarrage (restauration Stronghold), ouverture de dossier, éditeur, terminal
+et arrêt de processus, connecteurs MCP, mise à jour signée, installeur NSIS.
+Voir `MIGRATION_TAURI2.md`.

@@ -93,7 +93,10 @@ export function estimateTokens(text: string): number {
  * Check if running inside Tauri (type-safe — avoids `as any`)
  */
 export function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
+  // Tauri 2 injecte __TAURI_INTERNALS__ ; __TAURI__ n'existe que si
+  // withGlobalTauri est activé (ou sur Tauri 1). On accepte les deux.
+  return typeof window !== 'undefined'
+    && ('__TAURI_INTERNALS__' in window || '__TAURI__' in window);
 }
 
 /**

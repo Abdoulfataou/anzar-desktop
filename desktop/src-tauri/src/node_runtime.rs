@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter};
 
 /// Version minimale acceptée pour un Node déjà installé (Playwright récent l'exige).
 pub const MIN_MAJOR: u32 = 20;
@@ -188,7 +188,7 @@ pub async fn node_install(app: AppHandle) -> Result<String, String> {
     let root = runtime_root().ok_or("dossier de données introuvable")?;
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
     let client = reqwest::Client::builder().user_agent("ANZAR").build().map_err(|e| e.to_string())?;
-    let _ = app.emit_all("node://progress", Progress { received: 0, total: None, step: "version" });
+    let _ = app.emit("node://progress", Progress { received: 0, total: None, step: "version" });
     let version = latest_lts(&client).await?;
     let top = format!("node-{version}-{os}-{arch}");
     let file = format!("{top}.{ext}");
@@ -215,16 +215,16 @@ pub async fn node_install(app: AppHandle) -> Result<String, String> {
         let received = data.len() as u64;
         if received - last > 512 * 1024 {
             last = received;
-            let _ = app.emit_all("node://progress", Progress { received, total, step: "download" });
+            let _ = app.emit("node://progress", Progress { received, total, step: "download" });
         }
     }
-    let _ = app.emit_all("node://progress", Progress { received: data.len() as u64, total, step: "verify" });
+    let _ = app.emit("node://progress", Progress { received: data.len() as u64, total, step: "verify" });
     let got = format!("{:x}", Sha256::digest(&data));
     if got != expected {
         return Err("fichier téléchargé corrompu (empreinte différente) : réessaie".into());
     }
 
-    let _ = app.emit_all("node://progress", Progress { received: data.len() as u64, total, step: "extract" });
+    let _ = app.emit("node://progress", Progress { received: data.len() as u64, total, step: "extract" });
     let dest = root.join(&version);
     let archive = data;
     let dest2 = dest.clone();
@@ -232,7 +232,7 @@ pub async fn node_install(app: AppHandle) -> Result<String, String> {
         .await.map_err(|e| e.to_string())??;
     std::fs::write(root.join("current"), &version).map_err(|e| e.to_string())?;
     apply_path_with(&app);
-    let _ = app.emit_all("node://progress", Progress { received: 0, total: None, step: "done" });
+    let _ = app.emit("node://progress", Progress { received: 0, total: None, step: "done" });
     Ok(version)
 }
 

@@ -1,23 +1,23 @@
 [package]
 name = "app"
 version = "2.0.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "ANZAR - Assistant IA de Vibecoding pour l'Afrique"
+authors = ["IssalanHub"]
 license = ""
 repository = ""
 default-run = "app"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.90"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [build-dependencies]
-tauri-build = { version = "1.5.6", features = [] }
+tauri-build = { version = "2", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
-tauri = { version = "1.8.3", features = [ "path-all", "window-start-dragging", "window-unmaximize", "window-set-focus", "window-minimize", "window-set-fullscreen", "window-set-min-size", "window-close", "window-maximize", "window-set-position", "window-set-size", "updater", "shell-execute", "shell-open", "dialog-all", "protocol-asset", "fs-read-file", "fs-write-file", "fs-copy-file", "fs-create-dir", "fs-rename-file", "fs-remove-file", "fs-remove-dir", "fs-read-dir", "fs-exists", "dialog"] }
+tauri = { version = "2", features = [ "protocol-asset"] }
 dirs = "5.0"
 blake3 = "1.5"
 # Transport HTTP des serveurs MCP (déjà présent dans les dépendances via l'updater)
@@ -29,7 +29,18 @@ sha2 = "0.10"
 flate2 = "1"
 tar = "0.4"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
-tauri-plugin-stronghold = { git = "https://github.com/tauri-apps/plugins-workspace", branch = "v1" }
+tauri-plugin-stronghold = { version = "2" }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-os = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-opener = "2"
+
+# Stronghold : le hachage scrypt est lent en debug (recommandation du plugin).
+[profile.dev.package.scrypt]
+opt-level = 3
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.

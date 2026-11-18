@@ -9,8 +9,8 @@
  * - Détecter l'OS et adapter les commandes
  */
 
-import { exists, readTextFile } from '@tauri-apps/api/fs'
-import { Command } from '@tauri-apps/api/shell'
+import { exists, readTextFile } from '@/lib/tauriFs'
+import { Command } from '@/lib/tauriShell'
 
 // ============================================================================
 // TYPES
@@ -225,7 +225,7 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   rg: 'rg',
 };
 
-/** Nombre maximal d'arguments par commande (voir les entrées <cmd>-N de tauri.conf.json). */
+/** Nombre maximal d'arguments par commande (les capabilities déclarent 0 à 9 arguments). */
 const MAX_ARGS = 8;
 
 function parseExecutable(command: string): { cmdName: string; args: string[] } | null {
@@ -235,9 +235,9 @@ function parseExecutable(command: string): { cmdName: string; args: string[] } |
   const base = COMMAND_NAME_MAP[raw];
   if (!base) return null;
   const args = parts.slice(1);
-  // Tauri 1 valide les arguments par position et ignore EN SILENCE ceux qui dépassent
-  // la liste déclarée : avec un seul validateur, « npm run build » devenait « npm run ».
-  // tauri.conf.json déclare donc une entrée par nombre d'arguments (npm-0 … npm-8).
+  // Tauri 2 résout la commande par le NOM de l'entrée de scope (npm-2), pas par
+  // le binaire : c'est cette entrée qui porte les validateurs d'arguments.
+  // Utiliser « npm » directement ne validerait que le premier argument.
   if (args.length > MAX_ARGS) return null;
   return { cmdName: `${base}-${args.length}`, args };
 }
@@ -318,9 +318,9 @@ class TerminalService {
   // ─── Platform Detection ───
   private async detectPlatform() {
     try {
-      const { platform } = await import('@tauri-apps/api/os');
-      const os = await platform();
-      this.platform = os as any;
+      const { platform } = await import('@/lib/tauriOs');
+      const os = platform();
+      this.platform = os === 'windows' ? 'win32' : os === 'linux' ? 'linux' : 'darwin';
     } catch {
       // Fallback: guess from navigator
       if (typeof navigator !== 'undefined') {
@@ -421,9 +421,11 @@ class TerminalService {
       }
     }
 
+    // Le nom de scope (`npm-2`) sert à la validation ; l'utilisateur voit `npm`.
+    const displayName = parsed.cmdName.replace(/-\d+$/, '');
     const process: RunningProcess = {
       id: processId,
-      command: parsed.cmdName,
+      command: displayName,
       args: parsed.args,
       cwd: options.cwd,
       startedAt: startTime,
@@ -435,7 +437,7 @@ class TerminalService {
 
     // Emit start event
     if (!options.silent) {
-      this.emitOutput(processId, 'system', `$ ${parsed.cmdName} ${parsed.args.join(' ')}`.trim());
+      this.emitOutput(processId, 'system', `$ ${displayName} ${parsed.args.join(' ')}`.trim());
     }
     this.eventBus.emit({ type: 'process-start', process });
     // Aperçu live : guette une URL localhost dans la sortie de CHAQUE process
@@ -445,9 +447,10 @@ class TerminalService {
 
     try {
       // Direct allowlisted command (no sh -c)
-      const cmd = new Command(parsed.cmdName, parsed.args, {
+      const cmd = Command.create(parsed.cmdName, parsed.args, {
         cwd: options.cwd,
         env: options.env,
+        processGroup: true,
       });
 
       // Collect stderr for auto-fix error detection
@@ -476,8 +479,8 @@ class TerminalService {
       process.childProcess = child;
 
       // Attach completion handlers (do not await — keep UI responsive)
-      cmd.on('close', (data: { code: number }) => {
-        process.exitCode = data.code;
+      cmd.on('close', (data) => {
+        process.exitCode = data.code ?? 1;
         process.status = data.code === 0 ? 'completed' : 'failed';
 
         const durationMs = Date.now() - startTime;
@@ -490,7 +493,7 @@ class TerminalService {
           );
         }
 
-        this.eventBus.emit({ type: 'process-end', processId, exitCode: data.code });
+        this.eventBus.emit({ type: 'process-end', processId, exitCode: data.code ?? 1 });
 
         // ── Auto-fix: emit error event when process fails ──
         if (data.code !== 0 && stderrLines.length > 0) {
@@ -538,7 +541,7 @@ class TerminalService {
         return { success: false, exitCode: 1, stdout: '', stderr: 'Commande non autorisée', durationMs: 0 };
       }
 
-      const cmd = new Command(parsed.cmdName, parsed.args, { cwd: options.cwd });
+      const cmd = Command.create(parsed.cmdName, parsed.args, { cwd: options.cwd, processGroup: true });
       let stdout = '';
       let stderr = '';
 
@@ -553,7 +556,7 @@ class TerminalService {
       }
 
       const result = await new Promise<{ code: number }>((resolve) => {
-        cmd.on('close', (data: { code: number }) => resolve(data));
+        cmd.on('close', (data) => resolve({ code: data.code ?? 1 }));
         cmd.on('error', () => resolve({ code: 1 }));
       });
 
@@ -606,8 +609,9 @@ class TerminalService {
         };
       }
 
-      const cmd = new Command(parsed.cmdName, parsed.args, {
+      const cmd = Command.create(parsed.cmdName, parsed.args, {
         cwd: options.cwd,
+        processGroup: true,
       });
 
       let stdout = '';
@@ -634,7 +638,7 @@ class TerminalService {
       }
 
       const result = await new Promise<{ code: number }>((resolve) => {
-        cmd.on('close', (data: { code: number }) => resolve(data));
+        cmd.on('close', (data) => resolve({ code: data.code ?? 1 }));
         cmd.on('error', () => resolve({ code: 1 }));
       });
 
@@ -678,7 +682,7 @@ class TerminalService {
     if (args.length > MAX_ARGS) return fail(`⛔ Trop d'arguments (max ${MAX_ARGS})`);
     if (args.some((a) => /[\r\n]/.test(a) || a.length > 400)) return fail('⛔ Argument invalide (retour à la ligne ou plus de 400 caractères)');
     try {
-      const cmd = new Command(`${base}-${args.length}`, args, { cwd: options.cwd });
+      const cmd = Command.create(`${base}-${args.length}`, args, { cwd: options.cwd, processGroup: true });
       const out: string[] = [];
       const err: string[] = [];
       cmd.stdout.on('data', (line: string) => { out.push(line); });
@@ -686,7 +690,7 @@ class TerminalService {
       const child = await cmd.spawn();
       const timeoutId = options.timeout ? setTimeout(() => { void child.kill(); }, options.timeout) : undefined;
       const result = await new Promise<{ code: number }>((resolve) => {
-        cmd.on('close', (data: { code: number }) => resolve(data));
+        cmd.on('close', (data) => resolve({ code: data.code ?? 1 }));
         cmd.on('error', () => resolve({ code: 1 }));
       });
       if (timeoutId) clearTimeout(timeoutId);

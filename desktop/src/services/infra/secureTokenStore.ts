@@ -7,35 +7,38 @@
  * pour la session en cours si le coffre est indisponible.
  *
  * La clé du coffre est elle aussi sortie de localStorage : elle est conservée
- * dans `store/vault.key`, dans le dossier de données privé de l'application.
+ * dans `store/vault-key.dat`, dans le dossier de données privé de l'application.
  * L'ancienne clé `settings.deviceVaultKey` est migrée automatiquement puis effacée.
  *
  * Limite connue (documentée dans SECURITY.md) : ce fichier protège le jeton d'une
  * lecture de localStorage, pas d'un attaquant local capable de lire le dossier de
  * données. Le passage à la clé du trousseau du système (Keychain / Credential
- * Manager) se fera avec la migration Tauri 2.
+ * Manager) reste un chantier séparé.
  */
-import { invoke } from '@tauri-apps/api/tauri'
 import { appDataDir } from '@tauri-apps/api/path'
+import { Client, Stronghold } from '@tauri-apps/plugin-stronghold'
 import { readText, writeText } from '@/lib/fileStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 
 const CLIENT_NAME = 'anzar-client'
 const STORE_KEY = 'auth_token'
 /** Clé du coffre, hors localStorage. */
-const VAULT_KEY_FILE = 'vault.key'
+const VAULT_KEY_FILE = 'vault-key.dat'
 /** Ancien emplacement du JWT en clair (base64) dans localStorage. */
 const LEGACY_TOKEN_LS_KEY = 'anzar_tkn_fb'
 
 /** Jeton conservé en mémoire pour la session en cours (jamais persisté). */
 let memoryToken: string | null = null
 
+/** Handle Stronghold réutilisé entre les appels (le plugin garde l'état côté Rust). */
+let cachedHandle: { path: string; password: string; instance: Stronghold; client: Client } | null = null
+
 function toBytes(text: string): number[] {
   return Array.from(new TextEncoder().encode(text))
 }
 
-function fromBytes(bytes: number[]): string {
-  return new TextDecoder().decode(new Uint8Array(bytes))
+function fromBytes(bytes: Uint8Array): string {
+  return new TextDecoder().decode(bytes)
 }
 
 async function getSnapshotPath(): Promise<string> {
@@ -43,13 +46,29 @@ async function getSnapshotPath(): Promise<string> {
   return `${dir}/anzar.vault.hold`
 }
 
-async function ensureClient(snapshotPath: string, password: string): Promise<void> {
-  await invoke('plugin:stronghold|initialize', { snapshotPath, password })
-  try {
-    await invoke('plugin:stronghold|load_client', { snapshotPath, client: CLIENT_NAME })
-  } catch {
-    await invoke('plugin:stronghold|create_client', { snapshotPath, client: CLIENT_NAME })
+async function openVault(snapshotPath: string, password: string): Promise<{
+  instance: Stronghold
+  client: Client
+}> {
+  if (cachedHandle?.path === snapshotPath && cachedHandle.password === password) {
+    return cachedHandle
   }
+
+  const instance = await Stronghold.load(snapshotPath, password)
+  let client: Client
+  try {
+    client = await instance.loadClient(CLIENT_NAME)
+  } catch {
+    try {
+      client = await instance.createClient(CLIENT_NAME)
+    } catch {
+      // Rechargement à chaud de la webview : le client Rust existe déjà.
+      client = new Client(snapshotPath, CLIENT_NAME)
+    }
+  }
+
+  cachedHandle = { path: snapshotPath, password, instance, client }
+  return cachedHandle
 }
 
 /** Clé aléatoire de 32 octets, en hexadécimal. */
@@ -67,7 +86,7 @@ interface VaultKey {
 
 /**
  * Récupère la clé du coffre, par ordre de priorité :
- *   1. `store/vault.key` (emplacement actuel, hors localStorage) ;
+ *   1. `store/vault-key.dat` (emplacement actuel, hors localStorage) ;
  *   2. l'ancienne clé `settings.deviceVaultKey` (migrée puis effacée) ;
  *   3. une nouvelle clé aléatoire.
  */
@@ -123,16 +142,9 @@ export const secureTokenStore = {
 
     try {
       const snapshotPath = await getSnapshotPath()
-      await ensureClient(snapshotPath, vault.key)
-
-      await invoke('plugin:stronghold|save_store_record', {
-        snapshotPath,
-        client: CLIENT_NAME,
-        key: STORE_KEY,
-        value: toBytes(token),
-      })
-
-      await invoke('plugin:stronghold|save', { snapshotPath })
+      const { instance, client } = await openVault(snapshotPath, vault.key)
+      await client.getStore().insert(STORE_KEY, toBytes(token))
+      await instance.save()
       return true
     } catch (e) {
       // Le jeton reste en mémoire pour cette session ; on ne retombe JAMAIS sur localStorage.
@@ -151,14 +163,8 @@ export const secureTokenStore = {
 
     try {
       const snapshotPath = await getSnapshotPath()
-      await ensureClient(snapshotPath, vault.key)
-
-      const bytes = (await invoke('plugin:stronghold|get_store_record', {
-        snapshotPath,
-        client: CLIENT_NAME,
-        key: STORE_KEY,
-      })) as number[] | null
-
+      const { client } = await openVault(snapshotPath, vault.key)
+      const bytes = await client.getStore().get(STORE_KEY)
       if (bytes && bytes.length > 0) {
         memoryToken = fromBytes(bytes)
         return memoryToken
@@ -179,13 +185,9 @@ export const secureTokenStore = {
 
     try {
       const snapshotPath = await getSnapshotPath()
-      await ensureClient(snapshotPath, vault.key)
-      await invoke('plugin:stronghold|remove_store_record', {
-        snapshotPath,
-        client: CLIENT_NAME,
-        key: STORE_KEY,
-      })
-      await invoke('plugin:stronghold|save', { snapshotPath })
+      const { instance, client } = await openVault(snapshotPath, vault.key)
+      await client.getStore().remove(STORE_KEY)
+      await instance.save()
     } catch {
       // rien à supprimer / coffre indisponible
     }

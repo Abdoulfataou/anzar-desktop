@@ -8,7 +8,7 @@
  *
  * Le dossier contient son propre .gitignore (« * ») : ces copies ne partent jamais dans un commit.
  */
-import { copyFile, createDir, exists, writeTextFile } from '@tauri-apps/api/fs';
+import { copyFile, createDir, exists, writeTextFile } from '@/lib/tauriFs';
 import type { ChatAttachment } from '@/types';
 
 export const ATTACH_DIR = '.anzar/fichiers';

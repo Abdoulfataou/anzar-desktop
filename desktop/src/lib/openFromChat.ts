@@ -41,7 +41,7 @@ export async function openFromChat(relPath: string): Promise<void> {
   const abs = await resolveChatAbsPath(relPath);
   if (!abs) return;
   try {
-    const { open } = await import('@tauri-apps/api/shell');
+    const { open } = await import('@/lib/tauriShell');
     await open(abs.substring(0, abs.lastIndexOf('/')));
   } catch {
     /* allowlist : silencieux */

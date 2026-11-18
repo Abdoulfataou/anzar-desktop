@@ -27,7 +27,7 @@ export function storeRoot(): Promise<string | null> {
       if (!isTauri()) return null;
       try {
         const { appDataDir } = await import('@tauri-apps/api/path');
-        const { createDir, exists, writeTextFile } = await import('@tauri-apps/api/fs');
+        const { createDir, exists, writeTextFile } = await import('@/lib/tauriFs');
         const root = `${(await appDataDir()).replace(/[\\/]+$/, '')}/store`;
         for (const dir of [root, `${root}/tasks`, `${root}/undo`]) {
           if (!(await exists(dir))) await createDir(dir, { recursive: true });
@@ -47,7 +47,7 @@ export async function readText(rel: string): Promise<string | null> {
   const root = await storeRoot();
   if (!root) return null;
   try {
-    const { exists, readTextFile } = await import('@tauri-apps/api/fs');
+    const { exists, readTextFile } = await import('@/lib/tauriFs');
     const path = `${root}/${rel}`;
     return (await exists(path)) ? await readTextFile(path) : null;
   } catch {
@@ -59,7 +59,7 @@ export async function readText(rel: string): Promise<string | null> {
 export async function writeText(rel: string, text: string): Promise<void> {
   const root = await storeRoot();
   if (!root) throw new Error('stockage disque indisponible');
-  const { writeTextFile, renameFile } = await import('@tauri-apps/api/fs');
+  const { writeTextFile, renameFile } = await import('@/lib/tauriFs');
   const path = `${root}/${rel}`;
   await writeTextFile(`${path}.tmp`, text);
   await renameFile(`${path}.tmp`, path);
@@ -69,7 +69,7 @@ export async function removeEntry(rel: string): Promise<void> {
   const root = await storeRoot();
   if (!root) return;
   try {
-    const { exists, removeFile } = await import('@tauri-apps/api/fs');
+    const { exists, removeFile } = await import('@/lib/tauriFs');
     const path = `${root}/${rel}`;
     if (await exists(path)) await removeFile(path);
   } catch { /* déjà absent */ }
@@ -79,7 +79,7 @@ export async function removeEntry(rel: string): Promise<void> {
 export async function ensureDir(rel: string): Promise<void> {
   const root = await storeRoot();
   if (!root) throw new Error('stockage disque indisponible');
-  const { createDir, exists } = await import('@tauri-apps/api/fs');
+  const { createDir, exists } = await import('@/lib/tauriFs');
   const path = `${root}/${rel}`;
   if (!(await exists(path))) await createDir(path, { recursive: true });
 }
@@ -89,7 +89,7 @@ export async function removeDirEntry(rel: string): Promise<void> {
   const root = await storeRoot();
   if (!root) return;
   try {
-    const { exists, removeDir } = await import('@tauri-apps/api/fs');
+    const { exists, removeDir } = await import('@/lib/tauriFs');
     const path = `${root}/${rel}`;
     if (await exists(path)) await removeDir(path, { recursive: true });
   } catch { /* déjà absent */ }
@@ -99,7 +99,7 @@ export async function listDir(rel: string): Promise<string[]> {
   const root = await storeRoot();
   if (!root) return [];
   try {
-    const { readDir } = await import('@tauri-apps/api/fs');
+    const { readDir } = await import('@/lib/tauriFs');
     return (await readDir(`${root}/${rel}`)).map((e) => e.name || '').filter(Boolean);
   } catch {
     return [];

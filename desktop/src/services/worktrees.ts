@@ -78,7 +78,7 @@ export function defaultWorktreeBranch(): string {
 export async function createWorktree(repoPath: string, branch: string, startRef: string): Promise<{ path: string; copied: string[] }> {
   if (!isValidBranchName(branch)) throw new Error('Nom de branche invalide (lettres, chiffres, - _ . /).');
   const { documentDir, join } = await import('@tauri-apps/api/path');
-  const { exists, readTextFile, writeTextFile, createDir } = await import('@tauri-apps/api/fs');
+  const { exists, readTextFile, writeTextFile, createDir } = await import('@/lib/tauriFs');
   const repoName = slug(norm(repoPath).split('/').pop() || 'projet');
   const base = await join(await documentDir(), 'ANZAR', 'worktrees');
   await createDir(base, { recursive: true }).catch(() => {});

@@ -7,7 +7,7 @@ const sessionAllowedHosts = new Set<string>()
 function isSafeHttpUrl(url: string): boolean {
   try {
     const u = new URL(url)
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false
+    if (u.protocol !== 'https:' && u.protocol !== 'http:' && u.protocol !== 'mailto:') return false
     // Block localhost in production? Keep allowed for dev; still confirm below.
     return true
   } catch {
@@ -17,7 +17,7 @@ function isSafeHttpUrl(url: string): boolean {
 
 /**
  * Open external URL with a safety confirmation (grand public).
- * - Blocks non-http(s) schemes.
+ * - Blocks every scheme except http(s) and mailto.
  * - Confirms if host not in allowlist (settings.externalAllowlistHosts + backend host).
  */
 export async function openExternalUrl(url: string): Promise<void> {
@@ -25,12 +25,20 @@ export async function openExternalUrl(url: string): Promise<void> {
     throw new Error('Lien bloqué pour raisons de sécurité (URL invalide)')
   }
 
+  const u = new URL(url)
+
+  // mailto: ouvre le client mail, sans hôte à confirmer.
+  if (u.protocol === 'mailto:') {
+    const { open } = await import('@/lib/tauriShell')
+    await open(url)
+    return
+  }
+
   if (!isTauri()) {
     window.open(url, '_blank', 'noopener,noreferrer')
     return
   }
 
-  const u = new URL(url)
   const settings = useSettingsStore.getState()
   const allow = new Set<string>((settings.getExternalAllowlistHosts?.() || []).map((h) => h.toLowerCase()))
   try {
@@ -44,16 +52,16 @@ export async function openExternalUrl(url: string): Promise<void> {
   const allowed = allow.has(host) || sessionAllowedHosts.has(host)
 
   if (!allowed) {
-    const { confirm } = await import('@tauri-apps/api/dialog')
+    const { confirm } = await import('@/lib/tauriDialog')
     const ok = await confirm(
       `Tu vas ouvrir un lien externe:\n\n${host}\n\nN’ouvre ce lien que si tu lui fais confiance.`,
-      { title: 'Ouvrir un lien externe', type: 'warning' }
+      { title: 'Ouvrir un lien externe', kind: 'warning' }
     )
     if (!ok) return
     // Ne plus redemander pendant cette session (moins "tique" utilisateur)
     sessionAllowedHosts.add(host)
   }
 
-  const { open } = await import('@tauri-apps/api/shell')
+  const { open } = await import('@/lib/tauriShell')
   await open(url)
 }

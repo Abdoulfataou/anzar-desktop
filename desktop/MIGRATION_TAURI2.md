@@ -1,78 +1,110 @@
-# Migration Tauri 1.6 → Tauri 2 — Guide ANZAR
+# Migration Tauri 1.8 → Tauri 2 — ANZAR Desktop
 
-> Phase 4 du plan. **À faire sur une branche dédiée** (`git checkout -b tauri2`),
-> car elle touche le runtime complet et doit être testée sur macOS ET Windows
-> avant merge. Compter 1-2 jours.
+> **État : effectuée** sur la branche `security/tauri2`.
+> Versions : `tauri 2.12.6`, `@tauri-apps/api 2.12.5`, CLI `2.12.5`.
+> Validation locale macOS : `tsc`, `vite build`, `cargo check`,
+> `tauri build --debug --no-bundle`, lancement du binaire sans erreur.
 
-## Pourquoi migrer
+---
 
-IPC plus rapide, permissions fines (capabilities), plugins maintenus,
-support mobile (iOS/Android — utile vu `mobile/`), updater v2, PTY possible.
+## 1. Ce qui a changé
 
-## Étapes
+### Configuration
 
-### 1. Outillage
+- `tauri.conf.json` au schéma v2 : `productName`, `version`, `identifier` à la
+  racine ; `build.devUrl` / `build.frontendDist` ; `app.windows` ;
+  `app.security.csp` ; `bundle` ; `plugins.updater`.
+- L'allowlist v1 disparaît au profit de `src-tauri/capabilities/migrated.json` :
+  - scope FS repris de la v1 (avec `$DOCUMENT` au lieu de `$DOCUMENTS`) ;
+  - les 120 entrées shell v1 (`npm-0` … `rg-8`) deviennent des permissions
+    `shell:allow-execute` ;
+  - permissions ajoutées : `dialog`, `os`, `updater`, `process`, `opener`,
+    `stronghold`, et les commandes de fenêtre utilisées par la barre de titre.
 
-```bash
-cd desktop
-npm install @tauri-apps/cli@latest
-npx tauri migrate   # migration automatique officielle (conf + Cargo + imports)
+### Plugins Rust
+
+`main.rs` enregistre désormais :
+
+```rust
+tauri_plugin_shell::init()
+tauri_plugin_dialog::init()
+tauri_plugin_fs::init()
+tauri_plugin_os::init()
+tauri_plugin_process::init()
+tauri_plugin_opener::init()
+tauri_plugin_updater::Builder::new().build()
+tauri_plugin_stronghold::Builder::new(...).build()
 ```
 
-`tauri migrate` fait ~80 % du travail : `tauri.conf.json` v2, `Cargo.toml`,
-et remplace les imports `@tauri-apps/api/*` par les plugins.
+`open_personal_space` utilise `app.path().document_dir()` (API v2).
 
-### 2. Dépendances npm
+### Frontend
 
-```bash
-npm install @tauri-apps/api@latest \
-  @tauri-apps/plugin-fs @tauri-apps/plugin-shell \
-  @tauri-apps/plugin-dialog @tauri-apps/plugin-os \
-  @tauri-apps/plugin-process @tauri-apps/plugin-updater
-```
+- Une couche d'adaptation centralise les différences :
+  - `src/lib/tauriFs.ts` : `readDir` reconstruit les `path` et `children`
+    (v2 ne renvoie que `name` / `isDirectory`), et réexpose les anciens noms
+    (`createDir`, `removeFile`, `readBinaryFile`…).
+  - `src/lib/tauriDialog.ts`, `src/lib/tauriShell.ts`, `src/lib/tauriOs.ts`.
+- `invoke` et `convertFileSrc` passent par `@tauri-apps/api/core`.
+- `Command.create()` remplace `new Command()` ; le nom de scope (`npm-2`)
+  reste utilisé pour que la validation des arguments reste exacte.
+- `processGroup: true` tue désormais l'arbre de processus (npm, npx, dev
+  servers), pas seulement le parent.
+- Stronghold utilise le client JS v2 (`Stronghold.load`, `loadClient`,
+  `createClient`, `getStore`).
+- L'updater utilise `check()` + `Update.downloadAndInstall()` + `relaunch()`.
+- `TitleBar` utilise `getCurrentWebviewWindow()` et le plugin-os synchrone.
 
-### 3. Imports à corriger manuellement (fichiers concernés)
+---
 
-| Fichier | v1 | v2 |
-|---|---|---|
-| `src/services/filesystem/fileSystem.ts` | `@tauri-apps/api/fs` | `@tauri-apps/plugin-fs` |
-| `src/services/terminal.ts` | `@tauri-apps/api/shell` | `@tauri-apps/plugin-shell` |
-| `src/services/terminal.ts` | `@tauri-apps/api/os` | `@tauri-apps/plugin-os` |
-| `src/hooks/useVibeCodingStudio.ts` | `@tauri-apps/api/path` (`documentDir`) | `@tauri-apps/api/path` (inchangé) |
-| `src/services/infra/updateService.ts` | `@tauri-apps/api/updater` | `@tauri-apps/plugin-updater` |
-| dialogs | `@tauri-apps/api/dialog` | `@tauri-apps/plugin-dialog` |
+## 2. Points de vigilance validés
 
-API quasi identiques ; `Command` de plugin-shell : `Command.create(name, args)` au lieu de `new Command(name, args)`.
+| Point | État |
+|---|---|
+| `readDir` v2 sans `path`/`children` | adapté dans `tauriFs.ts` |
+| Shell v2 : validation par nom de scope | `npm-2` conservé, `processGroup` activé |
+| Stronghold v2 | réécrit sur le client JS v2 |
+| Updater v2 | réécrit, ressources `Update` conservées |
+| Capabilities | build Tauri validé |
+| CSP | `object-src`, `base-uri`, `frame-ancestors`, `form-action` |
+| `$DOCUMENTS` v1 invalide en v2 | remplacé par `$DOCUMENT` |
 
-### 4. Allowlist → Capabilities
+---
 
-L'allowlist de `tauri.conf.json` devient `src-tauri/capabilities/default.json`.
-Reporter le scope FS et l'allowlist shell existants (garde les mêmes validators regex).
-**Profiter de la migration pour resserrer le scope FS** au périmètre annoncé
-dans le README (`**/ANZAR/**` + dossiers projets), voir rapport d'audit §4.
+## 3. Tests manuels restant à faire (macOS + Windows)
 
-### 5. Rust
+1. **Login OTP** puis fermeture/réouverture : la session doit être restaurée
+   depuis Stronghold.
+2. **Ouverture d'un dossier** dans Documents/Bureau/Projects : l'explorateur,
+   l'éditeur et les médias doivent fonctionner.
+3. **Terminal** : `npm install`, `npm run build`, arrêt d'un processus — vérifier
+   qu'aucun enfant ne survit.
+4. **Connecteurs MCP** : démarrage stdio et HTTP.
+5. **Mise à jour** : build signé, publication `latest.json`, installation.
+6. **Windows** : chemins, terminal, installeur NSIS, mise à jour.
 
-- `src-tauri/Cargo.toml` : `tauri = "2"`, ajouter les plugins (`tauri-plugin-fs`, `tauri-plugin-shell`, `tauri-plugin-dialog`, `tauri-plugin-os`, `tauri-plugin-updater`).
-- `main.rs` : enregistrer les plugins dans le builder (`.plugin(tauri_plugin_fs::init())` etc.).
+---
 
-### 6. CI / Releases
+## 4. Release
 
-- `.github/workflows/release.yml` : mettre à jour `tauri-action` en version v2-compatible.
-- Updater v2 : régénérer la config updater (les clés `TAURI_PRIVATE_KEY`/`TAURI_KEY_PASSWORD` deviennent `TAURI_SIGNING_PRIVATE_KEY`/`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`).
+Tauri 2 utilise de nouveaux secrets GitHub :
 
-### 7. Bonus PTY (après migration)
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
 
-Pour un vrai terminal interactif (dev servers, REPL) : crate `portable-pty`
-côté Rust + commande Tauri custom streamant vers le front. Remplace les
-exécutions one-shot de `terminal.ts` pour `runDevServer`.
+Les workflows acceptent encore les anciens noms (`TAURI_PRIVATE_KEY`,
+`TAURI_KEY_PASSWORD`) en repli. `bundle.createUpdaterArtifacts` est passé à
+`true` : les artefacts produits sont au format v2.
 
-### 8. Validation
+La clé publique minisign existante est conservée dans
+`tauri.conf.json > plugins.updater.pubkey`. Si une nouvelle clé est générée,
+il faut la remplacer et publier une release de transition.
 
-```bash
-npm run smoke          # tsc + vite build
-npm run tauri:dev      # test manuel : FS, terminal, updater, mode Agent
-npm run tauri:build    # build signé sur macOS + Windows
-```
+---
 
-Tester en priorité : génération projet, mode Agent (read/write/edit/run), rollback git, auto-update.
+## 5. Reste hors périmètre
+
+- Clé du coffre dans le trousseau système (Keychain / Credential Manager).
+- Secrets des connecteurs MCP chiffrés.
+- Épinglage des versions LSP (`typescript-language-server`, `pyright`).
+- PTY interactif réel.

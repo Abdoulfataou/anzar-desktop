@@ -18,7 +18,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Lanceurs autorisés pour un serveur local. Un chemin absolu vers l'un d'eux est accepté.
 const LAUNCHERS: &[&str] = &[
@@ -234,7 +234,7 @@ pub fn mcp_spawn(
     let (app_out, id_out) = (app.clone(), id.clone());
     let procs = state.procs.clone();
     let emit = move |line: String| {
-        let _ = app_out.emit_all("mcp://message", MessageEvent { id: id_out.clone(), line });
+        let _ = app_out.emit("mcp://message", MessageEvent { id: id_out.clone(), line });
     };
     if lsp { pump_lsp(stdout, emit) } else { pump_lines(stdout, emit) }
     let (app_err, id_err) = (app.clone(), id.clone());
@@ -242,7 +242,7 @@ pub fn mcp_spawn(
     let app_exit = app.clone();
     let id_exit = id.clone();
     pump_lines(stderr, move |line| {
-        let _ = app_err.emit_all("mcp://log", LogEvent { id: id_err.clone(), line });
+        let _ = app_err.emit("mcp://log", LogEvent { id: id_err.clone(), line });
     });
     // Enregistré AVANT de surveiller la fin du processus
     procs.lock().unwrap().insert(id, Proc { child, stdin, lsp });
@@ -253,7 +253,7 @@ pub fn mcp_spawn(
         match p.child.try_wait() {
             Ok(Some(status)) => {
                 map.remove(&id_exit);
-                let _ = app_exit.emit_all("mcp://exit", ExitEvent { id: id_exit.clone(), code: status.code() });
+                let _ = app_exit.emit("mcp://exit", ExitEvent { id: id_exit.clone(), code: status.code() });
                 break;
             }
             Ok(None) => {}

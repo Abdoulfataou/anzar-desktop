@@ -4,7 +4,7 @@
  * - HTTP  : « Streamable HTTP » de la spécification, réponse JSON ou SSE
  */
 import { ensureNode, needsNode } from '@/services/nodeRuntime';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { McpError, parseHttpMessages, type JsonRpcMessage, type McpTransport } from './client';
 

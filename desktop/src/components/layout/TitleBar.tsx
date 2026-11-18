@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { cn, isTauri } from '@/lib/utils';
-import { appWindow } from '@tauri-apps/api/window';
-import { type } from '@tauri-apps/api/os';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { osType } from '@/lib/tauriOs';
 import CreditBadge from '@/components/billing/CreditBadge';
 import { useAccountStore } from '@/stores/accountStore';
+const appWindow = getCurrentWebviewWindow()
 
 interface TitleBarProps {
   className?: string;
@@ -19,13 +20,14 @@ export default function TitleBar({ className }: TitleBarProps) {
     if (!isTauri()) return;
     Promise.all([
       appWindow.isMaximized().catch(() => false),
-      type().catch(() => 'Darwin' as string),
-    ]).then(([maximized, osType]) => {
+      // plugin-os v2 est synchrone ; on garde un Promise.all homogène.
+      Promise.resolve(osType()),
+    ]).then(([maximized, os]) => {
       setIsMaximized(maximized);
-      const os = osType.toLowerCase();
-      if (os.includes('windows')) {
+      const name = os.toLowerCase();
+      if (name.includes('windows')) {
         setPlatform('windows');
-      } else if (os.includes('linux')) {
+      } else if (name.includes('linux')) {
         setPlatform('linux');
       } else {
         setPlatform('darwin');

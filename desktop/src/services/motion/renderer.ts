@@ -4,7 +4,7 @@
  * et déterministe pour toutes les animations (CSS, GSAP, canvas, three.js, JavaScript maison).
  * Ouvre aussi un fichier HTML local du dossier de travail, sans serveur.
  */
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import RENDER_SCRIPT from './anzar-render.cjs?raw';
 
@@ -50,7 +50,7 @@ export interface RenderOptions {
 
 async function renderOnce(job: RenderJob, opts: RenderOptions): Promise<RenderResult> {
   const { appDataDir } = await import('@tauri-apps/api/path');
-  const { createDir, writeTextFile } = await import('@tauri-apps/api/fs');
+  const { createDir, writeTextFile } = await import('@/lib/tauriFs');
   const base = join(await appDataDir(), 'render');
   const workDir = join(base, `job-${Date.now()}-${++counter}`);
   await createDir(join(workDir, 'frames'), { recursive: true });
@@ -131,7 +131,7 @@ export async function renderFrames(job: RenderJob, opts: RenderOptions = {}): Pr
 }
 
 export async function readFrame(path: string): Promise<Blob> {
-  const { readBinaryFile } = await import('@tauri-apps/api/fs');
+  const { readBinaryFile } = await import('@/lib/tauriFs');
   const bytes = await readBinaryFile(path);
   return new Blob([bytes as unknown as BlobPart], { type: 'image/jpeg' });
 }
@@ -139,7 +139,7 @@ export async function readFrame(path: string): Promise<Blob> {
 export async function cleanupRender(r: Pick<RenderResult, 'workDir'>): Promise<void> {
   if (!r.workDir) return;
   try {
-    const { removeDir } = await import('@tauri-apps/api/fs');
+    const { removeDir } = await import('@/lib/tauriFs');
     await removeDir(r.workDir, { recursive: true });
   } catch { /* dossier temporaire : sans importance */ }
 }

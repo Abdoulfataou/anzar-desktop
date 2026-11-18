@@ -763,7 +763,7 @@ const ANIM_SIZES: Record<string, [number, number]> = {
  */
 async function checkMotionHtml(absFile: string): Promise<{ output?: string; isError?: boolean; note?: string }> {
   try {
-    const { readTextFile } = await import('@tauri-apps/api/fs');
+    const { readTextFile } = await import('@/lib/tauriFs');
     const html = await readTextFile(absFile);
     const externals: string[] = [];
     const re = /<(script|link)\b[^>]*?(?:src|href)=["'](https?:\/\/[^"']+)["']/gi;
@@ -825,7 +825,7 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
     } else {
       try {
         const musicAbs = resolvePath(ctx.projectRoot, args.music);
-        const { readBinaryFile } = await import('@tauri-apps/api/fs');
+        const { readBinaryFile } = await import('@/lib/tauriFs');
         const bytes = await readBinaryFile(musicAbs);
         if (bytes.byteLength > 80 * 1048576) throw new Error('fichier audio trop lourd (80 Mo au plus)');
         const { prepareSoundtrack } = await import('@/services/motion/audio');
@@ -853,7 +853,7 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
   let added = 0;
   let encodeError = '';
   let chain: Promise<void> = Promise.resolve();
-  const { removeFile, writeBinaryFile, createDir } = await import('@tauri-apps/api/fs');
+  const { removeFile, writeBinaryFile, createDir } = await import('@/lib/tauriFs');
   const addFrame = (i: number, blob: Blob) => {
     if (picks.has(i)) keyFrames.set(i, blob);
     return enc.add(blob).then(() => { added++; });
@@ -936,7 +936,7 @@ async function exportStill(o: { url?: string; file?: string; width: number; heig
   const r = await renderFrames({ url: o.url, file: o.file, root: o.ctx.projectRoot, width: o.width, height: o.height, times: [Math.max(0, o.at)], imageType: 'png' }, { signal: o.ctx.signal });
   try {
     if (r.error || !r.files[0]) return { output: r.error || 'Aucune image produite.', isError: true };
-    const { readBinaryFile, writeBinaryFile, createDir } = await import('@tauri-apps/api/fs');
+    const { readBinaryFile, writeBinaryFile, createDir } = await import('@/lib/tauriFs');
     const bytes = await readBinaryFile(r.files[0]);
     const abs = resolvePath(o.ctx.projectRoot, rel);
     await createDir(abs.replace(/[\\/][^\\/]+$/, ''), { recursive: true }).catch(() => {});

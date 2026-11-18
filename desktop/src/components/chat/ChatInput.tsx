@@ -18,7 +18,7 @@ import {
 } from './composerSuggestions';
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 import { imageToDataUrl, imageMimeFromName } from '@/lib/imageAttach';
-import { readTextFile, readBinaryFile } from '@tauri-apps/api/fs';
+import { readTextFile, readBinaryFile } from '@/lib/tauriFs';
 
 interface ChatInputProps {
   /** Texte placé dans le champ (ex. idée saisie avant la connexion, non envoyée faute de crédit) */
@@ -804,7 +804,7 @@ export default function ChatInput({
                     const newItems: ChatAttachment[] = [];
                     // Essayer Tauri dialog en premier
                     if (isTauri()) {
-                      const { open: openDialog } = await import('@tauri-apps/api/dialog');
+                      const { open: openDialog } = await import('@/lib/tauriDialog');
                       const selected = await openDialog({
                         multiple: true,
                         title: 'Joindre des fichiers',

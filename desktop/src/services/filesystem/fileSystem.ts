@@ -21,7 +21,7 @@ import {
   removeDir,
   renameFile,
   exists as fsExists,
-} from '@tauri-apps/api/fs';
+} from '@/lib/tauriFs';
 
 // ============================================================================
 // LANGUAGE DETECTION

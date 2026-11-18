@@ -9,7 +9,7 @@
 //! - ripgrep 14.1.1 : recherche instantanée dans le code.
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 // ============================================================================
 // CATALOGUE (URL + empreinte vérifiées le 2026-11-17)
@@ -95,7 +95,7 @@ fn artifact_for(tool: &'static CuratedTool) -> Result<&'static Artifact, String>
 // ============================================================================
 
 fn tools_root(app: &AppHandle) -> Option<std::path::PathBuf> {
-    app.path_resolver().app_data_dir().map(|d| d.join("tools"))
+    app.path().app_data_dir().ok().map(|d| d.join("tools"))
 }
 
 
@@ -171,7 +171,7 @@ pub async fn tool_install(app: AppHandle, name: String) -> Result<String, String
     let root = tools_root(&app).ok_or("dossier de données introuvable")?;
     std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
     let emit = |received: u64, total: Option<u64>, step: &'static str| {
-        let _ = app.emit_all("tool://progress", Progress { tool: tool.name.into(), received, total, step });
+        let _ = app.emit("tool://progress", Progress { tool: tool.name.into(), received, total, step });
     };
 
     emit(0, None, "download");

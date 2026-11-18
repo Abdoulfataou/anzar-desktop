@@ -16,9 +16,9 @@ async function saveBytes(defaultName: string, filter: Filter, data: Uint8Array |
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     return;
   }
-  const { save } = await import('@tauri-apps/api/dialog');
+  const { save } = await import('@/lib/tauriDialog');
   const { downloadDir, join } = await import('@tauri-apps/api/path');
-  const { writeBinaryFile, writeTextFile } = await import('@tauri-apps/api/fs');
+  const { writeBinaryFile, writeTextFile } = await import('@/lib/tauriFs');
   let defaultPath = defaultName;
   try { defaultPath = await join(await downloadDir(), defaultName); } catch { /* garde le nom seul */ }
   const path = await save({ defaultPath, filters: [filter] });

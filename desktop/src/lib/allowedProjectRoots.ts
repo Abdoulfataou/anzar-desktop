@@ -38,10 +38,10 @@ export async function isAllowedProjectRoot(selectedPath: string): Promise<boolea
 
 export async function showPathNotAllowedMessage(): Promise<void> {
   try {
-    const { message } = await import('@tauri-apps/api/dialog')
+    const { message } = await import('@/lib/tauriDialog')
     await message(
       "Dossier non autorisé. Vérifie que le dossier est dans ton répertoire personnel (Documents, Bureau, etc.).",
-      { title: 'Dossier non autorisé', type: 'warning' }
+      { title: 'Dossier non autorisé', kind: 'warning' }
     )
   } catch {
     alert(

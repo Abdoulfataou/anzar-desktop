@@ -8,7 +8,7 @@
  *   (pdf-lib, exceljs, docx, sharp), toujours disponible.
  * - Rust, Docker, Bun, Deno, uv : commande d'installation officielle à copier.
  */
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import toast from 'react-hot-toast';
 
 export interface ProgramInfo {
@@ -80,8 +80,8 @@ let gitInstalling: Promise<boolean> | null = null;
 
 async function ask(title: string, message: string): Promise<boolean> {
   try {
-    const { ask: dialogAsk } = await import('@tauri-apps/api/dialog');
-    return await dialogAsk(message, { title, type: 'info' });
+    const { ask: dialogAsk } = await import('@/lib/tauriDialog');
+    return await dialogAsk(message, { title, kind: 'info' });
   } catch { return false; }
 }
 

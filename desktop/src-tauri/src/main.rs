@@ -27,6 +27,14 @@ fn main() {
             })
             .build(),
         )
+        // Accès système et plugins Tauri 2
+        .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         // Serveurs MCP : transport stdio et HTTP (le protocole est géré par l'app)
         .manage(mcp::McpState::default())
         .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
@@ -44,9 +52,12 @@ fn main() {
 /// Ouvre l'« espace ANZAR » (Documents/ANZAR) dans le Finder ou l'Explorateur.
 /// Sans argument : la page ne peut faire ouvrir aucun autre chemin.
 #[tauri::command]
-fn open_personal_space() -> Result<(), String> {
-    let dir = tauri::api::path::document_dir()
-        .ok_or_else(|| "Dossier Documents introuvable".to_string())?
+fn open_personal_space(app: tauri::AppHandle) -> Result<(), String> {
+    use tauri::Manager;
+    let dir = app
+        .path()
+        .document_dir()
+        .map_err(|e| e.to_string())?
         .join("ANZAR");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     #[cfg(target_os = "macos")]

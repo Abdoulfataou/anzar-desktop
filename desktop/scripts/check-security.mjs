@@ -63,7 +63,8 @@ try {
 }
 
 if (conf) {
-  const csp = String(conf?.tauri?.security?.csp || '');
+  // Tauri 2 : app.security.csp ; Tauri 1 : tauri.security.csp (compatibilité du garde-fou).
+  const csp = String(conf?.app?.security?.csp || conf?.tauri?.security?.csp || '');
   for (const directive of ["default-src 'self'", "object-src 'none'", "base-uri 'self'", "frame-ancestors 'none'", "form-action 'self'"]) {
     if (!csp.includes(directive)) failures.push(`CSP : directive manquante « ${directive} »`);
   }

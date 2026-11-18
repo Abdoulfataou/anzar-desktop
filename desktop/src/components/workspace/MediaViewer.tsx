@@ -27,7 +27,7 @@ export default function MediaViewer({ absPath, name, version }: { absPath: strin
     setError(null);
     (async () => {
       try {
-        const { readBinaryFile } = await import('@tauri-apps/api/fs');
+        const { readBinaryFile } = await import('@/lib/tauriFs');
         const bytes = await readBinaryFile(absPath);
         if (bytes.byteLength > MAX_BYTES) throw new Error('fichier trop lourd pour l\'aperçu (300 Mo au plus)');
         const ext = name.split('.').pop()?.toLowerCase() || '';

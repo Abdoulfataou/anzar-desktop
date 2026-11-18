@@ -135,9 +135,9 @@ async function exportTasks(): Promise<number | null> {
     URL.revokeObjectURL(url);
     return conversations.length;
   }
-  const { save } = await import('@tauri-apps/api/dialog');
+  const { save } = await import('@/lib/tauriDialog');
   const { downloadDir, join } = await import('@tauri-apps/api/path');
-  const { writeTextFile } = await import('@tauri-apps/api/fs');
+  const { writeTextFile } = await import('@/lib/tauriFs');
   const path = await save({
     title: 'Exporter les tâches',
     defaultPath: await downloadDir().then((d) => join(d, name)).catch(() => name),
@@ -158,8 +158,8 @@ async function importTasks(): Promise<{ added: number; skipped: number } | null>
       input.click();
     });
   } else {
-    const { open } = await import('@tauri-apps/api/dialog');
-    const { readTextFile } = await import('@tauri-apps/api/fs');
+    const { open } = await import('@/lib/tauriDialog');
+    const { readTextFile } = await import('@/lib/tauriFs');
     const path = await open({ title: 'Importer des tâches', multiple: false, filters: [{ name: 'Sauvegarde ANZAR', extensions: ['json'] }] });
     if (!path || typeof path !== 'string') return null;
     text = await readTextFile(path);

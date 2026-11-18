@@ -7,7 +7,7 @@
  * profil en mémoire, fichiers de travail dans le dossier de données de l'app.
  * Navigateur : Google Chrome s'il est installé, sinon Chromium, téléchargé une fois.
  */
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { McpClient, resultToText, type McpCallResult, type McpTransport } from '@/services/mcp/client';
 import { StdioTransport } from '@/services/mcp/transports';
@@ -229,7 +229,7 @@ export interface Capture { label: string; dataUrl: string }
 
 /** Lit une capture enregistrée par le navigateur, la réduit (moins de données à envoyer) puis la supprime. */
 async function loadCapture(path: string): Promise<string> {
-  const { readBinaryFile, removeFile } = await import('@tauri-apps/api/fs');
+  const { readBinaryFile, removeFile } = await import('@/lib/tauriFs');
   const bytes = await readBinaryFile(path);
   void removeFile(path).catch(() => {});
   const { imageToDataUrl } = await import('@/lib/imageAttach');
@@ -362,7 +362,7 @@ export async function captureFrames(opts: {
       ? `Rien ne répond à ${opts.url}. Lance d'abord start_dev_server.` : `Ouverture impossible : ${msg.slice(0, 400)}` };
   }
   await call('browser_resize', { width: opts.width, height: opts.height }, opts.signal);
-  const { readBinaryFile, removeFile } = await import('@tauri-apps/api/fs');
+  const { readBinaryFile, removeFile } = await import('@/lib/tauriFs');
   const dir = await outputDir();
   const total = Math.max(1, Math.round((opts.durationMs / 1000) * opts.fps));
   const count = Number(text(await call('browser_evaluate', { function: FREEZE_AT(0) }, opts.signal)).match(/### Result\s*\n\s*(\d+)/)?.[1] || 0);

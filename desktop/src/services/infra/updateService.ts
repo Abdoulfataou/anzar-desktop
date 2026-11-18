@@ -1,3 +1,4 @@
+import type { Update } from '@tauri-apps/plugin-updater'
 import { isTauri } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -13,6 +14,13 @@ export type UpdateManifest = {
 export type UpdateCheckResult =
   | { supported: false }
   | { supported: true; shouldUpdate: boolean; manifest: UpdateManifest | null }
+
+/**
+ * La mise à jour annoncée par `check()` porte une ressource côté Rust qu'il faut
+ * conserver pour lancer l'installation (API updater v2). On la garde en mémoire
+ * jusqu'à l'installation ou la prochaine vérification.
+ */
+let pendingUpdate: Update | null = null
 
 export function getLastUpdateCheckMs(): number {
   const raw = localStorage.getItem(LS_LAST_CHECK)
@@ -33,13 +41,21 @@ export function getCachedUpdateResult(): UpdateCheckResult | null {
 export async function checkForUpdates(): Promise<UpdateCheckResult> {
   if (!isTauri()) return { supported: false }
 
-  const { checkUpdate } = await import('@tauri-apps/api/updater')
-  const { shouldUpdate, manifest } = await checkUpdate()
+  // Libère la ressource de la vérification précédente si elle n'a pas servi.
+  if (pendingUpdate) {
+    await pendingUpdate.close().catch(() => {})
+    pendingUpdate = null
+  }
+
+  const { check } = await import('@tauri-apps/plugin-updater')
+  pendingUpdate = await check()
 
   const result: UpdateCheckResult = {
     supported: true,
-    shouldUpdate: !!shouldUpdate,
-    manifest: (manifest || null) as any,
+    shouldUpdate: !!pendingUpdate,
+    manifest: pendingUpdate
+      ? { version: pendingUpdate.version, date: pendingUpdate.date, body: pendingUpdate.body }
+      : null,
   }
 
   localStorage.setItem(LS_LAST_CHECK, String(Date.now()))
@@ -50,9 +66,24 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
 
 export async function installUpdateAndRelaunch(): Promise<void> {
   if (!isTauri()) return
-  const { installUpdate } = await import('@tauri-apps/api/updater')
-  const { relaunch } = await import('@tauri-apps/api/process')
-  await installUpdate()
+
+  // L'utilisateur peut cliquer sur « Installer » sans avoir rouvert les Paramètres :
+  // on refait alors la vérification, plutôt que d'échouer sur une ressource absente.
+  if (!pendingUpdate) {
+    const { check } = await import('@tauri-apps/plugin-updater')
+    pendingUpdate = await check()
+  }
+  if (!pendingUpdate) throw new Error('Aucune mise à jour disponible.')
+
+  try {
+    // Sur Windows, l'installeur peut redémarrer l'app lui-même.
+    await pendingUpdate.downloadAndInstall()
+  } finally {
+    await pendingUpdate.close().catch(() => {})
+    pendingUpdate = null
+  }
+
+  const { relaunch } = await import('@tauri-apps/plugin-process')
   await relaunch()
 }
 
@@ -79,4 +110,3 @@ export async function autoCheckOncePerDay(): Promise<void> {
     console.warn('Auto-update check failed:', e?.message || e)
   }
 }
-

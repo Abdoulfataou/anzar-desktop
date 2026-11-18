@@ -5,7 +5,7 @@
  * ffmpeg (vidéo rapide), ripgrep (recherche rapide). Téléchargés une fois,
  * rangés dans les fichiers de l'app, jamais installés sur le système.
  */
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import { isTauri } from '@/lib/utils';
 
 export interface ToolInfo {
@@ -39,12 +39,12 @@ export async function toolInstall(name: string): Promise<{ ok: boolean; version?
 /** Accord de l'utilisateur avant tout téléchargement (même UX que Node). */
 export async function confirmToolInstall(info: ToolInfo): Promise<boolean> {
   try {
-    const { ask } = await import('@tauri-apps/api/dialog');
+    const { ask } = await import('@/lib/tauriDialog');
     return await ask(
       `ANZAR peut installer ${info.label}.\n\n`
       + `Téléchargement depuis la source officielle (${info.size_mb} Mo, une seule fois), empreinte vérifiée, `
       + `rangé dans les fichiers d'ANZAR — rien d'installé sur le système, aucun mot de passe.\n\nTélécharger maintenant ?`,
-      { title: `Installer ${info.name}`, type: 'info' },
+      { title: `Installer ${info.name}`, kind: 'info' },
     );
   } catch {
     return false;

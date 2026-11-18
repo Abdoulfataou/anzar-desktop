@@ -114,7 +114,7 @@ function visualsDir(): Promise<string> {
   if (!dirPromise) {
     dirPromise = (async () => {
       const { appDataDir, join } = await import('@tauri-apps/api/path');
-      const { createDir, exists, removeDir } = await import('@tauri-apps/api/fs');
+      const { createDir, exists, removeDir } = await import('@/lib/tauriFs');
       const dir = await join(await appDataDir(), 'visuals');
       try {
         if (await exists(dir)) await removeDir(dir, { recursive: true });
@@ -142,8 +142,8 @@ export async function widgetUrl(fragment: string, theme: WidgetTheme): Promise<{
   let url: string;
   if (isTauri()) {
     const { join } = await import('@tauri-apps/api/path');
-    const { writeTextFile } = await import('@tauri-apps/api/fs');
-    const { convertFileSrc } = await import('@tauri-apps/api/tauri');
+    const { writeTextFile } = await import('@/lib/tauriFs');
+    const { convertFileSrc } = await import('@tauri-apps/api/core');
     const path = await join(await visualsDir(), `${token}.html`);
     await writeTextFile(path, html);
     url = convertFileSrc(path);

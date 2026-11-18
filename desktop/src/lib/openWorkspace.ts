@@ -31,7 +31,7 @@ export function activateWorkspace(path: string): string {
 /** Dialogue natif → dossier existant. Retourne l'id du projet, ou null si annulé/refusé. */
 export async function openWorkspaceFolder(): Promise<string | null> {
   try {
-    const { open } = await import('@tauri-apps/api/dialog');
+    const { open } = await import('@/lib/tauriDialog');
     const selected = await open({ directory: true, multiple: false, title: 'Ouvrir un dossier de travail' });
     if (!selected || typeof selected !== 'string') return null;
     if (!(await isAllowedProjectRoot(selected))) {
@@ -49,7 +49,7 @@ export async function openWorkspaceFolder(): Promise<string | null> {
 /** Dialogue natif → nouvel emplacement (dossier vierge que l'agent remplira). */
 export async function createWorkspaceFolder(): Promise<string | null> {
   try {
-    const { save } = await import('@tauri-apps/api/dialog');
+    const { save } = await import('@/lib/tauriDialog');
     const selected = await save({ title: 'Nouveau projet — choisir un emplacement' });
     if (!selected || typeof selected !== 'string') return null;
     if (!(await isAllowedProjectRoot(selected))) {

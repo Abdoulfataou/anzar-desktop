@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter};
 
 const IDENTIFIER: &str = "com.anzar.desktop";
 
@@ -211,7 +211,7 @@ pub async fn git_install(app: AppHandle) -> Result<String, String> {
     }
     let arch = if cfg!(target_arch = "aarch64") { "arm64" } else { "64-bit" };
     let client = reqwest::Client::builder().user_agent("ANZAR").build().map_err(|e| e.to_string())?;
-    let _ = app.emit_all("git://progress", Progress { received: 0, total: None, step: "version" });
+    let _ = app.emit("git://progress", Progress { received: 0, total: None, step: "version" });
     let rel: serde_json::Value = client.get("https://api.github.com/repos/git-for-windows/git/releases/latest")
         .header("Accept", "application/vnd.github+json").send().await
         .map_err(|e| format!("GitHub injoignable : {e}"))?
@@ -239,12 +239,12 @@ pub async fn git_install(app: AppHandle) -> Result<String, String> {
     while let Some(chunk) = res.chunk().await.map_err(|e| format!("connexion coupée : {e}"))? {
         data.extend_from_slice(&chunk);
         let r = data.len() as u64;
-        if r - last > 512 * 1024 { last = r; let _ = app.emit_all("git://progress", Progress { received: r, total, step: "download" }); }
+        if r - last > 512 * 1024 { last = r; let _ = app.emit("git://progress", Progress { received: r, total, step: "download" }); }
     }
     if format!("{:x}", Sha256::digest(&data)) != expected {
         return Err("fichier téléchargé corrompu (empreinte différente) : réessaie".into());
     }
-    let _ = app.emit_all("git://progress", Progress { received: data.len() as u64, total, step: "extract" });
+    let _ = app.emit("git://progress", Progress { received: data.len() as u64, total, step: "extract" });
     let root = git_root().ok_or("dossier de données introuvable")?;
     let dest = root.join(&tag);
     let tmp = root.join(format!("{tag}.partial"));
@@ -258,6 +258,6 @@ pub async fn git_install(app: AppHandle) -> Result<String, String> {
     }).await.map_err(|e| e.to_string())??;
     std::fs::write(root.join("current"), &tag).map_err(|e| e.to_string())?;
     crate::node_runtime::apply_path_with(&app);
-    let _ = app.emit_all("git://progress", Progress { received: 0, total: None, step: "done" });
+    let _ = app.emit("git://progress", Progress { received: 0, total: None, step: "done" });
     Ok(tag)
 }

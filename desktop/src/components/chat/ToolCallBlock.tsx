@@ -28,7 +28,7 @@ function openProjectFile(path: string) {
 /** Ouvre le dossier contenant un fichier dans le Finder / Explorateur. */
 async function revealFolder(absPath: string) {
   try {
-    const { open } = await import('@tauri-apps/api/shell');
+    const { open } = await import('@/lib/tauriShell');
     await open(absPath.substring(0, absPath.lastIndexOf('/')));
   } catch {
     // allowlist Tauri : fallback silencieux, l'onglet interne reste disponible
@@ -95,7 +95,7 @@ function useObjectUrl(absPath: string | null, name: string, version: number): [s
     if (!absPath) return;
     (async () => {
       try {
-        const { readBinaryFile } = await import('@tauri-apps/api/fs');
+        const { readBinaryFile } = await import('@/lib/tauriFs');
         const bytes = await readBinaryFile(absPath);
         const ext = name.split('.').pop()?.toLowerCase() || '';
         const MIME: Record<string, string> = {
