@@ -43,3 +43,6 @@ desktop/src-tauri/target/
 
 # Admin build
 Admin/src-tauri/target/
+
+.zcode/
+*.tsbuildinfo
