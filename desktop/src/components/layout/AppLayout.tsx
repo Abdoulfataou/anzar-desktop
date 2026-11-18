@@ -54,6 +54,14 @@ export default function AppLayout({ className }: AppLayoutProps) {
         className
       )}
     >
+      {/* Lien d'évitement clavier */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-[200] focus:top-2 focus:left-2 focus:rounded-lg focus:border focus:border-border-medium focus:bg-surface-elevated focus:px-3 focus:py-2 focus:text-ui-base focus:text-text-primary focus:shadow-lg"
+      >
+        Aller au contenu
+      </a>
+
       {/* Command Palette (global) */}
       <CommandPalette />
       {/* Automatisations : tournent tant que l'app est ouverte */}
@@ -85,7 +93,7 @@ export default function AppLayout({ className }: AppLayoutProps) {
               </p>
             </div>
           )}
-          <main className="flex-1 overflow-hidden min-h-0 pr-1 pb-1">
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-hidden min-h-0 pr-1 pb-1 outline-none">
             {framed ? (
               <div className="h-full overflow-hidden rounded-xl border border-border-medium bg-bg-primary">
                 <Outlet />

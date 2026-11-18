@@ -17,6 +17,7 @@ import { useAccountStore } from '@/stores/accountStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { openExternalUrl } from '@/services/infra/externalLinks';
 import { refreshCredits } from '@/lib/credits';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 export type PaymentMethod = 'wave' | 'orange_money' | 'airtel_money' | 'flooz' | 'mpesa' | 'nita_transfert' | 'amana_transfert';
 
@@ -92,6 +93,7 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
   const [tracking, setTracking] = useState<Tracking | null>(null);
   const balance = useAccountStore((s) => s.credits.remaining);
   const pollStart = useRef(0);
+  const dialogRef = useFocusTrap<HTMLDivElement>(true, onClose);
 
   useEffect(() => {
     let alive = true;
@@ -182,17 +184,17 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
   // Portail : la barre de titre a un backdrop-filter, qui piège les éléments `fixed`.
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md mx-4 animate-scale-in">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="recharge-title" tabIndex={-1} className="relative w-full max-w-md mx-4 animate-scale-in">
         <div className="rounded-2xl border border-border-medium bg-bg-secondary shadow-2xl overflow-y-auto max-h-[90vh]">
           <div className="flex items-center justify-between px-5 py-4 border-b border-border-subtle">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center">
                 <CreditCard size={16} className="text-white" />
               </div>
-              <h3 className="text-base font-semibold text-text-primary">Recharger</h3>
+              <h3 id="recharge-title" className="text-base font-semibold text-text-primary">Recharger</h3>
             </div>
-            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted transition-colors">
+            <button onClick={onClose} aria-label="Fermer la recharge" className="p-1.5 rounded-lg hover:bg-surface-hover text-text-muted transition-colors">
               <X size={16} />
             </button>
           </div>
@@ -218,9 +220,10 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-text-secondary mb-2 block">Montant (FCFA)</label>
+              <label htmlFor="recharge-amount" className="text-xs font-medium text-text-secondary mb-2 block">Montant (FCFA)</label>
               <div className="relative mb-3">
                 <input
+                  id="recharge-amount"
                   type="number"
                   min={100}
                   step={100}
@@ -243,6 +246,7 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
                 {RECHARGE_PACKS.map((pack) => (
                   <button
                     key={pack.amount}
+                    aria-pressed={amount === pack.amount}
                     onClick={() => setAmount(pack.amount)}
                     className={cn(
                       'relative py-2.5 px-2 rounded-xl text-sm font-medium transition-all text-center',
@@ -286,19 +290,20 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
             </div>
 
             <div>
-              <label className="text-xs font-medium text-text-secondary mb-2 block">Moyen de paiement</label>
+              <div id="recharge-method-label" className="text-xs font-medium text-text-secondary mb-2 block">Moyen de paiement</div>
               {methods === null ? (
                 <div className="py-6 flex justify-center">
                   <div className="w-5 h-5 border-2 border-border-medium border-t-accent-primary rounded-full animate-spin" />
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-2" role="group" aria-labelledby="recharge-method-label">
                   {providers.map((p) => {
                     const on = choice.type === 'provider' && choice.id === p.id;
                     const Icon = p.kind === 'card' ? Globe : Smartphone;
                     return (
                       <button
                         key={p.id}
+                        aria-pressed={on}
                         onClick={() => setChoice({ type: 'provider', id: p.id })}
                         className={cn(
                           'w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left',
@@ -330,6 +335,7 @@ export default function RechargeModal({ onClose }: { onClose: () => void }) {
                         return (
                           <button
                             key={m.id}
+                            aria-pressed={on}
                             onClick={() => setChoice({ type: 'manual', id: m.id })}
                             className={cn(
                               'w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all',

@@ -12,8 +12,9 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "security:check": "node scripts/check-security.mjs",
-    "lint": "npm run security:check && tsc --noEmit",
-    "smoke": "npm run lint && npm run build"
+    "lint": "npm run security:check && npm run a11y:check && tsc --noEmit",
+    "smoke": "npm run lint && npm run build",
+    "a11y:check": "node scripts/check-a11y.mjs"
   },
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.66.0",

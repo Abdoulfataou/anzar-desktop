@@ -2,7 +2,7 @@
  * Paramètres — structure inspirée de ZCode : navigation groupée à gauche,
  * cartes de réglages à droite. Seuls les réglages qui ont un effet réel sont présentés.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Settings2, Palette, User, BarChart3, Database, Info, Monitor, Moon, Sun,
@@ -68,13 +68,14 @@ function Card({ children }: { children: React.ReactNode }) {
 }
 
 function Row({ label, description, children }: { label: string; description?: React.ReactNode; children?: React.ReactNode }) {
+  const labelId = useId();
   return (
     <div className="flex items-center justify-between gap-6 px-4 py-3.5">
       <div className="min-w-0">
-        <div className="text-ui-base font-medium text-text-primary">{label}</div>
+        <div id={labelId} className="text-ui-base font-medium text-text-primary">{label}</div>
         {description && <div className="mt-0.5 text-ui-sm text-text-secondary leading-relaxed">{description}</div>}
       </div>
-      {children && <div className="flex-shrink-0">{children}</div>}
+      {children && <div role="group" aria-labelledby={labelId} className="flex-shrink-0">{children}</div>}
     </div>
   );
 }

@@ -366,32 +366,44 @@ const StudioEditor: React.FC<StudioEditorProps> = ({
           const parentDir = tabPath.split('/').slice(-2, -1)[0];
           const tabName = hasDuplicate && parentDir ? `${parentDir}/${baseName}` : baseName;
           return (
-            <button
+            <div
               key={tabPath}
-              onClick={() => onSelectFile(tabPath)}
               className={cn(
-                'flex items-center gap-1.5 px-3 py-2 text-[12px] border-r border-border-subtle whitespace-nowrap transition-colors group min-w-0',
+                'flex items-center border-r border-border-subtle whitespace-nowrap transition-colors group min-w-0',
                 isActive
-                  ? 'bg-bg-primary text-text-primary border-b-2 border-b-accent-primary'
-                  : 'text-text-muted hover:bg-surface-hover hover:text-text-primary'
+                  ? 'bg-bg-primary border-b-2 border-b-accent-primary'
+                  : 'text-text-muted hover:bg-surface-hover'
               )}
             >
-              {f?.status === 'generating' ? (
-                <Loader2 size={12} className="text-accent-primary animate-spin flex-shrink-0" />
-              ) : (
-                <FileCode size={12} className={cn('flex-shrink-0', isActive ? 'text-accent-primary' : 'text-text-muted')} />
-              )}
-              <span className="truncate max-w-[160px]">{tabName}</span>
-              {f?.status === 'modified' && (
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-              )}
-              <span
+              <button
+                type="button"
+                onClick={() => onSelectFile(tabPath)}
+                aria-current={isActive ? 'true' : undefined}
+                className={cn(
+                  'flex items-center gap-1.5 pl-3 py-2 text-[12px] min-w-0',
+                  isActive ? 'text-text-primary' : 'hover:text-text-primary'
+                )}
+              >
+                {f?.status === 'generating' ? (
+                  <Loader2 size={12} className="text-accent-primary animate-spin flex-shrink-0" />
+                ) : (
+                  <FileCode size={12} className={cn('flex-shrink-0', isActive ? 'text-accent-primary' : 'text-text-muted')} />
+                )}
+                <span className="truncate max-w-[160px]">{tabName}</span>
+                {f?.status === 'modified' && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+                )}
+              </button>
+              <button
+                type="button"
                 onClick={(e) => handleCloseTab(tabPath, e)}
-                className="ml-1 p-0.5 rounded hover:bg-bg-tertiary text-text-muted/50 hover:text-text-primary opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                aria-label={`Fermer ${tabName}`}
+                title="Fermer"
+                className="mr-1 p-0.5 rounded hover:bg-bg-tertiary text-text-muted/50 hover:text-text-primary opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex-shrink-0"
               >
                 <X size={10} />
-              </span>
-            </button>
+              </button>
+            </div>
           );
         })}
 
@@ -404,6 +416,7 @@ const StudioEditor: React.FC<StudioEditorProps> = ({
               'p-1 rounded transition-colors',
               wordWrap ? 'text-accent-primary bg-accent-primary/10' : 'text-text-muted hover:bg-surface-hover'
             )}
+            aria-label="Retour à la ligne"
             title="Retour à la ligne"
           >
             <WrapText size={13} />
@@ -411,6 +424,7 @@ const StudioEditor: React.FC<StudioEditorProps> = ({
           <button
             onClick={handleCopy}
             className="p-1 rounded text-text-muted hover:bg-surface-hover transition-colors"
+            aria-label="Copier"
             title="Copier"
           >
             {copied ? <Check size={13} className="text-accent-success" /> : <Copy size={13} />}
@@ -423,7 +437,8 @@ const StudioEditor: React.FC<StudioEditorProps> = ({
                   'p-1 rounded transition-colors',
                   showDiff ? 'text-accent-primary bg-accent-primary/10' : 'text-text-muted hover:bg-surface-hover'
                 )}
-                title="Voir les différences"
+                aria-label="Voir les différences"
+            title="Voir les différences"
               >
                 <GitCompare size={13} />
               </button>
@@ -431,7 +446,8 @@ const StudioEditor: React.FC<StudioEditorProps> = ({
                 <button
                   onClick={() => activeFile && onFileRevert(activeFile.path)}
                   className="p-1 rounded text-text-muted hover:bg-amber-500/10 hover:text-amber-400 transition-colors"
-                  title="Revenir à la version précédente"
+                  aria-label="Revenir à la version précédente"
+            title="Revenir à la version précédente"
                 >
                   <Undo2 size={13} />
                 </button>

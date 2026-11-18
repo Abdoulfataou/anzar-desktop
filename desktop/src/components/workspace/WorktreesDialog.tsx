@@ -1,7 +1,7 @@
 /**
  * Worktrees (façon ZCode) : création et gestion des copies de travail d'un dépôt.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { X, Loader2, Plus, Trash2, FolderOpen, GitBranch, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -17,6 +17,7 @@ import {
   defaultWorktreeBranch, type Worktree,
 } from '@/services/worktrees';
 import { isValidBranchName } from '@/services/git';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
 const iconBtn = 'flex items-center justify-center size-7 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover disabled:opacity-40';
@@ -24,20 +25,24 @@ const primary = 'h-8 px-3 rounded-lg text-ui-base font-medium bg-primary-btn tex
 const secondary = 'h-8 px-3 rounded-lg text-ui-base border border-border-medium text-text-primary hover:bg-hover-fill disabled:opacity-50';
 
 function Shell({ title, subtitle, onClose, children, wide }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode; wide?: boolean }) {
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [onClose]);
+  const titleId = useId();
+  const dialogRef = useFocusTrap<HTMLDivElement>(true, onClose);
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className={cn('max-h-[85vh] flex flex-col rounded-xl border border-border-medium bg-bg-primary shadow-xl', wide ? 'w-[min(640px,94vw)]' : 'w-[min(480px,92vw)]')}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={cn('max-h-[85vh] flex flex-col rounded-xl border border-border-medium bg-bg-primary shadow-xl', wide ? 'w-[min(640px,94vw)]' : 'w-[min(480px,92vw)]')}
+      >
         <div className="flex items-start justify-between gap-3 px-4 py-3 border-b border-border-subtle">
           <div className="min-w-0">
-            <h3 className="text-ui-lg font-semibold text-text-primary">{title}</h3>
+            <h3 id={titleId} className="text-ui-lg font-semibold text-text-primary">{title}</h3>
             {subtitle && <p className="text-ui-sm text-text-secondary truncate">{subtitle}</p>}
           </div>
-          <button onClick={onClose} className={iconBtn} title="Fermer"><X size={14} /></button>
+          <button onClick={onClose} aria-label="Fermer" className={iconBtn} title="Fermer"><X size={14} /></button>
         </div>
         <div className="p-4 space-y-3 overflow-y-auto">{children}</div>
       </div>

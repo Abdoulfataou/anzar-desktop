@@ -6,7 +6,7 @@
  *   les non indexés) et fenêtre d'envoi (branche, branche distante, état, détail des erreurs)
  * - sélecteur de branche : recherche, changement, création
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import {
   GitBranch, RefreshCw, Loader2, ArrowUp, ArrowDown, Undo2, Sparkles, Check, ChevronRight, ChevronDown,
   Plus, Minus, Search, X, GitCommitHorizontal, FileText, Copy, AlertTriangle, FolderTree, List, Folder, Layers,
@@ -15,6 +15,7 @@ import WorktreesDialog from './WorktreesDialog';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 import { terminalService } from '@/services/terminal';
 import {
   readGitState, listChanges, fileDiff, initRepo, stage, unstage, discardChange, commit, push, pull,
@@ -213,6 +214,7 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
       {/* Ligne 2 : source · filtre */}
       <div className="flex items-center gap-2 px-2 h-10 border-b border-border-subtle flex-shrink-0">
         <select
+          aria-label="Source des modifications"
           value={source}
           onChange={(e) => { setSource(e.target.value as GitSource); setOpen(new Set()); }}
           className="h-7 px-2 rounded-lg bg-input border border-input-border text-ui-sm text-text-primary outline-none max-w-[55%]"
@@ -228,12 +230,13 @@ export default function GitPanel({ workspacePath, refreshKey, lastTurnPaths = []
           <input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
+            aria-label="Filtrer les fichiers"
             placeholder="Filtrer les fichiers…"
             className="flex-1 min-w-0 bg-transparent text-ui-sm text-text-primary outline-none placeholder:text-text-muted"
           />
-          {filter && <button onClick={() => setFilter('')} className="text-text-muted hover:text-text-primary" title="Effacer le filtre"><X size={12} /></button>}
+          {filter && <button onClick={() => setFilter('')} className="text-text-muted hover:text-text-primary" title="Effacer le filtre" aria-label="Effacer le filtre"><X size={12} /></button>}
         </div>
-        <button onClick={toggleTree} className={iconBtn} title={tree ? 'Afficher en liste' : 'Grouper par dossier'}>
+        <button onClick={toggleTree} className={iconBtn} title={tree ? 'Afficher en liste' : 'Grouper par dossier'} aria-label={tree ? 'Afficher en liste' : 'Grouper par dossier'}>
           {tree ? <List size={13} /> : <FolderTree size={13} />}
         </button>
       </div>
@@ -386,32 +389,40 @@ function ChangeCard({
 
   return (
     <div className={cn('overflow-hidden rounded-lg border bg-surface-default', selected ? 'border-text-secondary' : 'border-border-medium', indent && 'ml-4')}>
-      <div onClick={onToggle} className="group flex items-center gap-2 h-8 px-2 cursor-pointer text-ui-sm hover:bg-hover-fill">
+      <div className="group flex items-center gap-2 h-8 px-2 text-ui-sm hover:bg-hover-fill">
         {onSelect && (
           <input
             type="checkbox"
             checked={!!selected}
-            onClick={(e) => e.stopPropagation()}
             onChange={onSelect}
             title={`Sélectionner ${change.path}`}
-            className={cn('flex-shrink-0 cursor-pointer', !selected && 'opacity-0 group-hover:opacity-100')}
+            aria-label={`Sélectionner ${change.path}`}
+            className={cn('flex-shrink-0 cursor-pointer', !selected && 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100')}
           />
         )}
-        {expanded ? <ChevronDown size={13} className="text-text-muted flex-shrink-0" /> : <ChevronRight size={13} className="text-text-muted flex-shrink-0" />}
-        <span className={cn('w-3 font-mono font-semibold flex-shrink-0', st.cls)} title={st.title}>{st.label}</span>
-        <span className="truncate text-text-primary">{slash >= 0 ? change.path.slice(slash + 1) : change.path}</span>
-        {slash >= 0 && !indent && <span className="truncate text-text-muted">{change.path.slice(0, slash)}</span>}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          title={change.path}
+          className="flex flex-1 min-w-0 items-center gap-2 h-full text-left"
+        >
+          {expanded ? <ChevronDown size={13} className="text-text-muted flex-shrink-0" /> : <ChevronRight size={13} className="text-text-muted flex-shrink-0" />}
+          <span className={cn('w-3 font-mono font-semibold flex-shrink-0', st.cls)} title={st.title}>{st.label}</span>
+          <span className="truncate text-text-primary">{slash >= 0 ? change.path.slice(slash + 1) : change.path}</span>
+          {slash >= 0 && !indent && <span className="truncate text-text-muted">{change.path.slice(0, slash)}</span>}
+        </button>
         <span className="ml-auto flex items-center gap-1 flex-shrink-0 tabular-nums">
           {isBusy && <Loader2 size={12} className="animate-spin text-text-muted" />}
-          <span className="hidden group-hover:flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-            {onOpenFile && <button onClick={onOpenFile} className={iconBtn} title="Ouvrir le fichier"><FileText size={12} /></button>}
+          <span className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100">
+            {onOpenFile && <button onClick={onOpenFile} className={iconBtn} title="Ouvrir le fichier" aria-label="Ouvrir le fichier"><FileText size={12} /></button>}
             {source === 'unstaged' && change.status !== 'U' && (
-              <button onClick={onDiscard} disabled={!!busy} className={cn(iconBtn, 'hover:text-accent-error')} title={change.status === '?' ? 'Supprimer ce nouveau fichier' : 'Annuler les modifications'}>
+              <button onClick={onDiscard} disabled={!!busy} className={cn(iconBtn, 'hover:text-accent-error')} title={change.status === '?' ? 'Supprimer ce nouveau fichier' : 'Annuler les modifications'} aria-label={change.status === '?' ? 'Supprimer ce nouveau fichier' : 'Annuler les modifications'}>
                 <Undo2 size={12} />
               </button>
             )}
-            {source === 'unstaged' && <button onClick={onStage} disabled={!!busy} className={iconBtn} title="Indexer (inclure dans le prochain commit)"><Plus size={13} /></button>}
-            {source === 'staged' && <button onClick={onUnstage} disabled={!!busy} className={iconBtn} title="Désindexer"><Minus size={13} /></button>}
+            {source === 'unstaged' && <button onClick={onStage} disabled={!!busy} className={iconBtn} title="Indexer (inclure dans le prochain commit)" aria-label="Indexer le fichier"><Plus size={13} /></button>}
+            {source === 'staged' && <button onClick={onUnstage} disabled={!!busy} className={iconBtn} title="Désindexer" aria-label="Désindexer le fichier"><Minus size={13} /></button>}
           </span>
           {change.added > 0 && <span className="text-diff-added">+{change.added}</span>}
           {change.removed > 0 && <span className="text-diff-removed">-{change.removed}</span>}
@@ -526,17 +537,21 @@ function ActionMenu({ canCommit, canPush, onCommit, onPush }: { canCommit: boole
 /* ── Fenêtres ── */
 
 function Dialog({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
-  useEffect(() => {
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [onClose]);
+  const titleId = useId();
+  const dialogRef = useFocusTrap<HTMLDivElement>(true, onClose);
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/30" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-[min(480px,92vw)] rounded-xl border border-border-medium bg-bg-primary shadow-xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="w-[min(480px,92vw)] rounded-xl border border-border-medium bg-bg-primary shadow-xl"
+      >
         <div className="flex items-center justify-between px-4 h-12 border-b border-border-subtle">
-          <h3 className="text-ui-lg font-semibold text-text-primary">{title}</h3>
-          <button onClick={onClose} className={iconBtn} title="Fermer"><X size={14} /></button>
+          <h3 id={titleId} className="text-ui-lg font-semibold text-text-primary">{title}</h3>
+          <button onClick={onClose} className={iconBtn} title="Fermer" aria-label="Fermer"><X size={14} /></button>
         </div>
         <div className="p-4 space-y-3">{children}</div>
       </div>
@@ -626,6 +641,7 @@ function CommitDialog({
         </div>
         <textarea
           autoFocus
+          aria-label="Message du commit"
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void submit(false); }}
@@ -745,22 +761,22 @@ function BranchSwitcher({
   };
   return (
     <div ref={ref} className="relative min-w-0">
-      <button onClick={() => setOpen((v) => !v)} disabled={busy} className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover min-w-0" title="Changer de branche">
+      <button onClick={() => setOpen((v) => !v)} disabled={busy} aria-haspopup="menu" aria-expanded={open} aria-label={`Branche ${current || 'détachée'} — changer`} className="flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover min-w-0" title="Changer de branche">
         <GitBranch size={13} className="text-text-secondary flex-shrink-0" />
         <span className="truncate">{current || '(détachée)'}</span>
         <ChevronDown size={12} className="opacity-60 flex-shrink-0" />
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 w-72 rounded-lg border border-border-medium bg-surface-elevated shadow-md z-50">
+        <div role="menu" aria-label="Choisir une branche" className="absolute left-0 top-full mt-1 w-72 rounded-lg border border-border-medium bg-surface-elevated shadow-md z-50">
           <div className="p-1.5 border-b border-border-subtle">
-            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher une branche" className="w-full h-7 px-2 rounded-md bg-input border border-input-border text-ui-sm text-text-primary outline-none" />
+            <input autoFocus value={query} aria-label="Rechercher une branche" onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher une branche" className="w-full h-7 px-2 rounded-md bg-input border border-input-border text-ui-sm text-text-primary outline-none" />
           </div>
           {dirtyCount > 0 && <div className="px-3 pt-2 text-ui-sm text-accent-warning">Modifications non commitées : {dirtyCount} fichier{dirtyCount > 1 ? 's' : ''}</div>}
           <div className="px-3 pt-2 pb-1 text-ui-sm text-text-muted">Branches</div>
           <div className="max-h-56 overflow-y-auto px-1 pb-1">
             {shown.length === 0 && <div className="px-2 py-1.5 text-ui-sm text-text-muted">Aucune branche correspondante</div>}
             {shown.map((b) => (
-              <button key={b} onClick={() => pick(b)} className="w-full flex items-center gap-2 h-7 px-2 rounded-md text-left text-ui-sm text-text-primary hover:bg-surface-hover">
+              <button key={b} role="menuitem" onClick={() => pick(b)} className="w-full flex items-center gap-2 h-7 px-2 rounded-md text-left text-ui-sm text-text-primary hover:bg-surface-hover">
                 <span className="flex-1 truncate">{b}</span>
                 {b === current && <Check size={13} />}
               </button>
@@ -772,6 +788,7 @@ function BranchSwitcher({
                 <input
                   autoFocus
                   value={newName}
+                  aria-label="Nom de la nouvelle branche"
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') create(); if (e.key === 'Escape') setCreating(false); }}
                   placeholder="ex. feature/paiement-wave"

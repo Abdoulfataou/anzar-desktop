@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useThemeStore } from '@/stores/themeStore';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 interface CommandItem {
   id: string;
@@ -33,6 +34,7 @@ export default function CommandPalette() {
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useFocusTrap<HTMLDivElement>(isOpen, () => setIsOpen(false));
   const navigate = useNavigate();
   const { theme, toggleTheme } = useThemeStore();
 
@@ -180,10 +182,11 @@ export default function CommandPalette() {
       <div
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
         onClick={() => setIsOpen(false)}
+        aria-hidden="true"
       />
 
       {/* Palette */}
-      <div className="relative w-full max-w-lg mx-4 animate-scale-in">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-label="Palette de commandes" tabIndex={-1} className="relative w-full max-w-lg mx-4 animate-scale-in">
         <div className="rounded-xl border border-border-medium bg-bg-secondary/95 backdrop-blur-xl shadow-2xl overflow-hidden">
           {/* Search input */}
           <div className="flex items-center gap-3 px-4 py-3 border-b border-border-subtle">
@@ -194,6 +197,7 @@ export default function CommandPalette() {
               value={query}
               onChange={(e) => { setQuery(e.target.value); setSelectedIndex(0); }}
               onKeyDown={handleKeyDown}
+              aria-label="Rechercher une commande"
               placeholder="Rechercher une commande..."
               className="flex-1 bg-transparent text-text-primary placeholder:text-text-muted outline-none text-sm"
             />

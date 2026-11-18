@@ -155,50 +155,64 @@ export default function Sidebar({ className }: { className?: string }) {
       if (m.changesUndone || !m.fileChanges) continue;
       for (const f of m.fileChanges) { added += f.added; removed += f.removed; }
     }
+
+    const status = running ? (
+      <Loader2 size={14} className="animate-spin text-text-secondary" />
+    ) : failed ? (
+      <span className="size-1.5 rounded-full bg-accent-error" />
+    ) : null;
+
     return (
       <div
         key={c.id}
         className={cn(
-          'group flex items-center gap-2 h-8 rounded-lg pr-1 cursor-pointer transition-colors',
+          'group flex items-center gap-1 h-8 rounded-lg pr-1 transition-colors',
           nested ? 'pl-6' : 'pl-2.5',
           active ? 'bg-selected' : 'hover:bg-hover-fill'
         )}
-        onClick={() => selectTask(c)}
-        onDoubleClick={() => { setEditingId(c.id); setEditingName(c.title || ''); }}
       >
-        {/* Emplacement d'état (vide quand rien à signaler) */}
-        <span className="flex size-4 flex-shrink-0 items-center justify-center" aria-hidden>
-          {running ? (
-            <Loader2 size={14} className="animate-spin text-text-secondary" />
-          ) : failed ? (
-            <span className="size-1.5 rounded-full bg-accent-error" />
-          ) : null}
-        </span>
         {editingId === c.id ? (
-          <input
-            autoFocus
-            value={editingName}
-            onChange={(e) => setEditingName(e.target.value)}
-            onBlur={finishRename}
-            onKeyDown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') setEditingId(null); }}
-            onClick={(e) => e.stopPropagation()}
-            className="flex-1 min-w-0 bg-transparent text-ui-base text-text-primary outline-none border-b border-border-medium"
-          />
+          <>
+            <span className="flex size-4 flex-shrink-0 items-center justify-center" aria-hidden>{status}</span>
+            <input
+              autoFocus
+              value={editingName}
+              aria-label="Renommer la tâche"
+              onChange={(e) => setEditingName(e.target.value)}
+              onBlur={finishRename}
+              onKeyDown={(e) => { if (e.key === 'Enter') finishRename(); if (e.key === 'Escape') setEditingId(null); }}
+              className="flex-1 min-w-0 bg-transparent text-ui-base text-text-primary outline-none border-b border-border-medium"
+            />
+          </>
         ) : (
-          <span className={cn('flex-1 min-w-0 truncate text-ui-base', active ? 'text-text-primary' : 'text-text-secondary')}>
-            {c.title || 'Sans titre'}
-          </span>
+          <button
+            type="button"
+            onClick={() => selectTask(c)}
+            onDoubleClick={() => { setEditingId(c.id); setEditingName(c.title || ''); }}
+            onKeyDown={(e) => {
+              if (e.key === 'F2') { e.preventDefault(); setEditingId(c.id); setEditingName(c.title || ''); }
+            }}
+            aria-current={active ? 'true' : undefined}
+            title={c.title || 'Sans titre'}
+            className="flex flex-1 min-w-0 items-center gap-2 h-full text-left"
+          >
+            <span className="flex size-4 flex-shrink-0 items-center justify-center" aria-hidden>{status}</span>
+            <span className={cn('flex-1 min-w-0 truncate text-ui-base', active ? 'text-text-primary' : 'text-text-secondary')}>
+              {c.title || 'Sans titre'}
+            </span>
+            {(added > 0 || removed > 0) && (
+              <span className="flex-shrink-0 text-ui-sm tabular-nums group-hover:hidden">
+                {added > 0 && <span className="text-diff-added">+{added}</span>}
+                {removed > 0 && <span className="ml-1 text-diff-removed">-{removed}</span>}
+              </span>
+            )}
+            <span className="flex-shrink-0 text-ui-sm text-text-muted tabular-nums group-hover:hidden">{age(c.updatedAt)}</span>
+          </button>
         )}
-        {(added > 0 || removed > 0) && (
-          <span className="flex-shrink-0 text-ui-sm tabular-nums group-hover:hidden">
-            {added > 0 && <span className="text-diff-added">+{added}</span>}
-            {removed > 0 && <span className="ml-1 text-diff-removed">-{removed}</span>}
-          </span>
-        )}
-        <span className="flex-shrink-0 text-ui-sm text-text-muted tabular-nums group-hover:hidden">{age(c.updatedAt)}</span>
         <button
-          onClick={(e) => { e.stopPropagation(); void removeTask(c); }}
-          className="hidden group-hover:flex size-6 items-center justify-center rounded-md text-text-muted hover:text-accent-error hover:bg-hover-fill"
+          onClick={() => void removeTask(c)}
+          aria-label={`Supprimer la tâche ${c.title || 'sans titre'}`}
+          className="flex size-6 flex-shrink-0 items-center justify-center rounded-md text-text-muted opacity-0 hover:text-accent-error hover:bg-hover-fill focus-visible:opacity-100 group-hover:opacity-100"
           title="Supprimer"
         >
           <Trash2 size={13} />
@@ -213,6 +227,7 @@ export default function Sidebar({ className }: { className?: string }) {
     <button
       onClick={onClick}
       disabled={disabled}
+      aria-label={label}
       title={!expanded ? label : undefined}
       className={cn(
         'w-full flex items-center gap-2 h-8 rounded-lg text-ui-base transition-colors',
@@ -232,6 +247,7 @@ export default function Sidebar({ className }: { className?: string }) {
     <>
       {ConfirmDialog}
       <aside
+        aria-label="Navigation des projets et tâches"
         className={cn(
           'h-full flex flex-col bg-transparent overflow-hidden',
           'transition-[width] duration-200',
@@ -241,7 +257,7 @@ export default function Sidebar({ className }: { className?: string }) {
       >
         {/* ── Navigation ── */}
         <div className="p-2 space-y-0.5 flex-shrink-0">
-          <NavRow icon={expanded ? PanelLeftClose : PanelLeft} label="Replier" onClick={() => setExpanded(!expanded)} />
+          <NavRow icon={expanded ? PanelLeftClose : PanelLeft} label={expanded ? 'Replier la barre latérale' : 'Déplier la barre latérale'} onClick={() => setExpanded(!expanded)} />
           <NavRow icon={SquarePen} label="Nouvelle tâche" hint="⌘N" onClick={() => newTask(activeProjectId)} />
           <NavRow
             icon={Search}
@@ -262,6 +278,7 @@ export default function Sidebar({ className }: { className?: string }) {
                 autoFocus
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
+                aria-label="Filtrer projets et tâches"
                 placeholder="Filtrer projets et tâches…"
                 className="flex-1 min-w-0 bg-transparent text-ui-caption text-text-primary placeholder:text-text-muted outline-none"
               />
@@ -280,6 +297,7 @@ export default function Sidebar({ className }: { className?: string }) {
                 {([['group', 'Groupe', Hash], ['project', 'Projet', Folder]] as const).map(([id, label, Icon]) => (
                   <button
                     key={id}
+                    aria-pressed={mode === id}
                     onClick={() => setMode(id)}
                     className={cn(
                       'flex items-center gap-1.5 h-7 px-2.5 rounded-md text-ui-caption transition-colors',
@@ -296,6 +314,7 @@ export default function Sidebar({ className }: { className?: string }) {
               <div className="flex-1" />
               <button
                 onClick={() => void openWorkspaceFolder().then((id) => id && selectProject(id))}
+                aria-label="Ouvrir un dossier"
                 className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover"
                 title="Ouvrir un dossier"
               >
@@ -316,27 +335,32 @@ export default function Sidebar({ className }: { className?: string }) {
                     const active = p.id === activeProjectId;
                     return (
                       <div key={p.id}>
-                        <div
-                          onClick={() => selectProject(p.id)}
-                          title={(p.metadata?.localPath as string | undefined) || p.name}
-                          className={cn(
-                            'group flex items-center gap-2 h-8 pl-2.5 pr-1.5 rounded-lg cursor-pointer transition-colors',
-                            active ? 'text-text-primary' : 'text-text-secondary',
-                            'hover:bg-hover-fill'
-                          )}
-                        >
-                          {active ? <FolderOpen size={16} className="flex-shrink-0" /> : <Folder size={16} className="flex-shrink-0" />}
-                          <span className="flex-1 min-w-0 truncate text-ui-base">{p.name}</span>
+                        <div className="group flex items-center gap-1 h-8 pr-1 rounded-lg transition-colors hover:bg-hover-fill">
                           <button
-                            onClick={(e) => { e.stopPropagation(); newTask(p.id); }}
-                            className="hidden group-hover:block p-0.5 rounded text-text-muted hover:text-text-primary"
+                            type="button"
+                            onClick={() => selectProject(p.id)}
+                            title={(p.metadata?.localPath as string | undefined) || p.name}
+                            aria-current={active ? 'true' : undefined}
+                            className={cn(
+                              'flex flex-1 min-w-0 items-center gap-2 h-full pl-2.5 text-left text-ui-base',
+                              active ? 'text-text-primary' : 'text-text-secondary'
+                            )}
+                          >
+                            {active ? <FolderOpen size={16} className="flex-shrink-0" /> : <Folder size={16} className="flex-shrink-0" />}
+                            <span className="flex-1 min-w-0 truncate">{p.name}</span>
+                          </button>
+                          <button
+                            onClick={() => newTask(p.id)}
+                            aria-label={`Nouvelle tâche dans ${p.name}`}
+                            className="flex p-0.5 rounded text-text-muted opacity-0 hover:text-text-primary focus-visible:opacity-100 group-hover:opacity-100"
                             title="Nouvelle tâche dans ce projet"
                           >
                             <Plus size={13} />
                           </button>
                           <button
-                            onClick={(e) => { e.stopPropagation(); void removeProject(p.id, p.name); }}
-                            className="hidden group-hover:block p-0.5 rounded text-text-muted hover:text-accent-error"
+                            onClick={() => void removeProject(p.id, p.name)}
+                            aria-label={`Retirer le projet ${p.name} de la liste`}
+                            className="flex p-0.5 rounded text-text-muted opacity-0 hover:text-accent-error focus-visible:opacity-100 group-hover:opacity-100"
                             title="Retirer de la liste"
                           >
                             <Trash2 size={12} />
@@ -394,6 +418,7 @@ export default function Sidebar({ className }: { className?: string }) {
         <div className={cn('flex items-center gap-2 p-2.5 flex-shrink-0', !expanded && 'flex-col')}>
           <button
             onClick={() => navigate('/settings')}
+            aria-label={`Compte et paramètres — ${Math.round(credits.remaining).toLocaleString('fr-FR')} FCFA`}
             className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
             title="Compte et paramètres"
           >
@@ -409,10 +434,10 @@ export default function Sidebar({ className }: { className?: string }) {
               </span>
             )}
           </button>
-          <button onClick={toggleTheme} className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover" title={isDark ? 'Mode clair' : 'Mode sombre'}>
+          <button onClick={toggleTheme} aria-label={isDark ? 'Passer en mode clair' : 'Passer en mode sombre'} className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover" title={isDark ? 'Mode clair' : 'Mode sombre'}>
             {isDark ? <Sun size={15} /> : <Moon size={15} />}
           </button>
-          <button onClick={() => navigate('/settings')} className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover" title="Paramètres">
+          <button onClick={() => navigate('/settings')} aria-label="Paramètres" className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover" title="Paramètres">
             <Settings size={15} />
           </button>
         </div>

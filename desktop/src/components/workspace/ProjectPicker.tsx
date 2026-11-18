@@ -68,6 +68,9 @@ export default function ProjectPicker({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={current ? `Projet : ${current.name}. Changer de projet` : 'Choisir un projet'}
         title={current ? String(current.metadata?.localPath) : "Sans projet, l'agent ne peut ni lire ni modifier de fichiers"}
         className="flex items-center gap-1.5 h-7 px-2 -ml-2 rounded-lg text-ui-base text-text-secondary hover:bg-surface-hover hover:text-text-primary transition-colors max-w-full"
       >
@@ -76,10 +79,10 @@ export default function ProjectPicker({
         <ChevronDown size={12} className="opacity-60 flex-shrink-0" />
       </button>
       {open && (
-        <div className="absolute bottom-full mb-1 left-2 sm:left-4 w-72 p-1 flex flex-col gap-0.5 rounded-lg border border-border-medium bg-surface-elevated shadow-md">
+        <div role="menu" aria-label="Choisir un projet" className="absolute bottom-full mb-1 left-2 sm:left-4 w-72 p-1 flex flex-col gap-0.5 rounded-lg border border-border-medium bg-surface-elevated shadow-md">
           {list.length > 0 && <div className="px-2 pt-1 pb-0.5 text-ui-sm text-text-muted">Projets récents</div>}
           {list.map((p) => (
-            <button key={p.id} type="button" className={item} onClick={() => { onPick(p.id); setOpen(false); }}>
+            <button key={p.id} type="button" role="menuitem" aria-current={p.id === currentProjectId ? 'true' : undefined} className={item} onClick={() => { onPick(p.id); setOpen(false); }}>
               <Folder size={13} className="flex-shrink-0 text-text-secondary" />
               <span className="flex-1 min-w-0 truncate text-text-primary" title={String(p.metadata?.localPath)}>{p.name}</span>
               {p.id === currentProjectId && <Check size={14} className="flex-shrink-0 text-text-primary" />}
@@ -87,20 +90,20 @@ export default function ProjectPicker({
           ))}
           {list.length > 0 && <div className="my-0.5 h-px bg-border-subtle" />}
           {isRepo && current && currentPath && onNewWorktree && (
-            <button type="button" className={item} onClick={() => { setOpen(false); onNewWorktree(currentPath); }}>
+            <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); onNewWorktree(currentPath); }}>
               <GitBranch size={13} className="flex-shrink-0 text-text-secondary" />
               <span className="flex-1 min-w-0 truncate text-text-primary">Nouvelle worktree de {current.name}…</span>
             </button>
           )}
-          <button type="button" className={item} onClick={() => { setOpen(false); onOpenFolder(); }}>
+          <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); onOpenFolder(); }}>
             <FolderOpen size={13} className="flex-shrink-0 text-text-secondary" />
             <span className="text-text-primary">Ouvrir un dossier…</span>
           </button>
-          <button type="button" className={item} onClick={() => { setOpen(false); onNewFolder(); }}>
+          <button type="button" role="menuitem" className={item} onClick={() => { setOpen(false); onNewFolder(); }}>
             <FolderPlus size={13} className="flex-shrink-0 text-text-secondary" />
             <span className="text-text-primary">Nouveau projet (dossier vierge)…</span>
           </button>
-          <button type="button" className={item} onClick={() => { onPick(null); setOpen(false); }}>
+          <button type="button" role="menuitem" aria-current={!currentProjectId ? 'true' : undefined} className={item} onClick={() => { onPick(null); setOpen(false); }}>
             <Ban size={13} className="flex-shrink-0 text-text-secondary" />
             <span className="flex-1 text-text-primary">Aucun projet</span>
             {!currentProjectId && <Check size={14} className="flex-shrink-0 text-text-primary" />}

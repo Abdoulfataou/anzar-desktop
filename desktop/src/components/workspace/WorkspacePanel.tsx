@@ -57,6 +57,21 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
   const [tabs, setTabs] = useState<PanelTab[]>([FILES_TAB]);
   const [activeId, setActiveId] = useState<string>('files');
   const [showAdd, setShowAdd] = useState(false);
+  const tabRefs = useRef(new Map<string, HTMLButtonElement>());
+
+  /** Navigation clavier conforme au motif ARIA « tablist ». */
+  const onTabKeyDown = (e: React.KeyboardEvent, index: number) => {
+    let next = index;
+    if (e.key === 'ArrowRight') next = (index + 1) % tabs.length;
+    else if (e.key === 'ArrowLeft') next = (index - 1 + tabs.length) % tabs.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = tabs.length - 1;
+    else return;
+    e.preventDefault();
+    const target = tabs[next];
+    setActiveId(target.id);
+    tabRefs.current.get(target.id)?.focus();
+  };
   const active = tabs.find((t) => t.id === activeId) ?? FILES_TAB;
 
   const openTab = useCallback((tab: PanelTab) => {
@@ -328,8 +343,8 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
     <div className="flex flex-col h-full min-h-0 overflow-hidden rounded-xl border border-border-medium bg-bg-primary">
       {/* ── Barre d'onglets ── */}
       <div className="flex items-center h-12 px-2 gap-1 border-b border-border-subtle flex-shrink-0">
-        <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
-          {tabs.map((t) => {
+        <div role="tablist" aria-label="Panneaux du workspace" className="flex items-center gap-1 min-w-0 overflow-x-auto">
+          {tabs.map((t, index) => {
             const label =
               t.kind === 'files' ? 'Fichiers' : t.kind === 'terminal' ? 'Terminal' : t.kind === 'preview' ? 'Aperçu' : t.kind === 'plan' ? 'Plan' : t.kind === 'git' ? 'Git' : t.path.split('/').pop();
             const Icon = t.kind === 'files' ? FolderTree : t.kind === 'terminal' ? TerminalIcon : t.kind === 'preview' ? Eye : t.kind === 'plan' ? ListChecks : t.kind === 'git' ? GitBranch : FileText;
@@ -337,21 +352,33 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
             return (
               <div
                 key={t.id}
-                onClick={() => setActiveId(t.id)}
-                title={t.kind === 'file' ? t.path : undefined}
                 className={cn(
-                  'group flex items-center gap-1.5 h-8 pl-2.5 rounded-lg text-ui-caption cursor-pointer flex-shrink-0 max-w-[180px] transition-colors',
+                  'group flex items-center h-8 rounded-lg text-ui-caption flex-shrink-0 max-w-[180px] transition-colors',
                   t.kind === 'files' ? 'pr-2.5' : 'pr-1',
                   isActive
                     ? 'bg-bg-tertiary text-text-primary border border-border-medium'
                     : 'text-text-muted hover:text-text-secondary border border-transparent'
                 )}
               >
-                <Icon size={13} className="flex-shrink-0" />
-                <span className="truncate">{label}</span>
+                <button
+                  ref={(el) => { if (el) tabRefs.current.set(t.id, el); else tabRefs.current.delete(t.id); }}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  tabIndex={isActive ? 0 : -1}
+                  onClick={() => setActiveId(t.id)}
+                  onKeyDown={(e) => onTabKeyDown(e, index)}
+                  title={t.kind === 'file' ? t.path : undefined}
+                  className="flex items-center gap-1.5 h-full pl-2.5 min-w-0"
+                >
+                  <Icon size={13} className="flex-shrink-0" />
+                  <span className="truncate">{label}</span>
+                </button>
                 {t.kind !== 'files' && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); closeTab(t.id); }}
+                    type="button"
+                    onClick={() => closeTab(t.id)}
+                    aria-label={`Fermer l'onglet ${label}`}
                     className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-surface-hover flex-shrink-0"
                     title="Fermer"
                   >
@@ -367,33 +394,40 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
         <div className="relative flex-shrink-0">
           <button
             onClick={() => setShowAdd((v) => !v)}
+            aria-label="Ouvrir un onglet"
+            aria-haspopup="menu"
+            aria-expanded={showAdd}
             className="flex items-center justify-center w-8 h-8 rounded-lg border border-border-subtle text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
             title="Ouvrir un onglet"
           >
             <Plus size={14} />
           </button>
           {showAdd && (
-            <div className="absolute top-full left-0 mt-1 w-44 p-1 rounded-xl border border-border-medium bg-surface-elevated shadow-lg z-50">
+            <div role="menu" aria-label="Ouvrir un onglet" className="absolute top-full left-0 mt-1 w-44 p-1 rounded-xl border border-border-medium bg-surface-elevated shadow-lg z-50">
               <button
                 onClick={() => openTab({ id: 'terminal', kind: 'terminal' })}
+                role="menuitem"
                 className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
               >
                 <TerminalIcon size={13} /> Terminal
               </button>
               <button
                 onClick={() => openTab({ id: 'preview', kind: 'preview' })}
+                role="menuitem"
                 className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
               >
                 <Eye size={13} /> Aperçu
               </button>
               <button
                 onClick={() => openTab({ id: 'plan', kind: 'plan' })}
+                role="menuitem"
                 className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
               >
                 <ListChecks size={13} /> Plan
               </button>
               <button
                 onClick={() => openTab({ id: 'git', kind: 'git' })}
+                role="menuitem"
                 className="w-full flex items-center gap-2 h-8 px-2 rounded-lg text-ui-base text-text-primary hover:bg-surface-hover"
               >
                 <GitBranch size={13} /> Git
@@ -406,6 +440,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
           {loading && <Loader2 size={12} className="animate-spin text-text-muted" />}
           <button
             onClick={() => void refreshAll()}
+            aria-label="Rafraîchir le dossier"
             className="p-1.5 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors"
             title="Rafraîchir le dossier"
           >
@@ -415,7 +450,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
       </div>
 
       {/* ── Contenu ── */}
-      <div className="flex-1 min-h-0 flex">
+      <div role="tabpanel" aria-label="Contenu du panneau actif" className="flex-1 min-h-0 flex">
         {/* Explorateur (pleine largeur) : un clic ouvre le fichier dans son onglet */}
         {active.kind === 'files' && (
           <div className="flex-1 min-w-0 overflow-hidden">
@@ -474,6 +509,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
                 value={termInput}
                 onChange={(e) => setTermInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void runTerminalCommand(); }}
+                aria-label="Commande du terminal"
                 placeholder={termBusy ? 'commande en cours…' : 'npm install…'}
                 disabled={termBusy}
                 className="flex-1 bg-transparent text-text-primary placeholder-text-muted/50 focus:outline-none disabled:opacity-50"

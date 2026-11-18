@@ -6,13 +6,14 @@
  *
  * Chaque bloc : bascule Visuel ⇄ Code, copie, plein écran, enregistrement (SVG, PNG, HTML).
  */
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AlertTriangle, Check, Code2, Copy, Download, Eye, Loader2, Maximize2, X } from 'lucide-react';
 import DOMPurify from 'dompurify';
 import CodeBlock from './CodeBlock';
 import { buildWidgetDocument, currentTheme, widgetUrl, WIDGET_HEIGHT_MESSAGE } from '@/lib/visualFrame';
 import { exportHtml, exportPng, exportSvg } from '@/lib/visualExport';
+import { useFocusTrap } from '@/hooks/useFocusTrap';
 
 // ============================================================================
 // OUTILS
@@ -102,17 +103,21 @@ const ExportMenu: React.FC<{ actions: ExportAction[] }> = ({ actions }) => {
 };
 
 const FullscreenOverlay: React.FC<{ title: string; onClose: () => void; children: React.ReactNode }> = ({ title, onClose, children }) => {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  const titleId = useId();
+  const dialogRef = useFocusTrap<HTMLDivElement>(true, onClose);
   return createPortal(
     <div className="fixed inset-0 z-[200] flex flex-col bg-black/70 backdrop-blur-sm p-6" onMouseDown={onClose}>
-      <div className="flex flex-col flex-1 min-h-0 rounded-xl border border-border-subtle bg-surface-default overflow-hidden"
-        onMouseDown={(e) => e.stopPropagation()}>
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="flex flex-col flex-1 min-h-0 rounded-xl border border-border-subtle bg-surface-default overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center px-4 py-2 border-b border-border-subtle">
-          <span className="text-xs font-semibold text-text-secondary">{title}</span>
+          <span id={titleId} className="text-xs font-semibold text-text-secondary">{title}</span>
           <button onClick={onClose} className="ml-auto p-1 rounded-md text-text-muted hover:text-text-primary hover:bg-surface-hover" aria-label="Fermer">
             <X size={14} />
           </button>

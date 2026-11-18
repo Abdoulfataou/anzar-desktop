@@ -450,8 +450,10 @@ function ToolbarMenu<T extends string>({
   useEffect(() => {
     if (!open) return;
     const close = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('mousedown', close);
-    return () => document.removeEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('mousedown', close); document.removeEventListener('keydown', esc); };
   }, [open]);
   const current = options.find((o) => o.id === value) ?? options[0];
   return (
@@ -459,6 +461,9 @@ function ToolbarMenu<T extends string>({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`${current.label} — changer`}
         className={cn(
           'flex items-center gap-1.5 h-7 px-2 rounded-lg text-ui-base transition-colors hover:bg-surface-hover',
           tone ?? 'text-text-secondary'
@@ -470,6 +475,7 @@ function ToolbarMenu<T extends string>({
       </button>
       {open && (
         <div
+          role="menu"
           className={cn(
             'absolute bottom-full mb-1.5 w-72 p-1 flex flex-col gap-0.5 rounded-lg border border-border-medium bg-surface-elevated shadow-md z-50',
             align === 'right' ? 'right-0' : 'left-0'
@@ -479,6 +485,8 @@ function ToolbarMenu<T extends string>({
             <button
               key={o.id}
               type="button"
+              role="menuitemradio"
+              aria-checked={o.id === value}
               onClick={() => { onChange(o.id); setOpen(false); }}
               className="w-full flex items-start gap-2 px-2 py-1.5 rounded-md text-left hover:bg-surface-hover transition-colors"
             >
@@ -752,6 +760,7 @@ export default function ChatInput({
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
               placeholder={placeholder}
+              aria-label={placeholder || 'Message à envoyer'}
               disabled={isLoading}
               rows={1}
               className={cn(
@@ -781,6 +790,7 @@ export default function ChatInput({
                   <button
                     type="button"
                     onClick={() => setAttachments((prev) => prev.filter((x) => x.id !== a.id))}
+                    aria-label={`Retirer ${a.name}`}
                     className="p-0.5 rounded-full hover:bg-surface-hover text-text-muted hover:text-text-primary"
                     title="Retirer"
                   >
@@ -949,6 +959,7 @@ export default function ChatInput({
                     : 'text-text-muted hover:bg-bg-tertiary hover:text-text-secondary'
                 )}
                 title="Joindre un fichier"
+                aria-label="Joindre un fichier"
               >
                 <Plus size={16} />
               </button>
@@ -986,6 +997,7 @@ export default function ChatInput({
                     'hover:bg-accent-error/25'
                   )}
                   title="Arrêter"
+                  aria-label="Arrêter la génération"
                 >
                   <Square size={16} />
                 </button>
@@ -1000,6 +1012,7 @@ export default function ChatInput({
                       : 'bg-bg-tertiary text-text-muted cursor-not-allowed'
                   )}
                 title={isOnline ? 'Envoyer' : 'Hors ligne'}
+                aria-label={isOnline ? 'Envoyer le message' : 'Hors ligne'}
                 >
                   <ArrowUp size={16} strokeWidth={2.5} />
                 </button>

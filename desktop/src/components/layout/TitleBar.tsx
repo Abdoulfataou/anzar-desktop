@@ -55,6 +55,7 @@ export default function TitleBar({ className }: TitleBarProps) {
 
   return (
     <div
+      role="banner"
       className={cn(
         'h-10 bg-transparent',
         'flex items-center select-none flex-shrink-0',
