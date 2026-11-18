@@ -13,13 +13,15 @@
  *   - Budgets stricts : étapes, erreurs consécutives, taille de l'historique
  */
 
-import { APIMessage, ToolCall, AIModel, AIProvider } from '@/types';
+import { APIMessage, AIModel, AIProvider } from '@/types';
 import { aiService } from '@/services/ai/ai';
 import { terminalService } from '@/services/terminal';
 import { AGENT_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from './agentTools';
 import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from './agentPrompts';
 import { runVerification, VerifyCommandResult } from './agentVerifier';
 import { buildAgentContext } from './agentContext';
+import { ToolCallAssembler } from './toolCallAssembler';
+import { compactHistory, historyChars, SOFT_LIMIT_CHARS } from './history';
 
 // ============================================================================
 // TYPES
@@ -93,74 +95,6 @@ export interface AgentSessionResult {
 
 const DEFAULT_MAX_STEPS = 40;
 const MAX_CONSECUTIVE_ERRORS = 4;
-const MAX_HISTORY_CHARS = 220_000; // ~55k tokens — compaction au-delà
-
-// ============================================================================
-// ASSEMBLAGE DES TOOL CALLS EN STREAMING
-// ============================================================================
-
-/**
- * Les tool_calls arrivent fragmentés dans les deltas SSE (format OpenAI) :
- * chaque fragment porte un `index`; id/name arrivent au premier fragment,
- * arguments s'accumulent ensuite.
- */
-class ToolCallAssembler {
-  private calls = new Map<number, ToolCall>();
-
-  add(fragments: Partial<ToolCall>[]): void {
-    for (const frag of fragments) {
-      const index = (frag as any).index ?? 0;
-      let call = this.calls.get(index);
-      if (!call) {
-        call = {
-          id: frag.id || `call_${Date.now()}_${index}`,
-          type: 'function',
-          function: { name: '', arguments: '' },
-        };
-        this.calls.set(index, call);
-      }
-      if (frag.id) call.id = frag.id;
-      if (frag.function?.name) call.function.name += frag.function.name;
-      if (frag.function?.arguments) call.function.arguments += frag.function.arguments;
-    }
-  }
-
-  finish(): ToolCall[] {
-    return [...this.calls.entries()].sort(([a], [b]) => a - b).map(([, c]) => c);
-  }
-
-  get hasCalls(): boolean {
-    return this.calls.size > 0;
-  }
-}
-
-// ============================================================================
-// COMPACTION DE L'HISTORIQUE
-// ============================================================================
-
-/**
- * Si l'historique dépasse le budget, on tronque les VIEUX résultats d'outils
- * (les plus volumineux) en gardant la structure de la conversation intacte.
- */
-function compactHistory(messages: APIMessage[]): APIMessage[] {
-  let total = messages.reduce((s, m) => s + (m.content?.length || 0), 0);
-  if (total <= MAX_HISTORY_CHARS) return messages;
-
-  // Compaction EN UNE FOIS et sur place : l'historique reste ensuite identique d'une étape
-  // à l'autre, donc servi par le cache DeepSeek. Raccourcir un peu à chaque étape décalerait
-  // le point de changement et ferait repayer plein tarif tout ce qui le suit.
-  // On descend à la moitié du budget pour ne pas recompacter à l'étape suivante.
-  // Le system prompt, la tâche initiale et les 6 derniers messages sont protégés.
-  const target = MAX_HISTORY_CHARS / 2;
-  for (let i = 2; i < messages.length - 6 && total > target; i++) {
-    const m = messages[i];
-    if (m.role === 'tool' && m.content && m.content.length > 500) {
-      total -= m.content.length - 200;
-      messages[i] = { ...m, content: m.content.slice(0, 160) + '\n… [résultat compacté pour économiser le contexte]' };
-    }
-  }
-  return messages;
-}
 
 // ============================================================================
 // CHECKPOINT GIT
@@ -294,7 +228,9 @@ export async function runAgentSession(options: AgentSessionOptions): Promise<Age
     let streamError: string | null = null;
 
     try {
-      const stream = aiService.chatStream(compactHistory(messages), {
+      // Compaction rare et en une fois, compatible avec le cache fournisseur.
+      if (historyChars(messages) > SOFT_LIMIT_CHARS) compactHistory(messages, 6, 160);
+      const stream = aiService.chatStream(messages, {
         model,
         provider,
         tools: AGENT_TOOLS,

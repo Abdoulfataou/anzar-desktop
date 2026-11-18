@@ -54,6 +54,9 @@ jobs:
       - name: Typecheck (lint)
         run: npm run lint
 
+      - name: Tests (Vitest)
+        run: npm test
+
       - name: Build (Vite)
         run: npm run build
 

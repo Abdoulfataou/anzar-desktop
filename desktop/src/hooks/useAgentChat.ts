@@ -11,6 +11,13 @@
  * usageStore (débit FCFA), chatStore (persistance conversation).
  */
 import { commandRisk, noteAgentWrite } from '@/services/agent/commandGuard';
+import { ToolCallAssembler } from '@/services/agent/toolCallAssembler';
+import {
+  closeDanglingToolCalls, compactHistory, historyChars,
+  KEEP_RECENT_TOOL_RESULTS, SOFT_LIMIT_CHARS, STUB_CHARS, SKILL_RESULT_PREFIX,
+} from '@/services/agent/history';
+import { needsApproval, READ_ONLY_TOOLS, type PermissionMode } from '@/services/agent/permissions';
+export type { PermissionMode } from '@/services/agent/permissions';
 import { loadPersonalInstructions, personalInstructionsSection } from '@/services/personalInstructions';
 import { useCallback, useRef, useState } from 'react';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
@@ -30,10 +37,7 @@ import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOut
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
 import { copyAttachmentsToWorkspace } from '@/services/attachmentFiles';
 import { PERSONAL_SPACE_TOOLS, PERSONAL_SUBDIR, conversationUsesPersonalSpace, ensurePersonalSpace, personalSpaceContext } from '@/services/personalSpace';
-import type { AIModel, APIMessage, ChatAttachment, Message, ToolCall, ToolDefinition } from '@/types';
-
-/** Qui décide avant que l'agent agisse. */
-export type PermissionMode = 'ask' | 'auto' | 'plan' | 'full';
+import type { AIModel, APIMessage, ChatAttachment, Message, ToolDefinition } from '@/types';
 
 /** Demande d'accord en attente (modes « ask » et « auto »). */
 export interface ApprovalRequest {
@@ -88,32 +92,8 @@ interface ResumeState {
 /** Coûts exacts envoyés par le serveur pour chaque appel au modèle (B6) */
 interface ServerCost { sum: number; reports: number; calls: number }
 
-/** Après une coupure, chaque appel d'outil annoncé doit avoir une réponse, sinon l'API refuse l'historique. */
-function closeDanglingToolCalls(history: APIMessage[]): void {
-  for (let i = history.length - 1; i >= 0; i--) {
-    const m = history[i];
-    if (m.role !== 'assistant' || !m.tool_calls?.length) continue;
-    const answeredIds = new Set(history.slice(i + 1).filter((x) => x.role === 'tool').map((x) => x.tool_call_id));
-    for (const call of m.tool_calls) {
-      if (!answeredIds.has(call.id)) {
-        history.push({ role: 'tool', tool_call_id: call.id, content: 'Interrompu par une coupure. Relance cet outil si son résultat est nécessaire.' });
-      }
-    }
-    return;
-  }
-}
-
-const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'delete_file', 'remember', 'export_animation']);
-const COMMAND_TOOLS = new Set(['run_command', 'spawn_subagents', 'start_dev_server']);
-const READ_ONLY_TOOLS = new Set(['read_file', 'list_dir', 'search_files', 'get_diagnostics', 'explore', 'dev_server_logs', 'web_search', 'read_url', 'capture_page']);
 /** Début du message qui montre au modèle les captures d'écran de capture_page */
 const CAPTURE_MARK = "[Captures d'écran de capture_page]";
-
-function needsApproval(mode: PermissionMode, tool: string): boolean {
-  if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);
-  if (mode === 'auto') return COMMAND_TOOLS.has(tool);
-  return false;
-}
 
 const PLAN_MODE_PROMPT = `
 
@@ -139,7 +119,6 @@ const LOAD_SKILL_TOOL: ToolDefinition = {
     },
   },
 };
-const SKILL_RESULT_PREFIX = '# Skill « ';
 
 /** Questions à choix posées à l'utilisateur (panneau au-dessus de la saisie, comme dans Claude Code). */
 const ASK_USER_TOOL: ToolDefinition = {
@@ -227,64 +206,8 @@ export interface ToolEvent {
 const MAX_STEPS = 40;
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
 
-// ── Économie de crédits ─────────────────────────────────────────────────────
-// À chaque étape, TOUT l'historique est renvoyé au modèle (et facturé). Les
-// anciens résultats d'outils (fichiers lus, sorties de commandes) en sont la
-// plus grosse part et ne servent plus après quelques étapes : on les raccourcit.
-// Mais le cache DeepSeek fait payer ~2 % du prix normal tout début de requête déjà
-// envoyé tel quel. Raccourcir un peu à chaque étape modifierait l'historique au milieu
-// et ferait repayer plein tarif tout ce qui suit (×50). On compacte donc RAREMENT et
-// EN UNE FOIS : quand l'historique dépasse le plafond, ou au début d'une demande quand
-// le cache est probablement froid. Entre deux, l'historique ne fait que s'allonger.
-const KEEP_RECENT_TOOL_RESULTS = 6;   // derniers résultats gardés en entier
-const SMALL_RESULT_CHARS = 1_500;     // un résultat court n'est jamais raccourci
-const STUB_CHARS = 600;               // ce qu'on garde d'un ancien résultat
-const SOFT_LIMIT_CHARS = 160_000;     // plafond avant compaction (~40k tokens)
 const CACHE_COLD_MS = 30 * 60 * 1000; // au-delà, le cache fournisseur a pu être vidé
-const SHRUNK_MARK = '[ancien résultat raccourci';
 
-function shrinkText(text: string, keep: number): string {
-  if (text.length <= keep + 200 || text.includes(SHRUNK_MARK)) return text;
-  return `${text.slice(0, keep)}\n… ${SHRUNK_MARK} : ${text.length.toLocaleString('fr-FR')} caractères au total — relance l'outil si tu as besoin du détail]`;
-}
-
-/** Raccourcit les longs arguments (contenu écrit par write_file/edit_file) d'un ancien appel d'outil. */
-function shrinkToolCallArgs(call: ToolCall): ToolCall {
-  const raw = call.function.arguments || '';
-  if (raw.length <= SMALL_RESULT_CHARS) return call;
-  try {
-    const args = JSON.parse(raw);
-    for (const k of Object.keys(args)) {
-      if (typeof args[k] === 'string' && args[k].length > 400) {
-        args[k] = `${args[k].slice(0, 200)}… [${args[k].length} caractères, raccourci]`;
-      }
-    }
-    return { ...call, function: { ...call.function, arguments: JSON.stringify(args) } };
-  } catch {
-    return call;
-  }
-}
-
-/**
- * Raccourcit sur place tout ce qui précède les `keepRecent` derniers résultats d'outils :
- * leurs résultats longs et les longs arguments des appels correspondants.
- */
-function compactHistory(history: APIMessage[], keepRecent: number, stubChars: number): void {
-  const toolIdx: number[] = [];
-  history.forEach((m, i) => { if (m.role === 'tool') toolIdx.push(i); });
-  const cutoff = keepRecent > 0 ? toolIdx[toolIdx.length - keepRecent] ?? 0 : history.length;
-  for (let i = 0; i < cutoff; i++) {
-    const m = history[i];
-    if (m.role === 'tool' && typeof m.content === 'string' && m.content.length > SMALL_RESULT_CHARS && !m.content.startsWith(SKILL_RESULT_PREFIX)) {
-      history[i] = { ...m, content: shrinkText(m.content, stubChars) };
-    } else if (m.role === 'assistant' && m.tool_calls?.length) {
-      history[i] = { ...m, tool_calls: m.tool_calls.map(shrinkToolCallArgs) };
-    }
-  }
-}
-
-const historyChars = (history: APIMessage[]) =>
-  history.reduce((n, m) => n + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0);
 // Le contenu joint est renvoyé au modèle à CHAQUE étape : on le borne pour maîtriser le coût.
 const MAX_ATTACHMENT_CHARS = 40_000;
 const MAX_ATTACHMENTS_TOTAL_CHARS = 100_000;
@@ -376,28 +299,6 @@ function summarizeArgs(name: string, args: Record<string, any>): string {
     default:
       return JSON.stringify(args).slice(0, 100);
   }
-}
-
-/** Assemble les tool_calls fragmentés du stream (pattern agentLoop). */
-class Assembler {
-  private calls = new Map<number, ToolCall>();
-  add(fragments: Partial<ToolCall>[] = []) {
-    for (const frag of fragments) {
-      const index = (frag as any).index ?? 0;
-      let call = this.calls.get(index);
-      if (!call) {
-        call = { id: frag.id || `call_${Date.now()}_${index}`, type: 'function', function: { name: '', arguments: '' } };
-        this.calls.set(index, call);
-      }
-      if (frag.id) call.id = frag.id;
-      if (frag.function?.name) call.function.name += frag.function.name;
-      if (frag.function?.arguments) call.function.arguments += frag.function.arguments;
-    }
-  }
-  finish(): ToolCall[] {
-    return [...this.calls.entries()].sort(([a], [b]) => a - b).map(([, c]) => c);
-  }
-  get hasCalls() { return this.calls.size > 0; }
 }
 
 interface UseAgentChatParams {
@@ -794,7 +695,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       for (let step = 0; step < MAX_STEPS; step++) {
         if (controller.signal.aborted) break;
 
-        let assembler = new Assembler();
+        let assembler = new ToolCallAssembler();
         let stepContent = '';
 
         // Chaque étape renvoie tout l'historique au modèle. Compaction en une fois, seulement
@@ -823,7 +724,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         // donc rien de ce qui a déjà été fait n'est perdu ni refacturé.
         let stepReasoning = '';
         for (let attempt = 0; ; attempt++) {
-          assembler = new Assembler();
+          assembler = new ToolCallAssembler();
           stepContent = '';
           stepReasoning = '';
           try {
@@ -1139,7 +1040,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         });
         for (let rescue = 0; rescue < 4; rescue++) {
           if (controller.signal.aborted) break;
-          const assembler = new Assembler();
+          const assembler = new ToolCallAssembler();
           let rescueText = '';
           try {
             const stream = aiService.chatStream(apiHistoryRef.current, { model: callModel(), tools: EXPORT_ONLY, signal: controller.signal });
