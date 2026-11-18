@@ -249,15 +249,9 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
   try {
     // Use pdfjs-dist for text extraction
     const pdfjsLib = await import('pdfjs-dist');
-    // Set worker (local bundle first; CDN fallback)
-    try {
-      const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min?url')).default as string;
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
-    } catch {
-      // Fallback: CDN (peut échouer offline)
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    }
+    // Worker local uniquement : jamais de script CDN pour parser un document non fiable.
+    const workerSrc = (await import('pdfjs-dist/build/pdf.worker.min?url')).default as string;
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
     const doc = await pdfjsLib.getDocument({ data: bytes }).promise;
     const pages: string[] = [];
     const maxPages = Math.min(doc.numPages, 50); // Limit to 50 pages
@@ -510,7 +504,7 @@ export default function ChatInput({
   isOnline = true,
   selectedModel = 'fast',
   onModelChange,
-  permissionMode = 'full',
+  permissionMode = 'auto',
   onPermissionChange,
   placeholder = 'Décris ta tâche, ANZAR s\'en occupe...',
   maxHeight = MAX_HEIGHT,

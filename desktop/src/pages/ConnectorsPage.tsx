@@ -214,7 +214,7 @@ function ServerRow({ server, rt, open, onToggleOpen, onToggle, onRemove }: {
               onChange={(e) => void upsertServer({ ...server, alwaysAsk: e.target.checked }, { restart: false })} />
             <span>
               <span className="flex items-center gap-1 text-text-primary"><ShieldCheck size={13} /> Toujours demander mon accord avant une action</span>
-              <span className="block text-text-muted">Même en « Accès complet ». Les simples lectures passent sans demander.</span>
+              <span className="block text-text-muted">Même en « Accès complet ». Sinon, les actions MCP demandent un accord hors Full.</span>
             </span>
           </label>
 

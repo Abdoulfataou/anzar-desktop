@@ -94,6 +94,20 @@ export async function commandRisk(taskId: string, root: string, command: string)
   const exe = tokens[0].toLowerCase();
   const touched = written.get(taskId) || new Set<string>();
 
+  // Sorties réseau et installations : jamais silencieuses, même en Full.
+  if (exe === 'git' && (tokens[1] === 'push' || (tokens[1] === 'remote' && tokens[2] === 'add'))) {
+    return { reason: 'envoie du code ou configure un dépôt distant', detail: command };
+  }
+  if (['npm', 'pnpm', 'yarn'].includes(exe) && ['install', 'i', 'ci', 'add', 'isntall', 'in'].includes(tokens[1])) {
+    return { reason: 'installe des dépendances (scripts de cycle de vie possibles)', detail: command };
+  }
+  if (['pip', 'pip3'].includes(exe) && tokens[1] === 'install') {
+    return { reason: 'installe un paquet Python (code d’installation possible)', detail: command };
+  }
+  if (exe === 'cargo' && tokens[1] === 'install') {
+    return { reason: 'installe un binaire Cargo (code de build possible)', detail: command };
+  }
+
   // node / python sur un fichier que l'agent vient d'écrire
   if (['node', 'python', 'python3', 'deno', 'bun', 'ts-node', 'tsx'].includes(exe)) {
     const file = tokens.slice(1).find((t) => !t.startsWith('-'));

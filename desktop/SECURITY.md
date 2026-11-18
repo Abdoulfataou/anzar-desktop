@@ -15,11 +15,11 @@ migration Tauri 2 effectués. Périmètre : `desktop/`.
 - **Le JWT n'est jamais écrit dans `localStorage`.** Il est stocké dans le coffre
   chiffré Stronghold (`anzar.vault.hold`). En cas d'indisponibilité du coffre,
   il reste **en mémoire** pour la session en cours, et n'est pas persisté.
-- **La clé du coffre est dans le trousseau du système** (Keychain macOS /
-  Credential Manager Windows), plus dans `localStorage`. En cas de trousseau
-  indisponible, un repli fichier (`store/vault-key.dat`) puis mémoire est utilisé.
-  L'ancienne clé `settings.deviceVaultKey` est migrée automatiquement au premier
-  démarrage, puis effacée des réglages persistés.
+- **La clé du coffre est uniquement dans le trousseau du système** (Keychain
+  macOS / Credential Manager Windows), plus dans `localStorage`. Aucun repli
+  fichier n'est écrit : si le trousseau est indisponible, la clé reste en mémoire
+  et la session n'est pas persistée (reconnexion au redémarrage). L'ancienne clé
+  `settings.deviceVaultKey` n'est plus utilisée.
 - **Nettoyage des anciennes installations** : l'ancien jeton base64
   `anzar_tkn_fb` est supprimé de `localStorage` à chaque démarrage et à la
   déconnexion (`secureTokenStore.purgeLegacyToken()`).
@@ -33,11 +33,27 @@ migration Tauri 2 effectués. Périmètre : `desktop/`.
 ### Limite connue
 
 Le trousseau système protège la clé du coffre contre une lecture de fichiers ou de
-`localStorage`. Le repli fichier reste possible si le trousseau est verrouillé ou
-indisponible ; dans ce cas, la clé est dans le dossier de données de l'application
-(protégé par les permissions du compte, mais lisible par un attaquant local).
+`localStorage`. Les fichiers du dossier `store` sont durcis en `0600` (dossiers
+`0700`) au démarrage et après l'écriture d'un secret, mais un processus du même
+compte peut encore les lire. Le renderer ne doit donc jamais pouvoir exécuter de
+script arbitraire ; la CSP et la sanitation des contenus restent la première
+barrière.
 
 ---
+
+## 1 bis. Durcissement P0 appliqué (18 novembre 2026)
+
+- `npx` retiré des commandes agent et des capacités shell Tauri ; `node --eval`, `bash/sh -c`, `npx -c` refusés.
+- `mcp_spawn` : lanceur sans chemin, paquets npx allowlistés, environnement nettoyé, `cwd` contenu dans le répertoire utilisateur, options inline refusées.
+- `mcp_http` : HTTPS obligatoire, hôtes privés/loopback refusés (littéral et DNS), redirections désactivées.
+- PDF.js mis à jour vers `6.2.108` (CVE high corrigée), worker local uniquement.
+- Mermaid filtré par DOMPurify avant `innerHTML`.
+- Mode par défaut `auto` (plus `full`), les automatisations refusent désormais les actions qui demanderaient une approbation, les tickets ne tournent plus en Full.
+- Sous-agents hors Full : outils en lecture seule ; le moteur refuse aussi un outil non autorisé.
+- Clé de coffre : plus aucun repli `vault-key.dat` ; fichier local supprimé du chemin de lecture.
+- Permissions `0700`/`0600` appliquées au démarrage et après écriture d'un secret (`secure_app_secrets`).
+
+Reste P1 : `store/mcp.json` contient encore les en-têtes MCP en clair (0600), le scope FS renderer reste large, et le garde-fou des installations/pousses doit encore être testé en conditions réelles.
 
 ## 2. CSP Tauri
 
@@ -127,10 +143,10 @@ npx tauri build --debug --no-bundle
 |---|---|---|
 | Tauri 1.8.3 (fin de maintenance) | **corrigé** | migré en Tauri 2.12.6 |
 | `shell.open` sans scope / API large | **corrigé** | opener + capabilities + scope |
-| Clé du coffre dans un fichier local | **corrigé** | trousseau système + repli fichier |
+| Clé du coffre dans un fichier local | **corrigé** | trousseau système uniquement, aucun repli fichier |
 | Secrets des connecteurs MCP en clair (`store/mcp.json`) | **ouvert** | Coffre système ou Stronghold |
-| LSP et Playwright lancés via `npx …@latest` | **ouvert** | Épingler les versions |
-| Jeton lisible par une XSS qui a déjà l'IPC Tauri | **atténué** | capabilities + CSP + audit du rendu Markdown |
+| LSP et Playwright lancés via `npx` | **atténué** | paquets npx allowlistés ; épingler les versions `@latest` restantes |
+| Jeton lisible par une XSS qui a déjà l'IPC Tauri | **atténué** | PDF.js corrigé, Mermaid filtré, CSP, capabilities ; scope FS encore large |
 | Processus enfants non tués en groupe | **corrigé** | `processGroup: true` dans le plugin shell |
 
 ---

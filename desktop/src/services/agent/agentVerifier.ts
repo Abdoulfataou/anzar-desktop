@@ -71,12 +71,6 @@ export async function detectVerifyCommands(projectRoot: string): Promise<VerifyC
   if (pkg) {
     const scripts: Record<string, string> = pkg.scripts || {};
 
-    // Dépendances installées ?
-    const hasNodeModules = await fileSystemService.exists(`${root}/node_modules`);
-    if (!hasNodeModules && (pkg.dependencies || pkg.devDependencies)) {
-      commands.push({ label: 'install', command: 'npm install' });
-    }
-
     if (scripts.lint) commands.push({ label: 'lint', command: 'npm run lint' });
     if (scripts.typecheck) commands.push({ label: 'typecheck', command: 'npm run typecheck' });
     if (scripts.build) commands.push({ label: 'build', command: 'npm run build' });

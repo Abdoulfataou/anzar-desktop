@@ -40,6 +40,8 @@ export interface AgentSessionOptions {
   /** Historique mutable : le moteur y ajoute ses messages. */
   messages: APIMessage[];
   tools?: ToolDefinition[] | (() => ToolDefinition[] | undefined);
+  /** Si fourni, seuls ces outils peuvent être appelés (défense en profondeur). */
+  allowedTools?: Set<string>;
   stream: (
     messages: APIMessage[],
     tools: ToolDefinition[] | undefined,
@@ -96,6 +98,7 @@ const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : S
 export async function runAgentEngine(options: AgentSessionOptions): Promise<AgentEngineResult> {
   const {
     messages,
+    allowedTools,
     maxSteps = 40,
     maxConsecutiveErrors = 4,
     signal,
@@ -216,10 +219,17 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
       if (signal?.aborted) return finish('aborted', 'Session annulée.', step);
       onToolCall?.(call, step);
       let outcome: AgentToolOutcome;
-      try {
-        outcome = await options.executeTool(call, step);
-      } catch (e) {
-        outcome = { output: `Erreur outil : ${errorMessage(e)}`, isError: true };
+      if (allowedTools && !allowedTools.has(call.function.name)) {
+        outcome = {
+          output: `Outil non autorisé pour cette session : ${call.function.name}.`,
+          isError: true,
+        };
+      } else {
+        try {
+          outcome = await options.executeTool(call, step);
+        } catch (e) {
+          outcome = { output: `Erreur outil : ${errorMessage(e)}`, isError: true };
+        }
       }
       onToolResult?.(call, outcome, step);
 

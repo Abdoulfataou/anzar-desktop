@@ -155,7 +155,10 @@ async function pageReport(signal?: AbortSignal, header = ''): Promise<{ output: 
 export function isAllowedUrl(url: string): boolean {
   try {
     const u = new URL(url);
-    return u.protocol === 'http:' || u.protocol === 'https:';
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    const host = u.hostname.toLowerCase();
+    // Le navigateur intégré sert à vérifier le serveur local du projet.
+    return host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '0.0.0.0';
   } catch {
     return false;
   }

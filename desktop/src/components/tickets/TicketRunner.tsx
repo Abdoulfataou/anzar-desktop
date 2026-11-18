@@ -72,7 +72,7 @@ function TicketJob({ ticket, onDone }: { ticket: Ticket; onDone: () => void }) {
     workspacePath: worktree,
     workspaceName: project ? `${project.name} · ticket` : undefined,
     model: ticket.model,
-    permissionMode: 'full',
+    permissionMode: 'auto',
     background: true,
     onProgress: ({ costFCFA }) => { progress.current = { costFCFA, lastActivity: Date.now() }; },
   });

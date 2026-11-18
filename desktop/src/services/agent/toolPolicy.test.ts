@@ -32,7 +32,19 @@ describe('approvalDecision', () => {
   it('espace ANZAR : pas d’accord pour écrire, sauf risque non encore autorisé', () => {
     expect(approvalDecision({ ...base, mode: 'ask', tool: 'write_file', personalSpace: true }).ask).toBe(false);
     expect(approvalDecision({ ...base, mode: 'ask', tool: 'run_command', personalSpace: true, risk: { reason: 'script modifié' }, trusted: false }).ask).toBe(true);
-    expect(approvalDecision({ ...base, mode: 'ask', tool: 'run_command', personalSpace: true, risk: { reason: 'script modifié' }, trusted: true }).ask).toBe(false);
+    // Un accord de code dans l'espace ANZAR ne couvre plus un risque réseau/installation.
+    expect(approvalDecision({ ...base, mode: 'ask', tool: 'run_command', personalSpace: true, risk: { reason: 'script modifié' }, trusted: true }).ask).toBe(true);
+  });
+
+  it('automatisation : refuse toute action qui demanderait une approbation', () => {
+    const auto = approvalDecision({ ...base, mode: 'auto', background: true, tool: 'run_command' });
+    expect(auto.allowed).toBe(false);
+    expect(auto.ask).toBe(false);
+    expect(auto.refusal).toContain('personne');
+
+    const write = approvalDecision({ ...base, mode: 'ask', background: true, tool: 'write_file' });
+    expect(write.allowed).toBe(false);
+    expect(write.ask).toBe(false);
   });
 
   it('automatisation : refuse sans demander, avec une explication', () => {

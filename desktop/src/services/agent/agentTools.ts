@@ -20,6 +20,7 @@ import { vendorLibs } from '@/services/skillsPack/vendorLibs';
 import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/toolsRuntime';
 import { SUBAGENT_ROLE_PROMPTS, detectSubagentRole, type SubagentRole } from './agentPrompts';
 import { BUILTIN_SKILLS } from '@/services/skillsPack';
+import { READ_ONLY_TOOLS, type PermissionMode } from './permissions';
 
 // ============================================================================
 // TYPES
@@ -37,6 +38,8 @@ export interface SubagentProgress {
 }
 
 export interface ToolExecutionContext {
+  /** Mode de permission du parent : les sous-agents héritent des restrictions. */
+  permissionMode?: PermissionMode;
   /** Racine absolue du projet — toutes les opérations sont relatives à elle */
   projectRoot: string;
   /** Signal d'annulation de la session */
@@ -335,7 +338,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'run_command',
       description:
-        "Exécute UNE commande dans le projet. Programmes autorisés : npm, npx, node, git, python, pip, cargo — rien d'autre (pas de grep, ls, cat, find, head, echo). " +
+        "Exécute UNE commande dans le projet. Programmes autorisés : npm, node, git, python, pip, cargo — rien d'autre (pas de grep, ls, cat, find, head, echo). " +
         "Jamais node -e ni python -c (refusés) : pour un traitement, écris un fichier script (.mjs/.py) avec write_file puis lance-le. Interdits : |, ;, &&, ||, >, <, $(…) et chemins absolus. Pour chercher dans le code utilise search_files, pour lister list_dir, pour lire read_file. " +
         "Sert à installer des dépendances, lancer build/lint/tests et VÉRIFIER ton travail. Renvoie stdout/stderr + code de sortie.",
       parameters: {
@@ -656,7 +659,7 @@ async function execSearchFiles(args: any, ctx: ToolExecutionContext): Promise<To
   return { output: truncate(results.join('\n'), MAX_COMMAND_OUTPUT_CHARS, 'recherche') };
 }
 
-const RUNNABLE = new Set(['npm', 'npx', 'node', 'git', 'cargo', 'python', 'python3', 'pip', 'pip3']);
+const RUNNABLE = new Set(['npm', 'node', 'git', 'cargo', 'python', 'python3', 'pip', 'pip3']);
 const READ_INSTEAD: Record<string, string> = {
   grep: 'search_files', rg: 'search_files', find: 'search_files ou list_dir', ls: 'list_dir', tree: 'list_dir',
   cat: 'read_file', head: 'read_file', tail: 'read_file', less: 'read_file', wc: 'read_file',
@@ -666,7 +669,7 @@ const READ_INSTEAD: Record<string, string> = {
  * Refuse tôt, avec une consigne utile, ce que le terminal bloquerait de toute façon :
  * l'agent comprend quoi faire à la place au lieu de réessayer la même erreur.
  */
-function precheckCommand(command: string): string | null {
+export function precheckCommand(command: string): string | null {
   const cmd = String(command || '').trim();
   if (/[|;<>]|&&|\$\(|`/.test(cmd)) {
     return "Refusé : un seul programme par appel, sans |, ;, &&, >, < ni $(…). Découpe en plusieurs appels run_command, ou utilise search_files / list_dir / read_file.";
@@ -1031,6 +1034,11 @@ async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise
         maxSteps: 15,
         gitCheckpoint: false,   // le checkpoint parent couvre déjà la session
         autoVerify: false,      // le parent vérifie après consolidation
+        // Hors Full, les sous-agents ne peuvent pas écrire ni exécuter : une seule
+        // approbation « spawn_subagents » ne doit pas ouvrir tous les outils.
+        allowedTools: ctx.permissionMode === 'full'
+          ? undefined
+          : new Set([...READ_ONLY_TOOLS, 'task_done', 'load_skill']),
         signal: ctx.signal,
         onFileChanged: ctx.onFileChanged,
         onEvent: (ev) => {

@@ -213,11 +213,10 @@ export function mcpToolRef(name: string): McpToolRef | undefined {
  * Lecture déclarée par le serveur : jamais. Sinon : selon le mode et le réglage du connecteur.
  */
 export function mcpNeedsApproval(mode: 'ask' | 'auto' | 'plan' | 'full', ref: McpToolRef): boolean {
-  const a = ref.tool.annotations || {};
-  if (a.readOnlyHint) return false;
-  if (ref.alwaysAsk || mode === 'ask') return true;
-  if (mode === 'auto') return a.destructiveHint === true;
-  return false;
+  // Les annotations readOnlyHint/destructiveHint viennent du serveur : elles ne
+  // constituent jamais une autorisation. Hors Full, toute action MCP est confirmée.
+  if (ref.alwaysAsk) return true;
+  return mode !== 'full';
 }
 
 /** Exécute un outil de connecteur et renvoie le texte pour le modèle. */

@@ -74,6 +74,8 @@ export interface AgentSessionOptions {
   maxVerifyAttempts?: number;
   /** Prompt système additionnel (rôle du sous-agent, skills injectées…) */
   systemPromptExtra?: string;
+  /** Outils autorisés pour cette session (sous-agents hors Full). */
+  allowedTools?: Set<string>;
   /** Callback événements (UI) */
   onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
@@ -181,7 +183,10 @@ export async function runAgentSession(options: AgentSessionOptions): Promise<Age
 
   const result = await runAgentEngine({
     messages,
-    tools: AGENT_TOOLS,
+    tools: options.allowedTools
+      ? AGENT_TOOLS.filter((t) => options.allowedTools!.has(t.function.name))
+      : AGENT_TOOLS,
+    allowedTools: options.allowedTools,
     maxSteps,
     maxConsecutiveErrors: MAX_CONSECUTIVE_ERRORS,
     signal,

@@ -32,6 +32,14 @@ function sanitizeSvg(raw: string): string {
   return DOMPurify.sanitize(raw, SVG_SANITIZE_CONFIG);
 }
 
+/** Sortie Mermaid : même contenu non fiable que le SVG du modèle. */
+export function sanitizeMermaid(raw: string): string {
+  return DOMPurify.sanitize(raw, {
+    USE_PROFILES: { svg: true, svgFilters: true },
+    FORBID_TAGS: ['script', 'foreignObject', 'iframe', 'embed', 'object'],
+  });
+}
+
 function useCopy(code: string): [boolean, () => void] {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -212,8 +220,9 @@ export const MermaidBlock: React.FC<{ code: string }> = ({ code }) => {
           fontFamily: 'inherit',
         });
         const { svg: rendered } = await mermaid.render(idRef.current, settled);
-        // Mermaid (securityLevel strict) nettoie déjà sa sortie ; DOMPurify retirerait les libellés HTML
-        if (!cancelled) { setSvg(rendered); setError(''); }
+        // Mermaid reste un parseur complexe : on ne fait pas confiance à sa sortie.
+        // On garde les styles (couleurs du thème) mais on retire scripts/iframes/foreignObject.
+        if (!cancelled) { setSvg(sanitizeMermaid(rendered)); setError(''); }
       } catch (e: any) {
         if (!cancelled) setError(e?.message || 'Syntaxe Mermaid invalide');
       }

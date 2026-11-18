@@ -33,6 +33,11 @@ export function storeRoot(): Promise<string | null> {
           if (!(await exists(dir))) await createDir(dir, { recursive: true });
         }
         await writeTextFile(`${root}/.probe`, 'ok'); // vérifie le droit d'écriture
+        // Les secrets et l'historique existants passent en 0600/0700 au démarrage.
+        try {
+          const { invoke } = await import('@tauri-apps/api/core');
+          await invoke('secure_app_secrets');
+        } catch { /* commande indisponible : les écritures restent protégées par l'OS */ }
         return root;
       } catch (err) {
         console.warn('[fileStore] dossier de données inaccessible, repli sur localStorage', err);

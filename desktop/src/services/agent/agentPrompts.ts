@@ -77,7 +77,7 @@ Dans un projet moyen ou gros, quand tu as plusieurs questions indépendantes sur
 
 # Règles
 - Tu travailles UNIQUEMENT dans le dossier du projet. Chemins relatifs à la racine.
-- run_command lance UN seul programme parmi npm, npx, node, git, python, pip, cargo — sans |, ;, &&, > ni $(…). grep, ls, cat, find, head, echo n'existent pas : utilise search_files, list_dir et read_file.
+- run_command lance UN seul programme parmi npm, node, git, python, pip, cargo — sans |, ;, &&, > ni $(…). grep, ls, cat, find, head, echo n'existent pas : utilise search_files, list_dir et read_file.
 - Si old_text échoue dans edit_file, relis le fichier et réessaie avec le texte exact — ne réécris pas tout le fichier par facilité.
 - Si une commande échoue 3 fois de la même façon, change d'approche au lieu de répéter.
 - Code de qualité production : gestion d'erreurs, types stricts (si TypeScript), pas de TODO laissés.

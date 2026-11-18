@@ -22,9 +22,159 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Lanceurs autorisés pour un serveur local. Un chemin absolu vers l'un d'eux est accepté.
 const LAUNCHERS: &[&str] = &[
-    "npx", "node", "bunx", "bun", "deno", "uvx", "uv", "pipx", "python", "python3", "docker",
+    "npx", "node", "bun", "deno", "uv", "python", "python3",
 ];
 const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
+
+/// Variables d'environnement de base recopiées dans un serveur MCP.
+/// Tout le reste doit être explicitement fourni par la configuration du connecteur.
+const BASE_ENV: &[&str] = &[
+    "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP",
+    "LANG", "LC_ALL", "TERM", "TZ",
+    "SYSTEMROOT", "WINDIR", "ComSpec", "PATHEXT", "USERPROFILE",
+    "APPDATA", "LOCALAPPDATA", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA",
+];
+
+/// Variables qui permettent d'injecter du code dans un lanceur légitime.
+fn env_key_allowed(key: &str) -> bool {
+    if key.is_empty() || key.len() > 128 { return false; }
+    if !key.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') { return false; }
+    let k = key.to_ascii_uppercase();
+    if k == "PATH" { return false; }
+    if k.starts_with("LD_") || k.starts_with("DYLD_") || k.starts_with("PYTHON") {
+        return false;
+    }
+    !matches!(k.as_str(),
+        "NODE_OPTIONS" | "BASH_ENV" | "ENV" | "GIT_CONFIG" | "GIT_CONFIG_GLOBAL" |
+        "GIT_CONFIG_SYSTEM" | "GIT_SSH" | "GIT_SSH_COMMAND" | "SSH_AUTH_SOCK" |
+        "ELECTRON_RUN_AS_NODE" | "NODE_PATH" | "PERL5LIB" | "RUBYOPT" | "JAVA_TOOL_OPTIONS" |
+        "_JAVA_OPTIONS" | "CLASSPATH" | "DOCKER_HOST" | "CONDA_PREFIX" | "VIRTUAL_ENV"
+    )
+}
+
+/// Commande de lancement : uniquement un nom de la liste blanche, jamais un chemin.
+fn validate_launcher(command: &str) -> Result<(), String> {
+    if command.is_empty() || command.contains('/') || command.contains('\\') || command.contains("..") {
+        return Err("Lanceur invalide : indique un nom de programme (node, npx, python…), pas un chemin.".into());
+    }
+    if !LAUNCHERS.contains(&launcher_name(command).as_str()) {
+        return Err(format!(
+            "Lanceur « {command} » non autorisé. Utilise : {}.",
+            LAUNCHERS.join(", ")
+        ));
+    }
+    Ok(())
+}
+
+/// Paquets npx autorisés pour les serveurs MCP internes/connus.
+/// Les connecteurs personnalisés doivent utiliser un paquet de cette liste.
+const ALLOWED_NPX: &[&str] = &[
+    "@playwright/mcp", "playwright-core", "typescript-language-server",
+    "typescript", "pyright", "@modelcontextprotocol/",
+];
+const ALLOWED_NPX_BIN: &[&str] = &[
+    "playwright", "typescript-language-server", "pyright-langserver", "node",
+];
+
+fn package_allowed(pkg: &str) -> bool {
+    let base = pkg.split('@').take(2).collect::<Vec<_>>().join("@");
+    let name = if pkg.starts_with('@') { base } else { pkg.split('@').next().unwrap_or(pkg).to_string() };
+    ALLOWED_NPX.iter().any(|p| name == *p || (p.ends_with('/') && name.starts_with(p)))
+}
+
+fn validate_npx_args(args: &[String]) -> Result<(), String> {
+    let mut expect_pkg = false;
+    let mut seen_bin = false;
+    for arg in args {
+        if arg == "-p" || arg == "--package" { expect_pkg = true; continue; }
+        if arg.starts_with('-') { continue; }
+        if expect_pkg {
+            if !package_allowed(arg) { return Err(format!("Paquet npx non autorisé : {arg}.")); }
+            expect_pkg = false;
+            continue;
+        }
+        if !seen_bin {
+            if package_allowed(arg) || ALLOWED_NPX_BIN.contains(&arg.as_str()) {
+                seen_bin = true;
+                continue;
+            }
+            return Err(format!("Paquet npx non autorisé : {arg}."));
+        }
+    }
+    if expect_pkg { return Err("Option -p sans paquet npx.".into()); }
+    Ok(())
+}
+
+/// Options qui transforment un lanceur en shell ou en évaluateur de code.
+fn validate_args(launcher: &str, args: &[String]) -> Result<(), String> {
+    if launcher == "npx" { validate_npx_args(args)?; }
+    if args.len() > 32 { return Err("Trop d'arguments pour un serveur MCP.".into()); }
+    for arg in args {
+        if arg.contains('\n') || arg.contains('\r') || arg.len() > 4000 {
+            return Err("Argument MCP invalide (retour à la ligne ou trop long).".into());
+        }
+        let a = arg.to_ascii_lowercase();
+        let inline = match launcher {
+            "npx" | "bunx" | "pipx" | "uvx" => matches!(a.as_str(), "-c" | "--call" | "--shell"),
+            "node" | "bun" | "deno" => matches!(a.as_str(), "-e" | "--eval" | "-p" | "--print"),
+            "python" | "python3" | "uv" => a == "-c" || a == "--command",
+            "docker" => a == "--privileged",
+            _ => false,
+        };
+        if inline {
+            return Err(format!("Option « {arg} » interdite pour un serveur MCP."));
+        }
+    }
+    Ok(())
+}
+
+fn private_ip(ip: std::net::IpAddr) -> bool {
+    match ip {
+        std::net::IpAddr::V4(v4) => {
+            v4.is_private() || v4.is_loopback() || v4.is_link_local() || v4.is_unspecified()
+                || v4.is_broadcast() || v4.is_multicast()
+                || v4.octets()[0] == 0 || v4.octets()[0] >= 224
+        }
+        std::net::IpAddr::V6(v6) => {
+            v6.is_loopback() || v6.is_unspecified() || v6.is_multicast()
+                || v6.is_unique_local() || v6.is_unicast_link_local()
+        }
+    }
+}
+
+async fn ensure_public_host(host: String, port: u16) -> Result<(), String> {
+    let resolved = tauri::async_runtime::spawn_blocking(move || {
+        use std::net::ToSocketAddrs;
+        (host.as_str(), port).to_socket_addrs().map(|it| it.map(|a| a.ip()).collect::<Vec<_>>())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| format!("Résolution DNS impossible : {e}"))?;
+    if resolved.is_empty() {
+        return Err("Hôte MCP introuvable.".into());
+    }
+    if resolved.iter().any(|ip| private_ip(*ip)) {
+        return Err("Hôte MCP résolu vers une adresse privée refusée.".into());
+    }
+    Ok(())
+}
+
+fn validate_backend_url(url: &reqwest::Url) -> Result<(), String> {
+    let scheme = url.scheme();
+    let host = url.host_str().ok_or("Adresse MCP sans hôte.")?;
+    if scheme != "https" {
+        return Err("Seules les adresses https:// sont acceptées pour un connecteur HTTP.".into());
+    }
+    if host.eq_ignore_ascii_case("localhost") {
+        return Err("Les connecteurs HTTP locaux sont refusés : utilise un connecteur stdio.".into());
+    }
+    if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+        if private_ip(ip) {
+            return Err("Adresse MCP privée refusée.".into());
+        }
+    }
+    Ok(())
+}
 const MAX_HTTP_BODY: usize = 16 * 1024 * 1024;
 
 struct Proc {
@@ -200,21 +350,44 @@ pub fn mcp_spawn(
     framing: Option<String>,
 ) -> Result<(), String> {
     let lsp = framing.as_deref() == Some("lsp");
-    if !LAUNCHERS.contains(&launcher_name(&command).as_str()) {
-        return Err(format!(
-            "Lanceur « {command} » non autorisé. Utilise : {}.",
-            LAUNCHERS.join(", ")
-        ));
+    validate_launcher(&command)?;
+    validate_args(&launcher_name(&command), &args)?;
+    if id.is_empty() || id.len() > 128 || !id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.')) {
+        return Err("Identifiant de serveur MCP invalide.".into());
     }
+
+    // Le dossier de travail doit rester sous le répertoire utilisateur.
+    let canonical_cwd = if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
+        let p = std::fs::canonicalize(&dir).map_err(|_| "Dossier de travail MCP introuvable.".to_string())?;
+        let home = dirs::home_dir().ok_or("Répertoire utilisateur introuvable.")?;
+        if !p.starts_with(&home) {
+            return Err("Dossier de travail MCP hors du répertoire utilisateur.".into());
+        }
+        Some(p)
+    } else {
+        None
+    };
+
+    // Vérifie toutes les variables avant de lancer quoi que ce soit.
+    for key in env.keys() {
+        if !env_key_allowed(key) {
+            return Err(format!("Variable d'environnement MCP refusée : {key}."));
+        }
+    }
+
     stop_proc(&state.procs, &id);
 
     let mut cmd = build_command(&command, &args);
-    cmd.env("PATH", enriched_path())
-        .envs(&env)
-        .stdin(Stdio::piped())
+    cmd.env_clear();
+    for key in BASE_ENV {
+        if let Ok(v) = std::env::var(key) { cmd.env(key, v); }
+    }
+    cmd.env("PATH", enriched_path());
+    for (k, v) in &env { cmd.env(k, v); }
+    cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
+    if let Some(dir) = canonical_cwd {
         cmd.current_dir(dir);
     }
     hide_window(&mut cmd);
@@ -338,12 +511,16 @@ pub async fn mcp_http(
     method: Option<String>,
 ) -> Result<HttpResponse, String> {
     let parsed = reqwest::Url::parse(&url).map_err(|_| "Adresse invalide".to_string())?;
-    let local = matches!(parsed.host_str(), Some("localhost") | Some("127.0.0.1") | Some("[::1]"));
-    if parsed.scheme() != "https" && !(parsed.scheme() == "http" && local) {
-        return Err("Seules les adresses https:// sont acceptées (http:// uniquement en local).".into());
+    validate_backend_url(&parsed)?;
+    ensure_public_host(parsed.host_str().unwrap_or_default().to_string(), parsed.port_or_known_default().unwrap_or(443)).await?;
+    for key in headers.keys() {
+        if matches!(key.to_ascii_lowercase().as_str(), "host" | "content-length" | "transfer-encoding") {
+            return Err(format!("En-tête MCP refusé : {key}."));
+        }
     }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(180))
+        .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|e| e.to_string())?;
     let method = match method.as_deref() {
@@ -374,4 +551,48 @@ pub async fn mcp_http(
         return Err("Réponse trop volumineuse.".into());
     }
     Ok(HttpResponse { status, headers, body: String::from_utf8_lossy(&bytes).to_string() })
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+
+    #[test]
+    fn refuses_absolute_or_traversal_launchers() {
+        assert!(validate_launcher("/tmp/evil/node").is_err());
+        assert!(validate_launcher("..\\\\node").is_err());
+        assert!(validate_launcher("bash").is_err());
+        assert!(validate_launcher("node").is_ok());
+    }
+
+    #[test]
+    fn refuses_inline_code_options() {
+        assert!(validate_args("npx", &["-c".into(), "node --eval 1".into()]).is_err());
+        assert!(validate_args("node", &["--eval".into(), "1".into()]).is_err());
+        assert!(validate_args("python3", &["-c".into(), "print(1)".into()]).is_err());
+        assert!(validate_args("node", &["server.js".into()]).is_ok());
+        assert!(validate_args("npx", &["-y".into(), "@playwright/mcp@0.0.85".into()]).is_ok());
+        assert!(validate_args("npx", &["-y".into(), "evil-package".into()]).is_err());
+        assert!(validate_args("npx", &["-y".into(), "-p".into(), "typescript-language-server@4".into(), "-p".into(), "typescript@5".into(), "typescript-language-server".into(), "--stdio".into()]).is_ok());
+        assert!(validate_args("npx", &["-y".into(), "-p".into(), "playwright-core".into(), "node".into(), "script.mjs".into()]).is_ok());
+    }
+
+    #[test]
+    fn refuses_dangerous_environment() {
+        assert!(!env_key_allowed("NODE_OPTIONS"));
+        assert!(!env_key_allowed("LD_PRELOAD"));
+        assert!(!env_key_allowed("DYLD_INSERT_LIBRARIES"));
+        assert!(!env_key_allowed("PATH"));
+        assert!(!env_key_allowed("pythonpath"));
+        assert!(env_key_allowed("GITHUB_TOKEN"));
+        assert!(env_key_allowed("CONTEXT7_API_KEY"));
+    }
+
+    #[test]
+    fn refuses_private_mcp_http_targets() {
+        assert!(validate_backend_url(&reqwest::Url::parse("https://127.0.0.1/mcp").unwrap()).is_err());
+        assert!(validate_backend_url(&reqwest::Url::parse("https://localhost/mcp").unwrap()).is_err());
+        assert!(validate_backend_url(&reqwest::Url::parse("http://example.com/mcp").unwrap()).is_err());
+        assert!(validate_backend_url(&reqwest::Url::parse("https://example.com/mcp").unwrap()).is_ok());
+    }
 }

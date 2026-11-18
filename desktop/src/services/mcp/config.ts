@@ -65,7 +65,7 @@ export const MCP_PRESETS: McpPreset[] = [
     fields: [{ key: 'headless', label: 'Navigateur invisible (sans fenêtre)', kind: 'checkbox', default: false }],
     build: (v) => ({
       id: 'playwright', name: 'Playwright', transport: 'stdio', command: 'npx',
-      args: ['-y', '@playwright/mcp@latest', ...(v.headless ? ['--headless'] : [])], env: {}, preset: 'playwright',
+      args: ['-y', '@playwright/mcp@0.0.85', ...(v.headless ? ['--headless'] : [])], env: {}, preset: 'playwright',
     }),
   },
   {
@@ -105,6 +105,11 @@ export async function loadServers(): Promise<McpServerConfig[]> {
 
 export async function saveServers(servers: McpServerConfig[]): Promise<void> {
   await writeText(FILE, JSON.stringify({ version: 1, servers }, null, 2));
+  // Ce fichier peut contenir des jetons : jamais 0644.
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('secure_app_secrets');
+  } catch { /* hors Tauri */ }
 }
 
 /** Découpe une ligne de commande en programme + arguments (guillemets respectés). */

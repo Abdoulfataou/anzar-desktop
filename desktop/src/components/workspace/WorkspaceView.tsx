@@ -57,8 +57,8 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
   const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
     try {
       const saved = localStorage.getItem('anzar.permissionMode');
-      return saved === 'ask' || saved === 'auto' || saved === 'plan' || saved === 'full' ? saved : 'full';
-    } catch { return 'full'; }
+      return saved === 'ask' || saved === 'auto' || saved === 'plan' || saved === 'full' ? saved : 'auto';
+    } catch { return 'auto'; }
   });
   const changePermission = useCallback((m: PermissionMode) => {
     setPermissionMode(m);

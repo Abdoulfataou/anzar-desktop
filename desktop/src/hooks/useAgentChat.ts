@@ -215,7 +215,7 @@ function trustConversation(id: string) {
   } catch { /* stockage indisponible */ }
 }
 
-export function useAgentChat({ workspacePath, workspaceName, model, permissionMode = 'full', onFileChanged, background = false, onProgress }: UseAgentChatParams) {
+export function useAgentChat({ workspacePath, workspaceName, model, permissionMode = 'auto', onFileChanged, background = false, onProgress }: UseAgentChatParams) {
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
   const [isGenerating, setIsGenerating] = useState(false);
@@ -427,7 +427,6 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     // Connecteurs MCP activés (Context7, Playwright, GitHub…) : un serveur lent ne bloque pas le départ
     setMcpRoots(workspacePath ? [workspacePath] : []);
     const mcpTools = await mcpAgentTools({ waitMs: 8_000 }).catch(() => []);
-    const mcpReadOnlyTools = mcpTools.filter((t) => mcpToolRef(t.function.name)?.tool.annotations?.readOnlyHint);
 
     try {
       if (resumeFrom) {
@@ -549,7 +548,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           return tools.length ? tools : undefined;
         }
         return modeRef.current === 'plan'
-          ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpReadOnlyTools]
+          ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask]
           : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpTools];
       };
 
@@ -754,6 +753,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
                 agentRoot,
                 workspacePath,
                 signal: controller.signal,
+                permissionMode: modeRef.current,
                 onFileChanged: (rel, action) => { if (workspacePath) onFileChanged?.(rel, action); },
                 onSubagentProgress: call.function.name === 'spawn_subagents'
                   ? (progress) => { ev.subagents = progress; flush(''); }

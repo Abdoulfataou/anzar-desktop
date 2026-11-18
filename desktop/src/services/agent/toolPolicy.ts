@@ -51,8 +51,17 @@ export function approvalDecision(input: ApprovalDecisionInput): ApprovalDecision
   }
 
   const ask = (!personalSpace && needsApproval(mode, tool))
-    || (!!risk && !(personalSpace && trusted))
+    || !!risk
     || mcpAsk;
+  // `trusted` ne couvre plus les risques réseau/installation : un accord de code
+  // dans l'espace ANZAR ne doit pas autoriser un push ou un npm install silencieux.
+  if (ask && background) {
+    return {
+      allowed: false,
+      ask: false,
+      refusal: "Refusé automatiquement : cette action demande une approbation et personne n'est là pendant une automatisation. Signale-le dans ta réponse.",
+    };
+  }
 
   return { allowed: true, ask };
 }

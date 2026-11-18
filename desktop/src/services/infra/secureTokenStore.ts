@@ -8,7 +8,7 @@
  *
  * La clé du coffre est elle aussi sortie de localStorage : elle est conservée
  * dans `store/vault-key.dat`, dans le dossier de données privé de l'application.
- * L'ancienne clé `settings.deviceVaultKey` est migrée automatiquement puis effacée.
+ * Aucune clé de coffre n'est écrite en clair sur le disque.
  *
  * Limite connue (documentée dans SECURITY.md) : ce fichier protège le jeton d'une
  * lecture de localStorage, pas d'un attaquant local capable de lire le dossier de
@@ -18,13 +18,10 @@
 import { appDataDir } from '@tauri-apps/api/path'
 import { invoke } from '@tauri-apps/api/core'
 import { Client, Stronghold } from '@tauri-apps/plugin-stronghold'
-import { readText, removeEntry, writeText } from '@/lib/fileStore'
-import { useSettingsStore } from '@/stores/settingsStore'
+
 
 const CLIENT_NAME = 'anzar-client'
 const STORE_KEY = 'auth_token'
-/** Clé du coffre, hors localStorage. */
-const VAULT_KEY_FILE = 'vault-key.dat'
 /** Ancien emplacement du JWT en clair (base64) dans localStorage. */
 const LEGACY_TOKEN_LS_KEY = 'anzar_tkn_fb'
 
@@ -40,6 +37,10 @@ function toBytes(text: string): number[] {
 
 function fromBytes(bytes: Uint8Array): string {
   return new TextDecoder().decode(bytes)
+}
+
+async function hardenSecrets(): Promise<void> {
+  try { await invoke('secure_app_secrets') } catch { /* best effort */ }
 }
 
 async function getSnapshotPath(): Promise<string> {
@@ -121,42 +122,18 @@ async function setKeychainKey(key: string): Promise<boolean> {
 }
 
 /**
- * Récupère la clé du coffre, par ordre de priorité :
- *   1. le trousseau du système (Keychain / Credential Manager) ;
- *   2. `store/vault-key.dat` (migration, puis suppression si le trousseau l'accepte) ;
- *   3. l'ancienne clé `settings.deviceVaultKey` (migrée puis effacée) ;
- *   4. une nouvelle clé aléatoire.
+ * Récupère la clé du coffre. Le trousseau est la SEULE source persistante :
+ * aucun repli fichier/localStorage, sinon un XSS ou un autre compte local peut
+ * lire la clé à côté du snapshot Stronghold et déchiffrer le jeton.
  */
 async function getVaultKey(): Promise<VaultKey> {
   const keychain = await getKeychainKey()
   if (keychain) return { key: keychain, persistent: true }
 
-  const fromFile = await readText(VAULT_KEY_FILE).catch(() => null)
-  if (fromFile?.trim()) {
-    const key = fromFile.trim()
-    // Migration : on ne supprime le fichier que si le trousseau a bien accepté la clé.
-    if (await setKeychainKey(key)) {
-      await removeEntry(VAULT_KEY_FILE).catch(() => {})
-    }
-    return { key, persistent: true }
-  }
-
-  const legacy = (useSettingsStore.getState().settings.deviceVaultKey || '').trim()
-  if (legacy) {
-    if (await setKeychainKey(legacy)) {
-      useSettingsStore.getState().updateSettings({ deviceVaultKey: '' })
-    } else {
-      await writeText(VAULT_KEY_FILE, legacy).catch(() => {})
-    }
-    return { key: legacy, persistent: true }
-  }
-
+  // Trousseau indisponible : clé mémoire, session non persistante (reconnexion au redémarrage).
   const key = generateVaultKey()
   if (await setKeychainKey(key)) return { key, persistent: true }
-
-  // Trousseau indisponible : repli fichier, puis mémoire seulement.
-  const saved = await writeText(VAULT_KEY_FILE, key).then(() => true).catch(() => false)
-  return { key, persistent: saved }
+  return { key, persistent: false }
 }
 
 /**
@@ -195,6 +172,7 @@ export const secureTokenStore = {
       const { instance, client } = await openVault(snapshotPath, vault.key)
       await client.getStore().insert(STORE_KEY, toBytes(token))
       await instance.save()
+      await hardenSecrets()
       return true
     } catch (e) {
       // Le jeton reste en mémoire pour cette session ; on ne retombe JAMAIS sur localStorage.
@@ -208,6 +186,7 @@ export const secureTokenStore = {
    * (l'utilisateur devra se reconnecter). Aucun repli localStorage.
    */
   async getToken(): Promise<string | null> {
+    void hardenSecrets()
     const vault = await getVaultKey().catch(() => null)
     if (!vault?.persistent) return memoryToken
 
@@ -238,6 +217,7 @@ export const secureTokenStore = {
       const { instance, client } = await openVault(snapshotPath, vault.key)
       await client.getStore().remove(STORE_KEY)
       await instance.save()
+      await hardenSecrets()
     } catch {
       // rien à supprimer / coffre indisponible
     }

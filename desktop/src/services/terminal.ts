@@ -126,7 +126,8 @@ const BLOCKED_PATTERNS = [
   /export\s+(PATH|LD_PRELOAD|LD_LIBRARY_PATH)\s*=/i,  // env hijack
   /nc\s+-/i,                      // netcat
   /python3?\s+-c\s/i,             // inline python execution
-  /node\s+-e\s/i,                 // inline node execution
+  /node\s+(-e|--eval)\b/i,        // inline node execution
+  /\b(bash|sh|zsh)\s+-c\b/i,     // shell inline
   /(^|\s)(\/|~\/|[A-Za-z]:\\)/,  // absolute paths (limit to project-relative usage)
 ];
 
@@ -211,7 +212,6 @@ function tokenize(command: string): string[] {
  */
 const COMMAND_NAME_MAP: Record<string, string> = {
   npm: 'npm',
-  npx: 'npx',
   node: 'node',
   git: 'git',
   cargo: 'cargo',

@@ -46,7 +46,7 @@ Le desktop n'avait aucun test. `vitest` est installé et la CI exécute désorma
 npm test
 ```
 
-Couverture actuelle (90 tests) :
+Couverture actuelle (102 tests) :
 
 - `toolCallAssembler.test.ts` : fragments, multi-appels, id généré ;
 - `history.test.ts` : `shrinkText`, compaction, protection des résultats récents,
@@ -63,7 +63,11 @@ Couverture actuelle (90 tests) :
 - `attachments.test.ts` : images, troncature, copie projet ;
 - `agentRoot.test.ts` : projet, création ANZAR, fichier joint, arrière-plan ;
 - `systemPrompt.test.ts` : prompt avec/sans projet, cache, mode plan, espace ANZAR.
-- `useAgentChat.test.ts` : hook réel avec mocks — réponse finale, approbation, `ask_user`, plan, annulation, reprise après erreur, images `capture_page`, escalade Auto, espace ANZAR, `task_done`.
+- `useAgentChat.test.ts` : hook réel avec mocks — réponse finale, approbation, `ask_user`, plan, annulation, reprise après erreur, images `capture_page`, escalade Auto, espace ANZAR, `task_done` ;
+- `commandGuard.test.ts` : `npx` refusé, installations/push risqués, capacités shell ;
+- `webTools.test.ts` : refus loopback/privé/metadata ;
+- `manager.test.ts` : `alwaysAsk` prioritaire, annotations MCP non fiables ;
+- `VisualBlock.test.ts` : Mermaid filtré (scripts/foreignObject/onclick).
 - `agentLoop.test.ts` : réponse finale, tool_call, `task_done` + vérification,
   échec de vérification, budget d’étapes, annulation (avec mocks des services
   Tauri/réseau).

@@ -59,6 +59,17 @@ describe('runAgentSession', () => {
     expect(execTool).not.toHaveBeenCalled();
   });
 
+  it('refuse un outil non autorisé dans une session restreinte', async () => {
+    chatStream
+      .mockReturnValueOnce(stream({ tool_calls: [toolCall('write_file', { path: 'a.ts', content: 'x' })] }) as any)
+      .mockReturnValueOnce(stream({ content: 'Fini' }) as any);
+
+    const result = await runAgentSession({ ...baseOptions, allowedTools: new Set(['read_file']) });
+
+    expect(execTool).not.toHaveBeenCalled();
+    expect(result.messages.some((m) => m.role === 'tool' && String(m.content).includes('non autorisé'))).toBe(true);
+  });
+
   it('exécute un tool_call puis réinjecte son résultat', async () => {
     chatStream
       .mockReturnValueOnce(stream({ tool_calls: [toolCall('read_file', { path: 'a.ts' })] }) as any)
