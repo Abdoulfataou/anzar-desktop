@@ -34,7 +34,8 @@ import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
 import { routeRequest, escalate, looksLikeCreation, type Route } from '@/services/ai/autoRouter';
-import { parseQuestions, formatAnswers, type QuestionRequest, type QuestionAnswer } from '@/components/chat/QuestionPanel';
+import type { QuestionRequest, QuestionAnswer } from '@/services/agent/questions';
+import { askUser, loadSkill, parsePlan } from '@/services/agent/specialTools';
 import { detectDevCommand } from '@/services/agent/devServer';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
@@ -808,70 +809,42 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
           // Questions à l'utilisateur : l'agent attend ses réponses
           if (call.function.name === 'ask_user') {
-            const questions = parseQuestions(args);
-            let output: string;
-            if (!questions.length) {
-              output = "Erreur : il faut au moins une question avec 2 options (questions[].question, questions[].options[].label).";
-              ev.status = 'error';
-            } else if (background) {
-              output = "Personne n'est là pour répondre : prends l'option recommandée (ou la plus prudente), continue, et note ce choix dans ton résumé.";
-              ev.status = 'ok';
-            } else {
-              ev.argsSummary = questions.map((q) => q.question).join(' · ').slice(0, 140);
-              flush();
-              const answers = await new Promise<QuestionAnswer[] | null>((resolve) => {
+            const result = await askUser(args, {
+              background,
+              onQuestions: (questions, summary) => {
+                ev.argsSummary = summary;
+                flush();
+              },
+              requestAnswers: (questions) => new Promise<QuestionAnswer[] | null>((resolve) => {
                 questionResolver.current = resolve;
                 setQuestion({ id: call.id, questions });
-              });
-              output = answers
-                ? formatAnswers(answers)
-                : "L'utilisateur a passé ces questions : décide toi-même (option recommandée), et indique tes choix dans ta réponse.";
-              ev.status = 'ok';
-            }
-            ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+              }),
+            });
+            ev.status = result.isError ? 'error' : 'ok';
+            ev.output = result.output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
             flush();
-            return { output, isError: ev.status === 'error' };
+            return { output: result.output, isError: result.isError };
           }
 
           // Skill : instructions lues côté app, renvoyées à l'agent
           if (call.function.name === 'load_skill') {
-            const wanted = String(args.name || '').trim();
-            const skill = findSkill(skills, wanted);
-            const file = typeof args.file === 'string' ? args.file.trim() : '';
-            let output: string;
-            let ok = !!skill;
-            if (!skill) {
-              output = `Skill « ${wanted} » introuvable. Skills disponibles : ${skills.map((sk) => sk.name).join(', ') || 'aucune'}.`;
-            } else if (file) {
-              try {
-                output = `${SKILL_RESULT_PREFIX}${skill.name} » — fichier ${file}\n\n${await readSkillFile(skill, file)}`;
-              } catch (e: any) {
-                ok = false;
-                output = `Lecture impossible de « ${file} » : ${e?.message || e}`;
-              }
-            } else {
-              output = skillToolOutput(skill, SKILL_RESULT_PREFIX);
-            }
-            ev.status = ok ? 'ok' : 'error';
-            ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+            const result = await loadSkill(args, skills);
+            ev.status = result.isError ? 'error' : 'ok';
+            ev.output = result.output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
             flush();
-            return { output, isError: !ok };
+            return result;
           }
 
           // Plan soumis : affiché dans l'onglet « Plan », l'agent s'arrête et attend la validation
           if (call.function.name === 'propose_plan' && allowed) {
-            const title = String(args.title || 'Plan').slice(0, 80);
-            const markdown = String(args.plan || '').trim();
-            updateMessage(assistantId, { plan: { title, markdown, status: 'pending' } });
+            const plan = parsePlan(args);
+            updateMessage(assistantId, { plan: { title: plan.title, markdown: plan.markdown, status: 'pending' } });
             ev.status = 'ok';
-            ev.argsSummary = title;
+            ev.argsSummary = plan.title;
             flush();
             doneInBatch = true;
             planProposed = true;
-            return {
-              output: "Plan affiché à l'utilisateur. Arrête-toi ici : il va le valider ou demander des changements.",
-              stop: 'plan',
-            };
+            return { output: plan.output, stop: 'plan' };
           }
 
           const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[]; media?: ToolEvent['media'] } = !allowed
