@@ -4,7 +4,7 @@
 //! (en-tête Content-Length puis le corps JSON, utilisé par les diagnostics de code).
 //!
 //! L'app parle le protocole (JSON-RPC) ; ce module ne fait que le transport :
-//! - stdio : lance le serveur (npx, uvx, docker…), écrit une ligne JSON sur son entrée,
+//! - stdio : lance le serveur (npx, python…), écrit une ligne JSON sur son entrée,
 //!   relaie chaque ligne de sa sortie dans l'évènement `mcp://message`
 //! - HTTP (« Streamable HTTP ») : POST d'un message, réponse JSON ou flux SSE renvoyé brut
 //!
@@ -20,9 +20,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-/// Lanceurs autorisés pour un serveur local. Un chemin absolu vers l'un d'eux est accepté.
+/// Lanceurs autorisés pour un serveur local. Le nom seul est accepté, jamais un chemin.
 const LAUNCHERS: &[&str] = &[
-    "npx", "node", "bun", "deno", "uv", "python", "python3",
+    "npx", "python", "python3",
 ];
 const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 
@@ -562,7 +562,8 @@ mod security_tests {
         assert!(validate_launcher("/tmp/evil/node").is_err());
         assert!(validate_launcher("..\\\\node").is_err());
         assert!(validate_launcher("bash").is_err());
-        assert!(validate_launcher("node").is_ok());
+        assert!(validate_launcher("node").is_err());
+        assert!(validate_launcher("npx").is_ok());
     }
 
     #[test]

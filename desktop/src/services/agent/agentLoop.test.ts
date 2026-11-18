@@ -59,6 +59,17 @@ describe('runAgentSession', () => {
     expect(execTool).not.toHaveBeenCalled();
   });
 
+  it('ne lance pas la vérification par défaut', async () => {
+    chatStream.mockReturnValueOnce(stream({ tool_calls: [toolCall('task_done')] }) as any);
+    execTool.mockResolvedValue({ output: 'terminé', isDone: true });
+    verify.mockResolvedValue({ passed: true, nothingToVerify: false, results: [], failureSummary: '' });
+
+    const result = await runAgentSession({ ...baseOptions });
+
+    expect(result.stopReason).toBe('task_done');
+    expect(verify).not.toHaveBeenCalled();
+  });
+
   it('refuse un outil non autorisé dans une session restreinte', async () => {
     chatStream
       .mockReturnValueOnce(stream({ tool_calls: [toolCall('write_file', { path: 'a.ts', content: 'x' })] }) as any)
@@ -92,7 +103,7 @@ describe('runAgentSession', () => {
     });
     verify.mockResolvedValue({ passed: true, nothingToVerify: false, results: [], failureSummary: '' });
 
-    const result = await runAgentSession({ ...baseOptions });
+    const result = await runAgentSession({ ...baseOptions, autoVerify: true });
 
     expect(verify).toHaveBeenCalledTimes(1);
     expect(result.stopReason).toBe('task_done');
@@ -107,7 +118,7 @@ describe('runAgentSession', () => {
     });
     verify.mockResolvedValue({ passed: false, nothingToVerify: false, results: [], failureSummary: 'ERREUR BUILD' });
 
-    const result = await runAgentSession({ ...baseOptions, maxVerifyAttempts: 1 });
+    const result = await runAgentSession({ ...baseOptions, autoVerify: true, maxVerifyAttempts: 1 });
 
     expect(result.stopReason).toBe('verify_failed');
     expect(result.summary).toContain('ERREUR BUILD');

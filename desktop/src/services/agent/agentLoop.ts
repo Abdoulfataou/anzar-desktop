@@ -130,7 +130,7 @@ export async function runAgentSession(options: AgentSessionOptions): Promise<Age
     provider = 'deepseek',
     maxSteps = DEFAULT_MAX_STEPS,
     gitCheckpoint = true,
-    autoVerify = true,
+    autoVerify = false,
     maxVerifyAttempts = 3,
     onEvent,
     signal,
