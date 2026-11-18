@@ -33,10 +33,16 @@
         "$HOME/Projects/**",
         "$HOME/projects/**",
         "$HOME/Developer/**",
-        "$APPDATA",
-        "$APPDATA/**",
         "$HOME/.agents/skills/**",
-        "$HOME/.dsh/skills/**"
+        "$HOME/.dsh/skills/**",
+        "$APPDATA/store",
+        "$APPDATA/store/**",
+        "$APPDATA/visuals",
+        "$APPDATA/visuals/*",
+        "$APPDATA/render",
+        "$APPDATA/render/**",
+        "$APPDATA/browser",
+        "$APPDATA/browser/**"
       ],
       "deny": [
         "**/.ssh/**",

@@ -53,7 +53,7 @@ barrière.
 - Clé de coffre : plus aucun repli `vault-key.dat` ; fichier local supprimé du chemin de lecture.
 - Permissions `0700`/`0600` appliquées au démarrage et après écriture d'un secret (`secure_app_secrets`).
 
-Reste P1 : le scope FS renderer reste large, et le garde-fou des installations/pousses doit encore être testé en conditions réelles. `mcp.json` est désormais réservé à Rust (lecture masquée côté renderer, fichier 0600).
+Reste P1 : le scope FS renderer reste large sur Documents/Desktop (nécessaire aux projets), et le garde-fou des installations/pousses doit encore être testé en conditions réelles. `mcp.json` est désormais réservé à Rust (lecture masquée côté renderer, fichier 0600) ; le scope `$APPDATA` est limité à `store`, `render`, `browser` et `visuals`.
 
 ## 2. CSP Tauri
 
