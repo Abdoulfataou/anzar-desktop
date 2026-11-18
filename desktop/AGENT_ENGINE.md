@@ -42,7 +42,7 @@ Le desktop n'avait aucun test. `vitest` est installé et la CI exécute désorma
 npm test
 ```
 
-Couverture actuelle (46 tests) :
+Couverture actuelle (52 tests) :
 
 - `toolCallAssembler.test.ts` : fragments, multi-appels, id généré ;
 - `history.test.ts` : `shrinkText`, compaction, protection des résultats récents,
@@ -53,6 +53,7 @@ Couverture actuelle (46 tests) :
 - `toolPolicy.test.ts` : refus en mode plan, approbations ask/auto, espace ANZAR, automatisations ;
 - `toolExecution.test.ts` : dispatch web, MCP, outil local, absence de projet ;
 - `toolDisplay.test.ts` : résumés, chemins, deltas ;
+- `useAgentChat.test.ts` : hook réel avec mocks — réponse finale, approbation, `ask_user`, plan, annulation, `task_done`.
 - `agentLoop.test.ts` : réponse finale, tool_call, `task_done` + vérification,
   échec de vérification, budget d’étapes, annulation (avec mocks des services
   Tauri/réseau).
@@ -67,7 +68,7 @@ Le moteur de boucle est unifié, mais `useAgentChat` reste un gros adaptateur
 
 1. Poursuivre le découpage : outils spéciaux (`ask_user`, `load_skill`,
    `propose_plan`), puis UI timeline/coûts (`chatSession.ts`).
-2. Ajouter des tests de non-régression UI (React Testing Library + mocks Tauri)
-   sur approbation, annulation, reprise et images.
+2. Compléter les tests du hook : reprise après erreur, images, mode Auto avec
+   escalade, espace ANZAR.
 3. Tester `agentSession` avec un scénario multi-outils réel (build/lint) en
-   environnement Tauri de test.
+   environnement Tauri de test, puis valider manuellement sur un projet.

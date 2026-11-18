@@ -12,8 +12,8 @@ export default defineConfig({
     tsconfigRaw: { compilerOptions: { target: 'es2022' } },
   },
   test: {
-    environment: 'node',
+    environment: 'jsdom',
+    setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.ts'],
-    restoreMocks: true,
   },
 });
