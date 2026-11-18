@@ -12,6 +12,7 @@
  */
 import { commandRisk, noteAgentWrite } from '@/services/agent/commandGuard';
 import { ToolCallAssembler } from '@/services/agent/toolCallAssembler';
+import { runAgentEngine, type AgentToolOutcome } from '@/services/agent/agentSession';
 import {
   closeDanglingToolCalls, compactHistory, historyChars,
   KEEP_RECENT_TOOL_RESULTS, SOFT_LIMIT_CHARS, STUB_CHARS, SKILL_RESULT_PREFIX,
@@ -59,13 +60,6 @@ const RETRY_DELAYS = [2000, 5000, 10000];
 function isRetryable(e: any): boolean {
   const msg = String(e?.message || '');
   return !/cr[ée]dit|quota|solde|recharge|401|402|403|non autoris|unauthori[sz]ed|token/i.test(msg);
-}
-
-function sleepAbortable(ms: number, signal: AbortSignal): Promise<void> {
-  return new Promise((resolve) => {
-    const t = setTimeout(resolve, ms);
-    signal.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
-  });
 }
 
 /** Morceau d'une réponse, dans l'ordre produit : du texte ou un groupe d'actions. */
@@ -691,22 +685,14 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       let answered = false;
       let planProposed = false;
 
-      // ── Boucle agent ──
-      for (let step = 0; step < MAX_STEPS; step++) {
-        if (controller.signal.aborted) break;
+      let stepContent = '';
+      let stepReasoning = '';
+      let stepImages: { label: string; dataUrl: string }[] = [];
+      let doneInBatch = false;
+      let retryNoticeShown = false;
+      const toolEvents = new Map<string, ToolEvent>();
 
-        let assembler = new ToolCallAssembler();
-        let stepContent = '';
-
-        // Chaque étape renvoie tout l'historique au modèle. Compaction en une fois, seulement
-        // au-delà du plafond, pour que le début de la requête reste identique (cache).
-        if (historyChars(apiHistoryRef.current) > SOFT_LIMIT_CHARS) {
-          compactHistory(apiHistoryRef.current, KEEP_RECENT_TOOL_RESULTS, STUB_CHARS);
-          if (historyChars(apiHistoryRef.current) > SOFT_LIMIT_CHARS * 0.6) {
-            compactHistory(apiHistoryRef.current, 2, 300);
-          }
-        }
-        promptTokens += historyTokens();
+      const toolsForStep = (): ToolDefinition[] | undefined => {
         const web = webEnabled ? WEB_TOOLS : [];
         // Sans personne devant l'écran (automatisations, tickets), pas de question possible
         const ask = background ? [] : [ASK_USER_TOOL];
@@ -714,84 +700,93 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           ? AGENT_TOOLS.filter((t) => PERSONAL_SPACE_TOOLS.has(t.function.name)
               && (modeRef.current !== 'plan' || READ_ONLY_TOOLS.has(t.function.name)))
           : [];
-        const tools = !workspacePath
-          ? ([...personalTools, ...web, ...ask, ...mcpTools].length ? [...personalTools, ...web, ...ask, ...mcpTools] : undefined)
-          : modeRef.current === 'plan'
-            ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpReadOnlyTools]
-            : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpTools];
+        if (!workspacePath) {
+          const tools = [...personalTools, ...web, ...ask, ...mcpTools];
+          return tools.length ? tools : undefined;
+        }
+        return modeRef.current === 'plan'
+          ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpReadOnlyTools]
+          : [...AGENT_TOOLS, ...web, ...(skills.length ? [LOAD_SKILL_TOOL] : []), ...ask, ...mcpTools];
+      };
 
-        // Une étape coupée par le réseau est réessayée seule : l'historique est intact,
-        // donc rien de ce qui a déjà été fait n'est perdu ni refacturé.
-        let stepReasoning = '';
-        for (let attempt = 0; ; attempt++) {
-          assembler = new ToolCallAssembler();
+      const historyLengthBeforeEngine = apiHistoryRef.current.length;
+      const session = await runAgentEngine({
+        messages: apiHistoryRef.current,
+        tools: toolsForStep,
+        maxSteps: MAX_STEPS,
+        // Le chat principal n'impose pas de plafond d'erreurs d'outils : le mode Auto escalade.
+        maxConsecutiveErrors: 0,
+        signal: controller.signal,
+        beforeStep: () => {
+          // Compaction en une fois, seulement au-delà du plafond, pour garder le cache.
+          if (historyChars(apiHistoryRef.current) > SOFT_LIMIT_CHARS) {
+            compactHistory(apiHistoryRef.current, KEEP_RECENT_TOOL_RESULTS, STUB_CHARS);
+            if (historyChars(apiHistoryRef.current) > SOFT_LIMIT_CHARS * 0.6) {
+              compactHistory(apiHistoryRef.current, 2, 300);
+            }
+          }
+          promptTokens += historyTokens();
+        },
+        stream: (messages, tools) =>
+          aiService.chatStream(messages, { model: callModel(), tools, signal: controller.signal }),
+        retry: {
+          attempts: RETRY_DELAYS.length,
+          delayMs: (attempt) => RETRY_DELAYS[attempt],
+          isRetryable,
+        },
+        onStepStart: () => {
           stepContent = '';
           stepReasoning = '';
-          try {
-            const stream = aiService.chatStream(apiHistoryRef.current, { model: callModel(), tools, signal: controller.signal });
-            for await (const delta of stream) {
-              if (delta.serverCostFCFA !== undefined) { cost.sum += delta.serverCostFCFA; cost.reports++; continue; }
-              if (delta.content) {
-                stepContent += delta.content;
-                flushLive(stepContent);
-              }
-              if (delta.reasoning_content) {
-                stepReasoning += delta.reasoning_content;
-                // Le raisonnement remonte AUSSI en direct (sinon « réfléchit… »
-                // sans détail pendant toute la phase de réflexion)
-                flushLive(stepContent);
-              }
-              if (delta.tool_calls) assembler.add(delta.tool_calls);
-            }
-            cost.calls++;
-            lastCallAtRef.current = Date.now();
-            onProgressRef.current?.({ costFCFA: cost.sum });
-            break;
-          } catch (e: any) {
-            if (controller.signal.aborted) break;
-            if (attempt >= RETRY_DELAYS.length || !isRetryable(e)) throw e;
-            markSlowNetwork();
-            const wait = RETRY_DELAYS[attempt];
-            updateMessage(assistantId, {
-              notice: `Connexion perdue — nouvelle tentative dans ${wait / 1000} s (${attempt + 1}/${RETRY_DELAYS.length})…`,
-            });
-            await sleepAbortable(wait, controller.signal);
-            updateMessage(assistantId, { notice: undefined });
+          stepImages = [];
+          doneInBatch = false;
+        },
+        onTextDelta: (text) => {
+          stepContent += text;
+          flushLive(stepContent);
+        },
+        onReasoningDelta: (text) => {
+          stepReasoning += text;
+          // Le raisonnement remonte AUSSI en direct (sinon « réfléchit… »
+          // sans détail pendant toute la phase de réflexion)
+          flushLive(stepContent);
+        },
+        onStepEnd: ({ text, reasoning, toolCalls }) => {
+          accReasoning += reasoning;
+          if (text) {
+            accContent += (accContent ? '\n\n' : '') + text;
+            addText(text);
+            flush();
           }
-        }
-        if (controller.signal.aborted) break;
-        accReasoning += stepReasoning;
-
-        // Le texte de chaque étape s'accumule (les étapes tool-only sont vides)
-        if (stepContent) {
-          accContent += (accContent ? '\n\n' : '') + stepContent;
-          addText(stepContent);
+          completionTokens += Math.ceil((text.length + JSON.stringify(toolCalls).length) / 4);
+          cost.calls++;
+          lastCallAtRef.current = Date.now();
+          onProgressRef.current?.({ costFCFA: cost.sum });
+          void refreshCredits();
+          if (retryNoticeShown) {
+            updateMessage(assistantId, { notice: undefined });
+            retryNoticeShown = false;
+          }
+          stepContent = '';
+          stepReasoning = '';
+        },
+        onCostDelta: (c) => {
+          cost.sum += c;
+          cost.reports++;
+          onProgressRef.current?.({ costFCFA: cost.sum });
+        },
+        onRetry: (attempt, wait) => {
+          markSlowNetwork();
+          retryNoticeShown = true;
+          updateMessage(assistantId, {
+            notice: `Connexion perdue — nouvelle tentative dans ${wait / 1000} s (${attempt}/${RETRY_DELAYS.length})…`,
+          });
+          stepContent = '';
+          stepReasoning = '';
           flush();
-        }
-        completionTokens += Math.ceil((stepContent.length + JSON.stringify(assembler.finish()).length) / 4);
-        // Le serveur vient de facturer cette étape : on rafraîchit la pilule de solde.
-        void refreshCredits();
-
-        // ── Pas de tool calls → réponse finale ──
-        if (!assembler.hasCalls) { answered = true; break; }
-
-        // ── Exécution des outils ──
-        const toolCalls = assembler.finish();
-        apiHistoryRef.current.push({
-          role: 'assistant',
-          content: stepContent || null,
-          // DeepSeek exige le raisonnement de l'étape avec ses appels d'outils (sinon erreur 400)
-          ...(stepReasoning ? { reasoning_content: stepReasoning } : {}),
-          tool_calls: toolCalls,
-        });
-
-        // Captures d'écran rendues par les outils de cette étape : montrées au modèle après tous les résultats
-        const stepImages: { label: string; dataUrl: string }[] = [];
-        for (const call of toolCalls) {
-          if (controller.signal.aborted) break;
+        },
+        onToolCall: (call) => {
           let args: Record<string, any> = {};
           try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
-
           const ev: ToolEvent = {
             id: call.id,
             name: call.function.name,
@@ -799,9 +794,30 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             filePath: toolFilePath(call.function.name, args),
             status: 'running',
           };
+          toolEvents.set(call.id, ev);
           events.push(ev);
           addToolToTimeline(ev.id);
           flush();
+        },
+        onImages: (images) => { stepImages.push(...images); },
+        onToolBatchEnd: () => {
+          if (stepImages.length && !doneInBatch) {
+            apiHistoryRef.current.push({
+              role: 'user',
+              content: [
+                { type: 'text', text: `${CAPTURE_MARK} ${stepImages.map((im, i) => `${i + 1}. ${im.label}`).join(' ; ')}` },
+                ...stepImages.slice(0, 8).map((im) => ({ type: 'image_url' as const, image_url: { url: im.dataUrl, detail: 'auto' as const } })),
+              ],
+            });
+          }
+          stepImages = [];
+        },
+        executeTool: async (call): Promise<AgentToolOutcome> => {
+          const ev = toolEvents.get(call.id);
+          if (!ev) return { output: `Outil inconnu : ${call.function.name}`, isError: true };
+
+          let args: Record<string, any> = {};
+          try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
 
           // Commande qui exécute du code écrit par l'agent, ou script npm sensible :
           // accord demandé même en « Accès complet » (garde S3)
@@ -853,7 +869,6 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             await snapshotBeforeChange(snapshots, agentRoot, args.path || args.file_path);
           }
 
-          // Skill : instructions lues côté app, renvoyées à l'agent
           // Questions à l'utilisateur : l'agent attend ses réponses
           if (call.function.name === 'ask_user') {
             const questions = parseQuestions(args);
@@ -878,10 +893,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             }
             ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
             flush();
-            apiHistoryRef.current.push({ role: 'tool', tool_call_id: call.id, content: output });
-            continue;
+            return { output, isError: ev.status === 'error' };
           }
 
+          // Skill : instructions lues côté app, renvoyées à l'agent
           if (call.function.name === 'load_skill') {
             const wanted = String(args.name || '').trim();
             const skill = findSkill(skills, wanted);
@@ -903,8 +918,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             ev.status = ok ? 'ok' : 'error';
             ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
             flush();
-            apiHistoryRef.current.push({ role: 'tool', tool_call_id: call.id, content: output });
-            continue;
+            return { output, isError: !ok };
           }
 
           // Plan soumis : affiché dans l'onglet « Plan », l'agent s'arrête et attend la validation
@@ -915,14 +929,12 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             ev.status = 'ok';
             ev.argsSummary = title;
             flush();
-            apiHistoryRef.current.push({
-              role: 'tool',
-              tool_call_id: call.id,
-              content: "Plan affiché à l'utilisateur. Arrête-toi ici : il va le valider ou demander des changements.",
-            });
+            doneInBatch = true;
             planProposed = true;
-            answered = true;
-            break;
+            return {
+              output: "Plan affiché à l'utilisateur. Arrête-toi ici : il va le valider ou demander des changements.",
+              stop: 'plan',
+            };
           }
 
           const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[]; media?: ToolEvent['media'] } = !allowed
@@ -976,41 +988,34 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           ev.output = (result.output || '').slice(0, MAX_TOOL_OUTPUT_DISPLAY);
           flush();
 
-          apiHistoryRef.current.push({
-            role: 'tool',
-            tool_call_id: call.id,
-            content: result.output || '(vide)',
-          });
-          if (result.images?.length) stepImages.push(...result.images);
+          if (result.isDone) doneInBatch = true;
+          return {
+            output: result.output || '(vide)',
+            isError: result.isError,
+            isDone: result.isDone,
+            images: result.images,
+            media: result.media,
+          };
+        },
+      });
 
-          // task_done → son résumé EST la réponse finale
-          if (result.isDone) {
-            const summary = String(result.output || '').trim();
-            if (summary && !accContent.includes(summary)) {
-              accContent += (accContent ? '\n\n' : '') + summary;
-              addText(summary);
-            }
-            answered = true;
-            flush();
-            break;
-          }
-        }
-        if (!answered && stepImages.length) {
-          apiHistoryRef.current.push({
-            role: 'user',
-            content: [
-              { type: 'text', text: `${CAPTURE_MARK} ${stepImages.map((im, i) => `${i + 1}. ${im.label}`).join(' ; ')}` },
-              ...stepImages.slice(0, 8).map((im) => ({ type: 'image_url' as const, image_url: { url: im.dataUrl, detail: 'auto' as const } })),
-            ],
-          });
-        }
-        if (answered) break;
-
-        // Le contenu final remplace l'accumulation d'étapes intermédiaires vides
-        if (stepContent && step < MAX_STEPS - 1) {
-          // l'étape suivante produira la suite (réponse ou nouveaux outils)
-        }
+      if (session.stopReason === 'error') {
+        throw new Error(session.errorMessage || session.summary || 'Erreur du modèle');
       }
+      if (session.stopReason === 'task_done') {
+        const summary = String(session.summary || '').trim();
+        if (summary && !accContent.includes(summary)) {
+          accContent += (accContent ? '\n\n' : '') + summary;
+          addText(summary);
+        }
+        answered = true;
+      } else if (session.stopReason === 'plan') {
+        planProposed = true;
+        answered = true;
+      } else if (session.stopReason === 'final_answer') {
+        answered = true;
+      }
+      // aborted / max_steps / verify_failed : answered reste false → reprise, synthèse ou coupe.
 
       // Mode plan : si le modèle a écrit le plan en texte au lieu d'appeler propose_plan
       if (modeRef.current === 'plan' && !planProposed && answered) {
@@ -1111,8 +1116,18 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         ? (accContent ? `${accContent}\n\n_(interrompu)_` : '_(génération interrompue)_')
         : accContent;
 
-      // Réponse finale dans l'historique API
-      apiHistoryRef.current.push({ role: 'assistant', content: finalContent });
+      // Réponse finale dans l'historique API. Le moteur a déjà ajouté le message
+      // assistant de la dernière étape : on le remplace au lieu de le dupliquer.
+      const lastApiMessage = apiHistoryRef.current[apiHistoryRef.current.length - 1];
+      if (
+        apiHistoryRef.current.length > historyLengthBeforeEngine
+        && lastApiMessage?.role === 'assistant'
+        && !lastApiMessage.tool_calls?.length
+      ) {
+        lastApiMessage.content = finalContent;
+      } else {
+        apiHistoryRef.current.push({ role: 'assistant', content: finalContent });
+      }
 
       // La réponse est terminée : on l'affiche tout de suite, sans attendre la comptabilité.
       updateMessage(assistantId, {
