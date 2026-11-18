@@ -1627,6 +1627,504 @@
                 "validator": "^[^\\r\\n]{1,400}$"
               }
             ]
+          },
+          {
+            "name": "ffmpeg-0",
+            "cmd": "ffmpeg",
+            "args": []
+          },
+          {
+            "name": "ffmpeg-1",
+            "cmd": "ffmpeg",
+            "args": [
+              {
+                "validator": "^-[iy]$|^-\\w[\\w:-]*$|^[\\w@./:%=+,\\\\-]+$"
+              }
+            ]
+          },
+          {
+            "name": "ffmpeg-2",
+            "cmd": "ffmpeg",
+            "args": [
+              {
+                "validator": "^-[iy]$|^-\\w[\\w:-]*$|^[\\w@./:%=+,\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffmpeg-3",
+            "cmd": "ffmpeg",
+            "args": [
+              {
+                "validator": "^-[iy]$|^-\\w[\\w:-]*$|^[\\w@./:%=+,\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffmpeg-4",
+            "cmd": "ffmpeg",
+            "args": [
+              {
+                "validator": "^-[iy]$|^-\\w[\\w:-]*$|^[\\w@./:%=+,\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffmpeg-5",
+            "cmd": "ffmpeg",
+            "args": [
+              {
+                "validator": "^-[iy]$|^-\\w[\\w:-]*$|^[\\w@./:%=+,\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffmpeg-6",
+            "cmd": "ffmpeg",
+            "args": [
+              {
+                "validator": "^-[iy]$|^-\\w[\\w:-]*$|^[\\w@./:%=+,\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffmpeg-7",
+            "cmd": "ffmpeg",
+            "args": [
+              {
+                "validator": "^-[iy]$|^-\\w[\\w:-]*$|^[\\w@./:%=+,\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffmpeg-8",
+            "cmd": "ffmpeg",
+            "args": [
+              {
+                "validator": "^-[iy]$|^-\\w[\\w:-]*$|^[\\w@./:%=+,\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffmpeg",
+            "cmd": "ffmpeg",
+            "args": []
+          },
+          {
+            "name": "ffprobe-0",
+            "cmd": "ffprobe",
+            "args": []
+          },
+          {
+            "name": "ffprobe-1",
+            "cmd": "ffprobe",
+            "args": [
+              {
+                "validator": "^-\\w[\\w:-]*$|^[\\w@./:\\\\-]+$"
+              }
+            ]
+          },
+          {
+            "name": "ffprobe-2",
+            "cmd": "ffprobe",
+            "args": [
+              {
+                "validator": "^-\\w[\\w:-]*$|^[\\w@./:\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffprobe-3",
+            "cmd": "ffprobe",
+            "args": [
+              {
+                "validator": "^-\\w[\\w:-]*$|^[\\w@./:\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffprobe-4",
+            "cmd": "ffprobe",
+            "args": [
+              {
+                "validator": "^-\\w[\\w:-]*$|^[\\w@./:\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffprobe-5",
+            "cmd": "ffprobe",
+            "args": [
+              {
+                "validator": "^-\\w[\\w:-]*$|^[\\w@./:\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffprobe-6",
+            "cmd": "ffprobe",
+            "args": [
+              {
+                "validator": "^-\\w[\\w:-]*$|^[\\w@./:\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffprobe-7",
+            "cmd": "ffprobe",
+            "args": [
+              {
+                "validator": "^-\\w[\\w:-]*$|^[\\w@./:\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffprobe-8",
+            "cmd": "ffprobe",
+            "args": [
+              {
+                "validator": "^-\\w[\\w:-]*$|^[\\w@./:\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "ffprobe",
+            "cmd": "ffprobe",
+            "args": []
+          },
+          {
+            "name": "rg-0",
+            "cmd": "rg",
+            "args": []
+          },
+          {
+            "name": "rg-1",
+            "cmd": "rg",
+            "args": [
+              {
+                "validator": "^-\\w[\\w-]*$|^[\\w@./\\\\-]+$"
+              }
+            ]
+          },
+          {
+            "name": "rg-2",
+            "cmd": "rg",
+            "args": [
+              {
+                "validator": "^-\\w[\\w-]*$|^[\\w@./\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "rg-3",
+            "cmd": "rg",
+            "args": [
+              {
+                "validator": "^-\\w[\\w-]*$|^[\\w@./\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "rg-4",
+            "cmd": "rg",
+            "args": [
+              {
+                "validator": "^-\\w[\\w-]*$|^[\\w@./\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "rg-5",
+            "cmd": "rg",
+            "args": [
+              {
+                "validator": "^-\\w[\\w-]*$|^[\\w@./\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "rg-6",
+            "cmd": "rg",
+            "args": [
+              {
+                "validator": "^-\\w[\\w-]*$|^[\\w@./\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "rg-7",
+            "cmd": "rg",
+            "args": [
+              {
+                "validator": "^-\\w[\\w-]*$|^[\\w@./\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "rg-8",
+            "cmd": "rg",
+            "args": [
+              {
+                "validator": "^-\\w[\\w-]*$|^[\\w@./\\\\-]+$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              },
+              {
+                "validator": "^[^\\r\\n]{1,400}$"
+              }
+            ]
+          },
+          {
+            "name": "rg",
+            "cmd": "rg",
+            "args": []
           }
         ]
       },

@@ -17,6 +17,7 @@ import { appendProjectMemory } from './agentContext';
 import { diagnoseChange, diagnoseFile, formatDiagnostics, languageOf, warmUp } from '@/services/lsp/manager';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { vendorLibs } from '@/services/skillsPack/vendorLibs';
+import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/toolsRuntime';
 import { SUBAGENT_ROLE_PROMPTS, detectSubagentRole, type SubagentRole } from './agentPrompts';
 import { BUILTIN_SKILLS } from '@/services/skillsPack';
 
@@ -370,6 +371,24 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           },
         },
         required: ['tasks'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'install_tool',
+      description:
+        "Installe un outil binaire du catalogue vérifié d'ANZAR (avec l'accord de l'utilisateur, une seule fois) : " +
+        "'ffmpeg' (encodage vidéo rapide, conversion GIF/MP4, compression pour WhatsApp — utile pour livrer des vidéos légères) " +
+        "'ripgrep' (recherche instantanée rg). Rangé dans les fichiers d'ANZAR, empreinte vérifiée, rien sur le système. " +
+        "Après installation, la commande est directement utilisable dans run_command. Vérifie d'abord l'état renvoyé (installed).",
+      parameters: {
+        type: 'object',
+        properties: {
+          tool: { type: 'string', enum: ['ffmpeg', 'ripgrep'], description: "L'outil à installer" },
+        },
+        required: ['tool'],
       },
     },
   },
@@ -1072,6 +1091,25 @@ async function execTaskDone(args: any): Promise<ToolResult> {
 
 type ToolExecutor = (args: any, ctx: ToolExecutionContext) => Promise<ToolResult>;
 
+async function execInstallTool(args: Record<string, any>): Promise<ToolResult> {
+  const catalog = await toolsCatalog();
+  const info = catalog.find((t) => t.name === String(args.tool || ''));
+  if (!info) {
+    return { output: `Outil inconnu. Catalogue : ${catalog.map((t) => t.name).join(', ') || 'vide'}.`, isError: true };
+  }
+  if (info.installed) return { output: `${info.name} ${info.version} est déjà installé : utilisable directement dans run_command.` };
+  if (!info.available) return { output: `${info.name} n'est pas disponible sur cette plateforme.`, isError: true };
+
+  // Accord explicite de l'utilisateur — jamais d'installation silencieuse
+  const ok = await confirmToolInstall(info);
+  if (!ok) {
+    return { output: "L'utilisateur a refusé l'installation. Ne réessaie pas dans cette tâche ; propose une alternative sans cet outil." };
+  }
+  const r = await toolInstall(info.name);
+  if (!r.ok) return { output: `Échec de l'installation de ${info.name} : ${r.error}`, isError: true };
+  return { output: `${info.name} ${r.version} installé et vérifié. La commande est maintenant disponible dans run_command (le PATH de l'app est à jour).` };
+}
+
 async function execVendorLib(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
   const names = Array.isArray(args.libs) ? args.libs.map(String) : [];
   if (!names.length) return { output: "Indique libs, ex : ['gsap','split-text'] ou ['all'].", isError: true };
@@ -1079,6 +1117,7 @@ async function execVendorLib(args: Record<string, any>, ctx: ToolExecutionContex
 }
 
 const EXECUTORS: Record<string, ToolExecutor> = {
+  install_tool: execInstallTool,
   vendor_lib: execVendorLib,
   read_file: execReadFile,
   write_file: execWriteFile,

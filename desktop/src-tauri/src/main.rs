@@ -3,6 +3,7 @@
 
 mod mcp;
 mod node_runtime;
+mod tool_runtime;
 mod programs;
 
 fn main() {
@@ -16,6 +17,7 @@ fn main() {
     node_runtime::apply_path();
 
     let app = tauri::Builder::default()
+        .setup(|app| { node_runtime::apply_path_with(&app.handle()); Ok(()) })
         // Secure storage: Stronghold (encrypted vault)
         .plugin(
             tauri_plugin_stronghold::Builder::new(|password| {
@@ -27,7 +29,7 @@ fn main() {
         )
         // Serveurs MCP : transport stdio et HTTP (le protocole est géré par l'app)
         .manage(mcp::McpState::default())
-        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install])
+        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

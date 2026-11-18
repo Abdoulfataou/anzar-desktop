@@ -257,7 +257,7 @@ pub async fn git_install(app: AppHandle) -> Result<String, String> {
         std::fs::rename(&tmp, &dest).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())??;
     std::fs::write(root.join("current"), &tag).map_err(|e| e.to_string())?;
-    crate::node_runtime::apply_path();
+    crate::node_runtime::apply_path_with(&app);
     let _ = app.emit_all("git://progress", Progress { received: 0, total: None, step: "done" });
     Ok(tag)
 }

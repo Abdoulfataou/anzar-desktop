@@ -81,6 +81,21 @@ pub fn apply_path() {
     std::env::set_var("PATH", crate::programs::path_with_git(path_with_node(crate::mcp::enriched_path())));
 }
 
+/// Idem, avec les outils curés (ffmpeg, ripgrep…) devant — nécessite l'AppHandle
+/// pour localiser le dossier de données. À appeler après toute installation et
+/// au setup de l'app.
+pub fn apply_path_with(app: &AppHandle) {
+    let mut path = crate::programs::path_with_git(path_with_node(crate::mcp::enriched_path()));
+    let sep = if cfg!(windows) { ";" } else { ":" };
+    for bin in crate::tool_runtime::installed_bins(app) {
+        let b = bin.to_string_lossy().to_string();
+        if !path.contains(&b) {
+            path = format!("{b}{sep}{path}");
+        }
+    }
+    std::env::set_var("PATH", path);
+}
+
 #[derive(Serialize)]
 pub struct NodeStatus {
     /// Version utilisée par les commandes de l'app, si Node est disponible
@@ -216,7 +231,7 @@ pub async fn node_install(app: AppHandle) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || extract(&archive, &dest2, &top))
         .await.map_err(|e| e.to_string())??;
     std::fs::write(root.join("current"), &version).map_err(|e| e.to_string())?;
-    apply_path();
+    apply_path_with(&app);
     let _ = app.emit_all("node://progress", Progress { received: 0, total: None, step: "done" });
     Ok(version)
 }

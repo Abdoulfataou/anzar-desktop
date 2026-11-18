@@ -219,6 +219,10 @@ const COMMAND_NAME_MAP: Record<string, string> = {
   python: 'python',
   pip3: 'pip3',
   pip: 'pip',
+  // Outils curés ANZAR (installés via install_tool) : ffmpeg + rg
+  ffmpeg: 'ffmpeg',
+  ffprobe: 'ffprobe',
+  rg: 'rg',
 };
 
 /** Nombre maximal d'arguments par commande (voir les entrées <cmd>-N de tauri.conf.json). */
