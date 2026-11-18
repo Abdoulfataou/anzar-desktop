@@ -75,6 +75,8 @@ vi.mock('@/lib/credits', () => ({
 import { aiService } from '@/services/ai/ai';
 import { copyAttachmentsToWorkspace } from '@/services/attachmentFiles';
 import { noteAgentWrite } from '@/services/agent/commandGuard';
+import { ensurePersonalSpace } from '@/services/personalSpace';
+import { buildAgentContext } from '@/services/agent/agentContext';
 import { executeToolCall } from '@/services/agent/agentTools';
 import { useAgentChat } from './useAgentChat';
 import { useChatStore } from '@/stores/chatStore';
@@ -275,6 +277,26 @@ describe('useAgentChat — parcours agent', () => {
     expect(last?.content).toContain('Après escalade');
     expect(last?.autoRoute?.escalated).toBe(true);
     expect(last?.autoRoute?.mode).toBe('max');
+  });
+
+  it('ouvre l’espace ANZAR pour une création sans projet', async () => {
+    vi.mocked(aiService.chatStream).mockReturnValueOnce(stream({ content: 'Visuel créé' }) as any);
+    const { result } = renderHook(() => useAgentChat({
+      workspacePath: null,
+      model: 'fast',
+      permissionMode: 'full',
+    }));
+
+    await act(async () => {
+      await result.current.sendMessage('fais-moi une affiche pour le lancement');
+    });
+
+    expect(ensurePersonalSpace).toHaveBeenCalled();
+    expect(copyAttachmentsToWorkspace).toHaveBeenCalledWith('/tmp/anzar', [], { subdir: 'ANZAR', gitignore: false });
+    expect(buildAgentContext).not.toHaveBeenCalled();
+    const conversation = useChatStore.getState().getActiveConversation();
+    expect(conversation?.personalSpace).toBe(true);
+    expect(conversation?.messages.at(-1)?.content).toContain('Visuel créé');
   });
 
   it('utilise le résumé de task_done comme réponse finale', async () => {

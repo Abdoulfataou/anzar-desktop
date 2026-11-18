@@ -22,6 +22,9 @@ partagées :
 | `src/services/agent/toolExecution.ts` | dispatch web / MCP / outil local |
 | `src/services/agent/toolDisplay.ts` | résumé, chemin cliquable et delta de lignes |
 | `src/services/agent/chatSession.ts` | timeline sérialisable, estimation de tokens et calcul du coût FCFA |
+| `src/services/agent/attachments.ts` | contenu des pièces jointes borné et formaté |
+| `src/services/agent/agentRoot.ts` | projet ouvert ou ouverture automatique de l'espace ANZAR |
+| `src/services/agent/systemPrompt.ts` | prompt agent / sans projet et contexte de tâche |
 
 Les deux boucles sont maintenant des adaptateurs de `runAgentEngine` :
 
@@ -43,7 +46,7 @@ Le desktop n'avait aucun test. `vitest` est installé et la CI exécute désorma
 npm test
 ```
 
-Couverture actuelle (73 tests) :
+Couverture actuelle (90 tests) :
 
 - `toolCallAssembler.test.ts` : fragments, multi-appels, id généré ;
 - `history.test.ts` : `shrinkText`, compaction, protection des résultats récents,
@@ -56,8 +59,11 @@ Couverture actuelle (73 tests) :
 - `toolDisplay.test.ts` : résumés, chemins, deltas ;
 - `questions.test.ts` : normalisation des questions et formatage des réponses ;
 - `specialTools.test.ts` : ask_user, load_skill et propose_plan ;
-- `chatSession.test.ts` : timeline, snapshots, tokens et coût exact/solde/estimation.
-- `useAgentChat.test.ts` : hook réel avec mocks — réponse finale, approbation, `ask_user`, plan, annulation, reprise après erreur, images `capture_page`, escalade Auto, `task_done`.
+- `chatSession.test.ts` : timeline, snapshots, tokens et coût exact/solde/estimation ;
+- `attachments.test.ts` : images, troncature, copie projet ;
+- `agentRoot.test.ts` : projet, création ANZAR, fichier joint, arrière-plan ;
+- `systemPrompt.test.ts` : prompt avec/sans projet, cache, mode plan, espace ANZAR.
+- `useAgentChat.test.ts` : hook réel avec mocks — réponse finale, approbation, `ask_user`, plan, annulation, reprise après erreur, images `capture_page`, escalade Auto, espace ANZAR, `task_done`.
 - `agentLoop.test.ts` : réponse finale, tool_call, `task_done` + vérification,
   échec de vérification, budget d’étapes, annulation (avec mocks des services
   Tauri/réseau).
@@ -70,8 +76,7 @@ build.
 Le moteur de boucle est unifié, mais `useAgentChat` reste un gros adaptateur
 (>1 000 lignes) à cause des décisions produit. Prochaines étapes :
 
-1. Extraire la gestion des pièces jointes et du prompt système de l'adaptateur.
-2. Compléter les tests du hook sur l'espace ANZAR (sans projet) et les pièces
-   jointes.
-3. Tester `agentSession` avec un scénario multi-outils réel (build/lint) en
+1. Tester les pièces jointes de bout en bout dans le hook (copie + contenu).
+2. Tester `agentSession` avec un scénario multi-outils réel (build/lint) en
    environnement Tauri de test, puis valider manuellement sur un projet.
+3. Réduire encore l'adaptateur (reprise, prompt de reprise, comptabilité).

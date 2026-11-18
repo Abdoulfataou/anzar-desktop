@@ -28,12 +28,14 @@ import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
 import { WEB_TOOLS } from '@/services/agent/webTools';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { buildAgentSystemPrompt, memorySection, FORMATTING_GUIDE, VISUALS_GUIDE, CONNECTORS_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
+import { buildSessionSystemPrompt } from '@/services/agent/systemPrompt';
+import { withAttachments } from '@/services/agent/attachments';
+import { resolveAgentRoot } from '@/services/agent/agentRoot';
 import { buildAgentContext } from '@/services/agent/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
-import { routeRequest, escalate, looksLikeCreation, type Route } from '@/services/ai/autoRouter';
+import { routeRequest, escalate, type Route } from '@/services/ai/autoRouter';
 import type { QuestionRequest, QuestionAnswer } from '@/services/agent/questions';
 import { askUser, loadSkill, parsePlan } from '@/services/agent/specialTools';
 import {
@@ -92,14 +94,6 @@ interface ServerCost { sum: number; reports: number; calls: number }
 
 /** Début du message qui montre au modèle les captures d'écran de capture_page */
 const CAPTURE_MARK = "[Captures d'écran de capture_page]";
-
-const PLAN_MODE_PROMPT = `
-
-# MODE PLAN (actif)
-Tu ne peux RIEN modifier ni exécuter : seuls read_file, list_dir, search_files et propose_plan sont disponibles.
-Explore ce qu'il faut (sans tout lire), puis appelle propose_plan UNE fois avec le plan complet en Markdown :
-un titre court, puis des étapes numérotées et concrètes (fichiers concernés, changements prévus, vérifications), et les risques éventuels.
-N'écris pas le plan dans ta réponse texte : il s'affiche dans un onglet dédié où l'utilisateur le valide.`;
 
 /** Charge les instructions complètes d'une skill (la liste seule est dans le prompt). */
 const LOAD_SKILL_TOOL: ToolDefinition = {
@@ -186,38 +180,6 @@ const MAX_STEPS = 40;
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
 
 const CACHE_COLD_MS = 30 * 60 * 1000; // au-delà, le cache fournisseur a pu être vidé
-
-// Le contenu joint est renvoyé au modèle à CHAQUE étape : on le borne pour maîtriser le coût.
-const MAX_ATTACHMENT_CHARS = 40_000;
-const MAX_ATTACHMENTS_TOTAL_CHARS = 100_000;
-
-/** Ajoute le contenu des pièces jointes au message envoyé au modèle. */
-function withAttachments(content: string, attachments: ChatAttachment[]): string {
-  if (attachments.length === 0) return content;
-  let budget = MAX_ATTACHMENTS_TOTAL_CHARS;
-  const blocks = attachments.map((a) => {
-    const label = `[${a.ref}] ${a.name} (${a.kind})` + (a.projectCopy
-      ? `\nCopie du fichier dans ton dossier de travail : \`${a.projectCopy}\`. Pour le transformer (découper, fusionner, `
-        + `convertir, extraire des pages, redimensionner…), écris un script python ou node qui lit ce fichier et `
-        + `écris les résultats dans le même dossier, sans jamais écraser l'original. Préfère Node.js, toujours disponible `
-        + `avec ANZAR : installe avec npm dans le dossier de travail pdf-lib (PDF), exceljs (Excel), docx (Word) ou sharp (images), `
-        + `puis lance un script .mjs avec node. Python seulement s'il est déjà installé. Donne à la fin le chemin des fichiers produits.`
-      : '');
-    if (a.kind === 'image') {
-      return a.dataUrl
-        ? `${label}\n(Image jointe : elle t'est montrée à la suite de ce message.)`
-        : `${label}\n(Image jointe illisible : dis-le à l'utilisateur si sa demande en dépend.)`;
-    }
-    const full = (a.excerpt || '').trim();
-    if (!full) return `${label}\n(Contenu illisible ou vide.)`;
-    const take = Math.max(0, Math.min(full.length, MAX_ATTACHMENT_CHARS, budget));
-    budget -= take;
-    if (take === 0) return `${label}\n(Non inclus : limite de taille des pièces jointes atteinte.)`;
-    const cut = take < full.length;
-    return `${label}\n\`\`\`\n${full.slice(0, take)}\n\`\`\`${cut ? `\n(Tronqué : ${take.toLocaleString('fr-FR')} caractères sur ${full.length.toLocaleString('fr-FR')}. Préviens l'utilisateur si la suite est nécessaire.)` : ''}`;
-  });
-  return `${content}\n\n# Pièces jointes\n\n${blocks.join('\n\n')}`;
-}
 
 interface UseAgentChatParams {
   workspacePath: string | null;
@@ -325,30 +287,32 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     const refd = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
     const convId = resumeFrom?.convId ?? opts?.conversationId ?? ensureConversation();
     if (!resumeFrom) userRequestRef.current = content.slice(0, 2000);
-    // Dossier où l'agent peut agir : le projet ouvert, ou à défaut l'« espace ANZAR » (Documents/ANZAR),
-    // ouvert dès qu'un fichier est joint ou si la conversation l'a déjà utilisé.
-    let agentRoot: string | null = workspacePath;
-    let personalSpace = false;
-    if (!workspacePath && !background) {
-      const conv = useChatStore.getState().conversations.find((c) => c.id === convId);
-      // Création (pub, animation, visuel, site…) SANS projet → l'espace ANZAR
-      // s'ouvre AUTOMATIQUEMENT : aucun dossier à choisir, l'agent travaille
-      // tout de suite dans son espace sûr (Documents/ANZAR).
-      const creationRequest = looksLikeCreation(content);
-      if (refd.some((a) => a.sourcePath) || personalConvsRef.current.has(convId) || conversationUsesPersonalSpace(conv) || creationRequest) {
-        agentRoot = await ensurePersonalSpace().catch(() => null);
-        personalSpace = !!agentRoot;
-        if (personalSpace) {
-          personalConvsRef.current.add(convId);
-          // Mémorisé dans la conversation : l'espace reste ouvert après un redémarrage de l'app
-          if (!conv?.personalSpace) {
-            useChatStore.setState((st) => ({
-              conversations: st.conversations.map((c) => (c.id === convId ? { ...c, personalSpace: true } : c)),
-            }));
-          }
-        }
+    // Dossier où l'agent peut agir : le projet ouvert, ou à défaut l'« espace ANZAR ».
+    const conv = !workspacePath && !background
+      ? useChatStore.getState().conversations.find((c) => c.id === convId)
+      : undefined;
+    const root = await resolveAgentRoot({
+      workspacePath,
+      background,
+      conversationId: convId,
+      content,
+      attachments: refd,
+      personalConversations: personalConvsRef.current,
+      conversationPersonalSpace: conversationUsesPersonalSpace(conv),
+      ensurePersonalSpace,
+    });
+    const agentRoot = root.agentRoot;
+    const personalSpace = root.personalSpace;
+    if (personalSpace) {
+      personalConvsRef.current.add(convId);
+      // Mémorisé dans la conversation : l'espace reste ouvert après un redémarrage de l'app
+      if (!conv?.personalSpace) {
+        useChatStore.setState((st) => ({
+          conversations: st.conversations.map((c) => (c.id === convId ? { ...c, personalSpace: true } : c)),
+        }));
       }
     }
+
     // Copie des fichiers joints dans le dossier de travail : l'agent peut alors les transformer (pas seulement les lire)
     const attachments = agentRoot && !resumeFrom
       ? await copyAttachmentsToWorkspace(agentRoot, refd,
@@ -481,55 +445,27 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         let systemHead = '';
         let systemRefresh = '';
         const freshHistory = apiHistoryRef.current.length === 0;
-        if (workspacePath) {
-          const ctx = await buildAgentContext(workspacePath, content).catch(() => null);
-          const promptCtx: AgentPromptContext = {
-            projectName: workspaceName || workspacePath.split('/').pop() || 'projet',
-            projectRoot: workspacePath,
-            memory: ctx?.memory,
-            platform: navigator.platform.toLowerCase().includes('win') ? 'windows' : 'macos',
-          };
-          system = {
-            role: 'system',
-            content: buildAgentSystemPrompt(promptCtx) + skillsPromptSection(skills) + personal,
-          };
-          systemHead = buildAgentSystemPrompt({ ...promptCtx, memory: undefined });
-          systemRefresh = [ctx?.memory ? memorySection(ctx.memory) : '', skillsPromptSection(skills).trim(), personal.trim()]
-            .filter(Boolean).join('\n\n');
-          const parts: string[] = [];
-          // Carte du code : une fois par conversation (elle reste ensuite dans l'historique)
-          if (freshHistory && ctx?.codeMap) parts.push(`## Carte du code (fichiers + symboles clés)\n${ctx.codeMap}`);
-          if (ctx?.taskHints) parts.push(`## Fichiers probablement pertinents pour cette demande\n${ctx.taskHints}\n(Indices heuristiques : vérifie avec read_file.)`);
-          if (modeRef.current === 'plan') parts.push(PLAN_MODE_PROMPT.trim());
-          if (parts.length) turnContext = `\n\n---\n# Contexte fourni par ANZAR\n${parts.join('\n\n')}`;
-        } else {
-          system = {
-            role: 'system',
-            content:
-              'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct.\n\n' +
-              (webEnabled
-                ? "Tu peux chercher sur le web (web_search) et lire une page (read_url) quand la question porte sur une information récente " +
-                  "ou une documentation ; cite alors tes sources avec leur URL.\n\n"
-                : '') +
-              "AUCUN PROJET N'EST OUVERT. Tu n'as des outils sur les fichiers que si ANZAR t'ouvre l'« espace ANZAR » : il te " +
-              "l'indique alors dans la demande, et ces outils te sont fournis. Sinon, tu ne peux ni lire un fichier, ni lancer " +
-              "une commande, ni modifier quoi que ce soit. Ne prétends JAMAIS avoir agi sans outil, même si l'historique de la " +
-              "conversation montre que tu le faisais avant : n'invente aucun résultat de commande, de build ou de test. " +
-              "Si la demande exige d'agir sur un projet de code, dis-le en une phrase et demande d'ouvrir le dossier " +
-              "(bouton « Ouvrir un dossier » en haut de la conversation). Pour transformer un fichier (PDF, Excel…), " +
-              "propose de le joindre : ANZAR ouvre alors l'espace ANZAR.\n\n" +
-              "CRÉATION DE VISUELS/VIDÉOS SANS PROJET : les blocs ```widget ne sont qu'un APERÇU rapide. Pour une création, " +
-              "ANZAR ouvre AUTOMATIQUEMENT l'espace ANZAR (il te l'indique dans la demande) — utilise-le directement : " +
-              "crée les fichiers dedans, vérifie avec capture_page, exporte avec export_animation. Ne produis PAS des widgets " +
-              "quand la demande porte sur des pubs, animations ou vidéos à livrer. Si l'espace n'est PAS ouvert et que la " +
-              "création l'exige, propose UNE fois à l'utilisateur d'ouvrir un dossier.\n\n" +
-              FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + '\n\n' + CONNECTORS_GUIDE + personal,
-          };
-          systemHead = (system.content as string).slice(0, (system.content as string).length - personal.length);
-          systemRefresh = personal.trim();
-          // Espace ANZAR : signalé dans la demande (le prompt système reste identique, donc servi par le cache)
-          if (personalSpace && agentRoot) turnContext += personalSpaceContext(agentRoot);
-        }
+        const ctx = workspacePath
+          ? await buildAgentContext(workspacePath, content).catch(() => null)
+          : null;
+        const bundle = buildSessionSystemPrompt({
+          workspacePath,
+          workspaceName,
+          freshHistory,
+          planMode: modeRef.current === 'plan',
+          webEnabled,
+          personal,
+          skillsSection: skillsPromptSection(skills),
+          memory: ctx?.memory,
+          codeMap: ctx?.codeMap,
+          taskHints: ctx?.taskHints,
+          platform: navigator.platform.toLowerCase().includes('win') ? 'windows' : 'macos',
+          personalSpaceContext: personalSpace && agentRoot ? personalSpaceContext(agentRoot) : '',
+        });
+        system = bundle.system;
+        systemHead = bundle.systemHead;
+        systemRefresh = bundle.systemRefresh;
+        turnContext = bundle.turnContext;
 
         if (apiHistoryRef.current.length === 0) {
           // Reprise d'une conversation existante (redémarrage, changement de tâche) :
