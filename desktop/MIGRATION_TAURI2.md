@@ -71,7 +71,7 @@ tauri_plugin_stronghold::Builder::new(...).build()
 | Stronghold v2 | réécrit sur le client JS v2 |
 | Updater v2 | réécrit, ressources `Update` conservées |
 | Capabilities | build Tauri validé |
-| FS + Stronghold runtime | `readDir`, écriture `vault-key.dat`, ouverture du coffre |
+| FS + Stronghold runtime | `readDir`, clé dans le trousseau système, ouverture du coffre |
 | Shell runtime | `npm --version` via `Command.create`/`spawn` : code 0 |
 | CSP | `object-src`, `base-uri`, `frame-ancestors`, `form-action` |
 | `$DOCUMENTS` v1 invalide en v2 | remplacé par `$DOCUMENT` |
@@ -111,7 +111,6 @@ il faut la remplacer et publier une release de transition.
 
 ## 5. Reste hors périmètre
 
-- Clé du coffre dans le trousseau système (Keychain / Credential Manager).
 - Secrets des connecteurs MCP chiffrés.
 - Épinglage des versions LSP (`typescript-language-server`, `pyright`).
 - PTY interactif réel.

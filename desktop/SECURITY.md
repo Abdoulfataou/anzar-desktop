@@ -15,10 +15,11 @@ migration Tauri 2 effectués. Périmètre : `desktop/`.
 - **Le JWT n'est jamais écrit dans `localStorage`.** Il est stocké dans le coffre
   chiffré Stronghold (`anzar.vault.hold`). En cas d'indisponibilité du coffre,
   il reste **en mémoire** pour la session en cours, et n'est pas persisté.
-- **La clé du coffre a quitté `localStorage`.** Elle vit dans
-  `store/vault-key.dat`, dans le dossier de données de l'application. L'ancienne clé
-  `settings.deviceVaultKey` est migrée automatiquement au premier démarrage,
-  puis effacée des réglages persistés.
+- **La clé du coffre est dans le trousseau du système** (Keychain macOS /
+  Credential Manager Windows), plus dans `localStorage`. En cas de trousseau
+  indisponible, un repli fichier (`store/vault-key.dat`) puis mémoire est utilisé.
+  L'ancienne clé `settings.deviceVaultKey` est migrée automatiquement au premier
+  démarrage, puis effacée des réglages persistés.
 - **Nettoyage des anciennes installations** : l'ancien jeton base64
   `anzar_tkn_fb` est supprimé de `localStorage` à chaque démarrage et à la
   déconnexion (`secureTokenStore.purgeLegacyToken()`).
@@ -31,13 +32,10 @@ migration Tauri 2 effectués. Périmètre : `desktop/`.
 
 ### Limite connue
 
-`store/vault-key.dat` protège le jeton d'une lecture de `localStorage`. Il ne protège
-pas d'un attaquant local capable de lire le dossier de données de l'application,
-ni d'une XSS qui disposerait des permissions Tauri FS.
-
-**Correctif restant** : déplacer cette clé dans le trousseau du système
-(Keychain macOS / Credential Manager Windows). C'est indépendant de Tauri 2 et
-reste dans la feuille de route.
+Le trousseau système protège la clé du coffre contre une lecture de fichiers ou de
+`localStorage`. Le repli fichier reste possible si le trousseau est verrouillé ou
+indisponible ; dans ce cas, la clé est dans le dossier de données de l'application
+(protégé par les permissions du compte, mais lisible par un attaquant local).
 
 ---
 
@@ -129,7 +127,7 @@ npx tauri build --debug --no-bundle
 |---|---|---|
 | Tauri 1.8.3 (fin de maintenance) | **corrigé** | migré en Tauri 2.12.6 |
 | `shell.open` sans scope / API large | **corrigé** | opener + capabilities + scope |
-| Clé du coffre dans un fichier local | **atténué** | Keychain / Credential Manager |
+| Clé du coffre dans un fichier local | **corrigé** | trousseau système + repli fichier |
 | Secrets des connecteurs MCP en clair (`store/mcp.json`) | **ouvert** | Coffre système ou Stronghold |
 | LSP et Playwright lancés via `npx …@latest` | **ouvert** | Épingler les versions |
 | Jeton lisible par une XSS qui a déjà l'IPC Tauri | **atténué** | capabilities + CSP + audit du rendu Markdown |
@@ -148,7 +146,9 @@ Effectuée sur macOS :
 - lancement du binaire : webview chargée, pas de crash ;
 - sondes runtime : `readDir` sur le dossier de données, `npm --version` via
   `Command.create`/`spawn` (code 0), écriture de la clé de coffre et ouverture
-  Stronghold.
+  Stronghold ;
+- trousseau : entrée Keychain créée au premier lancement, relue sans réécriture
+  au lancement suivant (`mdat` inchangé), aucun fichier de secours.
 
 **Restent à tester manuellement sur macOS et Windows** : login OTP puis
 redémarrage (restauration Stronghold), ouverture de dossier, éditeur, terminal

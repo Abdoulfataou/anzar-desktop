@@ -37,7 +37,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         // Serveurs MCP : transport stdio et HTTP (le protocole est géré par l'app)
         .manage(mcp::McpState::default())
-        .invoke_handler(tauri::generate_handler![mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
+        .invoke_handler(tauri::generate_handler![vault_key_get, vault_key_set, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -68,4 +68,29 @@ fn open_personal_space(app: tauri::AppHandle) -> Result<(), String> {
     let mut cmd = std::process::Command::new("xdg-open");
     cmd.arg(&dir).spawn().map_err(|e| e.to_string())?;
     Ok(())
+}
+
+const KEYCHAIN_SERVICE: &str = "com.anzar.desktop";
+const KEYCHAIN_ACCOUNT: &str = "vault-key";
+
+/// Clé du coffre Stronghold, conservée par le trousseau du système.
+#[tauri::command]
+fn vault_key_get() -> Result<Option<String>, String> {
+    match keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+        Ok(entry) => match entry.get_password() {
+            Ok(key) => Ok(Some(key)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(e.to_string()),
+        },
+        Err(e) => Err(e.to_string()),
+    }
+}
+
+/// Enregistre (ou remplace) la clé du coffre dans le trousseau du système.
+#[tauri::command]
+fn vault_key_set(key: String) -> Result<(), String> {
+    keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+        .map_err(|e| e.to_string())?
+        .set_password(&key)
+        .map_err(|e| e.to_string())
 }

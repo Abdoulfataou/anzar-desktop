@@ -12,12 +12,13 @@
  *
  * Limite connue (documentée dans SECURITY.md) : ce fichier protège le jeton d'une
  * lecture de localStorage, pas d'un attaquant local capable de lire le dossier de
- * données. Le passage à la clé du trousseau du système (Keychain / Credential
- * Manager) reste un chantier séparé.
+ * données. La clé est désormais conservée dans le trousseau du système
+ * (Keychain macOS / Credential Manager Windows), avec un repli fichier.
  */
 import { appDataDir } from '@tauri-apps/api/path'
+import { invoke } from '@tauri-apps/api/core'
 import { Client, Stronghold } from '@tauri-apps/plugin-stronghold'
-import { readText, writeText } from '@/lib/fileStore'
+import { readText, removeEntry, writeText } from '@/lib/fileStore'
 import { useSettingsStore } from '@/stores/settingsStore'
 
 const CLIENT_NAME = 'anzar-client'
@@ -84,27 +85,76 @@ interface VaultKey {
   persistent: boolean
 }
 
+/** Un trousseau verrouillé ne doit jamais bloquer le démarrage. */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('keychain timeout')), ms)
+      }),
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
+/** Lit la clé du coffre dans le trousseau du système, si elle existe. */
+async function getKeychainKey(): Promise<string | null> {
+  try {
+    const key = await withTimeout(invoke<string | null>('vault_key_get'), 5_000)
+    return typeof key === 'string' && key.trim() ? key.trim() : null
+  } catch {
+    return null
+  }
+}
+
+/** Enregistre la clé dans le trousseau. false si le trousseau est indisponible. */
+async function setKeychainKey(key: string): Promise<boolean> {
+  try {
+    await withTimeout(invoke('vault_key_set', { key }), 5_000)
+    return true
+  } catch {
+    return false
+  }
+}
+
 /**
  * Récupère la clé du coffre, par ordre de priorité :
- *   1. `store/vault-key.dat` (emplacement actuel, hors localStorage) ;
- *   2. l'ancienne clé `settings.deviceVaultKey` (migrée puis effacée) ;
- *   3. une nouvelle clé aléatoire.
+ *   1. le trousseau du système (Keychain / Credential Manager) ;
+ *   2. `store/vault-key.dat` (migration, puis suppression si le trousseau l'accepte) ;
+ *   3. l'ancienne clé `settings.deviceVaultKey` (migrée puis effacée) ;
+ *   4. une nouvelle clé aléatoire.
  */
 async function getVaultKey(): Promise<VaultKey> {
+  const keychain = await getKeychainKey()
+  if (keychain) return { key: keychain, persistent: true }
+
   const fromFile = await readText(VAULT_KEY_FILE).catch(() => null)
-  if (fromFile?.trim()) return { key: fromFile.trim(), persistent: true }
+  if (fromFile?.trim()) {
+    const key = fromFile.trim()
+    // Migration : on ne supprime le fichier que si le trousseau a bien accepté la clé.
+    if (await setKeychainKey(key)) {
+      await removeEntry(VAULT_KEY_FILE).catch(() => {})
+    }
+    return { key, persistent: true }
+  }
 
   const legacy = (useSettingsStore.getState().settings.deviceVaultKey || '').trim()
   if (legacy) {
-    // On ne retire l'ancienne clé de localStorage que si elle est bien copiée sur le disque.
-    const saved = await writeText(VAULT_KEY_FILE, legacy).then(() => true).catch(() => false)
-    if (saved) {
+    if (await setKeychainKey(legacy)) {
       useSettingsStore.getState().updateSettings({ deviceVaultKey: '' })
+    } else {
+      await writeText(VAULT_KEY_FILE, legacy).catch(() => {})
     }
     return { key: legacy, persistent: true }
   }
 
   const key = generateVaultKey()
+  if (await setKeychainKey(key)) return { key, persistent: true }
+
+  // Trousseau indisponible : repli fichier, puis mémoire seulement.
   const saved = await writeText(VAULT_KEY_FILE, key).then(() => true).catch(() => false)
   return { key, persistent: saved }
 }
