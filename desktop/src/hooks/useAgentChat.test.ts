@@ -106,11 +106,11 @@ beforeEach(() => {
   });
 });
 
-const renderChat = (permissionMode: 'ask' | 'plan' | 'full' = 'full') =>
+const renderChat = (permissionMode: 'ask' | 'plan' | 'full' = 'full', model: 'fast' | 'auto' = 'fast') =>
   renderHook(() => useAgentChat({
     workspacePath: '/tmp/projet',
     workspaceName: 'projet',
-    model: 'fast',
+    model,
     permissionMode,
   }));
 
@@ -204,6 +204,77 @@ describe('useAgentChat — parcours agent', () => {
 
     const conversation = useChatStore.getState().getActiveConversation();
     expect(conversation?.messages.at(-1)?.content).toContain('interrompu');
+  });
+
+  it('reprend après une erreur non réessayable', async () => {
+    vi.mocked(aiService.chatStream)
+      .mockReturnValueOnce((async function* () { throw new Error('crédit insuffisant'); })() as any)
+      .mockReturnValueOnce(stream({ content: 'Repris après erreur' }) as any);
+    const { result } = renderChat();
+
+    await act(async () => {
+      await result.current.sendMessage('Fais une tâche');
+    });
+
+    let conversation = useChatStore.getState().getActiveConversation();
+    const failed = conversation?.messages.at(-1);
+    expect(failed?.isError).toBe(true);
+    expect(failed?.resumable).toBe(true);
+
+    await act(async () => {
+      expect(result.current.resume(failed!.id)).toBe(true);
+    });
+    await waitFor(() => {
+      conversation = useChatStore.getState().getActiveConversation();
+      expect(conversation?.messages.at(-1)?.content).toContain('Repris après erreur');
+    });
+  });
+
+  it('injecte les captures de capture_page dans le tour suivant', async () => {
+    const seen: any[][] = [];
+    vi.mocked(aiService.chatStream).mockImplementation((messages) => {
+      seen.push(messages.map((m) => ({ ...m })));
+      return seen.length === 1
+        ? stream({ tool_calls: [toolCall('capture_page', { url: 'http://localhost:1420', frames: [0, 1] })] }) as any
+        : stream({ content: 'Captures vues' }) as any;
+    });
+    vi.mocked(executeToolCall).mockResolvedValue({
+      output: 'captures',
+      images: [{ label: 'frame 1', dataUrl: 'data:image/png;base64,AAAA' }],
+    } as any);
+    const { result } = renderChat();
+
+    await act(async () => {
+      await result.current.sendMessage('Vérifie la page');
+    });
+
+    expect(seen[1].some((m) => m.role === 'user'
+      && Array.isArray(m.content)
+      && m.content.some((part: any) => part.type === 'image_url'))).toBe(true);
+    const conversation = useChatStore.getState().getActiveConversation();
+    expect(conversation?.messages.at(-1)?.content).toContain('Captures vues');
+  });
+
+  it('escalade le mode Auto après quatre échecs d’outils', async () => {
+    let call = 0;
+    vi.mocked(aiService.chatStream).mockImplementation(() => {
+      call += 1;
+      return call <= 4
+        ? stream({ tool_calls: [toolCall('read_file', { path: 'a.ts' }, `c${call}`)] }) as any
+        : stream({ content: 'Après escalade' }) as any;
+    });
+    vi.mocked(executeToolCall).mockResolvedValue({ output: 'échec', isError: true } as any);
+    const { result } = renderChat('full', 'auto');
+
+    await act(async () => {
+      await result.current.sendMessage('Corrige un bug');
+    });
+
+    const conversation = useChatStore.getState().getActiveConversation();
+    const last = conversation?.messages.at(-1);
+    expect(last?.content).toContain('Après escalade');
+    expect(last?.autoRoute?.escalated).toBe(true);
+    expect(last?.autoRoute?.mode).toBe('max');
   });
 
   it('utilise le résumé de task_done comme réponse finale', async () => {
