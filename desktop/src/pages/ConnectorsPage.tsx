@@ -7,8 +7,8 @@ import {
   Plug, Plus, X, Trash2, RotateCw, ChevronRight, ExternalLink, Loader2, Terminal, Globe, ShieldCheck, Eye,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { open as shellOpen } from '@tauri-apps/api/shell';
 import { cn } from '@/lib/utils';
+import { openExternalUrl } from '@/services/infra/externalLinks';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   MCP_PRESETS, PROJECT_MCP_FILES, mask, parsePairs, parseProjectMcp, slugifyServerId, splitCommandLine,
@@ -325,7 +325,7 @@ function AddForm({ preset, prefill, takenIds, onCancel, onSaved }: {
         <>
           <p className="text-ui-sm text-text-secondary">{preset.description}</p>
           {preset.requirement && <p className="text-ui-sm text-text-muted">Prérequis : {preset.requirement}</p>}
-          <button onClick={() => void shellOpen(preset.link)} className="flex items-center gap-1 text-ui-sm text-text-secondary hover:text-text-primary">
+          <button onClick={() => { void openExternalUrl(preset.link).catch(() => toast.error('Lien impossible à ouvrir.')); }} className="flex items-center gap-1 text-ui-sm text-text-secondary hover:text-text-primary">
             <ExternalLink size={12} /> Documentation
           </button>
           {preset.fields.map((f) => f.kind === 'checkbox' ? (

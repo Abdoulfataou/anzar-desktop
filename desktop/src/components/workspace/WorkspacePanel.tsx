@@ -14,6 +14,7 @@ import GitPanel, { OPEN_GIT_EVENT } from './GitPanel';
 import { cn } from '@/lib/utils';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { terminalService, onDevServerUrl } from '@/services/terminal';
+import { openExternalUrl } from '@/services/infra/externalLinks';
 import StudioFileTree from '@/components/vibecoding/StudioFileTree';
 import StudioEditor from '@/components/vibecoding/StudioEditor';
 import StudioPreview from '@/components/vibecoding/StudioPreview';
@@ -510,7 +511,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
 
         {active.kind === 'preview' && (
           <div className="flex-1 min-h-0">
-            <StudioPreview previewUrl={previewUrl} onOpenExternal={() => window.open(previewUrl || '', '_blank')} />
+            <StudioPreview previewUrl={previewUrl} onOpenExternal={() => { void openExternalUrl(previewUrl || '').catch(() => {}); }} />
           </div>
         )}
       </div>

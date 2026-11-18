@@ -13,13 +13,21 @@ import { authService } from '@/services/infra/auth';
 import { autoCheckOncePerDay } from '@/services/infra/updateService';
 import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { initUndoIndex } from '@/services/agent/fileChanges';
 
 /** L'historique est lu sur le disque (asynchrone) : on attend qu'il soit chargé avant d'afficher l'app. */
 function storesHydrated(): Promise<void> {
   const wait = (store: { persist: { hasHydrated: () => boolean; onFinishHydration: (fn: () => void) => () => void } }) =>
     store.persist.hasHydrated() ? Promise.resolve() : new Promise<void>((resolve) => store.persist.onFinishHydration(() => resolve()));
-  const all = Promise.all([wait(useChatStore), wait(useProjectStore), initUndoIndex()]).then(() => undefined);
+  const all = Promise.all([
+    wait(useChatStore),
+    wait(useProjectStore),
+    // Indispensable avant l'auth : la clé de coffre historique et l'URL du
+    // backend sont lues dans les réglages persistés.
+    wait(useSettingsStore),
+    initUndoIndex(),
+  ]).then(() => undefined);
   // Garde-fou : on n'attend jamais plus de 6 s
   return Promise.race([all, new Promise<void>((resolve) => setTimeout(resolve, 6000))]);
 }
@@ -62,7 +70,11 @@ export default function App() {
     let alive = true;
     (async () => {
       try {
-        await Promise.all([authService.bootstrapSession(), storesHydrated()]);
+        // L'hydratation d'abord : la restauration de session lit les réglages
+        // (URL backend, ancienne clé de coffre) et ne doit pas travailler sur
+        // les valeurs par défaut.
+        await storesHydrated();
+        await authService.bootstrapSession();
       } finally {
         if (alive) setBooting(false);
       }

@@ -20,9 +20,12 @@ export interface Settings {
   // Backend
   backendUrl: string;
 
-  // Vault (clé locale pour chiffrer le token dans Stronghold)
-  // NOTE: ceci n'est pas le token. C'est une clé appareil (persistée) utilisée
-  // comme "password" Stronghold. Elle protège le token au repos (fichier vault).
+  /**
+   * @deprecated Ancienne clé du coffre Stronghold, autrefois persistée en
+   * localStorage. Migrée vers `store/vault.key` au premier démarrage puis
+   * effacée (voir services/infra/secureTokenStore.ts). Conservée dans le type
+   * uniquement pour lire les installations existantes.
+   */
   deviceVaultKey: string;
 
   /** L'agent peut chercher sur le web et lire des pages (Search / Fetch DeepSeek) */
@@ -75,30 +78,16 @@ interface SettingsStore {
   getBackendUrl: () => string;
   isAPIConfigured: () => boolean;
 
-  // Vault
-  getDeviceVaultKey: () => string;
-
   // Grand public: liens externes
   getExternalAllowlistHosts: () => string[];
-}
-
-function bytesToBase64(bytes: Uint8Array): string {
-  let s = ''
-  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i])
-  return btoa(s)
-}
-
-function generateDeviceVaultKey(): string {
-  const bytes = new Uint8Array(32)
-  crypto.getRandomValues(bytes)
-  return bytesToBase64(bytes)
 }
 
 const defaultSettings: Settings = {
   model: 'auto', // ANZAR choisit pour chaque demande (services/ai/autoRouter.ts)
   provider: 'deepseek',
   backendUrl: import.meta.env.VITE_BACKEND_URL || 'https://anzar-api.issalanhub.com',
-  deviceVaultKey: generateDeviceVaultKey(),
+  // Vide : la clé du coffre vit désormais dans store/vault.key, hors localStorage.
+  deviceVaultKey: '',
   theme: 'dark',
   language: 'fr',
   fontSize: 14,
@@ -167,17 +156,6 @@ export const useSettingsStore = create<SettingsStore>()(
         return !!get().getBackendUrl();
       },
 
-      // ─── Vault key ───
-      getDeviceVaultKey: () => {
-        const current = (get().settings.deviceVaultKey || '').trim()
-        if (current) return current
-        const next = generateDeviceVaultKey()
-        set((state) => ({
-          settings: { ...state.settings, deviceVaultKey: next },
-        }))
-        return next
-      },
-
       // ─── External allowlist ───
       getExternalAllowlistHosts: () => {
         return (get().settings.externalAllowlistHosts || []).filter(Boolean)
@@ -195,7 +173,6 @@ export const useSettingsStore = create<SettingsStore>()(
           codeDiagnostics: state.settings.codeDiagnostics,
           provider: state.settings.provider,
           backendUrl: state.settings.backendUrl,
-          deviceVaultKey: state.settings.deviceVaultKey,
           theme: state.settings.theme,
           language: state.settings.language,
           fontSize: state.settings.fontSize,

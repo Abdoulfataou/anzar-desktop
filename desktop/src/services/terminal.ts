@@ -10,7 +10,7 @@
  */
 
 import { exists, readTextFile } from '@tauri-apps/api/fs'
-import { Command, open as shellOpen } from '@tauri-apps/api/shell'
+import { Command } from '@tauri-apps/api/shell'
 
 // ============================================================================
 // TYPES

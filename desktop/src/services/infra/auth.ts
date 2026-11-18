@@ -8,6 +8,26 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useAccountStore } from '@/stores/accountStore';
 import { secureTokenStore } from '@/services/infra/secureTokenStore';
 
+/**
+ * Délai maximal d'une requête d'authentification. Sans cela, un serveur qui
+ * accepte la connexion sans répondre bloque le démarrage de l'app (splash).
+ */
+const AUTH_TIMEOUT_MS = 10_000;
+
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit = {},
+  timeoutMs: number = AUTH_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ============================================================================
 // TYPES
 // ============================================================================
@@ -50,7 +70,7 @@ class AuthService {
    * Works for both new and existing users.
    */
   async sendCode(email: string): Promise<SendCodeResponse> {
-    const res = await fetch(`${this.getBackendUrl()}/api/auth/send-code`, {
+    const res = await fetchWithTimeout(`${this.getBackendUrl()}/api/auth/send-code`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email }),
@@ -70,7 +90,7 @@ class AuthService {
    * Auto-creates the account if the email is new.
    */
   async verifyCode(email: string, code: string): Promise<AuthResponse> {
-    const res = await fetch(`${this.getBackendUrl()}/api/auth/verify-code`, {
+    const res = await fetchWithTimeout(`${this.getBackendUrl()}/api/auth/verify-code`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, code }),
@@ -95,7 +115,7 @@ class AuthService {
    * Register a new account with password
    */
   async register(email: string, password: string): Promise<AuthResponse> {
-    const res = await fetch(`${this.getBackendUrl()}/api/auth/register`, {
+    const res = await fetchWithTimeout(`${this.getBackendUrl()}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -115,7 +135,7 @@ class AuthService {
    * Login with email + password
    */
   async login(email: string, password: string): Promise<AuthResponse> {
-    const res = await fetch(`${this.getBackendUrl()}/api/auth/login`, {
+    const res = await fetchWithTimeout(`${this.getBackendUrl()}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
@@ -143,7 +163,7 @@ class AuthService {
     if (!token) return false;
 
     try {
-      const res = await fetch(`${this.getBackendUrl()}/api/auth/verify`, {
+      const res = await fetchWithTimeout(`${this.getBackendUrl()}/api/auth/verify`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       return res.ok;
@@ -161,7 +181,7 @@ class AuthService {
     if (!token) return false;
 
     try {
-      const res = await fetch(`${this.getBackendUrl()}/api/auth/refresh`, {
+      const res = await fetchWithTimeout(`${this.getBackendUrl()}/api/auth/refresh`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -225,8 +245,15 @@ class AuthService {
    */
   private async setSession(data: AuthResponse): Promise<void> {
     useSettingsStore.getState().setAuthToken(data.token);
-    // Persist token securely (encrypted vault)
-    await secureTokenStore.setToken(data.token);
+    // Persiste le jeton dans le coffre chiffré (jamais dans localStorage).
+    const persisted = await secureTokenStore.setToken(data.token);
+    if (!persisted) {
+      const { default: toast } = await import('react-hot-toast');
+      toast.error(
+        "Connexion réussie, mais le coffre local est indisponible : tu devras te reconnecter au prochain démarrage.",
+        { duration: 8000 },
+      );
+    }
 
     const accountStore = useAccountStore.getState();
     accountStore.setUser({
@@ -244,12 +271,15 @@ class AuthService {
 
   /**
    * Bootstrap session on app startup.
-   * - Load token from Stronghold (or localStorage fallback)
-   * - Verify token with backend
+   * - Load token from Stronghold (never localStorage)
+   * - Verify token with backend (10 s max)
    * - If token expired (401): clear everything and force login
    * - If network error: keep session alive (offline-friendly)
    */
   async bootstrapSession(): Promise<void> {
+    // Nettoyage des installations v2.0.0 : l'ancien JWT base64 ne doit pas survivre.
+    secureTokenStore.purgeLegacyToken();
+
     const token = await secureTokenStore.getToken();
 
     if (!token) {
@@ -264,7 +294,7 @@ class AuthService {
 
     // Try to verify with backend
     try {
-      const res = await fetch(`${this.getBackendUrl()}/api/auth/verify`, {
+      const res = await fetchWithTimeout(`${this.getBackendUrl()}/api/auth/verify`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

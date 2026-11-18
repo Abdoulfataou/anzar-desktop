@@ -11,7 +11,8 @@
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
-    "lint": "tsc --noEmit",
+    "security:check": "node scripts/check-security.mjs",
+    "lint": "npm run security:check && tsc --noEmit",
     "smoke": "npm run lint && npm run build"
   },
   "dependencies": {
