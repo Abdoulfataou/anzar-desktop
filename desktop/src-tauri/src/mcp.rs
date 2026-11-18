@@ -4,7 +4,7 @@
 //! (en-tête Content-Length puis le corps JSON, utilisé par les diagnostics de code).
 //!
 //! L'app parle le protocole (JSON-RPC) ; ce module ne fait que le transport :
-//! - stdio : lance le serveur (npx, python…), écrit une ligne JSON sur son entrée,
+//! - stdio : lance le serveur (npx, paquets allowlistés), écrit une ligne JSON sur son entrée,
 //!   relaie chaque ligne de sa sortie dans l'évènement `mcp://message`
 //! - HTTP (« Streamable HTTP ») : POST d'un message, réponse JSON ou flux SSE renvoyé brut
 //!
@@ -22,7 +22,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 /// Lanceurs autorisés pour un serveur local. Le nom seul est accepté, jamais un chemin.
 const LAUNCHERS: &[&str] = &[
-    "npx", "python", "python3",
+    "npx",
 ];
 const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 
