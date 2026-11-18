@@ -94,7 +94,10 @@ pub struct NodeStatus {
 
 #[tauri::command]
 pub fn node_status() -> NodeStatus {
-    let path = std::env::var("PATH").unwrap_or_default();
+    // PATH enrichi (nvm, homebrew, volta, .local/bin…) — le même que pour le
+    // lancement des serveurs MCP : sinon le node nvm d'un terminal n'est jamais
+    // vu par l'app graphique, et les connecteurs échouent à s'initialiser.
+    let path = crate::mcp::enriched_path();
     let managed_v = managed();
     let sep = if cfg!(windows) { ";" } else { ":" };
     let without = match &managed_v {
