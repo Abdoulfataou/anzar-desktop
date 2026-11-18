@@ -18,6 +18,9 @@ partagées :
 | `src/services/agent/toolCallAssembler.ts` | assemble les tool_calls fragmentés du SSE |
 | `src/services/agent/history.ts` | compaction compatible cache, taille d'historique, réparation des tool_calls orphelins |
 | `src/services/agent/permissions.ts` | `PermissionMode`, catégories d'outils, `needsApproval` |
+| `src/services/agent/toolPolicy.ts` | décision d'approbation (plan, ask, auto, MCP, risque, automatisation) |
+| `src/services/agent/toolExecution.ts` | dispatch web / MCP / outil local |
+| `src/services/agent/toolDisplay.ts` | résumé, chemin cliquable et delta de lignes |
 
 Les deux boucles sont maintenant des adaptateurs de `runAgentEngine` :
 
@@ -39,7 +42,7 @@ Le desktop n'avait aucun test. `vitest` est installé et la CI exécute désorma
 npm test
 ```
 
-Couverture actuelle (34 tests) :
+Couverture actuelle (46 tests) :
 
 - `toolCallAssembler.test.ts` : fragments, multi-appels, id généré ;
 - `history.test.ts` : `shrinkText`, compaction, protection des résultats récents,
@@ -47,6 +50,9 @@ Couverture actuelle (34 tests) :
 - `permissions.test.ts` : modes `ask` / `auto` / `plan` / `full` ;
 - `autoRouter.test.ts` : routage fast/thinking/max/pro, mode plan, escalade ;
 - `agentSession.test.ts` : réponse finale, outil, plan, vérification, nudge, retry, budget, annulation ;
+- `toolPolicy.test.ts` : refus en mode plan, approbations ask/auto, espace ANZAR, automatisations ;
+- `toolExecution.test.ts` : dispatch web, MCP, outil local, absence de projet ;
+- `toolDisplay.test.ts` : résumés, chemins, deltas ;
 - `agentLoop.test.ts` : réponse finale, tool_call, `task_done` + vérification,
   échec de vérification, budget d’étapes, annulation (avec mocks des services
   Tauri/réseau).
@@ -59,8 +65,8 @@ build.
 Le moteur de boucle est unifié, mais `useAgentChat` reste un gros adaptateur
 (>1 000 lignes) à cause des décisions produit. Prochaines étapes :
 
-1. Découper l'adaptateur en modules : `toolExecution.ts` (approbations, MCP,
-   skills, questions, plan), `chatSession.ts` (UI timeline/coûts), `composer.ts`.
+1. Poursuivre le découpage : outils spéciaux (`ask_user`, `load_skill`,
+   `propose_plan`), puis UI timeline/coûts (`chatSession.ts`).
 2. Ajouter des tests de non-régression UI (React Testing Library + mocks Tauri)
    sur approbation, annulation, reprise et images.
 3. Tester `agentSession` avec un scénario multi-outils réel (build/lint) en

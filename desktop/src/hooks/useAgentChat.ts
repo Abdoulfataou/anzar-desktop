@@ -17,13 +17,16 @@ import {
   closeDanglingToolCalls, compactHistory, historyChars,
   KEEP_RECENT_TOOL_RESULTS, SOFT_LIMIT_CHARS, STUB_CHARS, SKILL_RESULT_PREFIX,
 } from '@/services/agent/history';
-import { needsApproval, READ_ONLY_TOOLS, type PermissionMode } from '@/services/agent/permissions';
+import { READ_ONLY_TOOLS, type PermissionMode } from '@/services/agent/permissions';
+import { summarizeArgs, toolDelta, toolFilePath } from '@/services/agent/toolDisplay';
+import { approvalDecision } from '@/services/agent/toolPolicy';
+import { executeGenericTool } from '@/services/agent/toolExecution';
 export type { PermissionMode } from '@/services/agent/permissions';
 import { loadPersonalInstructions, personalInstructionsSection } from '@/services/personalInstructions';
 import { useCallback, useRef, useState } from 'react';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
-import { WEB_TOOLS, WEB_TOOL_NAMES, executeWebTool } from '@/services/agent/webTools';
+import { WEB_TOOLS } from '@/services/agent/webTools';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildAgentSystemPrompt, memorySection, FORMATTING_GUIDE, VISUALS_GUIDE, CONNECTORS_GUIDE, type AgentPromptContext } from '@/services/agent/agentPrompts';
 import { buildAgentContext } from '@/services/agent/agentContext';
@@ -33,7 +36,7 @@ import { refreshCredits } from '@/lib/credits';
 import { routeRequest, escalate, looksLikeCreation, type Route } from '@/services/ai/autoRouter';
 import { parseQuestions, formatAnswers, type QuestionRequest, type QuestionAnswer } from '@/components/chat/QuestionPanel';
 import { detectDevCommand } from '@/services/agent/devServer';
-import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, callMcpTool, setMcpRoots } from '@/services/mcp/manager';
+import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
 import { copyAttachmentsToWorkspace } from '@/services/attachmentFiles';
@@ -232,67 +235,6 @@ function withAttachments(content: string, attachments: ChatAttachment[]): string
     return `${label}\n\`\`\`\n${full.slice(0, take)}\n\`\`\`${cut ? `\n(Tronqué : ${take.toLocaleString('fr-FR')} caractères sur ${full.length.toLocaleString('fr-FR')}. Préviens l'utilisateur si la suite est nécessaire.)` : ''}`;
   });
   return `${content}\n\n# Pièces jointes\n\n${blocks.join('\n\n')}`;
-}
-
-/** Chemin cliquable d'un outil (ouvre l'éditeur ou la visionneuse média). */
-function toolFilePath(name: string, args: Record<string, any>): string | undefined {
-  switch (name) {
-    case 'read_file':
-    case 'write_file':
-    case 'edit_file':
-      return args.path || args.file_path || undefined;
-    case 'export_animation': {
-      if (args.output) return String(args.output);
-      const ext = args.format === 'png' ? 'png' : args.format === 'gif' ? 'gif' : 'mp4';
-      return `export/animation.${ext}`;
-    }
-    default:
-      return undefined;
-  }
-}
-
-function summarizeArgs(name: string, args: Record<string, any>): string {
-  switch (name) {
-    case 'read_file':
-    case 'write_file':
-    case 'edit_file':
-    case 'delete_file':
-      return args.path || args.file_path || '';
-    case 'list_dir':
-      return args.path || '.';
-    case 'search_files':
-      return args.query || args.pattern || '';
-    case 'web_search':
-      return args.query || '';
-    case 'read_url':
-      return args.url || '';
-    case 'run_command':
-      return args.command || '';
-    case 'start_dev_server':
-      return args.command || 'commande du projet';
-    case 'check_page':
-      return args.url || 'serveur du projet';
-    case 'export_animation':
-      return `${args.file ? `${args.file} → ` : ''}${String(args.output || (args.format === 'png' ? 'export/visuel.png' : `export/animation.${args.format === 'gif' ? 'gif' : 'mp4'}`))}`;
-    case 'capture_page':
-      return `${args.file || args.url || 'page ouverte'}${Array.isArray(args.frames) && args.frames.length ? ` · ${args.frames.length} instants` : ''}`;
-    case 'page_action':
-      return [args.action, args.element || args.target, args.text].filter(Boolean).join(' · ');
-    case 'explore':
-      return (args.questions || []).length ? `${(args.questions || []).length} question${(args.questions || []).length > 1 ? 's' : ''} en parallèle` : '';
-    case 'spawn_subagents':
-      return (args.tasks || []).length ? `${(args.tasks || []).length} sous-tâches` : '';
-    case 'remember':
-      return String(args.content || '').slice(0, 80);
-    case 'ask_user':
-      return (args.questions || []).map((q: any) => q?.question).filter(Boolean).join(' · ').slice(0, 140);
-    case 'load_skill':
-      return args.file ? `${args.name || ''} · ${args.file}` : String(args.name || '');
-    case 'task_done':
-      return String(args.summary || '').slice(0, 100);
-    default:
-      return JSON.stringify(args).slice(0, 100);
-  }
 }
 
 interface UseAgentChatParams {
@@ -835,26 +777,21 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           const mcpReadOnly = !!mcpRef?.tool.annotations?.readOnlyHint;
           const mcpAsk = !!mcpRef && mcpNeedsApproval(modeRef.current, mcpRef);
 
-          // Accord de l'utilisateur selon le mode de permission
-          let allowed = true;
-          let refusal = "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
-          if (modeRef.current === 'plan' && !READ_ONLY_TOOLS.has(call.function.name) && !mcpReadOnly && !['task_done', 'propose_plan', 'load_skill', 'ask_user'].includes(call.function.name)) {
-            allowed = false;
-          } else if (mcpAsk && background) {
-            allowed = false;
-            refusal = `Refusé automatiquement : l'action « ${mcpRef!.tool.name} » du connecteur ${mcpRef!.serverName} demande un accord, et personne n'est là pendant une automatisation. Signale-le dans ta réponse.`;
-          } else if (risk && background) {
-            // Automatisation : personne pour valider → refus, expliqué à l'agent
-            allowed = false;
-            refusal = `Refusé automatiquement : ${risk.reason}. Personne n'est là pour valider pendant une automatisation. Ne contourne pas ce refus ; signale-le dans ta réponse.`;
-          } else if (
-            // Espace ANZAR : dossier de travail à part, modifications annulables → pas d'accord
-            // à chaque fichier ni à chaque commande. Seul le code écrit par l'agent demande un accord,
-            // une seule fois par conversation.
-            (!personalSpace && needsApproval(modeRef.current, call.function.name))
-            || (risk && !(personalSpace && trustedConvs.has(convId)))
-            || mcpAsk
-          ) {
+          // Décision d'approbation (module pur, testé)
+          const decision = approvalDecision({
+            mode: modeRef.current,
+            tool: call.function.name,
+            mcpReadOnly,
+            mcpAsk,
+            mcpName: mcpRef?.serverName,
+            background,
+            risk,
+            personalSpace,
+            trusted: trustedConvs.has(convId),
+          });
+          let allowed = decision.allowed;
+          let refusal = decision.refusal ?? "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
+          if (decision.ask) {
             const scope = personalSpace && risk ? "Autoriser vaut pour toute cette conversation dans l'espace ANZAR." : undefined;
             allowed = await new Promise<boolean>((resolve) => {
               approvalResolver.current = resolve;
@@ -939,38 +876,22 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
           const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[]; media?: ToolEvent['media'] } = !allowed
             ? { output: refusal, isError: true }
-            : WEB_TOOL_NAMES.has(call.function.name)
-            ? await executeWebTool(call.function.name, args, controller.signal)
-            : mcpRef
-            ? await callMcpTool(call.function.name, args, controller.signal)
-            : agentRoot && (workspacePath || PERSONAL_SPACE_TOOLS.has(call.function.name))
-            ? await executeToolCall(call, {
-                projectRoot: agentRoot,
+            : await executeGenericTool(call, args, {
+                agentRoot,
+                workspacePath,
                 signal: controller.signal,
-                onFileChanged: (rel, _c, action) => { if (workspacePath) onFileChanged?.(rel, action); },
-                // Sous-agents : progression en direct dans le bloc d'outil
+                onFileChanged: (rel, action) => { if (workspacePath) onFileChanged?.(rel, action); },
                 onSubagentProgress: call.function.name === 'spawn_subagents'
                   ? (progress) => { ev.subagents = progress; flush(''); }
                   : undefined,
-              })
-            : { output: 'Aucun dossier de travail ouvert.', isError: true };
+              });
 
           // Recherche et lecture web : facturées à part par le serveur, ajoutées au coût de la réponse
           if (result.costFCFA) cost.sum += result.costFCFA;
           onProgressRef.current?.({ costFCFA: cost.sum });
 
-          // B7 : delta de lignes calculé depuis les ARGS de l'outil (l'ancien
-          // parse attendait un format qu'aucun exécuteur ne produisait).
-          if (!result.isError && call.function.name === 'write_file' && typeof args.content === 'string') {
-            const lines = args.content.split('\n').length;
-            ev.delta = [lines, 0];
-          } else if (!result.isError && call.function.name === 'edit_file') {
-            // Sans replace_all : exactement 1 remplacement. Avec replace_all,
-            // le compte réel est dans result.output — on affiche le minimum (1).
-            const oldLines = typeof args.old_text === 'string' ? args.old_text.split('\n').length : 0;
-            const newLines = typeof args.new_text === 'string' ? args.new_text.split('\n').length : 0;
-            ev.delta = [newLines, oldLines];
-          }
+          const delta = toolDelta(call.function.name, args, result.isError);
+          if (delta) ev.delta = delta;
 
           ev.status = result.isError ? 'error' : 'ok';
           if (!result.isError && result.media) ev.media = result.media;
