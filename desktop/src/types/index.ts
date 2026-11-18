@@ -100,6 +100,36 @@ export const AI_PROVIDERS: Record<AIProvider, AIProviderConfig> = {
 // MESSAGE & CONVERSATION TYPES
 // ============================================================================
 
+/** Un morceau de la chronologie d'un message : texte ou groupes d'actions. */
+export type TimelineItem =
+  | { kind: 'text'; text: string }
+  | { kind: 'tools'; ids: string[] };
+
+/** Événement d'outil affichable dans le message (rendu ZCode). */
+export interface ToolEvent {
+  id: string;
+  name: string;
+  /** Argument principal lisible : chemin, commande, requête… */
+  argsSummary: string;
+  status: 'running' | 'ok' | 'error';
+  /** Sortie tronquée pour affichage */
+  output?: string;
+  /** Delta de lignes pour edit_file/write_file : [ajoutées, supprimées] */
+  delta?: [number, number];
+  /** Chemin de fichier ouvrable en un clic (éditeur / visionneuse média) */
+  filePath?: string;
+  /** Sous-agents en cours (spawn_subagents) — progression en direct */
+  subagents?: Array<{
+    task: string;
+    role?: string;
+    status: 'running' | 'done' | 'error';
+    current?: string;
+    steps: number;
+  }>;
+  /** Vidéo ou image produite par l'outil (chemin absolu), montrée en lecteur sous la réponse */
+  media?: { path: string; kind: 'video' | 'image' };
+}
+
 export type ChatAttachmentKind =
   | 'pdf'
   | 'docx'
@@ -180,9 +210,9 @@ export interface Message {
   /** Pièces jointes associées au message (surtout côté user) */
   attachments?: ChatAttachment[];
   /** Ordre d'affichage : morceaux de texte et groupes d'actions, dans l'ordre produit */
-  timeline?: import('@/hooks/useAgentChat').TimelineItem[];
+  timeline?: TimelineItem[];
   /** Événements d'outils de l'agent (rendu ZCode : read/edit/bash…) */
-  toolEvents?: import('@/hooks/useAgentChat').ToolEvent[];
+  toolEvents?: ToolEvent[];
   /** If set, show an "Open & Run" action button for this project */
   actionProjectId?: string;
 }

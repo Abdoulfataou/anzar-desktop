@@ -36,13 +36,18 @@ import { refreshCredits } from '@/lib/credits';
 import { routeRequest, escalate, looksLikeCreation, type Route } from '@/services/ai/autoRouter';
 import type { QuestionRequest, QuestionAnswer } from '@/services/agent/questions';
 import { askUser, loadSkill, parsePlan } from '@/services/agent/specialTools';
+import {
+  appendTimelineText, appendTimelineTool, computeSessionCost,
+  estimateCompletionTokens, estimateHistoryTokens, hasExactCost, snapshotTimeline,
+} from '@/services/agent/chatSession';
 import { detectDevCommand } from '@/services/agent/devServer';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
 import { copyAttachmentsToWorkspace } from '@/services/attachmentFiles';
 import { PERSONAL_SPACE_TOOLS, PERSONAL_SUBDIR, conversationUsesPersonalSpace, ensurePersonalSpace, personalSpaceContext } from '@/services/personalSpace';
-import type { AIModel, APIMessage, ChatAttachment, Message, ToolDefinition } from '@/types';
+import type { AIModel, APIMessage, ChatAttachment, Message, TimelineItem, ToolDefinition, ToolEvent } from '@/types';
+export type { TimelineItem, ToolEvent } from '@/types';
 
 /** Demande d'accord en attente (modes « ask » et « auto »). */
 export interface ApprovalRequest {
@@ -65,11 +70,6 @@ function isRetryable(e: any): boolean {
   const msg = String(e?.message || '');
   return !/cr[ée]dit|quota|solde|recharge|401|402|403|non autoris|unauthori[sz]ed|token/i.test(msg);
 }
-
-/** Morceau d'une réponse, dans l'ordre produit : du texte ou un groupe d'actions. */
-export type TimelineItem =
-  | { kind: 'text'; text: string }
-  | { kind: 'tools'; ids: string[] };
 
 /** Tout ce qu'il faut pour reprendre une réponse là où elle s'est arrêtée. */
 interface ResumeState {
@@ -181,25 +181,6 @@ const PROPOSE_PLAN_TOOL: ToolDefinition = {
     },
   },
 };
-
-/** Événement d'outil affichable dans le message (rendu ZCode). */
-export interface ToolEvent {
-  id: string;
-  name: string;
-  /** Argument principal lisible : chemin, commande, requête… */
-  argsSummary: string;
-  status: 'running' | 'ok' | 'error';
-  /** Sortie tronquée pour affichage */
-  output?: string;
-  /** Delta de lignes pour edit_file/write_file : [ajoutées, supprimées] */
-  delta?: [number, number];
-  /** Chemin de fichier ouvrable en un clic (éditeur / visionneuse média) */
-  filePath?: string;
-  /** Sous-agents en cours (spawn_subagents) — progression en direct */
-  subagents?: import('@/services/agent/agentTools').SubagentProgress[];
-  /** Vidéo ou image produite par l'outil (chemin absolu), montrée en lecteur sous la réponse */
-  media?: { path: string; kind: 'video' | 'image' };
-}
 
 const MAX_STEPS = 40;
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
@@ -452,30 +433,14 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     if (route) { updateMessage(assistantId, { autoRoute: route }); lastRouteRef.current = route; }
     let toolErrors = 0;
     let escalations = 0;
-    const historyTokens = () =>
-      Math.ceil(apiHistoryRef.current.reduce((n, m) => n + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0) / 4);
-
     // Chronologie affichée : texte et actions dans l'ordre où l'agent les produit
     const timeline: TimelineItem[] = resumeFrom ? resumeFrom.timeline.map((t) => ({ ...t })) : [];
-    const addText = (text: string) => {
-      if (text.trim()) timeline.push({ kind: 'text', text });
-    };
-    const addToolToTimeline = (id: string) => {
-      const last = timeline[timeline.length - 1];
-      if (last?.kind === 'tools') last.ids = [...last.ids, id];
-      else timeline.push({ kind: 'tools', ids: [id] });
-    };
-    const snapshotTimeline = (liveText = ''): TimelineItem[] => {
-      const copy = timeline.map((t) => (t.kind === 'tools' ? { kind: 'tools' as const, ids: [...t.ids] } : { ...t }));
-      if (liveText.trim()) copy.push({ kind: 'text', text: liveText });
-      return copy;
-    };
 
     /** Met à jour l'affichage ; `liveText` = texte en cours d'écriture de l'étape. */
     const flush = (liveText = '') => {
       updateMessage(assistantId, {
         content: liveText ? accContent + (accContent ? '\n\n' : '') + liveText : accContent,
-        timeline: snapshotTimeline(liveText),
+        timeline: snapshotTimeline(timeline, liveText),
         reasoning: accReasoning ? [accReasoning] : undefined,
         isStreaming: true,
         toolEvents: [...events],
@@ -668,7 +633,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               compactHistory(apiHistoryRef.current, 2, 300);
             }
           }
-          promptTokens += historyTokens();
+          promptTokens += estimateHistoryTokens(apiHistoryRef.current);
         },
         stream: (messages, tools) =>
           aiService.chatStream(messages, { model: callModel(), tools, signal: controller.signal }),
@@ -697,10 +662,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           accReasoning += reasoning;
           if (text) {
             accContent += (accContent ? '\n\n' : '') + text;
-            addText(text);
+            appendTimelineText(timeline, text);
             flush();
           }
-          completionTokens += Math.ceil((text.length + JSON.stringify(toolCalls).length) / 4);
+          completionTokens += estimateCompletionTokens(text, toolCalls);
           cost.calls++;
           lastCallAtRef.current = Date.now();
           onProgressRef.current?.({ costFCFA: cost.sum });
@@ -739,7 +704,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           };
           toolEvents.set(call.id, ev);
           events.push(ev);
-          addToolToTimeline(ev.id);
+          appendTimelineTool(timeline, ev.id);
           flush();
         },
         onImages: (images) => { stepImages.push(...images); },
@@ -900,7 +865,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         const summary = String(session.summary || '').trim();
         if (summary && !accContent.includes(summary)) {
           accContent += (accContent ? '\n\n' : '') + summary;
-          addText(summary);
+          appendTimelineText(timeline, summary);
         }
         answered = true;
       } else if (session.stopReason === 'plan') {
@@ -948,7 +913,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               if (delta.tool_calls) assembler.add(delta.tool_calls);
             }
           } catch { break; }
-          if (rescueText) { accContent += (accContent ? '\n\n' : '') + rescueText; addText(rescueText); }
+          if (rescueText) { accContent += (accContent ? '\n\n' : '') + rescueText; appendTimelineText(timeline, rescueText); }
           if (!assembler.hasCalls) break;
           for (const call of assembler.finish()) {
             let args: Record<string, any> = {};
@@ -960,7 +925,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               status: 'running',
             };
             events.push(ev);
-            addToolToTimeline(ev.id);
+            appendTimelineTool(timeline, ev.id);
             flush();
             const result = await executeToolCall(call, {
               projectRoot: agentRoot,
@@ -978,7 +943,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
       // ── Limite d'étapes atteinte sans réponse → synthèse forcée, sans outils ──
       if (!answered && !controller.signal.aborted) {
-        promptTokens += historyTokens();
+        promptTokens += estimateHistoryTokens(apiHistoryRef.current);
         apiHistoryRef.current.push({
           role: 'user',
           content:
@@ -997,9 +962,9 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         lastCallAtRef.current = Date.now();
         if (finalText) {
           accContent += (accContent ? '\n\n' : '') + finalText;
-          addText(finalText);
+          appendTimelineText(timeline, finalText);
         }
-        completionTokens += Math.ceil(finalText.length / 4);
+        completionTokens += estimateCompletionTokens(finalText, []);
       }
 
       // ── Finalisation ──
@@ -1026,7 +991,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       // La réponse est terminée : on l'affiche tout de suite, sans attendre la comptabilité.
       updateMessage(assistantId, {
         content: finalContent,
-        timeline: snapshotTimeline(),
+        timeline: snapshotTimeline(timeline),
         reasoning: accReasoning ? [accReasoning] : undefined,
         isStreaming: false,
         tokens: { prompt: promptTokens, completion: completionTokens },
@@ -1038,18 +1003,22 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
 
       // Coût et journal d'usage : une erreur ici ne doit jamais faire échouer la réponse.
       try {
-        // ── Coût réel : différence de solde serveur (le backend facture chaque appel) ──
-        const estimate = Math.round((promptTokens / 1_000_000) * priceIn + (completionTokens / 1_000_000) * priceOut);
-        // Sans coûts exacts du serveur, on lui laisse le temps d'enregistrer le dernier appel
-        if (!(cost.reports > 0 && cost.reports >= cost.calls)) await new Promise((r) => setTimeout(r, 600));
+        // ── Coût réel : coûts exacts du serveur, sinon écart de solde, sinon estimation ──
+        const exact = hasExactCost(cost.reports, cost.calls);
+        // Sans coûts exacts, on laisse au serveur le temps d'enregistrer le dernier appel.
+        if (!exact) await new Promise((r) => setTimeout(r, 600));
         const balanceAfter = await refreshCredits();
-        // 1) Coûts exacts envoyés par le serveur pour chaque appel : justes même si une
-        //    automatisation consomme en parallèle. 2) Sinon (ancien serveur) : écart de solde.
-        const exact = cost.reports > 0 && cost.reports >= cost.calls;
-        const fromServer = exact || (balanceBefore !== null && balanceAfter !== null);
-        const costFCFA = exact
-          ? Math.round(cost.sum * 100) / 100
-          : fromServer ? Math.max(0, Math.round((balanceBefore! - balanceAfter!) * 100) / 100) : estimate;
+        const { costFCFA, fromServer } = computeSessionCost({
+          serverCostSum: cost.sum,
+          serverCostReports: cost.reports,
+          serverModelCalls: cost.calls,
+          balanceBefore,
+          balanceAfter,
+          promptTokens,
+          completionTokens,
+          priceInPerMillion: priceIn,
+          priceOutPerMillion: priceOut,
+        });
         updateMessage(assistantId, { costFCFA });
 
         const record = {
@@ -1075,7 +1044,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       // On garde de quoi reprendre exactement ici (bouton « Reprendre »)
       resumeRef.current = aborted
         ? null
-        : { convId, assistantId, accContent, timeline: snapshotTimeline(), events, snapshots, promptTokens, completionTokens, balanceBefore, cost, route };
+        : { convId, assistantId, accContent, timeline: snapshotTimeline(timeline), events, snapshots, promptTokens, completionTokens, balanceBefore, cost, route };
       const errorText = aborted
         ? '_(interrompu)_'
         : `**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`;
@@ -1085,7 +1054,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         content: aborted
           ? (accContent ? `${accContent}\n\n_(interrompu)_` : '_(génération interrompue)_')
           : `${accContent ? accContent + '\n\n' : ''}**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`,
-        timeline: [...snapshotTimeline(), { kind: 'text', text: errorText }],
+        timeline: [...snapshotTimeline(timeline), { kind: 'text', text: errorText }],
         isStreaming: false,
         isError: !aborted,
         toolEvents: [...events],

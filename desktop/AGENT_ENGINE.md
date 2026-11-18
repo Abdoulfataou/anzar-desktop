@@ -21,6 +21,7 @@ partagées :
 | `src/services/agent/toolPolicy.ts` | décision d'approbation (plan, ask, auto, MCP, risque, automatisation) |
 | `src/services/agent/toolExecution.ts` | dispatch web / MCP / outil local |
 | `src/services/agent/toolDisplay.ts` | résumé, chemin cliquable et delta de lignes |
+| `src/services/agent/chatSession.ts` | timeline sérialisable, estimation de tokens et calcul du coût FCFA |
 
 Les deux boucles sont maintenant des adaptateurs de `runAgentEngine` :
 
@@ -42,7 +43,7 @@ Le desktop n'avait aucun test. `vitest` est installé et la CI exécute désorma
 npm test
 ```
 
-Couverture actuelle (67 tests) :
+Couverture actuelle (73 tests) :
 
 - `toolCallAssembler.test.ts` : fragments, multi-appels, id généré ;
 - `history.test.ts` : `shrinkText`, compaction, protection des résultats récents,
@@ -55,6 +56,7 @@ Couverture actuelle (67 tests) :
 - `toolDisplay.test.ts` : résumés, chemins, deltas ;
 - `questions.test.ts` : normalisation des questions et formatage des réponses ;
 - `specialTools.test.ts` : ask_user, load_skill et propose_plan ;
+- `chatSession.test.ts` : timeline, snapshots, tokens et coût exact/solde/estimation.
 - `useAgentChat.test.ts` : hook réel avec mocks — réponse finale, approbation, `ask_user`, plan, annulation, reprise après erreur, images `capture_page`, escalade Auto, `task_done`.
 - `agentLoop.test.ts` : réponse finale, tool_call, `task_done` + vérification,
   échec de vérification, budget d’étapes, annulation (avec mocks des services
@@ -68,7 +70,7 @@ build.
 Le moteur de boucle est unifié, mais `useAgentChat` reste un gros adaptateur
 (>1 000 lignes) à cause des décisions produit. Prochaines étapes :
 
-1. Découper l'UI timeline/coûts (`chatSession.ts`) et les pièces jointes.
+1. Extraire la gestion des pièces jointes et du prompt système de l'adaptateur.
 2. Compléter les tests du hook sur l'espace ANZAR (sans projet) et les pièces
    jointes.
 3. Tester `agentSession` avec un scénario multi-outils réel (build/lint) en
