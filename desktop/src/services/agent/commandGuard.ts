@@ -19,7 +19,26 @@ type Scripts = Record<string, string>;
 const written = new Map<string, Set<string>>();
 const originalScripts = new Map<string, Scripts>();
 
-const normRel = (p: string) => String(p || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+/, '');
+/**
+ * Normalise un chemin relatif pour la comparaison : segments vides, `.` et `//`
+ * supprimés, `..` résolu. La casse est conservée pour construire le chemin réel ;
+ * `keyRel` fournit une clé insensible à la casse (macOS/Windows).
+ */
+const cleanRel = (p: string) => {
+  const parts: string[] = [];
+  for (const raw of String(p || '').replace(/\\/g, '/').replace(/^\/+/, '').split('/')) {
+    if (!raw || raw === '.') continue;
+    if (raw === '..') {
+      if (parts.length && parts[parts.length - 1] !== '..') parts.pop();
+      else parts.push('..');
+      continue;
+    }
+    parts.push(raw);
+  }
+  return parts.join('/');
+};
+const normRel = (p: string) => cleanRel(p);
+const keyRel = (p: string) => cleanRel(p).toLowerCase();
 const join = (root: string, rel: string) => `${root.replace(/[\\/]+$/, '')}/${normRel(rel)}`;
 
 async function readScripts(root: string): Promise<Scripts | null> {
@@ -34,7 +53,7 @@ async function readScripts(root: string): Promise<Scripts | null> {
 
 /** À appeler AVANT chaque écriture de l'agent (write_file, edit_file, delete_file). */
 export async function noteAgentWrite(taskId: string, root: string, relPath: string): Promise<void> {
-  const rel = normRel(relPath);
+  const rel = keyRel(relPath);
   if (!rel) return;
   if (!written.has(taskId)) written.set(taskId, new Set());
   written.get(taskId)!.add(rel);
@@ -94,9 +113,21 @@ export async function commandRisk(taskId: string, root: string, command: string)
   const exe = tokens[0].toLowerCase();
   const touched = written.get(taskId) || new Set<string>();
 
-  // Sorties réseau et installations : jamais silencieuses, même en Full.
-  if (exe === 'git' && (tokens[1] === 'push' || (tokens[1] === 'remote' && tokens[2] === 'add'))) {
-    return { reason: 'envoie du code ou configure un dépôt distant', detail: command };
+  // Sorties réseau et configurations Git : jamais silencieuses, même en Full.
+  if (exe === 'git') {
+    const sub = (tokens[1] || '').toLowerCase();
+    const config = sub === 'config' || tokens.some((tok) => tok === '-c' || tok === '--config-env');
+    if (config) {
+      return { reason: 'modifie la configuration Git (hooks, fsmonitor ou chemin de configuration)', detail: command };
+    }
+    if (sub === 'push' || (sub === 'remote' && tokens[2] === 'add')) {
+      return { reason: 'envoie le code ou configure un dépôt distant', detail: command };
+    }
+    // Un hook ou un script de hook écrit par l'agent peut être exécuté par ces commandes.
+    if (['commit', 'merge', 'rebase', 'am', 'checkout', 'switch', 'pull'].includes(sub)
+      && [...touched].some((rel) => /(^|\/)(\.git|\.husky)(\/|$)/.test(rel))) {
+      return { reason: `Git « ${sub} » peut exécuter un hook écrit par l'agent`, detail: command };
+    }
   }
   if (['npm', 'pnpm', 'yarn'].includes(exe) && ['install', 'i', 'ci', 'add', 'isntall', 'in'].includes(tokens[1])) {
     return { reason: 'installe des dépendances (scripts de cycle de vie possibles)', detail: command };
@@ -111,8 +142,18 @@ export async function commandRisk(taskId: string, root: string, command: string)
   // node / python sur un fichier que l'agent vient d'écrire
   if (['node', 'python', 'python3', 'deno', 'bun', 'ts-node', 'tsx'].includes(exe)) {
     const file = tokens.slice(1).find((t) => !t.startsWith('-'));
-    if (file && touched.has(normRel(file))) {
+    if (file && touched.has(keyRel(file))) {
       return { reason: `exécute ${normRel(file)}, un fichier écrit par l'agent dans cette tâche` };
+    }
+    // python -m package : le module exécutable est package/__main__.py ou package.py
+    const mIndex = tokens.findIndex((tok) => tok === '-m' || tok === '--module');
+    const module = mIndex >= 0 ? tokens[mIndex + 1] : '';
+    if (module) {
+      const modulePath = module.replace(/\./g, '/');
+      const candidates = [`${modulePath}.py`, `${modulePath}/__init__.py`, `${modulePath}/__main__.py`];
+      if (candidates.some((candidate) => touched.has(keyRel(candidate)))) {
+        return { reason: `exécute le module ${module}, un fichier écrit par l'agent dans cette tâche` };
+      }
     }
     return null;
   }
@@ -128,7 +169,7 @@ export async function commandRisk(taskId: string, root: string, command: string)
     if (before && before[name] !== body) {
       return { reason: `le script npm « ${name} » a été ${before[name] === undefined ? 'ajouté' : 'modifié'} par l'agent dans cette tâche`, detail: body };
     }
-    const runsWritten = [...touched].find((rel) => rel !== 'package.json' && body.includes(rel));
+    const runsWritten = [...touched].find((rel) => rel !== 'package.json' && body.toLowerCase().includes(rel));
     if (runsWritten) return { reason: `le script npm « ${name} » lance ${runsWritten}, un fichier écrit par l'agent dans cette tâche`, detail: body };
     const label = dangerousLabel(body);
     if (label) return { reason: `le script npm « ${name} » contient une commande sensible (${label})`, detail: body };

@@ -476,6 +476,19 @@ function resolvePath(root: string, relPath: string | undefined): string {
   return `${cleanRoot}/${rel}`;
 }
 
+/** Interdit les écritures dans les répertoires qui contrôlent Git (hooks/config). */
+export function isProtectedWritePath(relPath: string): boolean {
+  const segments = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '').split('/').map((s) => s.toLowerCase());
+  return segments.includes('.git') || segments.includes('.husky');
+}
+
+function resolveWritePath(root: string, relPath: string | undefined): string {
+  if (isProtectedWritePath(String(relPath || ''))) {
+    throw new Error(`Écriture interdite dans un dossier de hooks Git: ${relPath}`);
+  }
+  return resolvePath(root, relPath);
+}
+
 function truncate(text: string, max: number, label = 'sortie'): string {
   if (text.length <= max) return text;
   return `${text.slice(0, max)}\n… [${label} tronquée: ${text.length - max} caractères restants]`;
@@ -541,7 +554,7 @@ async function execReadFile(args: any, ctx: ToolExecutionContext): Promise<ToolR
 }
 
 async function execWriteFile(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const abs = resolvePath(ctx.projectRoot, args.path);
+  const abs = resolveWritePath(ctx.projectRoot, args.path);
   const existed = await fileSystemService.exists(abs);
   const before = existed && languageOf(String(args.path || '')) ? await fileSystemService.readFile(abs).catch(() => null) : null;
   await fileSystemService.writeFile(abs, args.content ?? '');
@@ -551,7 +564,7 @@ async function execWriteFile(args: any, ctx: ToolExecutionContext): Promise<Tool
 }
 
 async function execEditFile(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const abs = resolvePath(ctx.projectRoot, args.path);
+  const abs = resolveWritePath(ctx.projectRoot, args.path);
   const content = await fileSystemService.readFile(abs);
   const oldText: string = args.old_text ?? '';
   const newText: string = args.new_text ?? '';
@@ -581,7 +594,7 @@ async function execEditFile(args: any, ctx: ToolExecutionContext): Promise<ToolR
 }
 
 async function execDeleteFile(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const abs = resolvePath(ctx.projectRoot, args.path);
+  const abs = resolveWritePath(ctx.projectRoot, args.path);
   await fileSystemService.deleteFile(abs);
   ctx.onFileChanged?.(args.path, '', 'delete');
   return { output: `OK — supprimé: ${args.path}` };
