@@ -62,9 +62,21 @@ async def payment_status(intent_id: str, user: dict = Depends(get_current_user))
 
 @router.post("/api/payments/webhook/{provider}", include_in_schema=False)
 async def payment_webhook(provider: str, request: Request):
-    raw = await request.body()
-    if len(raw) > MAX_WEBHOOK_BYTES:
+    # Refuse avant lecture complète : un corps énorme ne doit pas être chargé en mémoire.
+    try:
+        declared = int(request.headers.get("content-length") or 0)
+    except ValueError:
+        declared = 0
+    if declared > MAX_WEBHOOK_BYTES:
         raise HTTPException(413, "Trop volumineux")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_WEBHOOK_BYTES:
+            raise HTTPException(413, "Trop volumineux")
+        chunks.append(chunk)
+    raw = b"".join(chunks)
     try:
         result = await handle_webhook(provider.strip().lower(), raw, request.headers)
     except SignatureError as e:

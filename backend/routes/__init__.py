@@ -32,5 +32,6 @@ def include_routers(app: FastAPI) -> None:
         app.include_router(projects_router)
     app.include_router(admin_router)
     app.include_router(memory_router)
-    app.include_router(skills_router)
+    if settings.enable_community_skills:
+        app.include_router(skills_router)
     app.include_router(web_tools_router)

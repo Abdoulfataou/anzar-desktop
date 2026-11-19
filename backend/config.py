@@ -183,6 +183,7 @@ class Settings(BaseSettings):
     admin_default_email: str = "admin@anzar.app"
     admin_default_password: str = ""  # Fourni via ADMIN_DEFAULT_PASSWORD (env) uniquement
     admin_jwt_expiry_hours: int = 24
+    enable_community_skills: bool = False  # Hub communautaire inutilisé par le desktop
 
     # ─── App ───
     app_version: str = "1.3.0"
