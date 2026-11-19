@@ -69,10 +69,12 @@ def test_max_tokens_capped_to_balance(client, user_and_token, admin_headers, ups
     email, _, headers = user_and_token
     _grant(client, admin_headers, email, 2)  # ~ quelques milliers de jetons de sortie
     r = client.post("/api/deepseek/chat/completions", headers=headers,
-                    json={**MSG, "max_completion_tokens": 16384, "n": 5})
+                    json={**MSG, "max_completion_tokens": 16384, "n": 5,
+                          "unknown_billed": True, "logit_bias": {"1": 2}})
     assert r.status_code == 200, r.text
     sent = upstream["calls"][0]
     assert sent["max_tokens"] < 16384 and "max_completion_tokens" not in sent and "n" not in sent
+    assert "unknown_billed" not in sent and "logit_bias" not in sent
     assert r.json()["anzar"]["cost_fcfa"] > 0
 
 

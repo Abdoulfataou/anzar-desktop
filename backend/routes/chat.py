@@ -28,6 +28,16 @@ logger = logging.getLogger("anzar")
 
 router = APIRouter(tags=["chat"])
 
+# Champs explicitement transmis à DeepSeek. Tout champ inconnu est supprimé :
+# un nouveau paramètre facturé côté fournisseur ne doit pas être consommé sans
+# réservation ni facturation ANZAR.
+CHAT_BODY_FIELDS = frozenset({
+    "messages", "model", "frequency_penalty", "max_tokens", "max_completion_tokens",
+    "presence_penalty", "response_format", "stop", "stream", "stream_options",
+    "temperature", "top_p", "tools", "tool_choice", "parallel_tool_calls",
+    "logprobs", "top_logprobs", "seed", "thinking", "reasoning_effort",
+})
+
 
 # ── Helpers ──
 
@@ -229,6 +239,7 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
     if not isinstance(body, dict):
         raise HTTPException(400, "Invalid JSON body")
 
+    body = {k: v for k, v in body.items() if k in CHAT_BODY_FIELDS}
     body["messages"] = validate_messages(body.get("messages") or [])
 
     # Modèle verrouillé côté serveur (le prix en dépend) : seuls les identifiants connus passent.
