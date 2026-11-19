@@ -22,6 +22,7 @@ import { SUBAGENT_ROLE_PROMPTS, detectSubagentRole, type SubagentRole } from './
 import { BUILTIN_SKILLS } from '@/services/skillsPack';
 import { READ_ONLY_TOOLS, type PermissionMode } from './permissions';
 import { subagentAllowedTools } from './subagentPolicy';
+import { validateCommand } from './commandPolicy';
 
 // ============================================================================
 // TYPES
@@ -676,9 +677,8 @@ const READ_INSTEAD: Record<string, string> = {
  */
 export function precheckCommand(command: string): string | null {
   const cmd = String(command || '').trim();
-  if (/[|;<>]|&&|\$\(|`/.test(cmd)) {
-    return "Refusé : un seul programme par appel, sans |, ;, &&, >, < ni $(…). Découpe en plusieurs appels run_command, ou utilise search_files / list_dir / read_file.";
-  }
+  const validation = validateCommand(cmd);
+  if (!validation.safe) return validation.reason || 'Commande refusée.';
   const exe = (cmd.split(/\s+/)[0] || '').toLowerCase();
   if (!RUNNABLE.has(exe)) {
     const alt = READ_INSTEAD[exe];

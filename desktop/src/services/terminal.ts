@@ -11,6 +11,10 @@
 
 import { exists, readTextFile } from '@/lib/tauriFs'
 import { Command } from '@/lib/tauriShell'
+import { COMMAND_NAME_MAP, MAX_ARGS, parseExecutable, validateCommand } from '@/services/agent/commandPolicy';
+import { isPathWithin } from '@/lib/pathGuard';
+import { ensureNode, manualNodeHelp, needsNode } from '@/services/nodeRuntime';
+import { checkPython, ensureGit, isPython } from '@/services/programs';
 
 // ============================================================================
 // TYPES
@@ -95,167 +99,6 @@ function emitDevServerUrl(url: string): void {
 
 
 /** Subscribe to terminal error events for auto-fix */
-
-// ============================================================================
-// SECURITY — Command & Path Validation
-// ============================================================================
-
-/** Dangerous patterns that must NEVER be executed */
-const BLOCKED_PATTERNS = [
-  /sudo\s/i,
-  /su\s+-/i,
-  /\brm\s+-rf\b/i,               // rm -rf (trop destructif pour grand public)
-  /\bgit\s+reset\s+--hard\b/i,   // git reset --hard
-  /\bgit\s+clean\s+-fd\b/i,      // git clean -fd
-  /rm\s+-rf\s+[/~]/i,            // rm -rf / or ~
-  /rm\s+-rf\s+\.\./i,            // rm -rf ..
-  />\s*\/dev\//i,                 // redirect to /dev/
-  /\|/i,                          // pipes (avoid chaining)
-  />/i,                           // redirections (avoid writing files)
-  /</i,                           // redirections (avoid reading sensitive files)
-  /;\s*/i,                        // command chaining
-  /&&/i,                          // command chaining
-  /\|\|/i,                        // command chaining
-  /curl\s/i,                      // downloads
-  /wget\s/i,                      // downloads
-  /eval\s*\(/i,
-  /\$\(.*\)/,                    // command substitution $(...)
-  /`[^`]+`/,                     // backtick substitution
-  />\s*\/etc\//i,                // write to /etc
-  />\s*~\/\./i,                  // write to dotfiles
-  /export\s+(PATH|LD_PRELOAD|LD_LIBRARY_PATH)\s*=/i,  // env hijack
-  /nc\s+-/i,                      // netcat
-  /python3?\s+-c\s/i,             // inline python execution
-  /node\s+(-e|--eval)\b/i,        // inline node execution
-  /\b(bash|sh|zsh)\s+-c\b/i,     // shell inline
-  /(^|\s)(\/|~\/|[A-Za-z]:\\)/,  // absolute paths (limit to project-relative usage)
-];
-
-/** Validate a command is safe before execution */
-import { isPathWithin } from '@/lib/pathGuard';
-import { ensureNode, manualNodeHelp, needsNode } from '@/services/nodeRuntime';
-import { checkPython, ensureGit, isPython } from '@/services/programs';
-
-/** Message clair et actionnable pour une commande bloquée. */
-function blockedReason(command: string, pattern: RegExp): string {
-  if (/node\s+-e|deno eval|bun -e/i.test(command)) {
-    return "node -e est refusé (guillemets et échappements cassés selon le système). Écris ton code dans un fichier script (.mjs) avec write_file, puis lance `node script.mjs`.";
-  }
-  if (/python3?\s+-c/i.test(command)) {
-    return "python -c est refusé. Écris ton code dans un fichier .py avec write_file, puis lance `python script.py`.";
-  }
-  if (/\|\s*sh|curl[^|]*\|/i.test(command)) {
-    return 'Les pipes vers un shell sont refusés. Télécharge avec curl, écris un script avec write_file, puis exécute-le séparément.';
-  }
-  return `Commande bloquée (motif: ${pattern.source}). Utilise une seule commande simple de la liste autorisée.`;
-}
-
-function validateCommand(command: string): { safe: boolean; reason?: string } {
-  // Block empty commands
-  if (!command.trim()) {
-    return { safe: false, reason: 'Commande vide' };
-  }
-
-  // Block overly long commands (potential injection)
-  if (command.length > 2000) {
-    return { safe: false, reason: 'Commande trop longue (max 2000 caractères)' };
-  }
-
-  // Check against blocked patterns — message ACTIONNABLE pour l'agent
-  // (avant : le motif regex brut était renvoyé, l'agent réessayait sans comprendre)
-  for (const pattern of BLOCKED_PATTERNS) {
-    if (pattern.test(command)) {
-      return { safe: false, reason: blockedReason(command, pattern) };
-    }
-  }
-
-  return { safe: true };
-}
-
-/** Minimal command tokenizer (supports quotes) */
-function tokenize(command: string): string[] {
-  const out: string[] = [];
-  let current = '';
-  let quote: '"' | "'" | null = null;
-
-  for (let i = 0; i < command.length; i++) {
-    const ch = command[i];
-    if (quote) {
-      if (ch === quote) quote = null;
-      else current += ch;
-      continue;
-    }
-
-    if (ch === '"' || ch === "'") {
-      quote = ch as any;
-      continue;
-    }
-
-    if (/\s/.test(ch)) {
-      if (current) {
-        out.push(current);
-        current = '';
-      }
-      continue;
-    }
-
-    current += ch;
-  }
-
-  if (current) out.push(current);
-  return out;
-}
-
-/**
- * Map "typed command" -> tauri allowlisted command name.
- * (No shell wrapper: no `sh -c`, no `cmd /C`.)
- */
-const COMMAND_NAME_MAP: Record<string, string> = {
-  npm: 'npm',
-  node: 'node',
-  git: 'git',
-  cargo: 'cargo',
-  python3: 'python3',
-  python: 'python',
-  pip3: 'pip3',
-  pip: 'pip',
-  // Outils curés ANZAR (installés via install_tool) : ffmpeg + rg
-  ffmpeg: 'ffmpeg',
-  ffprobe: 'ffprobe',
-  rg: 'rg',
-};
-
-/** Nombre maximal d'arguments par commande (les capabilities déclarent 0 à 9 arguments). */
-const MAX_ARGS = 8;
-
-function parseExecutable(command: string): { cmdName: string; args: string[] } | null {
-  const parts = tokenize(command);
-  if (parts.length === 0) return null;
-  const raw = parts[0].toLowerCase();
-  const base = COMMAND_NAME_MAP[raw];
-  if (!base) return null;
-  const args = parts.slice(1);
-  // Tauri 2 résout la commande par le NOM de l'entrée de scope (npm-2), pas par
-  // le binaire : c'est cette entrée qui porte les validateurs d'arguments.
-  // Utiliser « npm » directement ne validerait que le premier argument.
-  if (args.length > MAX_ARGS) return null;
-  return { cmdName: `${base}-${args.length}`, args };
-}
-
-/** Validate and normalize a file path (prevent traversal) */
-function validatePath(basePath: string, targetPath: string): boolean {
-  // Resolve both paths to absolute
-  const normalizedBase = basePath.replace(/\\/g, '/').replace(/\/+$/, '');
-  const normalizedTarget = targetPath.replace(/\\/g, '/');
-
-  // Block obvious traversal
-  if (normalizedTarget.includes('..')) return false;
-
-  // Must start with base path
-  if (!normalizedTarget.startsWith(normalizedBase)) return false;
-
-  return true;
-}
 
 /** Programme introuvable : message clair, pour que l'agent ne conclue pas qu'il est absent du projet. */
 /** Programme manquant (Node, Git, Python) : installation proposée ou explication. null si tout va bien. */
