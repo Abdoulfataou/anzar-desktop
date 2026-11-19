@@ -42,7 +42,7 @@ export type AgentEvent =
   | { type: 'done'; reason: AgentStopReason; summary: string; steps: number }
   | { type: 'error'; message: string };
 
-export interface AgentSessionOptions {
+export interface AgentLoopOptions {
   /** Contexte projet pour le system prompt */
   prompt: AgentPromptContext;
   /** Tâche demandée par l'utilisateur */
@@ -114,7 +114,7 @@ async function createCheckpoint(projectRoot: string, task: string): Promise<stri
 // SESSION AGENT
 // ============================================================================
 
-export async function runAgentSession(options: AgentSessionOptions): Promise<AgentSessionResult> {
+export async function runAgentSession(options: AgentLoopOptions): Promise<AgentSessionResult> {
   const {
     prompt,
     task,

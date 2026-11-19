@@ -11,6 +11,8 @@ import { aiService } from '@/services/ai/ai';
 import type { APIMessage, ToolCall } from '@/types';
 import { AGENT_TOOLS, executeToolCall, type ToolExecutionContext, type ToolResult } from './agentTools';
 import { buildAgentContext } from './agentContext';
+import { ToolCallAssembler } from './toolCallAssembler';
+import { closeDanglingToolCalls } from './history';
 
 const EXPLORER_TOOLS = AGENT_TOOLS.filter((t) => ['read_file', 'list_dir', 'search_files', 'get_diagnostics'].includes(t.function.name));
 const MAX_QUESTIONS = 8;
@@ -40,26 +42,6 @@ export interface ExploreResult {
   ok: boolean;
 }
 
-class Assembler {
-  private calls = new Map<number, ToolCall>();
-  add(fragments: Partial<ToolCall>[] = []) {
-    for (const frag of fragments) {
-      const index = (frag as any).index ?? 0;
-      let call = this.calls.get(index);
-      if (!call) {
-        call = { id: frag.id || `call_${Date.now()}_${index}`, type: 'function', function: { name: '', arguments: '' } };
-        this.calls.set(index, call);
-      }
-      if (frag.id) call.id = frag.id;
-      if (frag.function?.name) call.function.name += frag.function.name;
-      if (frag.function?.arguments) call.function.arguments += frag.function.arguments;
-    }
-  }
-  finish(): ToolCall[] {
-    return [...this.calls.values()].filter((c) => c.function.name);
-  }
-}
-
 async function exploreOne(
   question: string,
   context: string,
@@ -74,12 +56,15 @@ async function exploreOne(
   for (let step = 1; step <= MAX_STEPS + 1; step++) {
     if (ctx.signal?.aborted) return { question, summary: 'Annulé.', steps: step - 1, ok: false };
     const last = step > MAX_STEPS;
-    if (last) messages.push({ role: 'user', content: 'Plus d\'outil : donne maintenant ton résumé final avec ce que tu as trouvé.' });
-    let assembler = new Assembler();
+    if (last) {
+      closeDanglingToolCalls(messages);
+      messages.push({ role: 'user', content: 'Plus d\'outil : donne maintenant ton résumé final avec ce que tu as trouvé.' });
+    }
+    let assembler = new ToolCallAssembler();
     let text = '';
     // Une nouvelle tentative après une coupure ou une limite momentanée (requêtes simultanées)
     for (let attempt = 0; ; attempt++) {
-      assembler = new Assembler();
+      assembler = new ToolCallAssembler();
       text = '';
       try {
         const stream = aiService.chatStream(messages, {
