@@ -10,6 +10,7 @@ Rôles :
 Chaque action qui modifie quelque chose est inscrite au journal d'audit (table admin_audit).
 """
 import ipaddress
+import json
 import logging
 import time
 from typing import Optional
@@ -22,6 +23,7 @@ from config import settings
 from security import (
     rate_limiter, get_client_ip, create_token, verify_token_checked,
     generate_totp_secret, verify_totp, seal_totp_secret, open_totp_secret, totp_uri,
+    generate_recovery_codes, hash_recovery_code, needs_mfa_reencrypt,
 )
 from db import (
     verify_password,
@@ -35,8 +37,8 @@ from db import (
     admin_delete_project_any,
     admin_mark_payment_intent_paid,
     deduct_credits,
-    set_admin_totp_secret, enable_admin_totp, disable_admin_totp,
-    revoke_token_jti,
+    set_admin_totp_secret, update_admin_totp_secret, set_admin_recovery_codes,
+    enable_admin_totp, disable_admin_totp, reset_admin_mfa, revoke_token_jti,
 )
 from db import admin_extra as extra
 from routes._state import _project_states
@@ -52,6 +54,7 @@ class AdminLoginRequest(BaseModel):
     email: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1, max_length=128)
     totp_code: str = Field(default="", max_length=6)
+    recovery_code: str = Field(default="", max_length=32)
 
 
 class MfaCodeRequest(BaseModel):
@@ -213,9 +216,23 @@ async def admin_login(body: AdminLoginRequest, request: Request):
 
     if admin.get("totp_enabled"):
         secret = open_totp_secret(admin.get("totp_secret") or "")
-        if not verify_totp(secret, body.totp_code):
-            await audit(email, "login_mfa_failed", email, "code TOTP absent ou invalide", ip)
+        totp_ok = verify_totp(secret, body.totp_code)
+        recovery_ok = False
+        if not totp_ok and body.recovery_code:
+            try:
+                hashes = json.loads(admin.get("mfa_recovery") or "[]")
+            except ValueError:
+                hashes = []
+            candidate = hash_recovery_code(body.recovery_code)
+            if candidate in hashes:
+                recovery_ok = True
+                await set_admin_recovery_codes(admin["id"], json.dumps([h for h in hashes if h != candidate]))
+        if not (totp_ok or recovery_ok):
+            await audit(email, "login_mfa_failed", email, "code TOTP/code de secours absent ou invalide", ip)
             raise HTTPException(401, "Code de double authentification requis ou invalide")
+        if needs_mfa_reencrypt(admin.get("totp_secret") or ""):
+            # Migration v1 (JWT_SECRET) → v2 (ADMIN_MFA_KEY), même après un code de secours.
+            await update_admin_totp_secret(admin["id"], seal_totp_secret(secret))
 
     await update_admin_last_login(email)
     await audit(email, "login_success", email, "", ip)
@@ -294,9 +311,15 @@ async def admin_mfa_setup(admin: dict = Depends(get_current_admin)):
     if data.get("totp_enabled"):
         raise HTTPException(400, "La double authentification est déjà active")
     secret = generate_totp_secret()
-    await set_admin_totp_secret(admin["admin_id"], seal_totp_secret(secret))
+    recovery_codes = generate_recovery_codes()
+    await set_admin_totp_secret(
+        admin["admin_id"],
+        seal_totp_secret(secret),
+        json.dumps([hash_recovery_code(c) for c in recovery_codes]),
+    )
     await audit(admin, "mfa_setup", str(admin["admin_id"]), "secret généré, en attente de code")
-    return {"secret": secret, "otpauth_uri": totp_uri(data["email"], secret)}
+    return {"secret": secret, "otpauth_uri": totp_uri(data["email"], secret),
+            "recovery_codes": recovery_codes}
 
 
 @router.post("/mfa/enable")
@@ -329,6 +352,17 @@ async def admin_mfa_disable(body: MfaDisableRequest, admin: dict = Depends(get_c
     await disable_admin_totp(admin["admin_id"])
     await audit(admin, "mfa_disabled", str(admin["admin_id"]), "TOTP désactivé")
     return {"status": "ok", "mfa_enabled": False}
+
+
+@router.post("/admins/{admin_id}/mfa-reset")
+async def admin_reset_mfa(admin_id: int, admin: dict = Depends(require_admin_role("owner"))):
+    """Réinitialise la MFA d'un admin qui a perdu son téléphone et ses codes."""
+    data = await get_admin_by_id(admin_id)
+    if not data:
+        raise HTTPException(404, "Admin introuvable")
+    await reset_admin_mfa(admin_id)
+    await audit(admin, "mfa_reset", str(admin_id), f"admin={data.get('email')}")
+    return {"status": "ok", "message": "MFA réinitialisée ; l'admin doit se reconnecter et réenrôler."}
 
 
 # ── Tableau de bord ──

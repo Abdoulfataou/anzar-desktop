@@ -104,13 +104,42 @@ async def change_admin_password(admin_id: int, new_password: str) -> bool:
             return (res.rowcount or 0) > 0
 
 
-async def set_admin_totp_secret(admin_id: int, sealed_secret: str) -> bool:
-    """Enregistre un secret TOTP en attente de validation."""
+async def set_admin_totp_secret(admin_id: int, sealed_secret: str, recovery_json: str = "[]") -> bool:
+    """Enregistre un secret TOTP en attente de validation et ses codes de secours."""
     Session = get_sessionmaker()
     async with Session() as session:
         async with session.begin():
             res = await session.execute(update(Admin).where(Admin.id == int(admin_id))
-                                        .values(totp_secret=sealed_secret, totp_enabled=False))
+                                        .values(totp_secret=sealed_secret, totp_enabled=False, mfa_recovery=recovery_json))
+            return (res.rowcount or 0) > 0
+
+
+async def update_admin_totp_secret(admin_id: int, sealed_secret: str) -> bool:
+    """Ré-enregistre un secret (migration v1 → v2) sans changer l'activation."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(update(Admin).where(Admin.id == int(admin_id))
+                                        .values(totp_secret=sealed_secret))
+            return (res.rowcount or 0) > 0
+
+
+async def set_admin_recovery_codes(admin_id: int, recovery_json: str) -> bool:
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(update(Admin).where(Admin.id == int(admin_id))
+                                        .values(mfa_recovery=recovery_json))
+            return (res.rowcount or 0) > 0
+
+
+async def reset_admin_mfa(admin_id: int) -> bool:
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(update(Admin).where(Admin.id == int(admin_id))
+                                        .values(totp_secret="", totp_enabled=False, mfa_recovery="[]",
+                                                token_version=Admin.token_version + 1))
             return (res.rowcount or 0) > 0
 
 
@@ -128,7 +157,7 @@ async def disable_admin_totp(admin_id: int) -> bool:
     async with Session() as session:
         async with session.begin():
             res = await session.execute(update(Admin).where(Admin.id == int(admin_id))
-                                        .values(totp_secret="", totp_enabled=False,
+                                        .values(totp_secret="", totp_enabled=False, mfa_recovery="[]",
                                                 token_version=Admin.token_version + 1))
             return (res.rowcount or 0) > 0
 
@@ -142,6 +171,9 @@ async def list_admins() -> List[Dict[str, Any]]:
             d = _model_to_dict(r)
             d.pop("password_hash", None)
             d.pop("salt", None)
+            d.pop("totp_secret", None)
+            d.pop("mfa_recovery", None)
+            d["mfa_enabled"] = bool(d.pop("totp_enabled", False))
             out.append(d)
         return out
 

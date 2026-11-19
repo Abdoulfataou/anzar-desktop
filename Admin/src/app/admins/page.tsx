@@ -60,6 +60,13 @@ export default function AdminsPage() {
               <div className="flex justify-end gap-2">
                 <Button size="sm" variant="outline" onClick={() => setEditing(a)}>Modifier</Button>
                 <Button size="sm" variant="ghost" leftIcon={<KeyRound className="h-3.5 w-3.5" />} onClick={() => reset(a)}>Réinitialiser</Button>
+                {me?.role === 'owner' && a.mfa_enabled && (
+                  <Button size="sm" variant="ghost" onClick={async () => {
+                    if (!confirm(`Réinitialiser la MFA de ${a.email} ?`)) return
+                    try { await api.mfaReset(a.id); toast.success('MFA réinitialisée'); list.reload() }
+                    catch (e) { toast.error(e instanceof Error ? e.message : 'Échec') }
+                  }}>MFA</Button>
+                )}
               </div>
             ) },
           ]}

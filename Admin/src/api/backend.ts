@@ -204,16 +204,18 @@ export const api = {
   health: () => apiFetch<HealthResponse>('/health'),
 
   // Connexion et profil
-  login: (email: string, password: string, totp_code = '') =>
-    apiFetch<AdminLoginResponse>('/api/admin/login', post({ email, password, totp_code })),
+  login: (email: string, password: string, totp_code = '', recovery_code = '') =>
+    apiFetch<AdminLoginResponse>('/api/admin/login', post({ email, password, totp_code, recovery_code })),
   me: () => apiFetch<AdminAccount>('/api/admin/me'),
   updateMe: (data: { name?: string; email?: string }) => apiFetch<AdminAccount>('/api/admin/me', patch(data)),
   changePassword: (current_password: string, new_password: string) =>
     apiFetch<{ status: string }>('/api/admin/change-password', post({ current_password, new_password })),
-  mfaSetup: () => apiFetch<{ secret: string; otpauth_uri: string }>('/api/admin/mfa/setup', post({})),
+  mfaSetup: () => apiFetch<{ secret: string; otpauth_uri: string; recovery_codes: string[] }>('/api/admin/mfa/setup', post({})),
   mfaEnable: (code: string) => apiFetch<{ status: string; mfa_enabled: boolean }>('/api/admin/mfa/enable', post({ code })),
   mfaDisable: (password: string, code: string) =>
     apiFetch<{ status: string; mfa_enabled: boolean }>('/api/admin/mfa/disable', post({ password, code })),
+  mfaReset: (adminId: number) =>
+    apiFetch<{ status: string; message: string }>(`/api/admin/admins/${adminId}/mfa-reset`, post({})),
   logout: () => apiFetch<{ status: string }>('/api/admin/logout', post({})),
 
   // Tableau de bord

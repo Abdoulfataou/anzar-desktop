@@ -117,7 +117,7 @@ function MfaSettings() {
   const navigate = useNavigate()
   const clearSession = useAuthStore((s) => s.clearSession)
   const me = useLoad(() => api.me(), [])
-  const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string } | null>(null)
+  const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string; recovery_codes: string[] } | null>(null)
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -181,6 +181,13 @@ function MfaSettings() {
               <Field label="URI otpauth">
                 <code className="block break-all text-xs text-foreground-secondary">{setup.otpauth_uri}</code>
               </Field>
+              <Notice tone="warning">
+                Conserve ces codes de secours hors ligne. Chaque code ne fonctionne qu'une fois et permet
+                de te connecter si tu perds ton téléphone.
+              </Notice>
+              <div className="grid grid-cols-2 gap-2 rounded-md border border-border bg-background-secondary p-3 font-mono text-sm">
+                {setup.recovery_codes.map((c) => <span key={c}>{c}</span>)}
+              </div>
               <Field label="Code de vérification" hint="Saisis le code affiché par ton application.">
                 <TextInput inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
               </Field>

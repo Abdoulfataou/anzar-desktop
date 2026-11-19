@@ -2,7 +2,10 @@
 import time
 
 from config import settings
-from security import totp_now
+from security import (
+    totp_now, seal_totp_secret, open_totp_secret, hash_recovery_code,
+    generate_recovery_codes,
+)
 
 
 def _new_admin_session(client, owner_headers):
@@ -58,3 +61,47 @@ def test_admin_logout_revokes_current_token(client, admin_headers):
     _, h = _new_admin_session(client, admin_headers)
     assert client.post("/api/admin/logout", headers=h).status_code == 200
     assert client.get("/api/admin/me", headers=h).status_code == 401
+
+
+def test_admin_mfa_recovery_code_is_one_time(client, admin_headers):
+    email, h = _new_admin_session(client, admin_headers)
+    r = client.post("/api/admin/mfa/setup", headers=h)
+    secret, codes = r.json()["secret"], r.json()["recovery_codes"]
+    assert len(codes) == 8
+    assert client.post("/api/admin/mfa/enable", headers=h, json={"code": totp_now(secret)}).status_code == 200
+    # Le code TOTP est absent : le code de secours prend le relais une seule fois.
+    rec = codes[0]
+    assert client.post("/api/admin/login", json={"email": email, "password": "MfaAdminPass123"}).status_code == 401
+    r = client.post("/api/admin/login", json={"email": email, "password": "MfaAdminPass123", "recovery_code": rec})
+    assert r.status_code == 200, r.text
+    assert client.post("/api/admin/login", json={"email": email, "password": "MfaAdminPass123", "recovery_code": rec}).status_code == 401
+
+
+def test_owner_resets_lost_mfa(client, admin_headers):
+    email, h = _new_admin_session(client, admin_headers)
+    r = client.post("/api/admin/mfa/setup", headers=h)
+    secret = r.json()["secret"]
+    assert client.post("/api/admin/mfa/enable", headers=h, json={"code": totp_now(secret)}).status_code == 200
+    admins = client.get("/api/admin/admins", headers=admin_headers).json()["admins"]
+    target = next(a for a in admins if a["email"] == email)
+    assert client.post(f"/api/admin/admins/{target['id']}/mfa-reset", headers=admin_headers).status_code == 200
+    r = client.post("/api/admin/login", json={"email": email, "password": "MfaAdminPass123"})
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["mfa_enabled"] is False
+
+
+def test_mfa_secret_encryption_is_independent_from_jwt(monkeypatch):
+    monkeypatch.setattr(settings, "admin_mfa_key", "a" * 64)
+    sealed = seal_totp_secret("JBSWY3DPEHPK3PXP")
+    monkeypatch.setattr(settings, "jwt_secret", "rotated-jwt-secret-0123456789abcdef")
+    assert open_totp_secret(sealed) == "JBSWY3DPEHPK3PXP"
+    codes = generate_recovery_codes(2)
+    assert len(set(codes)) == 2 and hash_recovery_code(codes[0]) == hash_recovery_code(codes[0].lower())
+
+
+def test_admin_list_never_exposes_mfa_secrets(client, admin_headers):
+    admins = client.get("/api/admin/admins", headers=admin_headers).json()["admins"]
+    assert admins
+    for a in admins:
+        assert "totp_secret" not in a and "mfa_recovery" not in a
+        assert isinstance(a.get("mfa_enabled"), bool)

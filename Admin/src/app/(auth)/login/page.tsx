@@ -14,6 +14,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [totpCode, setTotpCode] = useState('')
+  const [recoveryCode, setRecoveryCode] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -25,7 +26,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const result = await api.login(email.trim(), password, totpCode.trim())
+      const result = await api.login(email.trim(), password, totpCode.trim(), recoveryCode.trim())
       setSession({ token: result.token, user: result.user as any })
       if ((result.user as any)?.must_change_password) {
         navigate('/settings')
@@ -180,6 +181,21 @@ export default function LoginPage() {
                         leftIcon={<ShieldCheck className="h-4 w-4" />}
                         value={totpCode}
                         onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-foreground-primary mb-2 block">
+                        Code de secours <span className="text-foreground-muted font-normal">(si MFA perdue)</span>
+                      </label>
+                      <Input
+                        type="text"
+                        autoComplete="one-time-code"
+                        placeholder="XXXXXXXXXX"
+                        maxLength={32}
+                        leftIcon={<ShieldCheck className="h-4 w-4" />}
+                        value={recoveryCode}
+                        onChange={(e) => setRecoveryCode(e.target.value.toUpperCase())}
                       />
                     </div>
                   </div>

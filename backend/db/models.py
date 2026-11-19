@@ -171,6 +171,8 @@ class Admin(Base):
     # Secret TOTP (base32) et activation. Le secret n'est jamais renvoyé après l'enrôlement.
     totp_secret: Mapped[str] = mapped_column(String(64), default="", nullable=False)
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Codes de secours à usage unique, stockés hachés (JSON).
+    mfa_recovery: Mapped[str] = mapped_column(Text, default="[]", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

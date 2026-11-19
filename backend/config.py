@@ -184,6 +184,7 @@ class Settings(BaseSettings):
     admin_default_password: str = ""  # Fourni via ADMIN_DEFAULT_PASSWORD (env) uniquement
     admin_jwt_expiry_hours: int = 24
     admin_require_mfa: bool = False  # Passer à true après enrôlement des admins
+    admin_mfa_key: str = ""          # Clé indépendante de JWT_SECRET pour chiffrer les secrets TOTP
     admin_allowed_ips: str = ""     # Ex. "203.0.113.0/24,10.0.0.0/8" ; vide = pas de restriction
     enable_community_skills: bool = False  # Hub communautaire inutilisé par le desktop
 

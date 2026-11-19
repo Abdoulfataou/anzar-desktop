@@ -58,6 +58,19 @@ def validate_config():
     elif not settings.admin_default_password:
         logger.info("ADMIN_DEFAULT_PASSWORD non défini — un mot de passe aléatoire sera généré au premier démarrage")
 
+    # ── MFA / surface admin ──
+    if settings.admin_mfa_key and len(settings.admin_mfa_key) < 32:
+        logger.warning("⚠️  ADMIN_MFA_KEY fait moins de 32 caractères ; utilise `openssl rand -hex 32`.")
+    if settings.is_production:
+        if not settings.admin_mfa_key:
+            logger.warning("⚠️  ADMIN_MFA_KEY absent : les secrets TOTP utilisent JWT_SECRET comme clé de secours. "
+                           "Configure une clé dédiée pour pouvoir faire tourner JWT_SECRET.")
+        if not settings.admin_allowed_ips:
+            logger.warning("⚠️  ADMIN_ALLOWED_IPS vide : /api/admin reste joignable depuis Internet. "
+                           "Configure un CIDR ou une règle Caddy.")
+        if not settings.admin_require_mfa:
+            logger.warning("⚠️  ADMIN_REQUIRE_MFA=false : la MFA admin n'est pas obligatoire.")
+
     # ── API Keys ──
     if not settings.deepseek_api_key:
         logger.warning("⚠️  DEEPSEEK_API_KEY not set — DeepSeek provider unavailable")
@@ -197,36 +210,75 @@ def verify_totp(secret: str, code: str, window: int = 1, at: Optional[float] = N
                for delta in range(-window, window + 1))
 
 
-def seal_totp_secret(secret: str) -> str:
-    """Chiffre le secret avec un flux HMAC dérivé de JWT_SECRET (sans dépendance)."""
+def _mfa_key_material() -> bytes:
+    """Clé dédiée à la MFA, indépendante de JWT_SECRET quand elle est fournie."""
+    return (settings.admin_mfa_key or settings.jwt_secret or "anzar-mfa").encode()
+
+
+def _mfa_key() -> bytes:
+    return hashlib.sha256(_mfa_key_material()).digest()
+
+
+def _seal_with_key(value: str, key: bytes) -> str:
     nonce = secrets.token_bytes(16)
-    key = hashlib.sha256(settings.jwt_secret.encode()).digest()
-    plain = (secret or "").encode("ascii")
+    plain = (value or "").encode("ascii")
     stream = b""
     counter = 0
     while len(stream) < len(plain):
         stream += hmac.new(key, nonce + counter.to_bytes(4, "big"), hashlib.sha256).digest()
         counter += 1
     sealed = bytes(a ^ b for a, b in zip(plain, stream))
-    return "v1:" + base64.urlsafe_b64encode(nonce + sealed).decode("ascii")
+    return base64.urlsafe_b64encode(nonce + sealed).decode("ascii")
+
+
+def _open_with_key(value: str, key: bytes) -> str:
+    raw = base64.urlsafe_b64decode(value.encode("ascii"))
+    nonce, sealed = raw[:16], raw[16:]
+    stream = b""
+    counter = 0
+    while len(stream) < len(sealed):
+        stream += hmac.new(key, nonce + counter.to_bytes(4, "big"), hashlib.sha256).digest()
+        counter += 1
+    return bytes(a ^ b for a, b in zip(sealed, stream)).decode("ascii")
+
+
+def seal_totp_secret(secret: str) -> str:
+    """Chiffre le secret TOTP.
+
+    v2 = clé ADMIN_MFA_KEY dédiée (recommandé).
+    v1 = ancienne dérivation depuis JWT_SECRET, conservée pour la migration.
+    """
+    if settings.admin_mfa_key:
+        return "v2:" + _seal_with_key(secret, _mfa_key())
+    return "v1:" + _seal_with_key(secret, hashlib.sha256(settings.jwt_secret.encode()).digest())
 
 
 def open_totp_secret(value: str) -> str:
-    if not value or not value.startswith("v1:"):
+    if not value:
         return ""
     try:
-        raw = base64.urlsafe_b64decode(value[3:].encode("ascii"))
-        nonce, sealed = raw[:16], raw[16:]
-        key = hashlib.sha256(settings.jwt_secret.encode()).digest()
-        stream = b""
-        counter = 0
-        while len(stream) < len(sealed):
-            stream += hmac.new(key, nonce + counter.to_bytes(4, "big"), hashlib.sha256).digest()
-            counter += 1
-        plain = bytes(a ^ b for a, b in zip(sealed, stream))
-        return plain.decode("ascii")
+        if value.startswith("v2:"):
+            return _open_with_key(value[3:], _mfa_key())
+        if value.startswith("v1:"):
+            legacy = hashlib.sha256(settings.jwt_secret.encode()).digest()
+            return _open_with_key(value[3:], legacy)
     except Exception:
         return ""
+    return ""
+
+
+def needs_mfa_reencrypt(value: str) -> bool:
+    """Un secret v1 doit être ré-enregistré dès qu'une clé dédiée est configurée."""
+    return bool(settings.admin_mfa_key and value.startswith("v1:"))
+
+
+def generate_recovery_codes(count: int = 8) -> list[str]:
+    return [secrets.token_hex(5).upper() for _ in range(count)]
+
+
+def hash_recovery_code(code: str) -> str:
+    normalized = "".join(ch for ch in str(code or "").upper() if ch.isalnum())
+    return hmac.new(_mfa_key(), normalized.encode("ascii"), hashlib.sha256).hexdigest()
 
 
 def totp_uri(email: str, secret: str) -> str:
