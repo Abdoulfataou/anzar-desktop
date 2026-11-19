@@ -146,6 +146,7 @@ npx tauri build --debug --no-bundle
 | Secrets des connecteurs MCP (`store/mcp.json`) | **corrigé côté renderer** | broker Rust, valeurs masquées, fichier 0600 ; chiffrement au repos P2 |
 | LSP et Playwright lancés via `npx` | **atténué** | paquets npx allowlistés ; épingler les versions `@latest` restantes |
 | Jeton lisible par une XSS qui a déjà l'IPC Tauri | **atténué** | PDF.js corrigé, Mermaid filtré, CSP, capabilities ; scope FS encore large |
+| Liens symboliques dans les projets | **corrigé côté agent** | `fs_realpath` Rust + `resolvePath` canonique et confinement au projet |
 | Processus enfants non tués en groupe | **corrigé** | runner Rust, groupe de processus et `tool_kill` |
 
 ---

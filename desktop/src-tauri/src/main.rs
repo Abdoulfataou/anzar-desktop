@@ -38,7 +38,7 @@ fn main() {
         // Serveurs MCP : transport stdio et HTTP (le protocole est géré par l'app)
         .manage(mcp::McpState::default())
         .manage(tool_runner::ToolState::default())
-        .invoke_handler(tauri::generate_handler![vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
+        .invoke_handler(tauri::generate_handler![vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -75,6 +75,18 @@ fn harden_store_dir(dir: &std::path::Path) -> Result<(), String> {
     }
     set(dir, 0o700)?;
     walk(dir)
+}
+
+/// Canonicalise un chemin existant (résout les liens symboliques).
+/// Utilisé par les outils de fichiers pour empêcher une évasion via symlink.
+#[tauri::command]
+fn fs_realpath(path: String) -> Result<String, String> {
+    let real = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
+    let home = dirs::home_dir().ok_or("Répertoire utilisateur introuvable")?;
+    if !real.starts_with(&home) {
+        return Err("Chemin hors du répertoire utilisateur.".into());
+    }
+    Ok(real.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

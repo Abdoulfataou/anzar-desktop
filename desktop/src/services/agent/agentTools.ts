@@ -21,6 +21,8 @@ import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/toolsR
 import { SUBAGENT_ROLE_PROMPTS, detectSubagentRole, type SubagentRole } from './agentPrompts';
 import { BUILTIN_SKILLS } from '@/services/skillsPack';
 import { READ_ONLY_TOOLS, type PermissionMode } from './permissions';
+import { invoke } from '@tauri-apps/api/core';
+import { isPathWithin } from '@/lib/pathGuard';
 import { subagentAllowedTools } from './subagentPolicy';
 import { validateCommand } from './commandPolicy';
 
@@ -465,15 +467,42 @@ export const AGENT_TOOLS: ToolDefinition[] = [
 // HELPERS
 // ============================================================================
 
-/** Joint projectRoot + chemin relatif en bloquant les évasions */
-function resolvePath(root: string, relPath: string | undefined): string {
+/**
+ * Joint projectRoot + chemin relatif en bloquant les évasions.
+ * Le chemin réel est canonicalisé (symlinks) et doit rester sous le projet.
+ */
+export async function resolvePath(root: string, relPath: string | undefined): Promise<string> {
   const cleanRoot = root.replace(/[\\/]+$/, '');
   const rel = (relPath || '').replace(/\\/g, '/').replace(/^\/+/, '').trim();
-  if (!rel || rel === '.') return cleanRoot;
   if (rel.split('/').some((seg) => seg === '..')) {
     throw new Error(`Chemin non autorisé (sortie du projet): ${relPath}`);
   }
-  return `${cleanRoot}/${rel}`;
+  const abs = !rel || rel === '.' ? cleanRoot : `${cleanRoot}/${rel}`;
+  const realRoot = await invoke<string>('fs_realpath', { path: cleanRoot }).catch(() => cleanRoot);
+  let realAbs: string;
+  try {
+    realAbs = await invoke<string>('fs_realpath', { path: abs });
+  } catch {
+    // Fichier/dossier à créer : canonicalise le plus proche ancêtre existant.
+    let dir = abs;
+    const suffix: string[] = [];
+    for (;;) {
+      try {
+        const realDir = await invoke<string>('fs_realpath', { path: dir });
+        realAbs = suffix.reverse().reduce((p, s) => `${p}/${s}`, realDir);
+        break;
+      } catch {
+        const idx = dir.lastIndexOf('/');
+        if (idx <= 0) throw new Error(`Dossier de travail introuvable: ${relPath}`);
+        suffix.push(dir.slice(idx + 1));
+        dir = dir.slice(0, idx);
+      }
+    }
+  }
+  if (!isPathWithin(realAbs, realRoot)) {
+    throw new Error(`Chemin réel hors du projet (lien symbolique refusé): ${relPath}`);
+  }
+  return realAbs;
 }
 
 /** Interdit les écritures dans les répertoires qui contrôlent Git (hooks/config). */
@@ -482,7 +511,7 @@ export function isProtectedWritePath(relPath: string): boolean {
   return segments.includes('.git') || segments.includes('.husky');
 }
 
-function resolveWritePath(root: string, relPath: string | undefined): string {
+async function resolveWritePath(root: string, relPath: string | undefined): Promise<string> {
   if (isProtectedWritePath(String(relPath || ''))) {
     throw new Error(`Écriture interdite dans un dossier de hooks Git: ${relPath}`);
   }
@@ -524,7 +553,7 @@ async function execGetDiagnostics(args: any, ctx: ToolExecutionContext): Promise
   const parts: string[] = [];
   for (const path of paths) {
     if (!languageOf(path)) { parts.push(`${path} : langage non pris en charge (TypeScript, JavaScript, Python).`); continue; }
-    const text = await fileSystemService.readFile(resolvePath(ctx.projectRoot, path)).catch(() => null);
+    const text = await fileSystemService.readFile(await resolvePath(ctx.projectRoot, path)).catch(() => null);
     if (text === null) { parts.push(`${path} : fichier introuvable.`); continue; }
     // Demande explicite : on laisse au serveur le temps de démarrer s'il ne tourne pas encore
     const d = await diagnoseFile(ctx.projectRoot, path, text, { waitMs: 25_000 }).catch(() => null);
@@ -534,7 +563,7 @@ async function execGetDiagnostics(args: any, ctx: ToolExecutionContext): Promise
 }
 
 async function execReadFile(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const abs = resolvePath(ctx.projectRoot, args.path);
+  const abs = await resolvePath(ctx.projectRoot, args.path);
   const raw = await fileSystemService.readFile(abs);
   // Le serveur de langage démarre pendant que l'agent lit : prêt pour sa première modification
   if (diagnosticsEnabled() && languageOf(String(args.path || ''))) warmUp(ctx.projectRoot, args.path);
@@ -554,7 +583,7 @@ async function execReadFile(args: any, ctx: ToolExecutionContext): Promise<ToolR
 }
 
 async function execWriteFile(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const abs = resolveWritePath(ctx.projectRoot, args.path);
+  const abs = await resolveWritePath(ctx.projectRoot, args.path);
   const existed = await fileSystemService.exists(abs);
   const before = existed && languageOf(String(args.path || '')) ? await fileSystemService.readFile(abs).catch(() => null) : null;
   await fileSystemService.writeFile(abs, args.content ?? '');
@@ -564,7 +593,7 @@ async function execWriteFile(args: any, ctx: ToolExecutionContext): Promise<Tool
 }
 
 async function execEditFile(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const abs = resolveWritePath(ctx.projectRoot, args.path);
+  const abs = await resolveWritePath(ctx.projectRoot, args.path);
   const content = await fileSystemService.readFile(abs);
   const oldText: string = args.old_text ?? '';
   const newText: string = args.new_text ?? '';
@@ -594,14 +623,14 @@ async function execEditFile(args: any, ctx: ToolExecutionContext): Promise<ToolR
 }
 
 async function execDeleteFile(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const abs = resolveWritePath(ctx.projectRoot, args.path);
+  const abs = await resolveWritePath(ctx.projectRoot, args.path);
   await fileSystemService.deleteFile(abs);
   ctx.onFileChanged?.(args.path, '', 'delete');
   return { output: `OK — supprimé: ${args.path}` };
 }
 
 async function execListDir(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const abs = resolvePath(ctx.projectRoot, args.path);
+  const abs = await resolvePath(ctx.projectRoot, args.path);
   const depth = Math.min(Math.max(args.depth ?? 2, 1), 4);
   const tree = await fileSystemService.readDirectoryTree(abs, depth);
 
@@ -647,7 +676,7 @@ export function compileSearchPattern(pattern: string): { regex: RegExp; literal:
 async function execSearchFiles(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const { regex, note } = compileSearchPattern(args.pattern);
 
-  const rootAbs = resolvePath(ctx.projectRoot, args.path);
+  const rootAbs = await resolvePath(ctx.projectRoot, args.path);
   const files = await fileSystemService.readProjectFiles(rootAbs, 6);
   const ext = (args.file_glob || '').replace(/^\*+/, ''); // '.ts'
   const results: string[] = [];
@@ -705,7 +734,7 @@ export function precheckCommand(command: string): string | null {
 async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const refused = precheckCommand(args.command);
   if (refused) return { output: refused, isError: true };
-  const cwd = resolvePath(ctx.projectRoot, args.cwd);
+  const cwd = await resolvePath(ctx.projectRoot, args.cwd);
   const result = await terminalService.exec(args.command, {
     cwd,
     timeout: COMMAND_TIMEOUT_MS,
@@ -751,7 +780,7 @@ async function execCapturePage(args: any, ctx: ToolExecutionContext): Promise<To
   const [{ capturePage }, { devServerUrl }, { captureWithRenderer }] = await Promise.all([
     import('./browserCheck'), import('./devServer'), import('@/services/motion/captures'),
   ]);
-  const file = typeof args.file === 'string' && args.file.trim() ? resolvePath(ctx.projectRoot, args.file) : undefined;
+  const file = typeof args.file === 'string' && args.file.trim() ? await resolvePath(ctx.projectRoot, args.file) : undefined;
   const url = file ? undefined : typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot) || undefined;
   if (file || url) {
     const viaRenderer = await captureWithRenderer({
@@ -817,7 +846,7 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
   const [{ captureFrames }, { devServerUrl }, { createStreamEncoder }, renderer] = await Promise.all([
     import('./browserCheck'), import('./devServer'), import('@/services/motion/encode'), import('@/services/motion/renderer'),
   ]);
-  const file = typeof args.file === 'string' && args.file.trim() ? resolvePath(ctx.projectRoot, args.file) : undefined;
+  const file = typeof args.file === 'string' && args.file.trim() ? await resolvePath(ctx.projectRoot, args.file) : undefined;
   const url = file ? undefined : typeof args.url === 'string' && args.url.trim() ? args.url.trim() : devServerUrl(ctx.projectRoot);
   if (!url && !file) return { output: 'Indique file (fichier HTML du projet) ou url.', isError: true };
   if (file) {
@@ -845,7 +874,7 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
       musicNote = 'Un GIF ne contient pas de son : la musique n\'a pas été ajoutée (exporte en mp4 pour l\'avoir).';
     } else {
       try {
-        const musicAbs = resolvePath(ctx.projectRoot, args.music);
+        const musicAbs = await resolvePath(ctx.projectRoot, args.music);
         const { readBinaryFile } = await import('@/lib/tauriFs');
         const bytes = await readBinaryFile(musicAbs);
         if (bytes.byteLength > 80 * 1048576) throw new Error('fichier audio trop lourd (80 Mo au plus)');
@@ -918,7 +947,7 @@ async function execExportAnimation(args: any, ctx: ToolExecutionContext): Promis
     return { output: `Assemblage de la vidéo impossible : ${e?.message || e}`, isError: true };
   }
   if (encoded.format === 'webm') rel = rel.replace(/\.mp4$/i, '.webm');
-  const abs = resolvePath(ctx.projectRoot, rel);
+  const abs = await resolvePath(ctx.projectRoot, rel);
   await createDir(abs.replace(/[\\/][^\\/]+$/, ''), { recursive: true }).catch(() => {});
   const existed = await fileSystemService.exists(abs);
   await writeBinaryFile(abs, encoded.bytes);
@@ -959,7 +988,7 @@ async function exportStill(o: { url?: string; file?: string; width: number; heig
     if (r.error || !r.files[0]) return { output: r.error || 'Aucune image produite.', isError: true };
     const { readBinaryFile, writeBinaryFile, createDir } = await import('@/lib/tauriFs');
     const bytes = await readBinaryFile(r.files[0]);
-    const abs = resolvePath(o.ctx.projectRoot, rel);
+    const abs = await resolvePath(o.ctx.projectRoot, rel);
     await createDir(abs.replace(/[\\/][^\\/]+$/, ''), { recursive: true }).catch(() => {});
     const existed = await fileSystemService.exists(abs);
     await writeBinaryFile(abs, bytes);

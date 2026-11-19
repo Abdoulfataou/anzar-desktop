@@ -46,7 +46,7 @@ Le desktop n'avait aucun test. `vitest` est installé et la CI exécute désorma
 npm test
 ```
 
-Couverture actuelle (118 tests) :
+Couverture actuelle (121 tests) :
 
 - `toolCallAssembler.test.ts` : fragments, multi-appels, id généré ;
 - `history.test.ts` : `shrinkText`, compaction, protection des résultats récents,
@@ -69,7 +69,8 @@ Couverture actuelle (118 tests) :
 - `manager.test.ts` : `alwaysAsk` prioritaire, annotations MCP non fiables ;
 - `VisualBlock.test.ts` : Mermaid filtré (scripts/foreignObject/onclick) ;
 - `subagentPolicy.test.ts` : sous-agents Full sans commandes/spawn/export, lecture seule hors Full ;
-- `commandPolicy.test.ts` : motifs interdits, chemins absolus, tokenisation et scope Tauri.
+- `commandPolicy.test.ts` : motifs interdits, chemins absolus, tokenisation et scope Tauri ;
+- `pathSymlink.test.ts` : rejet d’un lien symbolique sortant du projet.
 - `agentLoop.test.ts` : réponse finale, tool_call, `task_done` + vérification,
   échec de vérification, budget d’étapes, annulation (avec mocks des services
   Tauri/réseau).
