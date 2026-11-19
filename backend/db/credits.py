@@ -91,14 +91,17 @@ async def deduct_credits(
     output_tokens: int = 0,
     external_ref: Optional[str] = None,
     allow_negative: bool = False,
+    tx_type: str = "usage",
+    count_as_usage: bool = True,
 ) -> Dict[str, Any]:
-    """Deduct credits after API usage. Returns new balance.
+    """Deduct credits after API usage, or debit a refund/dispute. Returns new balance.
 
     Raises if insufficient, sauf allow_negative=True : le coût réel d'un appel déjà servi est
     toujours débité (le solde devient une dette, et l'accès est bloqué jusqu'à la recharge).
     """
     email = email.lower().strip()
     amount_fcfa = float(amount_fcfa or 0)
+    tx_type = tx_type if tx_type in ("usage", "refund") else "usage"
     if amount_fcfa <= 0:
         return await get_credits(email)
 
@@ -123,13 +126,14 @@ async def deduct_credits(
                 raise ValueError("Solde insuffisant")
 
             credits.balance_fcfa = float(credits.balance_fcfa or 0) - amount_fcfa
-            credits.total_used = float(credits.total_used or 0) + amount_fcfa
+            if count_as_usage:
+                credits.total_used = float(credits.total_used or 0) + amount_fcfa
             credits.updated_at = _utcnow()
 
             session.add(
                 Transaction(
                     user_email=email,
-                    type="usage",
+                    type=tx_type,
                     amount_fcfa=-amount_fcfa,
                     description=description or "",
                     provider=provider or "",

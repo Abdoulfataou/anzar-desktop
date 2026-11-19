@@ -15,7 +15,7 @@ import httpx
 
 from config import settings
 from services.payments.base import (
-    Checkout, PaymentError, PaymentProvider, ProviderInfo, Quote, RemoteStatus,
+    Checkout, PaymentError, PaymentProvider, ProviderInfo, Quote, RefundEvent, RemoteStatus,
     SignatureError, header_get, verify_timestamped_signature,
 )
 
@@ -25,6 +25,7 @@ API = "https://api.stripe.com/v1"
 ZERO_DECIMAL = {"xof", "xaf", "jpy", "krw", "gnf", "rwf", "ugx", "vnd", "clp", "djf", "kmf", "mga", "pyg", "vuv"}
 EVENTS = {"checkout.session.completed", "checkout.session.async_payment_succeeded",
           "checkout.session.async_payment_failed", "checkout.session.expired"}
+REFUND_EVENTS = {"charge.refunded", "charge.dispute.created", "charge.dispute.updated"}
 
 
 def _currency() -> str:
@@ -127,7 +128,39 @@ class StripeProvider(PaymentProvider):
         else:
             state = "pending"
         return RemoteStatus(state=state, amount=from_minor(int(s.get("amount_total") or 0), cur),
-                            currency=cur, raw_status=f"{status}/{pay}")
+                            currency=cur, raw_status=f"{status}/{pay}",
+                            provider_payment_id=str(s.get("payment_intent") or ""))
+
+    def webhook_refund_event(self, raw: bytes, headers: Mapping[str, str]) -> Optional[RefundEvent]:
+        verify_timestamped_signature(header_get(headers, "stripe-signature"), raw,
+                                     settings.stripe_webhook_secret.strip(), scheme="v1")
+        try:
+            event = json.loads(raw)
+        except ValueError:
+            raise SignatureError("corps JSON invalide")
+        etype = str(event.get("type") or "")
+        if etype not in REFUND_EVENTS:
+            return None
+        obj = ((event.get("data") or {}).get("object")) or {}
+        if not isinstance(obj, dict):
+            return None
+        cur = str(obj.get("currency") or "").lower()
+        metadata = obj.get("metadata") or {}
+        if etype == "charge.refunded":
+            amount = from_minor(int(obj.get("amount_refunded") or obj.get("amount") or 0), cur)
+            state = "refunded"
+        else:
+            amount = from_minor(int(obj.get("amount") or 0), cur)
+            state = "disputed"
+        return RefundEvent(
+            intent_id=str(metadata.get("intent_id") or ""),
+            payment_id=str(obj.get("payment_intent") or ""),
+            tx_id=str(obj.get("id") or ""),
+            amount=amount,
+            currency=cur,
+            state=state,
+            raw_status=etype,
+        )
 
     def webhook_tx_id(self, raw: bytes, headers: Mapping[str, str]) -> Optional[str]:
         verify_timestamped_signature(header_get(headers, "stripe-signature"), raw,

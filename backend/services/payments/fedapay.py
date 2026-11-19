@@ -15,14 +15,15 @@ import httpx
 
 from config import settings
 from services.payments.base import (
-    Checkout, PaymentError, PaymentProvider, ProviderInfo, Quote, RemoteStatus,
+    Checkout, PaymentError, PaymentProvider, ProviderInfo, Quote, RefundEvent, RemoteStatus,
     SignatureError, header_get, verify_timestamped_signature,
 )
 
 logger = logging.getLogger("anzar.payments.fedapay")
 
 PAID = {"approved", "transferred"}
-FAILED = {"declined", "refunded", "approved_partially_refunded", "transferred_partially_refunded"}
+REFUNDED = {"refunded", "approved_partially_refunded", "transferred_partially_refunded"}
+FAILED = {"declined"}
 CANCELLED = {"canceled", "cancelled", "expired"}
 
 
@@ -106,8 +107,33 @@ class FedaPayProvider(PaymentProvider):
     async def fetch_status(self, tx_id: str) -> RemoteStatus:
         tx = _unwrap(await self._request("GET", f"/transactions/{tx_id}"))
         raw = str(tx.get("status") or "").lower()
-        state = "paid" if raw in PAID else "failed" if raw in FAILED else "cancelled" if raw in CANCELLED else "pending"
+        state = ("paid" if raw in PAID else "refunded" if raw in REFUNDED
+                 else "failed" if raw in FAILED else "cancelled" if raw in CANCELLED else "pending")
         return RemoteStatus(state=state, amount=float(tx.get("amount") or 0), currency="", raw_status=raw)
+
+    def webhook_refund_event(self, raw: bytes, headers: Mapping[str, str]) -> Optional[RefundEvent]:
+        verify_timestamped_signature(header_get(headers, "x-fedapay-signature"), raw,
+                                     settings.fedapay_webhook_secret.strip(), scheme="s")
+        try:
+            event = json.loads(raw)
+        except ValueError:
+            raise SignatureError("corps JSON invalide")
+        name = str(event.get("name") or "")
+        if not name.startswith("transaction."):
+            return None
+        entity = event.get("entity") or event.get("object") or {}
+        if not isinstance(entity, dict):
+            return None
+        raw_status = str(entity.get("status") or "").lower()
+        if raw_status not in REFUNDED:
+            return None
+        return RefundEvent(
+            tx_id=str(entity.get("id") or ""),
+            amount=float(entity.get("amount") or 0),
+            currency="xof",
+            state="refunded",
+            raw_status=raw_status,
+        )
 
     def webhook_tx_id(self, raw: bytes, headers: Mapping[str, str]) -> Optional[str]:
         verify_timestamped_signature(header_get(headers, "x-fedapay-signature"), raw,

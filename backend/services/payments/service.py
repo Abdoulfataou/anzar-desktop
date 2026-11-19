@@ -22,10 +22,12 @@ from sqlalchemy import func, select
 
 from config import settings
 from db.base import _model_to_dict, _utcnow, get_sessionmaker
-from db.models import PaymentIntent
+from db.models import PaymentIntent, Transaction, User
 from db.payments import credit_intent
+from db.credits import deduct_credits
+from db.users import deactivate_user
 from services.payments.base import (
-    PaymentError, PaymentProvider, RemoteStatus, amounts_match, describe,
+    PaymentError, PaymentProvider, RefundEvent, RemoteStatus, amounts_match, describe,
 )
 from services.payments.fedapay import FedaPayProvider
 from services.payments.stripe_provider import StripeProvider
@@ -133,7 +135,95 @@ async def get_user_intent(intent_id: str, user_email: str, refresh: bool = True)
     return _public(intent)
 
 
+async def apply_refund(
+    intent: PaymentIntent,
+    *,
+    state: str = "refunded",
+    amount: float = 0,
+    raw_status: str = "",
+    provider_payment_id: str = "",
+) -> PaymentIntent:
+    """Débite les crédits d'un paiement remboursé/contesté et bloque le compte.
+
+    Idempotent : le débit porte une référence unique par paiement et le statut
+    final est terminal. Un remboursement partiel débite la part correspondante
+    du crédit total (bonus inclus).
+    """
+    state = state if state in ("refunded", "disputed") else "refunded"
+    if intent.status in ("refunded", "disputed"):
+        return intent
+    if intent.status != "paid":
+        # Rien n'a été crédité : on garde seulement la trace du statut distant.
+        return await _update(intent.id, status=state, remote_status=raw_status or state,
+                             failure_reason="Remboursement/litige avant crédit",
+                             provider_payment_id=provider_payment_id or intent.provider_payment_id)
+
+    Session = get_sessionmaker()
+    async with Session() as session:
+        credit_tx = await session.scalar(select(Transaction).where(
+            Transaction.external_ref == f"payment:{intent.id}"))
+        credited = abs(float(credit_tx.amount_fcfa)) if credit_tx else float(intent.amount_fcfa or 0)
+
+    debit = credited
+    if amount and intent.charged_amount:
+        ratio = max(0.0, min(1.0, float(amount) / float(intent.charged_amount)))
+        debit = round(credited * ratio, 2)
+    debit = max(0.0, debit)
+
+    if debit > 0:
+        await deduct_credits(
+            intent.user_email,
+            debit,
+            description=f"Remboursement/litige {intent.provider} ({raw_status or state})",
+            external_ref=f"refund:{intent.id}",
+            allow_negative=True,
+            tx_type="refund",
+            count_as_usage=False,
+        )
+
+    # Le compte est bloqué : un litige carte ne doit pas continuer à consommer.
+    await deactivate_user(intent.user_email)
+    logger.warning("Paiement %s remboursé/contesté (%s) : débit %.2f FCFA, compte %s bloqué",
+                   intent.id, state, debit, intent.user_email)
+    return await _update(
+        intent.id,
+        status=state,
+        remote_status=raw_status or state,
+        failure_reason=f"Remboursement/litige ({raw_status or state}) : compte bloqué",
+        provider_payment_id=provider_payment_id or intent.provider_payment_id,
+    )
+
+
+async def _find_refund_intent(provider_id: str, event: RefundEvent) -> Optional[PaymentIntent]:
+    Session = get_sessionmaker()
+    async with Session() as session:
+        if event.intent_id:
+            intent = await session.scalar(select(PaymentIntent).where(
+                PaymentIntent.id == event.intent_id, PaymentIntent.provider == provider_id))
+            if intent:
+                return intent
+        if event.payment_id:
+            intent = await session.scalar(select(PaymentIntent).where(
+                PaymentIntent.provider == provider_id,
+                PaymentIntent.provider_payment_id == event.payment_id))
+            if intent:
+                return intent
+        if event.tx_id:
+            intent = await session.scalar(select(PaymentIntent).where(
+                PaymentIntent.provider == provider_id,
+                PaymentIntent.provider_tx_id == event.tx_id))
+            if intent:
+                return intent
+    return None
+
+
 async def apply_remote(intent: PaymentIntent, remote: RemoteStatus) -> PaymentIntent:
+    if remote.state in ("refunded", "disputed"):
+        return await apply_refund(intent, state=remote.state, amount=remote.amount,
+                                  raw_status=remote.raw_status,
+                                  provider_payment_id=remote.provider_payment_id)
+    if intent.status in ("refunded", "disputed"):
+        return intent
     if intent.status == "paid":
         return intent
     if remote.state == "paid":
@@ -146,7 +236,8 @@ async def apply_remote(intent: PaymentIntent, remote: RemoteStatus) -> PaymentIn
                                  failure_reason="Montant reçu différent du montant facturé : à vérifier")
         await credit_intent(intent.id, intent.user_email, float(intent.amount_fcfa),
                             f"Paiement {intent.provider} confirmé", provider_ref=intent.provider_tx_id)
-        return await _update(intent.id, remote_status=remote.raw_status)
+        return await _update(intent.id, remote_status=remote.raw_status,
+                             provider_payment_id=remote.provider_payment_id or intent.provider_payment_id)
     if remote.state in ("failed", "cancelled") and intent.status == "pending":
         reason = "Paiement refusé" if remote.state == "failed" else "Paiement annulé ou expiré"
         return await _update(intent.id, status=remote.state, remote_status=remote.raw_status,
@@ -177,6 +268,21 @@ async def handle_webhook(provider_id: str, raw: bytes, headers: Mapping[str, str
     provider = PROVIDERS.get(provider_id)
     if not provider or not provider.enabled() or not provider.webhooks_enabled():
         return "disabled"
+
+    refund = provider.webhook_refund_event(raw, headers)
+    if refund:
+        intent = await _find_refund_intent(provider_id, refund)
+        if not intent:
+            return "ignored"
+        await apply_refund(
+            intent,
+            state=refund.state,
+            amount=refund.amount,
+            raw_status=refund.raw_status,
+            provider_payment_id=refund.payment_id,
+        )
+        return "ok"
+
     tx_id = provider.webhook_tx_id(raw, headers)
     if not tx_id:
         return "ignored"

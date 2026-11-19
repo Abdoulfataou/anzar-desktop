@@ -208,6 +208,9 @@ class PaymentIntent(Base):
     # identifiant de la transaction chez lui, montant réellement facturé et devise.
     provider: Mapped[str] = mapped_column(String(32), default="", nullable=False, index=True)
     provider_tx_id: Mapped[str] = mapped_column(String(255), default="", nullable=False, index=True)
+    # Identifiant du paiement chez le fournisseur (Stripe PaymentIntent), distinct
+    # de la session Checkout : nécessaire pour rapprocher les remboursements/litiges.
+    provider_payment_id: Mapped[str] = mapped_column(String(255), default="", nullable=False, index=True)
     charged_amount: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     charged_currency: Mapped[str] = mapped_column(String(8), default="", nullable=False)
     remote_status: Mapped[str] = mapped_column(String(40), default="", nullable=False)
@@ -217,7 +220,7 @@ class PaymentIntent(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "status IN ('pending', 'paid', 'cancelled', 'failed')",
+            "status IN ('pending', 'paid', 'cancelled', 'failed', 'refunded', 'disputed')",
             name="ck_payment_intents_status",
         ),
     )

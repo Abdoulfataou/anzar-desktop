@@ -40,10 +40,23 @@ class Checkout:
 
 @dataclass
 class RemoteStatus:
-    state: str          # paid | pending | failed | cancelled
+    state: str          # paid | pending | failed | cancelled | refunded | disputed
     amount: float       # montant payé chez le fournisseur, même unité que Quote.amount
     currency: str       # iso minuscule, "" si le fournisseur ne la renvoie pas
     raw_status: str     # statut brut du fournisseur (affiché dans l'admin)
+    provider_payment_id: str = ""  # Stripe PaymentIntent (utile pour les litiges)
+
+
+@dataclass
+class RefundEvent:
+    """Événement de remboursement ou litige, après vérification de signature."""
+    intent_id: str = ""
+    payment_id: str = ""
+    tx_id: str = ""
+    amount: float = 0
+    currency: str = ""
+    state: str = "refunded"
+    raw_status: str = ""
 
 
 @dataclass
@@ -80,6 +93,10 @@ class PaymentProvider:
 
     def webhook_tx_id(self, raw: bytes, headers: Mapping[str, str]) -> Optional[str]:
         raise NotImplementedError
+
+    def webhook_refund_event(self, raw: bytes, headers: Mapping[str, str]) -> Optional[RefundEvent]:
+        """Remboursement/litige signé, ou None. Les fournisseurs concernés l'implémentent."""
+        return None
 
 
 def verify_timestamped_signature(header: str, payload: bytes, secret: str, scheme: str,

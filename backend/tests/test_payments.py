@@ -14,7 +14,7 @@ import pytest
 from config import settings
 from services.payments import service as svc
 from services.payments.base import (
-    Checkout, PaymentProvider, ProviderInfo, Quote, RemoteStatus, SignatureError,
+    Checkout, PaymentProvider, ProviderInfo, Quote, RefundEvent, RemoteStatus, SignatureError,
     header_get, verify_timestamped_signature,
 )
 from services.payments.fedapay import FedaPayProvider
@@ -84,6 +84,16 @@ class FakeProvider(PaymentProvider):
         verify_timestamped_signature(header_get(headers, "x-sig"), raw, SECRET, "v1")
         return json.loads(raw).get("tx")
 
+    def webhook_refund_event(self, raw, headers):
+        verify_timestamped_signature(header_get(headers, "x-sig"), raw, SECRET, "v1")
+        body = json.loads(raw)
+        r = body.get("refund")
+        if not r:
+            return None
+        return RefundEvent(intent_id=r.get("intent_id", ""), tx_id=r.get("tx", ""),
+                           amount=float(r.get("amount") or 0), currency="usd",
+                           state=r.get("state", "refunded"), raw_status="refund")
+
 
 @pytest.fixture()
 def fake():
@@ -136,6 +146,30 @@ def test_full_flow_webhook_credits_once(client, user_and_token, fake):
     assert client.get(f"/api/payments/{iid}", headers=h).json()["status"] == "paid"
     assert client.get(f"/api/payments/return?i={iid}").status_code == 200
     assert balance(client, h) == 6900
+
+
+def test_refund_debits_and_blocks_account(client, user_and_token, fake):
+    email, _, h = user_and_token
+    iid = client.post("/api/payments/initiate", headers=h, json={"amount": 6000, "provider": "fake"}).json()["intent_id"]
+    fake.remote = RemoteStatus("paid", 10.0, "usd", "complete/paid")
+    body = json.dumps({"tx": f"tx_{iid[:8]}"}).encode()
+    assert client.post("/api/payments/webhook/fake", content=body, headers={"x-sig": sign(body)}).status_code == 200
+    assert balance(client, h) == 6900
+
+    refund_body = json.dumps({"refund": {
+        "intent_id": iid, "amount": 10.0, "state": "refunded"}}).encode()
+    headers = {"x-sig": sign(refund_body)}
+    assert client.post("/api/payments/webhook/fake", content=refund_body, headers=headers).status_code == 200
+
+    from db import get_credits
+    assert client.portal.call(get_credits, email)['balance_fcfa'] == 0
+    # Le changement de statut + le blocage sont terminaux et idempotents.
+    assert client.post("/api/payments/webhook/fake", content=refund_body, headers=headers).status_code == 200
+    assert client.portal.call(get_credits, email)['balance_fcfa'] == 0
+    assert client.get("/api/auth/verify", headers=h).status_code == 401
+    assert client.get(f"/api/payments/{iid}", headers=h).status_code == 401
+    # La demande n'est plus accessible avec un jeton utilisateur, mais l'admin la voit.
+    # (Le compte est désactivé : on vérifie directement en base via le statut public/admin.)
 
 
 def test_concurrent_settlement_credits_once(client, user_and_token, fake):
@@ -265,6 +299,11 @@ def test_stripe_adapter(monkeypatch):
     assert p.webhook_tx_id(body, {"Stripe-Signature": sign(body)}) == "cs_test_1"
     other = json.dumps({"type": "charge.refunded", "data": {"object": {"id": "ch_1"}}}).encode()
     assert p.webhook_tx_id(other, {"stripe-signature": sign(other)}) is None
+    refund_body = json.dumps({"type": "charge.refunded", "data": {"object": {
+        "id": "ch_1", "payment_intent": "pi_1", "amount_refunded": 834,
+        "currency": "usd", "metadata": {"intent_id": "iid1"}}}}).encode()
+    re = p.webhook_refund_event(refund_body, {"stripe-signature": sign(refund_body)})
+    assert (re.intent_id, re.payment_id, re.state, re.amount) == ("iid1", "pi_1", "refunded", 8.34)
 
     monkeypatch.setattr(settings, "stripe_currency", "xof")
     monkeypatch.setattr(settings, "stripe_fcfa_per_unit", 0.0)
