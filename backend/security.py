@@ -6,6 +6,11 @@ import os
 import re
 import time
 import secrets
+import base64
+import hashlib
+import hmac
+import struct
+from urllib.parse import quote
 import logging
 import ipaddress
 from datetime import datetime, timedelta, timezone
@@ -156,6 +161,78 @@ rate_limiter = RateLimiter()
 # ============================================================================
 # JWT TOKEN (pyjwt — HS256, algorithme épinglé)
 # ============================================================================
+
+# ── TOTP admin (RFC 6238) ──
+# Secret TOTP chiffré au repos avec une clé dérivée de JWT_SECRET : une fuite
+# de la seule table admins ne suffit pas à contourner le second facteur.
+
+def generate_totp_secret() -> str:
+    return base64.b32encode(secrets.token_bytes(20)).decode("ascii").rstrip("=")
+
+
+def _totp_key(secret: str) -> bytes:
+    s = (secret or "").strip().upper()
+    s += "=" * ((8 - len(s) % 8) % 8)
+    return base64.b32decode(s)
+
+
+def _totp_code(secret: str, counter: int, digits: int = 6) -> str:
+    digest = hmac.new(_totp_key(secret), struct.pack(">Q", counter), hashlib.sha1).digest()
+    offset = digest[-1] & 0x0F
+    value = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
+    return str(value % (10 ** digits)).zfill(digits)
+
+
+def totp_now(secret: str, at: Optional[float] = None) -> str:
+    return _totp_code(secret, int((at if at is not None else time.time()) // 30))
+
+
+def verify_totp(secret: str, code: str, window: int = 1, at: Optional[float] = None) -> bool:
+    """Vérifie un code TOTP à ±window périodes de 30 s."""
+    code = str(code or "").strip().replace(" ", "")
+    if not secret or len(code) != 6 or not code.isdigit():
+        return False
+    counter = int((at if at is not None else time.time()) // 30)
+    return any(hmac.compare_digest(_totp_code(secret, counter + delta), code)
+               for delta in range(-window, window + 1))
+
+
+def seal_totp_secret(secret: str) -> str:
+    """Chiffre le secret avec un flux HMAC dérivé de JWT_SECRET (sans dépendance)."""
+    nonce = secrets.token_bytes(16)
+    key = hashlib.sha256(settings.jwt_secret.encode()).digest()
+    plain = (secret or "").encode("ascii")
+    stream = b""
+    counter = 0
+    while len(stream) < len(plain):
+        stream += hmac.new(key, nonce + counter.to_bytes(4, "big"), hashlib.sha256).digest()
+        counter += 1
+    sealed = bytes(a ^ b for a, b in zip(plain, stream))
+    return "v1:" + base64.urlsafe_b64encode(nonce + sealed).decode("ascii")
+
+
+def open_totp_secret(value: str) -> str:
+    if not value or not value.startswith("v1:"):
+        return ""
+    try:
+        raw = base64.urlsafe_b64decode(value[3:].encode("ascii"))
+        nonce, sealed = raw[:16], raw[16:]
+        key = hashlib.sha256(settings.jwt_secret.encode()).digest()
+        stream = b""
+        counter = 0
+        while len(stream) < len(sealed):
+            stream += hmac.new(key, nonce + counter.to_bytes(4, "big"), hashlib.sha256).digest()
+            counter += 1
+        plain = bytes(a ^ b for a, b in zip(sealed, stream))
+        return plain.decode("ascii")
+    except Exception:
+        return ""
+
+
+def totp_uri(email: str, secret: str) -> str:
+    label = quote(f"ANZAR Admin:{email}", safe="")
+    return f"otpauth://totp/{label}?secret={secret}&issuer=ANZAR&algorithm=SHA1&digits=6&period=30"
+
 
 # Algorithms explicitly pinned: prevents algorithm-confusion attacks
 # (e.g. alg:none / HS256-vs-RS512 key confusion).

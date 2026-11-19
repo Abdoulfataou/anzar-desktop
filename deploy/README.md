@@ -74,6 +74,10 @@ nano .env
 Dans `.env`, remplis :
 - `DEEPSEEK_API_KEY` : ta clé DeepSeek (platform.deepseek.com → API keys) ;
 - `BREVO_API_KEY` : la même clé Brevo que ShagoStore (codes de connexion par e-mail) ;
+- `ADMIN_REQUIRE_MFA` : laisser `false` le temps d'enrôler les admins, puis passer `true` pour exiger la double
+  authentification avant tout accès admin ;
+- `ADMIN_ALLOWED_IPS` : liste CIDR séparée par des virgules (ex. `203.0.113.10/32,10.0.0.0/8`). Vide = pas de
+  restriction réseau, à réserver au développement ;
 - `TELEGRAM_BOT_TOKEN` et `TELEGRAM_CHAT_ID` : de préférence un bot à part (créé avec @BotFather), pour pouvoir
   couper l'un sans l'autre. Même conseil pour `BREVO_API_KEY` : une clé Brevo par projet. Ne jamais reprendre
   un mot de passe, `JWT_SECRET` ou `CLE_SAUVEGARDE` de ShagoStore.
@@ -171,6 +175,38 @@ Sécurité : le serveur ne crédite jamais sur la seule foi du webhook. Il véri
 relit le statut chez le fournisseur, contrôle montant et devise, puis crédite une seule fois.
 Si un webhook se perd, l'app (pendant l'attente) et un rattrapage toutes les 5 minutes relisent
 le statut ; dans l'admin, « Vérifier » fait la même chose à la demande.
+
+
+## Sécuriser `/api/admin`
+
+Deux barrières indépendantes :
+
+1. **MFA TOTP** — dans le panneau : `Paramètres → Double authentification`, génère le secret,
+   ajoute-le dans Google Authenticator / 1Password / Aegis, puis valide un code. La connexion
+   admin demandera ensuite ce code. Une fois tous les admins enrôlés, mets :
+   ```
+   ADMIN_REQUIRE_MFA=true
+   ```
+   Un admin sans MFA est alors bloqué sur toutes les routes métier, y compris l'enrôlement :
+   enrôle tous les comptes avant d'activer le drapeau. Pour ajouter un admin ensuite, désactive
+   temporairement `ADMIN_REQUIRE_MFA`, fais-le enrôler, puis réactive.
+2. **Restriction réseau** — `ADMIN_ALLOWED_IPS` filtre `/api/admin/*` côté FastAPI. Pour une
+   défense en profondeur, restreins aussi le chemin dans le Caddy de ShagoStore :
+   ```
+   @anzar_admin path /api/admin/*
+   handle @anzar_admin {
+       @allowed remote_ip 203.0.113.10
+       handle @allowed {
+           reverse_proxy anzar-api:8000
+       }
+       respond 403
+   }
+   ```
+   Adapte l'IP ou le réseau VPN. Si tu utilises un reverse proxy, `get_client_ip` ne fait confiance
+   à `X-Forwarded-For` que depuis les réseaux privés/loopback.
+
+Sans `ADMIN_ALLOWED_IPS` ni règle Caddy, `/api/admin/*` reste exposé à Internet ; la MFA demeure
+la protection principale.
 
 
 ## Vitrine getanzar.com

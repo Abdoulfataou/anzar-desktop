@@ -11,7 +11,7 @@ export type Credits = { balance_fcfa: number; total_recharged?: number; total_us
 
 export type AdminLoginResponse = {
   token: string
-  user: { email: string; name: string; role: Role; admin_id: number; must_change_password?: boolean }
+  user: { email: string; name: string; role: Role; admin_id: number; must_change_password?: boolean; mfa_enabled?: boolean }
 }
 
 export type HealthResponse = { status: string; timestamp?: number; version?: string; checks?: Record<string, string> }
@@ -115,6 +115,7 @@ export type AdminAccount = {
   role: Role
   is_active?: boolean
   must_change_password?: boolean
+  mfa_enabled?: boolean
   created_at?: string
   last_login?: string | null
 }
@@ -203,11 +204,17 @@ export const api = {
   health: () => apiFetch<HealthResponse>('/health'),
 
   // Connexion et profil
-  login: (email: string, password: string) => apiFetch<AdminLoginResponse>('/api/admin/login', post({ email, password })),
+  login: (email: string, password: string, totp_code = '') =>
+    apiFetch<AdminLoginResponse>('/api/admin/login', post({ email, password, totp_code })),
   me: () => apiFetch<AdminAccount>('/api/admin/me'),
   updateMe: (data: { name?: string; email?: string }) => apiFetch<AdminAccount>('/api/admin/me', patch(data)),
   changePassword: (current_password: string, new_password: string) =>
     apiFetch<{ status: string }>('/api/admin/change-password', post({ current_password, new_password })),
+  mfaSetup: () => apiFetch<{ secret: string; otpauth_uri: string }>('/api/admin/mfa/setup', post({})),
+  mfaEnable: (code: string) => apiFetch<{ status: string; mfa_enabled: boolean }>('/api/admin/mfa/enable', post({ code })),
+  mfaDisable: (password: string, code: string) =>
+    apiFetch<{ status: string; mfa_enabled: boolean }>('/api/admin/mfa/disable', post({ password, code })),
+  logout: () => apiFetch<{ status: string }>('/api/admin/logout', post({})),
 
   // Tableau de bord
   stats: () => apiFetch<GlobalStats>('/api/admin/stats'),

@@ -104,6 +104,35 @@ async def change_admin_password(admin_id: int, new_password: str) -> bool:
             return (res.rowcount or 0) > 0
 
 
+async def set_admin_totp_secret(admin_id: int, sealed_secret: str) -> bool:
+    """Enregistre un secret TOTP en attente de validation."""
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(update(Admin).where(Admin.id == int(admin_id))
+                                        .values(totp_secret=sealed_secret, totp_enabled=False))
+            return (res.rowcount or 0) > 0
+
+
+async def enable_admin_totp(admin_id: int) -> bool:
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(update(Admin).where(Admin.id == int(admin_id))
+                                        .values(totp_enabled=True, token_version=Admin.token_version + 1))
+            return (res.rowcount or 0) > 0
+
+
+async def disable_admin_totp(admin_id: int) -> bool:
+    Session = get_sessionmaker()
+    async with Session() as session:
+        async with session.begin():
+            res = await session.execute(update(Admin).where(Admin.id == int(admin_id))
+                                        .values(totp_secret="", totp_enabled=False,
+                                                token_version=Admin.token_version + 1))
+            return (res.rowcount or 0) > 0
+
+
 async def list_admins() -> List[Dict[str, Any]]:
     Session = get_sessionmaker()
     async with Session() as session:

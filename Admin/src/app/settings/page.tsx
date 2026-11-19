@@ -14,6 +14,7 @@ export default function SettingsPage() {
   const tabs = [
     { id: 'profile', label: 'Mon profil', hidden: mustChange },
     { id: 'security', label: 'Mot de passe' },
+    { id: 'mfa', label: 'Double authentification', hidden: mustChange },
     { id: 'platform', label: 'Plateforme', hidden: mustChange },
   ]
   const [tab, setTab] = useTab(tabs)
@@ -28,6 +29,7 @@ export default function SettingsPage() {
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'profile' && <Profile />}
       {tab === 'security' && <Security />}
+      {tab === 'mfa' && <MfaSettings />}
       {tab === 'platform' && <Platform />}
     </div>
   )
@@ -107,6 +109,86 @@ function Security() {
         </Field>
         <div><Button disabled={!valid} isLoading={busy} onClick={save}>Changer le mot de passe</Button></div>
       </div>
+    </Panel>
+  )
+}
+
+function MfaSettings() {
+  const navigate = useNavigate()
+  const clearSession = useAuthStore((s) => s.clearSession)
+  const me = useLoad(() => api.me(), [])
+  const [setup, setSetup] = useState<{ secret: string; otpauth_uri: string } | null>(null)
+  const [code, setCode] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const finish = (message: string) => {
+    toast.success(message)
+    clearSession()
+    navigate('/login')
+  }
+
+  const start = async () => {
+    setBusy(true)
+    try { setSetup(await api.mfaSetup()) }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Échec') }
+    finally { setBusy(false) }
+  }
+
+  const enable = async () => {
+    setBusy(true)
+    try { await api.mfaEnable(code); finish('MFA activée. Reconnecte-toi avec ton code.') }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Code invalide') }
+    finally { setBusy(false) }
+  }
+
+  const disable = async () => {
+    setBusy(true)
+    try { await api.mfaDisable(password, code); finish('MFA désactivée. Reconnecte-toi.') }
+    catch (e) { toast.error(e instanceof Error ? e.message : 'Échec') }
+    finally { setBusy(false) }
+  }
+
+  if (me.loading && !me.data) return <Spinner />
+  if (me.error || !me.data) return <ErrorBox message={me.error ?? 'Erreur'} />
+  const enabled = !!me.data.mfa_enabled
+
+  return (
+    <Panel title="Double authentification (TOTP)"
+      description="Un code à 6 chiffres protège la connexion admin, en plus du mot de passe.">
+      {enabled ? (
+        <div className="grid gap-4 max-w-md">
+          <Notice tone="info">MFA active sur ce compte.</Notice>
+          <Field label="Mot de passe actuel"><TextInput type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+          <Field label="Code TOTP actuel" hint="6 chiffres générés par ton application d'authentification.">
+            <TextInput inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+          </Field>
+          <div><Button variant="danger" disabled={!password || code.length !== 6} isLoading={busy} onClick={disable}>Désactiver la MFA</Button></div>
+        </div>
+      ) : (
+        <div className="grid gap-4 max-w-lg">
+          <Notice>
+            Utilise Google Authenticator, 1Password, Aegis ou une application compatible TOTP.
+            La MFA est fortement recommandée pour les rôles owner et admin.
+          </Notice>
+          {!setup ? (
+            <div><Button isLoading={busy} onClick={start}>Générer mon secret MFA</Button></div>
+          ) : (
+            <>
+              <Field label="Secret à saisir dans ton application">
+                <code className="block break-all rounded-md border border-border bg-background-secondary p-3 font-mono text-sm">{setup.secret}</code>
+              </Field>
+              <Field label="URI otpauth">
+                <code className="block break-all text-xs text-foreground-secondary">{setup.otpauth_uri}</code>
+              </Field>
+              <Field label="Code de vérification" hint="Saisis le code affiché par ton application.">
+                <TextInput inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} />
+              </Field>
+              <div><Button disabled={code.length !== 6} isLoading={busy} onClick={enable}>Activer la MFA</Button></div>
+            </>
+          )}
+        </div>
+      )}
     </Panel>
   )
 }

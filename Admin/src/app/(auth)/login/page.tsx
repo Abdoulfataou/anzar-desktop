@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button } from '../../../components/ui/Button'
 import { Input } from '../../../components/ui/Input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../../components/ui/Card'
-import { Lock, Mail, Eye, EyeOff } from 'lucide-react'
+import { Lock, Mail, Eye, EyeOff, ShieldCheck } from 'lucide-react'
 import AnzarLogo from '@/components/ui/AnzarLogo'
 import { motion } from 'framer-motion'
 import { api } from '@/api/backend'
@@ -13,6 +13,7 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [totpCode, setTotpCode] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -24,7 +25,7 @@ export default function LoginPage() {
     setIsLoading(true)
 
     try {
-      const result = await api.login(email.trim(), password)
+      const result = await api.login(email.trim(), password, totpCode.trim())
       setSession({ token: result.token, user: result.user as any })
       if ((result.user as any)?.must_change_password) {
         navigate('/settings')
@@ -163,6 +164,22 @@ export default function LoginPage() {
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-sm font-medium text-foreground-primary mb-2 block">
+                        Code MFA <span className="text-foreground-muted font-normal">(si activé)</span>
+                      </label>
+                      <Input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        placeholder="123456"
+                        maxLength={6}
+                        leftIcon={<ShieldCheck className="h-4 w-4" />}
+                        value={totpCode}
+                        onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       />
                     </div>
                   </div>

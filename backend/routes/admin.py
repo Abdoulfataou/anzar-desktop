@@ -9,7 +9,9 @@ Rôles :
 
 Chaque action qui modifie quelque chose est inscrite au journal d'audit (table admin_audit).
 """
+import ipaddress
 import logging
+import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request, Depends
@@ -17,7 +19,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from config import settings
-from security import rate_limiter, get_client_ip, create_token, verify_token_checked
+from security import (
+    rate_limiter, get_client_ip, create_token, verify_token_checked,
+    generate_totp_secret, verify_totp, seal_totp_secret, open_totp_secret, totp_uri,
+)
 from db import (
     verify_password,
     get_project,
@@ -30,6 +35,8 @@ from db import (
     admin_delete_project_any,
     admin_mark_payment_intent_paid,
     deduct_credits,
+    set_admin_totp_secret, enable_admin_totp, disable_admin_totp,
+    revoke_token_jti,
 )
 from db import admin_extra as extra
 from routes._state import _project_states
@@ -44,6 +51,16 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 class AdminLoginRequest(BaseModel):
     email: str = Field(..., min_length=1, max_length=255)
     password: str = Field(..., min_length=1, max_length=128)
+    totp_code: str = Field(default="", max_length=6)
+
+
+class MfaCodeRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class MfaDisableRequest(BaseModel):
+    password: str = Field(..., min_length=1, max_length=128)
+    code: str = Field(..., min_length=6, max_length=6)
 
 
 class AdminUpdateProfileRequest(BaseModel):
@@ -96,11 +113,35 @@ class AdminPatchRequest(BaseModel):
 
 # ── Auth admin ──
 
+def _admin_ip_allowed(request: Request) -> None:
+    """Restriction réseau optionnelle de /api/admin (Caddy + défense en profondeur)."""
+    allowed = (settings.admin_allowed_ips or "").strip()
+    if not allowed:
+        return
+    ip = get_client_ip(request)
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        raise HTTPException(403, "Accès admin refusé")
+    for part in allowed.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            if addr in ipaddress.ip_network(part, strict=False):
+                return
+        except ValueError:
+            continue
+    raise HTTPException(403, "Accès admin refusé depuis ce réseau")
+
+
 async def get_current_admin(
     request: Request,
+
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
 ) -> dict:
     """Vérifie le jeton admin et l'état ACTUEL du compte (rôle, actif) en base."""
+    _admin_ip_allowed(request)
     if not credentials:
         raise HTTPException(401, "Token admin requis")
     payload = await verify_token_checked(credentials.credentials)
@@ -121,6 +162,12 @@ async def get_current_admin(
     payload["must_change_password"] = must_change
     if must_change and request.url.path not in {"/api/admin/me", "/api/admin/change-password"}:
         raise HTTPException(403, "Mot de passe admin à modifier avant de continuer.")
+    if (settings.admin_require_mfa and not admin_data.get("totp_enabled")
+            and request.url.path not in {"/api/admin/me", "/api/admin/change-password"}):
+        # Ne pas laisser un simple mot de passe enrôler lui-même une MFA alors
+        # que la MFA est obligatoire : les comptes doivent être enrôlés avant
+        # l'activation du drapeau (ou par une procédure owner dédiée).
+        raise HTTPException(403, "MFA obligatoire : fais enrôler ce compte avant d'activer ADMIN_REQUIRE_MFA.")
     payload["_ip"] = get_client_ip(request)
     return payload
 
@@ -155,6 +202,7 @@ def _clamp(limit: int, maximum: int = 200) -> int:
 
 @router.post("/login")
 async def admin_login(body: AdminLoginRequest, request: Request):
+    _admin_ip_allowed(request)
     ip = get_client_ip(request)
     await rate_limiter.check_auth(ip)
     email = body.email.strip().lower()
@@ -162,6 +210,12 @@ async def admin_login(body: AdminLoginRequest, request: Request):
     if not admin or not verify_password(body.password, admin["password_hash"], admin["salt"]):
         await audit(email, "login_failed", email, "identifiants incorrects", ip)
         raise HTTPException(401, "Identifiants admin incorrects")
+
+    if admin.get("totp_enabled"):
+        secret = open_totp_secret(admin.get("totp_secret") or "")
+        if not verify_totp(secret, body.totp_code):
+            await audit(email, "login_mfa_failed", email, "code TOTP absent ou invalide", ip)
+            raise HTTPException(401, "Code de double authentification requis ou invalide")
 
     await update_admin_last_login(email)
     await audit(email, "login_success", email, "", ip)
@@ -175,14 +229,23 @@ async def admin_login(body: AdminLoginRequest, request: Request):
     return {
         "token": token,
         "user": {"email": email, "name": admin.get("name", "Admin"), "role": admin["role"],
-                 "admin_id": admin["id"], "must_change_password": bool(admin.get("must_change_password"))},
+                 "admin_id": admin["id"], "must_change_password": bool(admin.get("must_change_password")),
+                 "mfa_enabled": bool(admin.get("totp_enabled"))},
     }
+
+
+@router.post("/logout")
+async def admin_logout(admin: dict = Depends(get_current_admin)):
+    """Révoque le jeton admin courant côté serveur."""
+    await revoke_token_jti(admin.get("jti", ""), float(admin.get("exp") or time.time()))
+    return {"status": "ok"}
 
 
 def _profile(a: dict) -> dict:
     return {"id": a["id"], "email": a["email"], "name": a["name"], "role": a["role"],
             "created_at": a.get("created_at"), "last_login": a.get("last_login"),
-            "must_change_password": bool(a.get("must_change_password"))}
+            "must_change_password": bool(a.get("must_change_password")),
+            "mfa_enabled": bool(a.get("totp_enabled"))}
 
 
 @router.get("/me")
@@ -219,6 +282,53 @@ async def admin_change_pwd(body: AdminChangePasswordRequest, admin: dict = Depen
     await change_admin_password(admin["admin_id"], body.new_password)
     await audit(admin, "change_password", str(admin["admin_id"]))
     return {"status": "ok", "message": "Mot de passe modifié"}
+
+
+# ── Double authentification (TOTP) ──
+
+@router.post("/mfa/setup")
+async def admin_mfa_setup(admin: dict = Depends(get_current_admin)):
+    data = await get_admin_by_id(admin["admin_id"])
+    if not data:
+        raise HTTPException(404, "Admin introuvable")
+    if data.get("totp_enabled"):
+        raise HTTPException(400, "La double authentification est déjà active")
+    secret = generate_totp_secret()
+    await set_admin_totp_secret(admin["admin_id"], seal_totp_secret(secret))
+    await audit(admin, "mfa_setup", str(admin["admin_id"]), "secret généré, en attente de code")
+    return {"secret": secret, "otpauth_uri": totp_uri(data["email"], secret)}
+
+
+@router.post("/mfa/enable")
+async def admin_mfa_enable(body: MfaCodeRequest, admin: dict = Depends(get_current_admin)):
+    data = await get_admin_by_id(admin["admin_id"])
+    if not data:
+        raise HTTPException(404, "Admin introuvable")
+    secret = open_totp_secret(data.get("totp_secret") or "")
+    if not secret:
+        raise HTTPException(400, "Génère d'abord un secret MFA")
+    if not verify_totp(secret, body.code):
+        raise HTTPException(400, "Code MFA invalide")
+    await enable_admin_totp(admin["admin_id"])
+    await audit(admin, "mfa_enabled", str(admin["admin_id"]), "TOTP activé")
+    return {"status": "ok", "mfa_enabled": True}
+
+
+@router.post("/mfa/disable")
+async def admin_mfa_disable(body: MfaDisableRequest, admin: dict = Depends(get_current_admin)):
+    data = await get_admin_by_id(admin["admin_id"])
+    if not data:
+        raise HTTPException(404, "Admin introuvable")
+    if not data.get("totp_enabled"):
+        raise HTTPException(400, "La double authentification n'est pas active")
+    if not verify_password(body.password, data["password_hash"], data["salt"]):
+        raise HTTPException(401, "Mot de passe incorrect")
+    secret = open_totp_secret(data.get("totp_secret") or "")
+    if not verify_totp(secret, body.code):
+        raise HTTPException(400, "Code MFA invalide")
+    await disable_admin_totp(admin["admin_id"])
+    await audit(admin, "mfa_disabled", str(admin["admin_id"]), "TOTP désactivé")
+    return {"status": "ok", "mfa_enabled": False}
 
 
 # ── Tableau de bord ──

@@ -4,6 +4,7 @@ import {
   Activity, ChevronLeft, ChevronRight, CreditCard, LayoutDashboard, LogOut, ScrollText, Settings, ShieldCheck, Users, Wallet,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { api } from '@/api/backend'
 import { useAuthStore } from '@/stores/authStore'
 import AnzarLogo from '@/components/ui/AnzarLogo'
 import { label, ROLE_LABELS } from '@/lib/format'
@@ -68,7 +69,7 @@ export function Sidebar() {
           </div>
         )}
         <button
-          onClick={() => { clearSession(); navigate('/login') }}
+          onClick={() => { void api.logout().catch(() => {}); clearSession(); navigate('/login') }}
           className={cn('flex w-full items-center gap-3 px-3 py-2 rounded-lg text-sm text-foreground-secondary hover:bg-background-tertiary hover:text-accent-error',
             collapsed && 'justify-center')}>
           <LogOut className="h-4 w-4" />

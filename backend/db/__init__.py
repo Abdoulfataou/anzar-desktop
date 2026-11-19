@@ -102,6 +102,7 @@ from db.admin import (
     update_admin_last_login,
     update_admin_profile,
     change_admin_password,
+    set_admin_totp_secret, enable_admin_totp, disable_admin_totp,
     list_admins,
     admin_list_all_users,
     admin_get_user_detail,
@@ -172,6 +173,7 @@ __all__ = [
     # Admin
     "create_default_admin", "get_admin_by_email", "get_admin_by_id",
     "update_admin_last_login", "update_admin_profile", "change_admin_password",
+    "set_admin_totp_secret", "enable_admin_totp", "disable_admin_totp",
     "list_admins", "admin_list_all_users", "admin_get_user_detail",
     "admin_update_user", "admin_add_credits_to_user", "admin_list_all_projects",
     "admin_delete_project_any", "admin_get_global_stats",
