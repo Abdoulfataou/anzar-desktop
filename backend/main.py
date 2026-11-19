@@ -118,7 +118,13 @@ async def security_middleware(request: Request, call_next):
     client_ip = get_client_ip(request)
 
     if request.url.path.startswith("/api/"):
-        await rate_limiter.check(client_ip, endpoint="api")
+        try:
+            await rate_limiter.check_http(request)
+        except HTTPException as exc:
+            # Une exception levée dans un middleware contourne les handlers
+            # FastAPI : on renvoie explicitement le 429.
+            return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail},
+                                headers=exc.headers)
 
     start = time.time()
     response = await call_next(request)

@@ -65,8 +65,11 @@ def _reset_rate_limits():
             conn.close()
 
     _purge()
+    from security import rate_limiter
+    rate_limiter.reset()
     yield
     _purge()
+    rate_limiter.reset()
 
 
 @pytest.fixture()

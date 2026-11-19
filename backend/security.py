@@ -106,6 +106,49 @@ class RateLimiter:
         """Tighter rate limit for auth endpoints: 5/min, 30/day per IP."""
         return await self.check(f"auth:{key}", max_per_minute=5, max_per_day=30, endpoint="auth")
 
+    # Compteur mémoire pour les routes /api authentifiées. Un seul processus
+    # uvicorn : pas besoin d'une écriture DB par requête. Les routes auth/OTP
+    # gardent le compteur DB (volume faible, partagé entre workers).
+    _hits: dict[str, list[float]] = {}
+
+    async def check_http(self, request: Request) -> bool:
+        """Limite les routes /api par utilisateur, ou par IP si anonyme.
+
+        Les webhooks fournisseurs sont exclus : leur signature est la barrière,
+        et un pic de webhooks ne doit pas être refusé par le limiteur.
+        """
+        path = request.url.path
+        if path.startswith("/api/payments/webhook/"):
+            return True
+
+        key = self._identity(request)
+        now = time.time()
+        bucket = [t for t in self._hits.get(key, []) if t > now - 86400]
+        if sum(1 for t in bucket if t > now - 60) >= settings.rate_limit_per_minute:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                                "Trop de requêtes. Réessaie dans quelques secondes.")
+        if len(bucket) >= settings.rate_limit_per_day:
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS,
+                                "Limite quotidienne atteinte.")
+        bucket.append(now)
+        self._hits[key] = bucket
+        if len(self._hits) > 50_000:
+            self._hits = {k: v for k, v in self._hits.items() if v and v[-1] > now - 86400}
+        return True
+
+    def _identity(self, request: Request) -> str:
+        auth = request.headers.get("Authorization", "")
+        if auth.startswith("Bearer "):
+            payload = verify_token(auth[7:])
+            if payload and payload.get("sub"):
+                prefix = "admin:" if payload.get("is_admin") else "user:"
+                return prefix + str(payload["sub"])
+        return "ip:" + get_client_ip(request)
+
+    def reset(self) -> None:
+        """Vide le compteur mémoire (tests / redémarrage)."""
+        self._hits.clear()
+
 
 rate_limiter = RateLimiter()
 
