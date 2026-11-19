@@ -43,7 +43,7 @@ barrière.
 
 ## 1 bis. Durcissement P0 appliqué (18 novembre 2026)
 
-- `npx` retiré des commandes agent et des capacités shell Tauri ; `node --eval`, `bash/sh -c`, `npx -c` refusés.
+- `npx` retiré des commandes agent ; `node --eval`, `bash/sh -c`, `npx -c` refusés. La webview n'a plus aucune capacité shell.
 - `mcp_spawn` : lanceur sans chemin, paquets npx allowlistés, environnement nettoyé, `cwd` contenu dans le répertoire utilisateur, options inline refusées.
 - `mcp_http` : HTTPS obligatoire, hôtes privés/loopback refusés (littéral et DNS), redirections désactivées.
 - PDF.js mis à jour vers `6.2.108` (CVE high corrigée), worker local uniquement.
@@ -80,10 +80,10 @@ Le fichier `src-tauri/capabilities/migrated.json` remplace l'allowlist v1 :
 - **FS** : scope limité aux dossiers Documents/Bureau/Téléchargements/Projects/
   Developer, à `$APPDATA` et aux skills ; deny list `.ssh`, `.aws`, `.env`,
   `*.pem`, `*.key`, identifiants Git/npm…
-- **Shell** : `shell:allow-execute` **et** `shell:allow-spawn` avec les mêmes
-  **120 entrées** v1 (`npm-2`, `python-3`…), plus `shell:allow-kill` pour
-  l'arrêt des processus. `shell:allow-open` a été retiré (les liens passent par
-  l'opener).
+- **Shell** : **aucune capacité shell**. Le plugin shell a été retiré de
+  l'application ; `terminal.ts` passe par `tool_spawn` / `tool_wait` / `tool_kill`
+  dans Rust. La politique (programmes allowlistés, arguments interdits, cwd sous
+  le projet et sous le home) est appliquée avant `Command::new`.
 - **Opener** : `opener:default` + `opener:allow-open-path`, avec un scope limité
   à `$HOME`, `$APPDATA`, `$DOCUMENT`, `$DESKTOP`, `$DOWNLOAD` et une deny list
   de fichiers sensibles.
@@ -92,9 +92,8 @@ Le fichier `src-tauri/capabilities/migrated.json` remplace l'allowlist v1 :
 - **Fenêtre** : les commandes utilisées par la barre de titre
   (`is-maximized`, `toggle-maximize`, drag, close…) sont autorisées.
 
-Le plugin shell v2 résout une commande par le **nom de son entrée de scope**
-(`npm-2`), pas par le binaire : `terminal.ts` conserve donc ce nom pour que les
-validateurs d'arguments restent exacts.
+Le runner Rust n'utilise pas de shell intermédiaire (`sh -c`/`cmd /C`), applique
+un environnement minimal et tue le groupe de processus à l'arrêt.
 
 ---
 
@@ -147,7 +146,7 @@ npx tauri build --debug --no-bundle
 | Secrets des connecteurs MCP (`store/mcp.json`) | **corrigé côté renderer** | broker Rust, valeurs masquées, fichier 0600 ; chiffrement au repos P2 |
 | LSP et Playwright lancés via `npx` | **atténué** | paquets npx allowlistés ; épingler les versions `@latest` restantes |
 | Jeton lisible par une XSS qui a déjà l'IPC Tauri | **atténué** | PDF.js corrigé, Mermaid filtré, CSP, capabilities ; scope FS encore large |
-| Processus enfants non tués en groupe | **corrigé** | `processGroup: true` dans le plugin shell |
+| Processus enfants non tués en groupe | **corrigé** | runner Rust, groupe de processus et `tool_kill` |
 
 ---
 

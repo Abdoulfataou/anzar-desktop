@@ -23,13 +23,13 @@ describe('command policy P0', () => {
     expect(description).not.toContain('horloge  RÈGLE');
   });
 
-  it('ne déclare plus npx dans les capacités shell Tauri', () => {
+  it('ne laisse plus aucune capacité shell dans la webview', () => {
     const caps = JSON.parse(readFileSync('src-tauri/capabilities/migrated.json', 'utf8'));
     const commands = caps.permissions
       .filter((p: any) => p?.identifier === 'shell:allow-execute' || p?.identifier === 'shell:allow-spawn')
       .flatMap((p: any) => p.allow || [])
       .map((a: any) => a.cmd);
-    expect(commands).not.toContain('npx');
+    expect(commands).toEqual([]);
   });
 
   it('classe npm install, pip install et git push comme risqués', async () => {

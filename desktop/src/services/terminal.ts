@@ -10,7 +10,9 @@
  */
 
 import { exists, readTextFile } from '@/lib/tauriFs'
-import { Command } from '@/lib/tauriShell'
+import { invoke } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { isTauri } from '@/lib/utils'
 import { COMMAND_NAME_MAP, MAX_ARGS, parseExecutable, validateCommand } from '@/services/agent/commandPolicy';
 import { isPathWithin } from '@/lib/pathGuard';
 import { ensureNode, manualNodeHelp, needsNode } from '@/services/nodeRuntime';
@@ -36,7 +38,7 @@ export interface RunningProcess {
   status: 'running' | 'completed' | 'failed' | 'killed';
   exitCode?: number;
   pid?: number;
-  childProcess?: any; // Tauri Child reference
+  childProcess?: never; // plus de Child webview : le processus vit dans Rust
 }
 
 export interface CommandResult {
@@ -143,6 +145,8 @@ class TerminalService {
   private processCounter = 0;
   private platform: 'darwin' | 'linux' | 'win32' = 'darwin';
   private allowedProjectPaths: Set<string> = new Set();
+  private toolEventsReady: Promise<void> | null = null;
+  private toolUnlisten: UnlistenFn[] = [];
 
   constructor() {
     this.detectPlatform();
@@ -180,6 +184,56 @@ class TerminalService {
     return this.platform === 'win32';
   }
 
+  /** Branche les événements du runner Rust une seule fois. */
+  private ensureToolEvents(): Promise<void> {
+    if (this.toolEventsReady) return this.toolEventsReady;
+    this.toolEventsReady = (async () => {
+      if (!isTauri()) return;
+      this.toolUnlisten.push(await listen<{ id: string; stream: string; line: string }>('tool://output', (e) => {
+        const p = this.processes.get(e.payload.id);
+        if (!p) return;
+        this.emitOutput(p.id, e.payload.stream === 'stderr' ? 'stderr' : 'stdout', e.payload.line);
+      }));
+      this.toolUnlisten.push(await listen<{ id: string; code: number }>('tool://exit', (e) => {
+        const p = this.processes.get(e.payload.id);
+        if (!p || p.status !== 'running') return;
+        p.exitCode = e.payload.code;
+        p.status = e.payload.code === 0 ? 'completed' : 'failed';
+        this.eventBus.emit({ type: 'process-end', processId: p.id, exitCode: e.payload.code });
+        this.emitOutput(p.id, e.payload.code === 0 ? 'success' : 'error',
+          `${e.payload.code === 0 ? '✓' : '✗'} Terminé (code ${e.payload.code})`);
+      }));
+    })().catch(() => { /* hors Tauri : les methodes appelantes echouent proprement */ });
+    return this.toolEventsReady;
+  }
+
+  private rootFor(cwd: string): string {
+    const normalized = cwd.replace(/\\/g, '/').replace(/\/+$/, '');
+    const root = Array.from(this.allowedProjectPaths).find((p) => isPathWithin(normalized, p));
+    if (!root) throw new Error('Dossier non autorisé. Ouvre un projet avant de lancer une commande.');
+    return root;
+  }
+
+  private async runTool(
+    id: string,
+    program: string,
+    args: string[],
+    cwd: string,
+    timeout?: number,
+  ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number }> {
+    const start = Date.now();
+    await this.ensureToolEvents();
+    await invoke('tool_spawn', { id, program, args, cwd, root: this.rootFor(cwd) });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
+    try {
+      const result = await invoke<{ code: number; stdout: string; stderr: string }>('tool_wait', { id });
+      return { ...result, durationMs: Date.now() - start };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
   // ─── Event System ───
   /** Subscribe to terminal events */
   onEvent(listener: (event: TerminalEvent) => void): () => void {
@@ -206,7 +260,6 @@ class TerminalService {
     const startTime = Date.now();
     options.onProcessId?.(processId);
 
-    // Programme manquant (Node, Git, Python) : installation proposée, sinon explication et commande à copier
     const missing = await programGate(command.trim().split(/\s+/)[0] || '');
     if (missing) {
       this.emitOutput(processId, 'error', missing);
@@ -214,7 +267,6 @@ class TerminalService {
       return processId;
     }
 
-    // ─── SECURITY: Validate command before execution ───
     const validation = validateCommand(command);
     if (!validation.safe) {
       this.emitOutput(processId, 'error', `⛔ ${validation.reason}`);
@@ -222,7 +274,6 @@ class TerminalService {
       return processId;
     }
 
-    // ─── SECURITY: No shell wrapper (sh -c). Only allow allowlisted executables. ───
     const parsed = parseExecutable(command);
     if (!parsed) {
       const msg = `Commande non autorisée. Autorisées: ${Object.keys(COMMAND_NAME_MAP).join(', ')}`;
@@ -231,40 +282,20 @@ class TerminalService {
       return processId;
     }
 
-    // ─── SECURITY: Always require a project cwd (no global execution) ───
     if (!options.cwd) {
       this.emitOutput(processId, 'error', '⛔ Commande bloquée: sélectionne un projet (dossier) d’abord.');
       this.eventBus.emit({ type: 'process-error', processId, error: 'cwd manquant' });
       return processId;
     }
 
-    // ─── SECURITY: Validate cwd is within allowed project paths ───
     const normalizedCwd = options.cwd.replace(/\\/g, '/').replace(/\/+$/, '');
-
-    if (this.allowedProjectPaths.size === 0) {
-      this.emitOutput(processId, 'error', '⛔ Dossier non autorisé. Ajoute/ouvre un projet d’abord.');
-      this.eventBus.emit({ type: 'process-error', processId, error: 'Aucun projet autorisé' });
-      return processId;
-    }
-
-    // S1 : comparaison par segments — startsWith acceptait /Users/x/pro-evil
-    // comme étant « dans » /Users/x/pro
-    const isAllowed = Array.from(this.allowedProjectPaths).some((p) => isPathWithin(normalizedCwd, p));
-    if (!isAllowed) {
+    if (this.allowedProjectPaths.size === 0
+      || !Array.from(this.allowedProjectPaths).some((p) => isPathWithin(normalizedCwd, p))) {
       this.emitOutput(processId, 'error', '⛔ Dossier non autorisé. Cette commande est limitée au dossier projet.');
       this.eventBus.emit({ type: 'process-error', processId, error: 'Répertoire non autorisé' });
       return processId;
     }
 
-    // ─── SECURITY: Block env overrides that could hijack execution ───
-    if (options.env) {
-      const dangerousKeys = ['PATH', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DYLD_LIBRARY_PATH', 'NODE_OPTIONS'];
-      for (const key of dangerousKeys) {
-        delete options.env[key];
-      }
-    }
-
-    // Le nom de scope (`npm-2`) sert à la validation ; l'utilisateur voit `npm`.
     const displayName = parsed.cmdName.replace(/-\d+$/, '');
     const process: RunningProcess = {
       id: processId,
@@ -274,97 +305,31 @@ class TerminalService {
       startedAt: startTime,
       status: 'running',
     };
-
     this.processes.set(processId, process);
     this.outputHistory.set(processId, []);
-
-    // Emit start event
     if (!options.silent) {
       this.emitOutput(processId, 'system', `$ ${displayName} ${parsed.args.join(' ')}`.trim());
     }
     this.eventBus.emit({ type: 'process-start', process });
-    // Aperçu live : guette une URL localhost dans la sortie de CHAQUE process
-    // (lancé depuis l'onglet Terminal OU par l'agent via run_command) et
-    // l'émet aux listeners de preview (onDevServerUrl → onglet Aperçu).
     this.watchForUrl(processId);
 
     try {
-      // Direct allowlisted command (no sh -c)
-      const cmd = Command.create(parsed.cmdName, parsed.args, {
+      await this.ensureToolEvents();
+      const pid = await invoke<number>('tool_spawn', {
+        id: processId,
+        program: displayName,
+        args: parsed.args,
         cwd: options.cwd,
-        env: options.env,
-        processGroup: true,
+        root: this.rootFor(options.cwd),
       });
-
-      // Collect stderr for auto-fix error detection
-      const stderrLines: string[] = [];
-      const stdoutLines: string[] = [];
-
-      // Stream stdout
-      cmd.stdout.on('data', (line: string) => {
-        this.emitOutput(processId, 'stdout', line);
-        stdoutLines.push(line);
-        // Keep last 50 lines only
-        if (stdoutLines.length > 50) stdoutLines.shift();
-      });
-
-      // Stream stderr
-      cmd.stderr.on('data', (line: string) => {
-        this.emitOutput(processId, 'stderr', line);
-        stderrLines.push(line);
-        // Keep last 80 lines only
-        if (stderrLines.length > 80) stderrLines.shift();
-      });
-
-      // Spawn the process
-      const child = await cmd.spawn();
-      process.pid = child.pid;
-      process.childProcess = child;
-
-      // Attach completion handlers (do not await — keep UI responsive)
-      cmd.on('close', (data) => {
-        process.exitCode = data.code ?? 1;
-        process.status = data.code === 0 ? 'completed' : 'failed';
-
-        const durationMs = Date.now() - startTime;
-        if (!options.silent) {
-          const statusEmoji = data.code === 0 ? '✓' : '✗';
-          this.emitOutput(
-            processId,
-            data.code === 0 ? 'success' : 'error',
-            `${statusEmoji} Terminé (code ${data.code}) en ${this.formatDuration(durationMs)}`
-          );
-        }
-
-        this.eventBus.emit({ type: 'process-end', processId, exitCode: data.code ?? 1 });
-
-        // ── Auto-fix: emit error event when process fails ──
-        if (data.code !== 0 && stderrLines.length > 0) {
-          // Combine stderr + last relevant stdout lines for context
-
-        }
-      });
-
-      cmd.on('error', (error: string) => {
-        process.exitCode = 1;
-        process.status = 'failed';
-        this.emitOutput(processId, 'error', error);
-        this.eventBus.emit({ type: 'process-error', processId, error });
-      });
-
+      process.pid = pid;
       return processId;
     } catch (error: any) {
       process.status = 'failed';
       process.exitCode = 1;
-
-      const errorMsg = error.message || String(error);
+      const errorMsg = explainSpawnError(error, command);
       this.emitOutput(processId, 'error', `Erreur d'exécution: ${errorMsg}`);
-      this.eventBus.emit({
-        type: 'process-error',
-        processId,
-        error: errorMsg,
-      });
-
+      this.eventBus.emit({ type: 'process-error', processId, error: errorMsg });
       return processId;
     }
   }
@@ -377,43 +342,26 @@ class TerminalService {
     command: string,
     options: { cwd?: string; timeout?: number; silent?: boolean } = {}
   ): Promise<CommandResult> {
-    const startTime = Date.now();
+    const parsed = parseExecutable(command);
+    if (!parsed) {
+      return { success: false, exitCode: 1, stdout: '', stderr: 'Commande non autorisée', durationMs: 0 };
+    }
+    if (!options.cwd) {
+      return { success: false, exitCode: 1, stdout: '', stderr: 'Dossier de travail manquant', durationMs: 0 };
+    }
+    const id = `exec-${++this.processCounter}-${Date.now()}`;
+    const base = parsed.cmdName.replace(/-\d+$/, '');
     try {
-      const parsed = parseExecutable(command);
-      if (!parsed) {
-        return { success: false, exitCode: 1, stdout: '', stderr: 'Commande non autorisée', durationMs: 0 };
-      }
-
-      const cmd = Command.create(parsed.cmdName, parsed.args, { cwd: options.cwd, processGroup: true });
-      let stdout = '';
-      let stderr = '';
-
-      cmd.stdout.on('data', (line: string) => { stdout += line + '\n'; });
-      cmd.stderr.on('data', (line: string) => { stderr += line + '\n'; });
-
-      const child = await cmd.spawn();
-
-      let timeoutId: NodeJS.Timeout | undefined;
-      if (options.timeout) {
-        timeoutId = setTimeout(() => { child.kill(); }, options.timeout);
-      }
-
-      const result = await new Promise<{ code: number }>((resolve) => {
-        cmd.on('close', (data) => resolve({ code: data.code ?? 1 }));
-        cmd.on('error', () => resolve({ code: 1 }));
-      });
-
-      if (timeoutId) clearTimeout(timeoutId);
-
+      const r = await this.runTool(id, base, parsed.args, options.cwd, options.timeout);
       return {
-        success: result.code === 0,
-        exitCode: result.code,
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
-        durationMs: Date.now() - startTime,
+        success: r.code === 0,
+        exitCode: r.code,
+        stdout: r.stdout.trim(),
+        stderr: r.stderr.trim(),
+        durationMs: r.durationMs,
       };
     } catch (error: any) {
-      return { success: false, exitCode: 1, stdout: '', stderr: error.message || String(error), durationMs: Date.now() - startTime };
+      return { success: false, exitCode: 1, stdout: '', stderr: error?.message || String(error), durationMs: 0 };
     }
   }
 
@@ -428,70 +376,26 @@ class TerminalService {
     const missing = await programGate(command.trim().split(/\s+/)[0] || '');
     if (missing) return { success: false, exitCode: 1, stdout: '', stderr: missing, durationMs: 0 };
 
-    // ─── SECURITY: Validate command ───
     const validation = validateCommand(command);
     if (!validation.safe) {
-      return {
-        success: false,
-        exitCode: 1,
-        stdout: '',
-        stderr: `⛔ ${validation.reason}`,
-        durationMs: 0,
-      };
+      return { success: false, exitCode: 1, stdout: '', stderr: `⛔ ${validation.reason}`, durationMs: 0 };
     }
-
+    const parsed = parseExecutable(command);
+    if (!parsed) {
+      return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Commande non autorisée (exécutable non allowlisté)', durationMs: 0 };
+    }
+    if (!options.cwd) {
+      return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Dossier de travail manquant', durationMs: 0 };
+    }
+    const id = `exec-${++this.processCounter}-${Date.now()}`;
+    const base = parsed.cmdName.replace(/-\d+$/, '');
     try {
-      const parsed = parseExecutable(command);
-      if (!parsed) {
-        return {
-          success: false,
-          exitCode: 1,
-          stdout: '',
-          stderr: '⛔ Commande non autorisée (exécutable non allowlisté)',
-          durationMs: 0,
-        };
-      }
-
-      const cmd = Command.create(parsed.cmdName, parsed.args, {
-        cwd: options.cwd,
-        processGroup: true,
-      });
-
-      let stdout = '';
-      let stderr = '';
-
-      const execProcId = `exec-${++this.processCounter}-${Date.now()}`;
-      cmd.stdout.on('data', (line: string) => {
-        stdout += line + '\n';
-        if (!options.silent) this.emitOutput(execProcId, 'stdout', line);
-      });
-      cmd.stderr.on('data', (line: string) => {
-        stderr += line + '\n';
-        if (!options.silent) this.emitOutput(execProcId, 'stderr', line);
-      });
-
-      const child = await cmd.spawn();
-
-      // Timeout handling
-      let timeoutId: NodeJS.Timeout | undefined;
-      if (options.timeout) {
-        timeoutId = setTimeout(() => {
-          child.kill();
-        }, options.timeout);
-      }
-
-      const result = await new Promise<{ code: number }>((resolve) => {
-        cmd.on('close', (data) => resolve({ code: data.code ?? 1 }));
-        cmd.on('error', () => resolve({ code: 1 }));
-      });
-
-      if (timeoutId) clearTimeout(timeoutId);
-
+      const r = await this.runTool(id, base, parsed.args, options.cwd, options.timeout);
       return {
-        success: result.code === 0,
-        exitCode: result.code,
-        stdout: stdout.trim(),
-        stderr: stderr.trim(),
+        success: r.code === 0,
+        exitCode: r.code,
+        stdout: r.stdout.trim(),
+        stderr: r.stderr.trim(),
         durationMs: Date.now() - startTime,
       };
     } catch (error: any) {
@@ -516,7 +420,6 @@ class TerminalService {
     options: { cwd?: string; timeout?: number } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
-    // Appelé par l'app elle-même (panneau Git, tickets) : jamais de fenêtre d'installation ici
     const missing = await programGate(program, false);
     if (missing) return { success: false, exitCode: 1, stdout: '', stderr: missing, durationMs: 0 };
     const base = COMMAND_NAME_MAP[program.toLowerCase()];
@@ -524,24 +427,15 @@ class TerminalService {
     if (!base) return fail('⛔ Commande non autorisée (exécutable non allowlisté)');
     if (args.length > MAX_ARGS) return fail(`⛔ Trop d'arguments (max ${MAX_ARGS})`);
     if (args.some((a) => /[\r\n]/.test(a) || a.length > 400)) return fail('⛔ Argument invalide (retour à la ligne ou plus de 400 caractères)');
+    if (!options.cwd) return fail('⛔ Dossier de travail manquant');
+    const id = `exec-${++this.processCounter}-${Date.now()}`;
     try {
-      const cmd = Command.create(`${base}-${args.length}`, args, { cwd: options.cwd, processGroup: true });
-      const out: string[] = [];
-      const err: string[] = [];
-      cmd.stdout.on('data', (line: string) => { out.push(line); });
-      cmd.stderr.on('data', (line: string) => { err.push(line); });
-      const child = await cmd.spawn();
-      const timeoutId = options.timeout ? setTimeout(() => { void child.kill(); }, options.timeout) : undefined;
-      const result = await new Promise<{ code: number }>((resolve) => {
-        cmd.on('close', (data) => resolve({ code: data.code ?? 1 }));
-        cmd.on('error', () => resolve({ code: 1 }));
-      });
-      if (timeoutId) clearTimeout(timeoutId);
+      const r = await this.runTool(id, base, args, options.cwd, options.timeout);
       return {
-        success: result.code === 0,
-        exitCode: result.code,
-        stdout: out.join('\n'),
-        stderr: err.join('\n').trim(),
+        success: r.code === 0,
+        exitCode: r.code,
+        stdout: r.stdout.replace(/\n$/, ''),
+        stderr: r.stderr.trim(),
         durationMs: Date.now() - startTime,
       };
     } catch (error: any) {
@@ -629,9 +523,7 @@ class TerminalService {
     if (!process || process.status !== 'running') return false;
 
     try {
-      if (process.childProcess) {
-        await process.childProcess.kill();
-      }
+      await invoke('tool_kill', { id: processId });
       process.status = 'killed';
       this.emitOutput(processId, 'system', '⊘ Processus arrêté');
       return true;
