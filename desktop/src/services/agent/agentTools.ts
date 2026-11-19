@@ -21,6 +21,7 @@ import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/toolsR
 import { SUBAGENT_ROLE_PROMPTS, detectSubagentRole, type SubagentRole } from './agentPrompts';
 import { BUILTIN_SKILLS } from '@/services/skillsPack';
 import { READ_ONLY_TOOLS, type PermissionMode } from './permissions';
+import { subagentAllowedTools } from './subagentPolicy';
 
 // ============================================================================
 // TYPES
@@ -40,6 +41,8 @@ export interface SubagentProgress {
 export interface ToolExecutionContext {
   /** Mode de permission du parent : les sous-agents héritent des restrictions. */
   permissionMode?: PermissionMode;
+  /** Profondeur de récursion des sous-agents (0 = agent principal). */
+  subagentDepth?: number;
   /** Racine absolue du projet — toutes les opérations sont relatives à elle */
   projectRoot: string;
   /** Signal d'annulation de la session */
@@ -234,9 +237,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'export_animation',
       description:
-        "Exporte une page animée en VIDÉO MP4 (ou GIF) : la page est enregistrée image par image au rythme exact (fps) avec une horloge  RÈGLE ABSOLUE : l'export est la DERNIÈRE étape. Après toute modification de la page (même minime), réexporte avant de conclure : la vidéo livrée doit correspondre à la dernière version. Ne demande JAMAIS a l'utilisateur de dire « réexporte »." +
+        "Exporte une page animée en VIDÉO MP4 (ou GIF) : la page est enregistrée image par image au rythme exact (fps) avec une horloge " +
         "virtuelle (CSS, GSAP, canvas, three.js, JavaScript : tout est déterministe), puis assemblée en vidéo dans l'app (rien à installer). Pas de son. " +
-        "Formats : story (1080×1920, Reels, TikTok, statut WhatsApp), carre (1080×1080), portrait (1080×1350), paysage (1920×1080), " +
+        "RÈGLE ABSOLUE : l'export est la DERNIÈRE étape. Après toute modification de la page (même minime), réexporte avant de conclure : " +
+        "la vidéo livrée doit correspondre à la dernière version. Ne demande JAMAIS à l'utilisateur de dire « réexporte »." +
+        " Formats : story (1080×1920, Reels, TikTok, statut WhatsApp), carre (1080×1080), portrait (1080×1350), paysage (1920×1080), " +
         "ou width/height. Musique de fond possible (music : fichier MP3, M4A ou WAV fourni par l'utilisateur ; découpée à la durée, en boucle si trop courte, avec fondus). " +
         "Tu reçois ensuite 4 images clés de la vidéo pour la vérifier. Pour un fichier HTML du projet, donne file (aucun serveur nécessaire).",
       parameters: {
@@ -356,8 +361,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'spawn_subagents',
       description:
-        "Lance 2 à 3 sous-agents EN PARALLÈLE pour des sous-tâches INDÉPENDANTES (fichiers différents, aucun chevauchement). Chaque sous-agent a les mêmes outils mais un budget réduit et pas de vérification finale — c'est TOI qui vérifies après consolidation. " +
-        "Précise le rôle de chacun : 'motion-designer' (visuels/animations/vidéos — reçoit automatiquement les skills motion-system et gsap-cookbook), 'redaction' (textes), 'dev' (code, défaut). Idéal pour plusieurs variantes de visuels en parallèle.",
+        "Lance 2 à 3 sous-agents pour des sous-tâches INDÉPENDANTES (fichiers différents, aucun chevauchement). Hors Accès complet, ils sont en lecture seule ; en Accès complet, ils peuvent écrire mais sont exécutés séquentiellement pour éviter les conflits. Chaque sous-agent a un budget réduit et pas de vérification finale — c'est TOI qui vérifies après consolidation. " +
+        "Précise le rôle de chacun : 'motion-designer' (visuels/animations/vidéos — reçoit automatiquement les skills motion-system et gsap-cookbook), 'redaction' (textes), 'dev' (code, défaut). Idéal pour plusieurs variantes de visuels.",
       parameters: {
         type: 'object',
         properties: {
@@ -980,6 +985,11 @@ async function execExplore(args: any, ctx: ToolExecutionContext): Promise<ToolRe
 }
 
 async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const depth = ctx.subagentDepth ?? 0;
+  if (depth >= 2) {
+    return { output: 'Profondeur maximale de sous-agents atteinte. Termine cette sous-tâche toi-même.', isError: true };
+  }
+
   // Tâches : objets {task, role} (ou chaînes simples, rôle déduit)
   const rawTasks: any[] = Array.isArray(args.tasks) ? args.tasks.slice(0, 3) : [];
   const tasks: { task: string; role: SubagentRole }[] = rawTasks
@@ -1025,20 +1035,23 @@ async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise
     return a ? `${name} · ${String(a).slice(0, 60)}` : name;
   };
 
-  const results = await Promise.all(
-    tasks.map(({ task, role }, i) =>
-      runAgentSession({
+  const allowedTools = subagentAllowedTools(
+    AGENT_TOOLS.map((tool) => tool.function.name),
+    ctx.permissionMode,
+    READ_ONLY_TOOLS,
+  );
+
+  const runOne = async ({ task, role }: { task: string; role: SubagentRole }, i: number) => {
+    try {
+      const r = await runAgentSession({
         prompt: { projectName, projectRoot: ctx.projectRoot },
         task,
         systemPromptExtra: extraFor(role),
         maxSteps: 15,
         gitCheckpoint: false,   // le checkpoint parent couvre déjà la session
         autoVerify: false,      // le parent vérifie après consolidation
-        // Hors Full, les sous-agents ne peuvent pas écrire ni exécuter : une seule
-        // approbation « spawn_subagents » ne doit pas ouvrir tous les outils.
-        allowedTools: ctx.permissionMode === 'full'
-          ? undefined
-          : new Set([...READ_ONLY_TOOLS, 'task_done', 'load_skill']),
+        allowedTools,
+        subagentDepth: depth + 1,
         signal: ctx.signal,
         onFileChanged: ctx.onFileChanged,
         onEvent: (ev) => {
@@ -1049,20 +1062,37 @@ async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise
           else if (ev.type === 'done') { p.status = 'done'; p.current = undefined; p.steps = ev.steps; pushProgress(); }
           else if (ev.type === 'error') { p.status = 'error'; p.current = ev.message.slice(0, 80); pushProgress(); }
         },
-      }).catch((e: any) => {
-        progress[i] = { ...progress[i], status: 'error', current: e?.message?.slice(0, 80) };
-        pushProgress();
-        return {
-          stopReason: 'error' as const,
-          summary: e?.message || String(e),
-          steps: 0,
-          messages: [],
-          filesChanged: [] as string[],
-        };
-      })
-      .then(r => ({ index: i + 1, task, role, ...r }))
-    )
-  );
+      });
+      return { index: i + 1, task, role, ...r };
+    } catch (e: any) {
+      progress[i] = { ...progress[i], status: 'error', current: e?.message?.slice(0, 80) };
+      pushProgress();
+      return {
+        index: i + 1,
+        task,
+        role,
+        stopReason: 'error' as const,
+        summary: e?.message || String(e),
+        steps: 0,
+        messages: [],
+        filesChanged: [] as string[],
+      };
+    }
+  };
+
+  // En Full, les sous-agents peuvent écrire : on les exécute séquentiellement
+  // pour éviter deux écritures concurrentes sur le même arbre. Hors Full ils
+  // sont read-only, donc le parallélisme reste sûr.
+  const results = ctx.permissionMode === 'full'
+    ? await (async () => {
+        const out: Awaited<ReturnType<typeof runOne>>[] = [];
+        for (let i = 0; i < tasks.length; i++) {
+          if (ctx.signal?.aborted) break;
+          out.push(await runOne(tasks[i], i));
+        }
+        return out;
+      })()
+    : await Promise.all(tasks.map(runOne));
 
   const report = results
     .map(r =>

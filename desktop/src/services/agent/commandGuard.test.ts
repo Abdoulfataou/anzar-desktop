@@ -6,7 +6,7 @@ vi.mock('@/services/filesystem/fileSystem', () => ({
 }));
 
 import { commandRisk } from './commandGuard';
-import { precheckCommand } from './agentTools';
+import { AGENT_TOOLS, precheckCommand } from './agentTools';
 
 describe('command policy P0', () => {
   it('refuse npx dans les commandes agent', () => {
@@ -14,6 +14,13 @@ describe('command policy P0', () => {
     expect(refusal).toMatch(/npx|autoris/i);
     expect(precheckCommand('npm run build')).toBeNull();
     expect(precheckCommand('node script.mjs')).toBeNull();
+  });
+
+  it('garde une description cohérente de export_animation', () => {
+    const description = AGENT_TOOLS.find((tool) => tool.function.name === 'export_animation')?.function.description || '';
+    expect(description).toContain('horloge virtuelle');
+    expect(description).toContain("RÈGLE ABSOLUE : l'export est la DERNIÈRE étape");
+    expect(description).not.toContain('horloge  RÈGLE');
   });
 
   it('ne déclare plus npx dans les capacités shell Tauri', () => {

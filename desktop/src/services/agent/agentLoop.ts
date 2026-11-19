@@ -76,6 +76,8 @@ export interface AgentSessionOptions {
   systemPromptExtra?: string;
   /** Outils autorisés pour cette session (sous-agents hors Full). */
   allowedTools?: Set<string>;
+  /** Profondeur de récursion des sous-agents (0 = agent principal). */
+  subagentDepth?: number;
   /** Callback événements (UI) */
   onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
@@ -135,6 +137,7 @@ export async function runAgentSession(options: AgentSessionOptions): Promise<Age
     onEvent,
     signal,
     onFileChanged,
+    subagentDepth,
   } = options;
 
   const emit = (e: AgentEvent) => onEvent?.(e);
@@ -143,6 +146,7 @@ export async function runAgentSession(options: AgentSessionOptions): Promise<Age
   const toolCtx: ToolExecutionContext = {
     projectRoot: prompt.projectRoot,
     signal,
+    subagentDepth,
     onFileChanged: (path, content, action) => {
       filesChanged.add(path);
       onFileChanged?.(path, content, action);

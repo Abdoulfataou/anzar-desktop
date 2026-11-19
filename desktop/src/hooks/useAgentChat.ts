@@ -185,7 +185,7 @@ interface UseAgentChatParams {
   workspacePath: string | null;
   workspaceName?: string;
   model: AIModel;
-  /** Mode de permission (défaut : accès complet). */
+  /** Mode de permission (défaut : auto). */
   permissionMode?: PermissionMode;
   /** Appelé quand un outil modifie un fichier (refresh explorateur/éditeur). */
   onFileChanged?: (relativePath: string, action: 'create' | 'edit' | 'delete') => void;
@@ -828,7 +828,10 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       const motionDeliverable = /vid[ée]o|animation|motion|\bpub\b|publicit|reel|story|format (mp4|gif)|export/i.test(userRequestRef.current || '');
       const hasExport = events.some((e) => e.name === 'export_animation' && e.status === 'ok');
       let exportRescueDone = false;
-      if (!answered && !controller.signal.aborted && motionDeliverable && !hasExport && agentRoot) {
+      // Ce sauvetage appelle directement executeToolCall : hors Full, il contournerait
+      // l'approbation de l'outil. On le réserve donc au mode Full (où l'utilisateur
+      // a explicitement accepté l'exécution sans confirmation).
+      if (!answered && !controller.signal.aborted && modeRef.current === 'full' && motionDeliverable && !hasExport && agentRoot) {
         exportRescueDone = true;
         const EXPORT_ONLY = AGENT_TOOLS.filter((t) => t.function.name === 'export_animation');
         apiHistoryRef.current.push({
