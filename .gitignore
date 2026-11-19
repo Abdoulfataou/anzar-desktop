@@ -46,3 +46,20 @@ Admin/src-tauri/target/
 
 .zcode/
 *.tsbuildinfo
+
+# Secrets de signature et clés privées (ne jamais commiter)
+*.key
+*.pem
+*.p12
+*.pfx
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+.tauri/
+**/.tauri/
+*.mobileprovision
+
+# Variables d'environnement locales
+.env.*
+!.env.example
