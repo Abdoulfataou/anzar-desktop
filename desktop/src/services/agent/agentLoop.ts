@@ -20,7 +20,8 @@ import { AGENT_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from '
 import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from './agentPrompts';
 import { runVerification, VerifyCommandResult } from './agentVerifier';
 import { buildAgentContext } from './agentContext';
-import { runAgentEngine } from './agentSession';
+import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason } from './agentSession';
+export type { AgentStopReason } from './agentSession';
 import { compactHistory, historyChars, SOFT_LIMIT_CHARS } from './history';
 
 // ============================================================================
@@ -40,15 +41,6 @@ export type AgentEvent =
   | { type: 'verify_result'; label: string; command: string; passed: boolean; skipped: boolean; output: string }
   | { type: 'done'; reason: AgentStopReason; summary: string; steps: number }
   | { type: 'error'; message: string };
-
-export type AgentStopReason =
-  | 'task_done'        // L'agent a appelé task_done (et la vérification est passée)
-  | 'final_answer'     // L'agent a répondu sans outil (réponse conversationnelle)
-  | 'plan'             // Plan proposé (réservé au chat principal)
-  | 'max_steps'        // Budget d'étapes épuisé
-  | 'verify_failed'    // Vérification toujours en échec après maxVerifyAttempts
-  | 'aborted'          // Annulé par l'utilisateur
-  | 'error';           // Erreur irrécupérable
 
 export interface AgentSessionOptions {
   /** Contexte projet pour le system prompt */
@@ -98,7 +90,6 @@ export interface AgentSessionResult {
 // LIMITES
 // ============================================================================
 
-const DEFAULT_MAX_STEPS = 40;
 const MAX_CONSECUTIVE_ERRORS = 4;
 
 // ============================================================================

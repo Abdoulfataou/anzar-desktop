@@ -93,13 +93,15 @@ function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+export const DEFAULT_MAX_STEPS = 40;
+
 const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 export async function runAgentEngine(options: AgentSessionOptions): Promise<AgentEngineResult> {
   const {
     messages,
     allowedTools,
-    maxSteps = 40,
+    maxSteps = DEFAULT_MAX_STEPS,
     maxConsecutiveErrors = 4,
     signal,
     retry,

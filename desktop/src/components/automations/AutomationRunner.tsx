@@ -8,7 +8,7 @@ import toast from 'react-hot-toast';
 import { useAutomationStore, type Automation } from '@/stores/automationStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useChatStore } from '@/stores/chatStore';
-import { useAgentChat } from '@/hooks/useAgentChat';
+import { useAgentChat, type AgentChatResult } from '@/hooks/useAgentChat';
 
 const CHECK_EVERY_MS = 30_000;
 
@@ -78,11 +78,19 @@ function AutomationJob({ automation, onDone }: { automation: Automation; onDone:
       let ok = false;
       let error: string | undefined;
       try {
-        await sendMessage(automation.prompt, [], undefined, { conversationId: conv.id });
-        const msgs = useChatStore.getState().conversations.find((c) => c.id === conv.id)?.messages || [];
-        const last = msgs[msgs.length - 1];
-        ok = !!last && last.role === 'assistant' && !last.isError;
-        if (!ok) error = 'La réponse a échoué (réseau ou crédits). Ouvre la tâche pour reprendre.';
+        const result: AgentChatResult | null = await sendMessage(automation.prompt, [], undefined, { conversationId: conv.id });
+        if (result) {
+          ok = !result.isError
+            && result.stopReason !== 'max_steps'
+            && result.stopReason !== 'aborted'
+            && result.content.trim().length > 0;
+        } else {
+          // Résultat absent (génération déjà en cours) : repli sur l'état de la conversation.
+          const msgs = useChatStore.getState().conversations.find((c) => c.id === conv.id)?.messages || [];
+          const last = msgs[msgs.length - 1];
+          ok = !!last && last.role === 'assistant' && !last.isError;
+        }
+        if (!ok) error = "La réponse a échoué ou n'a pas abouti. Ouvre la tâche pour reprendre.";
       } catch (e: any) {
         error = e?.message || 'erreur inconnue';
       }

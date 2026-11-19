@@ -78,7 +78,7 @@ import { noteAgentWrite } from '@/services/agent/commandGuard';
 import { ensurePersonalSpace } from '@/services/personalSpace';
 import { buildAgentContext } from '@/services/agent/agentContext';
 import { executeToolCall } from '@/services/agent/agentTools';
-import { useAgentChat } from './useAgentChat';
+import { useAgentChat, type AgentChatResult } from './useAgentChat';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
@@ -132,6 +132,23 @@ describe('useAgentChat — parcours agent', () => {
     expect(result.current.isGenerating).toBe(false);
   });
 
+  it('retourne un résultat de session structuré', async () => {
+    vi.mocked(aiService.chatStream).mockReturnValueOnce(stream({ content: 'Bonjour' }) as any);
+    const { result } = renderChat();
+
+    let out: AgentChatResult | null = null;
+    await act(async () => {
+      out = await result.current.sendMessage('Fais quelque chose');
+    });
+
+    expect(out).not.toBeNull();
+    expect(out!.stopReason).toBe('final_answer');
+    expect(out!.isError).toBe(false);
+    expect(out!.content).toContain('Bonjour');
+    expect(out!.conversationId).toBeTruthy();
+    expect(out!.assistantId).toBeTruthy();
+  });
+
   it('demande l’accord puis exécute write_file en mode ask', async () => {
     vi.mocked(aiService.chatStream)
       .mockReturnValueOnce(stream({ tool_calls: [toolCall('write_file', { path: 'a.ts', content: 'x' })] }) as any)
@@ -139,7 +156,7 @@ describe('useAgentChat — parcours agent', () => {
     vi.mocked(executeToolCall).mockResolvedValue({ output: 'fichier écrit' } as any);
     const { result } = renderChat('ask');
 
-    let send!: Promise<void>;
+    let send!: Promise<AgentChatResult | null>;
     act(() => { send = result.current.sendMessage('Écris un fichier'); });
 
     await waitFor(() => expect(result.current.approval?.name).toBe('write_file'));
@@ -159,7 +176,7 @@ describe('useAgentChat — parcours agent', () => {
       .mockReturnValueOnce(stream({ content: 'Bleu choisi' }) as any);
     const { result } = renderChat('full');
 
-    let send!: Promise<void>;
+    let send!: Promise<AgentChatResult | null>;
     act(() => { send = result.current.sendMessage('Choisis une couleur'); });
 
     await waitFor(() => expect(result.current.question?.questions[0].question).toBe('Quelle couleur ?'));
@@ -196,7 +213,7 @@ describe('useAgentChat — parcours agent', () => {
     })() as any);
     const { result } = renderChat();
 
-    let send!: Promise<void>;
+    let send!: Promise<AgentChatResult | null>;
     act(() => { send = result.current.sendMessage('Lance une tâche longue'); });
 
     await waitFor(() => expect(result.current.isGenerating).toBe(true));

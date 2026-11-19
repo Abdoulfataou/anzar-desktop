@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 import { useTicketStore, inWorkWindow, nextTicket, type Ticket } from '@/stores/ticketStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useChatStore } from '@/stores/chatStore';
-import { useAgentChat } from '@/hooks/useAgentChat';
+import { useAgentChat, type AgentChatResult } from '@/hooks/useAgentChat';
 import { refreshCredits } from '@/lib/credits';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { commitAll, isGitRepo, prepareWorktree } from '@/services/superagent/ticketGit';
@@ -138,16 +138,21 @@ function TicketJob({ ticket, onDone }: { ticket: Ticket; onDone: () => void }) {
     }, WATCH_EVERY_MS);
 
     void (async () => {
+      let result: AgentChatResult | null = null;
       try {
-        await sendMessage(ticketPrompt(t), [], undefined, { conversationId: t.conversationId });
-      } catch { /* l'état final est lu dans la conversation */ }
+        result = await sendMessage(ticketPrompt(t), [], undefined, { conversationId: t.conversationId });
+      } catch { /* filet de sécurité : le résultat structuré est la source principale */ }
       clearInterval(watch);
 
+      // Fallback uniquement pour les anciennes sessions sans résultat structuré.
       const msgs = useChatStore.getState().conversations.find((c) => c.id === t.conversationId)?.messages || [];
       const last = [...msgs].reverse().find((m) => m.role === 'assistant');
-      const cost = typeof last?.costFCFA === 'number' ? last.costFCFA : Math.round(progress.current.costFCFA);
-      const report = (last?.content || '').replace(/_\(interrompu\)_/g, '').trim().slice(0, 4_000);
+      const cost = result?.costFCFA ?? (typeof last?.costFCFA === 'number' ? last.costFCFA : Math.round(progress.current.costFCFA));
+      const report = (result?.content || last?.content || '').replace(/_\(interrompu\)_/g, '').trim().slice(0, 4_000);
       const reason = stopReason.current;
+      const agentFailed = result
+        ? result.isError || result.stopReason === 'max_steps' || result.stopReason === 'aborted'
+        : !!last?.isError;
 
       // Le travail est toujours commité, même interrompu : rien n'est perdu
       let diffStat: string | null = null;
@@ -170,8 +175,8 @@ function TicketJob({ ticket, onDone }: { ticket: Ticket; onDone: () => void }) {
         }[reason];
         update({ ...base, status: diffStat || t.diffStat ? 'review' : 'failed', stopReason: reason, error: `Arrêté : ${why}.${diffStat ? ' Le travail fait est gardé : relis-le, relance avec un budget plus grand, ou rejette.' : ''}` });
         toast(`Ticket « ${t.title} » arrêté : ${why}`, { icon: '⏹' });
-      } else if (last?.isError) {
-        update({ ...base, status: diffStat ? 'review' : 'failed', error: "L'agent s'est arrêté sur une erreur (réseau ou crédit). Le travail fait est gardé." });
+      } else if (agentFailed) {
+        update({ ...base, status: diffStat ? 'review' : 'failed', error: "L'agent n'a pas abouti (budget, annulation ou erreur). Le travail fait est gardé." });
         toast.error(`Ticket « ${t.title} » : erreur pendant le travail`);
       } else {
         update({ ...base, status: diffStat ? 'review' : 'done' });

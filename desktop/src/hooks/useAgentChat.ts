@@ -12,7 +12,7 @@
  */
 import { commandRisk, noteAgentWrite } from '@/services/agent/commandGuard';
 import { ToolCallAssembler } from '@/services/agent/toolCallAssembler';
-import { runAgentEngine, type AgentToolOutcome } from '@/services/agent/agentSession';
+import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason, type AgentToolOutcome } from '@/services/agent/agentSession';
 import {
   closeDanglingToolCalls, compactHistory, historyChars,
   KEEP_RECENT_TOOL_RESULTS, SOFT_LIMIT_CHARS, STUB_CHARS, SKILL_RESULT_PREFIX,
@@ -176,7 +176,7 @@ const PROPOSE_PLAN_TOOL: ToolDefinition = {
   },
 };
 
-const MAX_STEPS = 40;
+const MAX_STEPS = DEFAULT_MAX_STEPS;
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
 
 const CACHE_COLD_MS = 30 * 60 * 1000; // au-delà, le cache fournisseur a pu être vidé
@@ -193,6 +193,17 @@ interface UseAgentChatParams {
   background?: boolean;
   /** Après chaque appel au modèle et chaque outil : coût cumulé (FCFA) de la réponse en cours. Sert au watchdog des tickets. */
   onProgress?: (p: { costFCFA: number }) => void;
+}
+
+/** Résultat structuré d'un tour, pour les tickets/automatisations. */
+export interface AgentChatResult {
+  stopReason: AgentStopReason;
+  content: string;
+  costFCFA?: number;
+  filesChanged: string[];
+  isError: boolean;
+  conversationId: string;
+  assistantId: string;
 }
 
 // Conversations où l'utilisateur a déjà autorisé l'exécution du code écrit par
@@ -282,8 +293,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     resumeFrom?: ResumeState,
     /** Tâche cible (automatisations) ; par défaut la tâche affichée */
     opts?: { conversationId?: string },
-  ) => {
-    if ((!content.trim() && !resumeFrom) || isGenerating) return;
+  ): Promise<AgentChatResult | null> => {
+    if ((!content.trim() && !resumeFrom) || isGenerating) return null;
     const refd = rawAttachments.slice(0, 8).map((a, i) => ({ ...a, ref: a.ref || String.fromCharCode(65 + i) }));
     const convId = resumeFrom?.convId ?? opts?.conversationId ?? ensureConversation();
     if (!resumeFrom) userRequestRef.current = content.slice(0, 2000);
@@ -427,6 +438,9 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
     // Connecteurs MCP activés (Context7, Playwright, GitHub…) : un serveur lent ne bloque pas le départ
     setMcpRoots(workspacePath ? [workspacePath] : []);
     const mcpTools = await mcpAgentTools({ waitMs: 8_000 }).catch(() => []);
+
+    let finalStopReason: AgentStopReason = 'error';
+    let finalCostFCFA: number | undefined;
 
     try {
       if (resumeFrom) {
@@ -794,6 +808,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         },
       });
 
+      finalStopReason = session.stopReason;
       if (session.stopReason === 'error') {
         throw new Error(session.errorMessage || session.summary || 'Erreur du modèle');
       }
@@ -928,6 +943,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       }
 
       // La réponse est terminée : on l'affiche tout de suite, sans attendre la comptabilité.
+      const changes = agentRoot ? await collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined) : undefined;
       updateMessage(assistantId, {
         content: finalContent,
         timeline: snapshotTimeline(timeline),
@@ -937,7 +953,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
         notice: undefined,
         resumable: false,
         toolEvents: [...events],
-        fileChanges: agentRoot ? await collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined) : undefined,
+        fileChanges: changes,
       });
 
       // Coût et journal d'usage : une erreur ici ne doit jamais faire échouer la réponse.
@@ -958,6 +974,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           priceInPerMillion: priceIn,
           priceOutPerMillion: priceOut,
         });
+        finalCostFCFA = costFCFA;
         updateMessage(assistantId, { costFCFA });
 
         const record = {
@@ -978,6 +995,15 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       } catch (err) {
         console.warn('[agent] comptabilité du coût impossible', err);
       }
+      return {
+        stopReason: wasAborted ? 'aborted' : finalStopReason,
+        content: finalContent,
+        costFCFA: finalCostFCFA,
+        filesChanged: changes?.map((c) => c.path) ?? [],
+        isError: false,
+        conversationId: convId,
+        assistantId,
+      };
     } catch (e: any) {
       const aborted = controller.signal.aborted;
       // On garde de quoi reprendre exactement ici (bouton « Reprendre »)
@@ -987,18 +1013,29 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       const errorText = aborted
         ? '_(interrompu)_'
         : `**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`;
+      const errorContent = aborted
+        ? (accContent ? `${accContent}\n\n_(interrompu)_` : '_(génération interrompue)_')
+        : `${accContent ? accContent + '\n\n' : ''}**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`;
+      const errorChanges = agentRoot ? await collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined) : undefined;
       updateMessage(assistantId, {
         notice: undefined,
         resumable: !aborted,
-        content: aborted
-          ? (accContent ? `${accContent}\n\n_(interrompu)_` : '_(génération interrompue)_')
-          : `${accContent ? accContent + '\n\n' : ''}**Erreur** — ${e?.message || 'service indisponible'}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`,
+        content: errorContent,
         timeline: [...snapshotTimeline(timeline), { kind: 'text', text: errorText }],
         isStreaming: false,
         isError: !aborted,
         toolEvents: [...events],
-        fileChanges: agentRoot ? await collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined) : undefined,
+        fileChanges: errorChanges,
       });
+      return {
+        stopReason: aborted ? 'aborted' : 'error',
+        content: errorContent,
+        costFCFA: finalCostFCFA,
+        filesChanged: errorChanges?.map((c) => c.path) ?? [],
+        isError: !aborted,
+        conversationId: convId,
+        assistantId,
+      };
     } finally {
       setIsGenerating(false);
       if (!background) setStoreGenerating(false);
