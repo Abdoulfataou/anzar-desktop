@@ -52,6 +52,8 @@ def test_refresh_roundtrip(client, user_and_token):
     assert new_token and new_token != token
     # Le nouveau token est valide
     assert client.get("/api/auth/verify", headers={"Authorization": f"Bearer {new_token}"}).status_code == 200
+    # Rotation : l'ancien jeton ne peut plus être utilisé
+    assert client.get("/api/auth/verify", headers=headers).status_code == 401
 
 
 def test_refresh_rejects_forged_signature(client):
@@ -85,3 +87,36 @@ def _revoke(jti: str, exp: float):
         conn.commit()
     finally:
         conn.close()
+
+def test_logout_revokes_current_token(client, user_and_token):
+    _, _, headers = user_and_token
+    assert client.post("/api/auth/logout", headers=headers).status_code == 200
+    assert client.get("/api/auth/verify", headers=headers).status_code == 401
+    assert client.post("/api/auth/refresh", headers=headers).status_code == 401
+
+
+def test_change_password_revokes_old_tokens(client):
+    email = "revoke-pw@test.local"
+    r = client.post("/api/auth/register", json={"email": email, "password": "password123"})
+    assert r.status_code == 200
+    headers = {"Authorization": f"Bearer {r.json()['token']}"}
+    r = client.post("/api/user/change-password", headers=headers,
+                    json={"current_password": "password123", "new_password": "NouveauPass123"})
+    assert r.status_code == 200, r.text
+    assert client.get("/api/auth/verify", headers=headers).status_code == 401
+    assert client.post("/api/auth/login", json={"email": email, "password": "password123"}).status_code == 401
+    assert client.post("/api/auth/login", json={"email": email, "password": "NouveauPass123"}).status_code == 200
+
+
+def test_refresh_absolute_lifetime(client, user_and_token):
+    email, token, _ = user_and_token
+    from security import create_token
+    payload = pyjwt.decode(token, options={"verify_signature": False})
+    old_session = create_token(
+        user_id=email,
+        token_version=payload.get("token_version", 0),
+        auth_time=time.time() - 31 * 86400,
+    )
+    headers = {"Authorization": f"Bearer {old_session}"}
+    assert client.post("/api/auth/refresh", headers=headers).status_code == 401
+

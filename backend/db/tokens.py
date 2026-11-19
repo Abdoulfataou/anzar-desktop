@@ -11,6 +11,7 @@ import time
 
 from sqlalchemy import delete, select
 
+from config import settings
 from db.base import get_sessionmaker
 from db.models import RevokedToken
 
@@ -27,7 +28,10 @@ async def revoke_token_jti(jti: str, expires_at: float):
             )
             if existing.scalar() is not None:
                 return
-            session.add(RevokedToken(jti=jti, revoked_at=time.time(), expires_at=float(expires_at)))
+            # Conserver la révocation pendant toute la fenêtre de refresh (exp + grâce),
+            # sinon un jeton révoqué redeviendrait rafraîchissable après la purge.
+            retention = max(time.time(), float(expires_at or 0)) + settings.refresh_grace_days * 86400
+            session.add(RevokedToken(jti=jti, revoked_at=time.time(), expires_at=retention))
 
 
 async def is_token_revoked(jti: str) -> bool:

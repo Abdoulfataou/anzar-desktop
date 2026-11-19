@@ -120,18 +120,32 @@ _JWT_ALGORITHM = "HS256"
 _JWT_AUDIENCE = "anzar-api"
 
 
-def create_token(user_id: str, expires_in: Optional[int] = None, extra_claims: Optional[dict] = None) -> str:
-    """Create HS256-signed JWT with optional extra claims."""
+def create_token(
+    user_id: str,
+    expires_in: Optional[int] = None,
+    extra_claims: Optional[dict] = None,
+    token_version: int = 0,
+    auth_time: Optional[float] = None,
+) -> str:
+    """Create HS256-signed JWT with optional extra claims.
+
+    `token_version` est comparé au compteur en base à chaque requête.
+    `auth_time` est l'instant de la connexion initiale : il ne doit jamais être
+    réinitialisé par un refresh, sinon la session pourrait vivre indéfiniment.
+    """
     if expires_in is None:
         expires_in = settings.jwt_expiry_hours * 3600
 
     now = datetime.now(timezone.utc)
+    now_ts = now.timestamp()
     payload = {
         "sub": user_id,
         "iat": now,
         "exp": now + timedelta(seconds=expires_in),
         "jti": secrets.token_hex(16),
         "aud": _JWT_AUDIENCE,
+        "token_version": int(token_version or 0),
+        "auth_time": float(auth_time or now_ts),
     }
     if extra_claims:
         payload.update(extra_claims)
@@ -212,7 +226,13 @@ async def get_current_user(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Jeton admin non valable pour l'application")
 
     # Compte supprimé ou désactivé par l'admin : le jeton déjà émis cesse de marcher tout de suite.
-    await ensure_user_active(payload.get("sub") or "")
+    user = await ensure_user_active(payload.get("sub") or "")
+    if int(payload.get("token_version") or 0) != int(user.get("token_version") or 0):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session révoquée. Reconnecte-toi.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return payload
 
 

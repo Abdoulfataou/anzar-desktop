@@ -40,6 +40,9 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Incrémenté à chaque changement de mot de passe / déconnexion globale :
+    # les jetons qui portent une ancienne valeur sont refusés immédiatement.
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
 # ============================================================================
@@ -164,6 +167,7 @@ class Admin(Base):
     role: Mapped[str] = mapped_column(String(20), default="admin", nullable=False)
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     last_login: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

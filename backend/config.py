@@ -42,7 +42,9 @@ class Settings(BaseSettings):
 
     # ─── Security ───
     jwt_secret: str = "CHANGE-ME-IN-PRODUCTION-use-openssl-rand-hex-32"
-    jwt_expiry_hours: int = 24  # Court : le client refresh toutes les 6h (grâce refresh : 7 jours)
+    jwt_expiry_hours: int = 24  # Court : le client refresh toutes les 6h
+    refresh_grace_days: int = 7  # Un jeton expiré peut encore être rafraîchi pendant cette fenêtre
+    refresh_max_age_days: int = 30  # Durée de vie absolue d'une session, même si elle est rafraîchie
     cors_origins: str = "http://localhost:1420,http://localhost:5173,tauri://localhost,https://tauri.localhost,https://anzar-admin.issalanhub.com"
     rate_limit_per_minute: int = 30
     rate_limit_per_day: int = 500

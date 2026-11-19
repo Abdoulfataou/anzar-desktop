@@ -22,6 +22,10 @@ def _admin_session(client, owner_headers, role):
     r = client.post("/api/admin/change-password", headers=h,
                     json={"current_password": temp, "new_password": "NouveauMotDePasse42"})
     assert r.status_code == 200, r.text
+    # token_version a changé : l'ancien jeton est révoqué.
+    r = client.post("/api/admin/login", json={"email": email, "password": "NouveauMotDePasse42"})
+    assert r.status_code == 200, r.text
+    h = {"Authorization": f"Bearer {r.json()['token']}"}
     return r, h, email
 
 

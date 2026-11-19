@@ -228,6 +228,15 @@ class AuthService {
       clearInterval(this._refreshTimer);
       this._refreshTimer = null;
     }
+    // Révoque le jeton côté serveur avant de l'oublier. Fire-and-forget :
+    // une coupure réseau ne doit pas empêcher la déconnexion locale.
+    const token = useSettingsStore.getState().getAuthToken();
+    if (token) {
+      void fetchWithTimeout(`${this.getBackendUrl()}/api/auth/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }, 3_000).catch(() => {});
+    }
     useSettingsStore.getState().setAuthToken(null);
     useAccountStore.getState().logout();
     void secureTokenStore.clearToken();

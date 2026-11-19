@@ -68,7 +68,7 @@ async def change_user_password(email: str, new_password: str) -> bool:
             res = await session.execute(
                 update(User)
                 .where(User.email == email)
-                .values(password_hash=new_hash, salt=new_salt)
+                .values(password_hash=new_hash, salt=new_salt, token_version=User.token_version + 1)
             )
             return (res.rowcount or 0) > 0
 
@@ -82,7 +82,7 @@ async def deactivate_user(email: str) -> bool:
             res = await session.execute(
                 update(User)
                 .where(User.email == email)
-                .values(is_active=False)
+                .values(is_active=False, token_version=User.token_version + 1)
             )
             return (res.rowcount or 0) > 0
 

@@ -5,15 +5,15 @@ Register, login, verify, refresh, OTP send-code, verify-code.
 import time
 import secrets
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel, Field
 
 from config import settings
 from security import (
     rate_limiter, get_client_ip,
-    create_token, verify_token, verify_token_checked, ensure_user_active,
+    create_token, verify_token, verify_token_checked, ensure_user_active, get_current_user,
 )
-from db import is_token_revoked
+from db import is_token_revoked, revoke_token_jti
 from db import (
     get_user_by_email, create_user,
     verify_password, update_last_login,
@@ -68,7 +68,7 @@ async def register(body: AuthRequest, request: Request):
         logger.error(f"Failed to create user: {type(e).__name__}: {e}")
         raise HTTPException(500, "Erreur lors de la création du compte")
 
-    token = create_token(user_id=email)
+    token = create_token(user_id=email, token_version=user.get("token_version", 0))
     creds = await get_credits(email)
 
     return {
@@ -106,7 +106,7 @@ async def login(body: AuthRequest, request: Request):
 
     await update_last_login(email)
 
-    token = create_token(user_id=email)
+    token = create_token(user_id=email, token_version=user.get("token_version", 0))
     creds = await get_credits(email)
 
     return {
@@ -124,20 +124,16 @@ async def login(body: AuthRequest, request: Request):
 
 
 @router.get("/verify")
-async def verify_auth(request: Request):
-    """Verify that the auth token is valid."""
-    auth = request.headers.get("Authorization", "")
-    if not auth.startswith("Bearer "):
-        raise HTTPException(401, "Missing authorization token")
+async def verify_auth(user: dict = Depends(get_current_user)):
+    """Verify that the auth token is valid and still matches the account version."""
+    return {"valid": True, "user_id": user.get("sub")}
 
-    payload = await verify_token_checked(auth[7:])
-    if not payload:
-        raise HTTPException(401, "Invalid or expired token")
-    if payload.get("is_admin"):
-        raise HTTPException(403, "Jeton admin non valable pour l'application")
-    await ensure_user_active(payload.get("sub") or "")
 
-    return {"valid": True, "user_id": payload.get("sub")}
+@router.post("/logout")
+async def logout(user: dict = Depends(get_current_user)):
+    """Révoque le jeton courant côté serveur (le client peut ensuite l'oublier)."""
+    await revoke_token_jti(user.get("jti", ""), float(user.get("exp") or time.time()))
+    return {"status": "ok"}
 
 
 @router.post("/refresh")
@@ -169,9 +165,26 @@ async def refresh_token(request: Request):
         raise HTTPException(401, "Token revoked")
     if payload.get("is_admin"):
         raise HTTPException(403, "Jeton admin non valable pour l'application")
-    await ensure_user_active(user_id)
 
-    new_token = create_token(user_id=user_id)
+    # Durée de vie ABSOLUE de la session : un refresh ne la prolonge jamais
+    # au-delà de refresh_max_age_days depuis la connexion initiale.
+    auth_time = payload.get("auth_time") or payload.get("iat")
+    if not auth_time:
+        raise HTTPException(401, "Session sans date d'origine")
+    if time.time() - float(auth_time) > settings.refresh_max_age_days * 86400:
+        raise HTTPException(401, "Session expirée : reconnecte-toi")
+
+    user = await ensure_user_active(user_id)
+    if int(payload.get("token_version") or 0) != int(user.get("token_version") or 0):
+        raise HTTPException(401, "Session révoquée. Reconnecte-toi.")
+
+    # Rotation : l'ancien jeton ne doit plus pouvoir rafraîchir.
+    await revoke_token_jti(payload.get("jti", ""), float(payload.get("exp") or time.time()))
+    new_token = create_token(
+        user_id=user_id,
+        token_version=user.get("token_version", 0),
+        auth_time=float(auth_time),
+    )
     return {"token": new_token, "user_id": user_id}
 
 
@@ -250,7 +263,7 @@ async def verify_code(body: VerifyCodeRequest, request: Request):
         logger.info(f"New user auto-created via OTP: {email}")
 
     await update_last_login(email)
-    token = create_token(user_id=email)
+    token = create_token(user_id=email, token_version=user.get("token_version", 0))
     creds = await get_credits(email)
 
     return {

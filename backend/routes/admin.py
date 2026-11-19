@@ -111,6 +111,8 @@ async def get_current_admin(
     admin_data = await get_admin_by_id(payload.get("admin_id"))
     if not admin_data:
         raise HTTPException(401, "Compte admin introuvable ou désactivé")
+    if int(payload.get("token_version") or 0) != int(admin_data.get("token_version") or 0):
+        raise HTTPException(401, "Session admin révoquée. Reconnecte-toi.")
 
     # Le rôle vient de la base, pas du jeton : un rôle retiré prend effet immédiatement.
     payload["role"] = admin_data.get("role")
@@ -166,6 +168,7 @@ async def admin_login(body: AdminLoginRequest, request: Request):
     token = create_token(
         user_id=email,
         expires_in=settings.admin_jwt_expiry_hours * 3600,
+        token_version=admin.get("token_version", 0),
         extra_claims={"is_admin": True, "admin_id": admin["id"], "role": admin["role"],
                       "must_change_password": bool(admin.get("must_change_password"))},
     )

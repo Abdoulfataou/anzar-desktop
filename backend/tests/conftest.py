@@ -97,4 +97,12 @@ def admin_headers(client):
             json={"current_password": "TestAdminPass1234", "new_password": "TestAdminPass1234x"},
         )
         assert res.status_code == 200, res.text
+        # Le changement de mot de passe incrémente token_version : l'ancien
+        # jeton est désormais révoqué, on en redemande un.
+        res = client.post(
+            "/api/admin/login",
+            json={"email": "admin@test.local", "password": "TestAdminPass1234x"},
+        )
+        assert res.status_code == 200, res.text
+        headers = {"Authorization": f"Bearer {res.json()['token']}"}
     return headers

@@ -82,6 +82,8 @@ async def update_admin_profile(admin_id: int, **fields) -> bool:
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
         return False
+    if updates.get("is_active") is False:
+        updates["token_version"] = Admin.token_version + 1
     Session = get_sessionmaker()
     async with Session() as session:
         async with session.begin():
@@ -97,7 +99,7 @@ async def change_admin_password(admin_id: int, new_password: str) -> bool:
             res = await session.execute(
                 update(Admin)
                 .where(Admin.id == int(admin_id))
-                .values(password_hash=pw_hash, salt=salt, must_change_password=False)
+                .values(password_hash=pw_hash, salt=salt, must_change_password=False, token_version=Admin.token_version + 1)
             )
             return (res.rowcount or 0) > 0
 
