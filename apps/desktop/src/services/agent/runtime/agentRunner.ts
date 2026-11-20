@@ -48,6 +48,7 @@ import {
   estimateCompletionTokens, estimateHistoryTokens, hasExactCost, snapshotTimeline,
 } from '@/services/agent/engine/chatSession';
 import { detectDevCommand } from '@/services/agent/tools/devServer';
+import { terminalService } from '@/services/runtime/terminal';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/tools/fileChanges';
@@ -805,6 +806,8 @@ export class AgentRunner {
             });
             if (allowed && personalSpace && risk) trustConversation(convId);
           }
+          // Installation acceptée : Rust ne la lance qu'avec cet accord (usage unique)
+          if (allowed && risk && call.function.name === 'run_command') terminalService.grantInstall(riskCommand);
 
           // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)
           if (allowed && agentRoot && ['write_file', 'edit_file', 'delete_file'].includes(call.function.name)) {

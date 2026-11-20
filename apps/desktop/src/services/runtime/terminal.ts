@@ -219,6 +219,34 @@ class TerminalService {
     return this.toolEventsReady;
   }
 
+  /**
+   * Accords d'installation (npm/pip install) donnés par l'utilisateur sur la carte d'accord.
+   * Usage unique, valable 10 min, pour la commande exacte acceptée : Rust refuse
+   * l'installation sans ce drapeau.
+   */
+  private installGrants = new Map<string, number>();
+
+  private static installKey(program: string, args: string[]): string {
+    return [program.toLowerCase().replace(/\.(cmd|exe)$/, ''), ...args].join(' ');
+  }
+
+  /** Enregistre l'accord de l'utilisateur pour CETTE commande d'installation. */
+  grantInstall(command: string): void {
+    const parsed = parseExecutable(String(command || '').trim());
+    if (!parsed || parsed.args.length === 0) return;
+    const program = parsed.cmdName.replace(/-\d+$/, '');
+    this.installGrants.set(TerminalService.installKey(program, parsed.args), Date.now() + 10 * 60_000);
+  }
+
+  /** Consomme l'accord correspondant, s'il existe et n'a pas expiré. */
+  private takeInstallGrant(program: string, args: string[]): boolean {
+    const key = TerminalService.installKey(program, args);
+    const until = this.installGrants.get(key);
+    if (until === undefined) return false;
+    this.installGrants.delete(key);
+    return until > Date.now();
+  }
+
   private rootFor(cwd: string): string {
     const normalized = cwd.replace(/\\/g, '/').replace(/\/+$/, '');
     const root = Array.from(this.allowedProjectPaths).find((p) => isPathWithin(normalized, p));
@@ -235,7 +263,10 @@ class TerminalService {
   ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number }> {
     const start = Date.now();
     await this.ensureToolEvents();
-    await invoke('tool_spawn', { id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled() });
+    await invoke('tool_spawn', {
+      id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
+      approved: this.takeInstallGrant(program, args),
+    });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
     try {
@@ -334,6 +365,7 @@ class TerminalService {
         cwd: options.cwd,
         root: this.rootFor(options.cwd),
         sandbox: sandboxEnabled(),
+        approved: this.takeInstallGrant(displayName, parsed.args),
       });
       process.pid = pid;
       return processId;

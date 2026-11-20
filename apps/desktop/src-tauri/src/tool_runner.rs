@@ -58,7 +58,9 @@ fn validate_id(id: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_args(program: &str, args: &[String]) -> Result<(), String> {
+/// `approved` : l'utilisateur a accepté CETTE commande d'installation dans ANZAR
+/// (carte « L'agent demande ton accord »). Sans accord, l'installation reste refusée.
+fn validate_args(program: &str, args: &[String], approved: bool) -> Result<(), String> {
     if args.len() > MAX_ARGS {
         return Err(format!("Trop d'arguments (max {MAX_ARGS})."));
     }
@@ -91,11 +93,14 @@ fn validate_args(program: &str, args: &[String]) -> Result<(), String> {
         "git" if first == "clean" && second.starts_with('-') => {
             return Err("git clean est refusé par la politique locale.".into());
         }
-        "npm" if matches!(first, "install" | "i" | "ci" | "add" | "exec" | "publish") => {
-            return Err("Installation/publication npm refusée dans ce chemin ; utilise l'interface dédiée après accord.".into());
+        "npm" if matches!(first, "exec" | "publish") => {
+            return Err("npm exec / npm publish est refusé par la politique locale.".into());
         }
-        "pip" | "pip3" if first == "install" => {
-            return Err("Installation pip refusée dans ce chemin ; utilise l'interface dédiée après accord.".into());
+        "npm" if matches!(first, "install" | "i" | "ci" | "add") && !approved => {
+            return Err("Installation npm refusée sans ton accord : l'agent doit la demander (carte d'accord).".into());
+        }
+        "pip" | "pip3" if first == "install" && !approved => {
+            return Err("Installation pip refusée sans ton accord : l'agent doit la demander (carte d'accord).".into());
         }
         "cargo" if first == "install" => {
             return Err("cargo install refusé dans ce chemin.".into());
@@ -176,13 +181,14 @@ pub fn tool_spawn(
     cwd: String,
     root: String,
     sandbox: Option<bool>,
+    approved: Option<bool>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
     let program = program.trim().to_lowercase();
     if program.contains('/') || program.contains('\\') || !PROGRAMS.contains(&program.as_str()) {
         return Err("Programme non autorisé.".into());
     }
-    validate_args(&program, &args)?;
+    validate_args(&program, &args, approved.unwrap_or(false))?;
     let (root_p, cwd_p) = validate_dir(&root, &cwd)?;
     if !crate::roots::is_allowed_root(&app, &root_p) {
         return Err("Dossier non autorisé : ouvre-le d'abord comme projet dans ANZAR.".into());
@@ -288,14 +294,18 @@ mod security_tests {
 
     #[test]
     fn refuses_inline_code_and_git_config() {
-        assert!(validate_args("node", &args(&["-e", "1"])).is_err());
-        assert!(validate_args("python3", &args(&["-c", "print(1)"])).is_err());
-        assert!(validate_args("git", &args(&["config", "core.fsmonitor", "x"])).is_err());
-        assert!(validate_args("git", &args(&["-c", "core.hooksPath=x", "status"])).is_err());
-        assert!(validate_args("git", &args(&["push"])).is_err());
-        assert!(validate_args("npm", &args(&["install"])).is_err());
-        assert!(validate_args("git", &args(&["status"])).is_ok());
-        assert!(validate_args("npm", &args(&["run", "build"])).is_ok());
+        assert!(validate_args("node", &args(&["-e", "1"]), false).is_err());
+        assert!(validate_args("python3", &args(&["-c", "print(1)"]), false).is_err());
+        assert!(validate_args("git", &args(&["config", "core.fsmonitor", "x"]), false).is_err());
+        assert!(validate_args("git", &args(&["-c", "core.hooksPath=x", "status"]), false).is_err());
+        assert!(validate_args("git", &args(&["push"]), false).is_err());
+        assert!(validate_args("npm", &args(&["install"]), false).is_err());
+        assert!(validate_args("npm", &args(&["install", "react"]), true).is_ok());
+        assert!(validate_args("npm", &args(&["publish"]), true).is_err());
+        assert!(validate_args("npm", &args(&["exec", "x"]), true).is_err());
+        assert!(validate_args("cargo", &args(&["install", "x"]), true).is_err());
+        assert!(validate_args("git", &args(&["status"]), false).is_ok());
+        assert!(validate_args("npm", &args(&["run", "build"]), false).is_ok());
     }
 
     #[test]
