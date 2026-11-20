@@ -9,8 +9,7 @@ import { WifiOff } from 'lucide-react';
 import TitleBar from './TitleBar';
 import Sidebar from './Sidebar';
 import CommandPalette from '@/components/ui/CommandPalette';
-import AutomationRunner from '@/components/automations/AutomationRunner';
-import TicketRunner from '@/components/tickets/TicketRunner';
+import { startBackgroundQueues } from '@/services/background';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -40,6 +39,9 @@ export default function AppLayout({ className }: AppLayoutProps) {
     return () => clearTimeout(t);
   }, []);
 
+  // File du super-agent et automatisations : services hors composant, démarrés avec la session.
+  useEffect(() => startBackgroundQueues(), []);
+
   useEffect(() => {
     // Applique le thème persistant dès que settingsStore est hydraté.
     if (settingsTheme && settingsTheme !== currentTheme) {
@@ -64,9 +66,6 @@ export default function AppLayout({ className }: AppLayoutProps) {
 
       {/* Command Palette (global) */}
       <CommandPalette />
-      {/* Automatisations : tournent tant que l'app est ouverte */}
-      <AutomationRunner />
-      <TicketRunner />
 
       {/* Title bar */}
       <TitleBar />

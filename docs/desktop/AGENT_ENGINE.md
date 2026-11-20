@@ -14,6 +14,7 @@ src/services/agent/
 ├── context/     prompts système, carte du code + ANZAR.md, pièces jointes, dossier de travail
 ├── subagents/   explorateurs (lecture seule) et spawn_subagents
 ├── verify/      détection et exécution lint / build / tests
+├── runtime/     AgentRunner : une conversation avec l'agent, sans React
 └── profiles/    un fichier Markdown par rôle d'agent (explorer, motion-designer, dev, redaction)
 src/services/skills/
 ├── index.ts     chargement des skills (projet, personnelles, intégrées)
@@ -32,6 +33,13 @@ Règles :
 - **Vérification** : au `task_done`, si l'agent a modifié le projet et que le réglage
   « vérifier après application » est actif, lint / build / tests sont lancés ; un échec refuse
   `task_done` (3 tentatives). Une commande qui exécute du code modifié par l'agent demande un accord.
+- **Le harnais ne dépend pas de React** : `runtime/agentRunner.ts` porte toute la logique d'une
+  conversation (approbations, questions, plan, reprise, coûts). `hooks/useAgentChat.ts` n'est
+  qu'un adaptateur (`useSyncExternalStore`). Les tickets (`services/superagent/ticketQueue.ts`)
+  et les automatisations (`services/background/automationQueue.ts`) créent leur propre
+  `AgentRunner`, sans composant ; `startBackgroundQueues()` les démarre avec la session.
+- **Fermer la fenêtre pendant un travail de fond** propose de la réduire (le travail continue)
+  ou de quitter (le ticket reprendra au prochain lancement) : `services/background/closeGuard.ts`.
 - **Ajouter un rôle d'agent** : créer `profiles/<nom>.md` (frontmatter `kind`, `tools`,
   `max_steps`, `model`, `reasoning`, `skills`, puis les consignes).
 
