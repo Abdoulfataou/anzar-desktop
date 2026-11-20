@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { openExternalUrl } from '@/services/infra/externalLinks';
 import {
   Mail, ArrowRight, Loader2, AlertCircle, ArrowLeft,
-  CheckCircle, Eye, EyeOff, LogIn, UserPlus, KeyRound,
+  CheckCircle, Eye, EyeOff, LogIn, UserPlus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { authService } from '@/services/infra/auth';
@@ -84,9 +84,12 @@ export default function LoginPage() {
   };
 
   // ── Step 2: Verify OTP code ──
-  const handleVerifyCode = async () => {
+  // `digits` : passé directement par la saisie automatique (6e chiffre ou collage), car l'état
+  // React n'est pas encore à jour à ce moment-là (sinon le code lu n'a que 5 chiffres).
+  const handleVerifyCode = async (digits?: string[]) => {
+    if (loading) return;
     setError(null);
-    const code = otpDigits.join('');
+    const code = (digits ?? otpDigits).join('');
     if (code.length !== 6) {
       setError('Entre le code complet (6 chiffres)');
       return;
@@ -144,8 +147,8 @@ export default function LoginPage() {
     if (digit && index < 5) {
       otpRefs.current[index + 1]?.focus();
     }
-    if (digit && index === 5 && newDigits.join('').length === 6) {
-      setTimeout(() => handleVerifyCode(), 50);
+    if (digit && newDigits.join('').length === 6) {
+      void handleVerifyCode(newDigits);
     }
   };
 
@@ -153,7 +156,7 @@ export default function LoginPage() {
     if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
     }
-    if (e.key === 'Enter') handleVerifyCode();
+    if (e.key === 'Enter') void handleVerifyCode();
   };
 
   const handleOtpPaste = (e: React.ClipboardEvent) => {
@@ -164,7 +167,7 @@ export default function LoginPage() {
     for (let i = 0; i < pasted.length; i++) newDigits[i] = pasted[i];
     setOtpDigits(newDigits);
     otpRefs.current[Math.min(pasted.length, 5)]?.focus();
-    if (pasted.length === 6) setTimeout(() => handleVerifyCode(), 50);
+    if (newDigits.join('').length === 6) void handleVerifyCode(newDigits);
   };
 
   const handleResend = async () => {
@@ -272,17 +275,6 @@ export default function LoginPage() {
                 Si tu n'as pas de compte, il sera créé automatiquement.
               </p>
 
-              {/* Fallback: go to password mode */}
-              <div className="text-center pt-2">
-                <button
-                  type="button"
-                  onClick={() => { setStep('password'); setError(null); }}
-                  className="text-xs text-text-muted hover:text-accent-primary transition-colors"
-                >
-                  <KeyRound size={12} className="inline mr-1" />
-                  Se connecter avec un mot de passe
-                </button>
-              </div>
             </form>
           )}
 
@@ -330,7 +322,7 @@ export default function LoginPage() {
               </div>
 
               <button
-                onClick={handleVerifyCode}
+                onClick={() => void handleVerifyCode()}
                 disabled={loading || otpDigits.join('').length < 6}
                 className={cn(
                   'w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg',
