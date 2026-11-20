@@ -10,6 +10,7 @@ import TitleBar from './TitleBar';
 import Sidebar from './Sidebar';
 import CommandPalette from '@/components/ui/CommandPalette';
 import { startBackgroundQueues } from '@/services/background';
+import { importKnownProjectRoots } from '@/services/workspace/projectRoots';
 import { cn } from '@/lib/utils';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -40,7 +41,11 @@ export default function AppLayout({ className }: AppLayoutProps) {
   }, []);
 
   // File du super-agent et automatisations : services hors composant, démarrés avec la session.
-  useEffect(() => startBackgroundQueues(), []);
+  useEffect(() => {
+    // Projets connus avant la liste de dossiers Rust : importés une fois, avant les files de fond
+    void importKnownProjectRoots();
+    return startBackgroundQueues();
+  }, []);
 
   useEffect(() => {
     // Applique le thème persistant dès que settingsStore est hydraté.

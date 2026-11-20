@@ -7,6 +7,7 @@ mod tool_runtime;
 mod programs;
 mod tool_runner;
 mod sandbox;
+mod roots;
 
 fn main() {
     // Une app lancée depuis le Finder ou le Dock ne reçoit pas le PATH du terminal
@@ -19,7 +20,18 @@ fn main() {
     node_runtime::apply_path();
 
     let app = tauri::Builder::default()
-        .setup(|app| { node_runtime::apply_path_with(&app.handle()); Ok(()) })
+        .setup(|app| {
+            node_runtime::apply_path_with(&app.handle());
+            // Dossiers de projet choisis par l'utilisateur : ré-autorisés pour la webview
+            roots::restore(&app.handle());
+            Ok(())
+        })
+        // Fichiers glissés dans la fenêtre : lisibles comme pièces jointes
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Enter { paths, .. } | tauri::DragDropEvent::Drop { paths, .. }) = event {
+                roots::allow_dropped(tauri::Manager::app_handle(window), paths);
+            }
+        })
         // Secure storage: Stronghold (encrypted vault)
         .plugin(
             tauri_plugin_stronghold::Builder::new(|password| {
@@ -39,7 +51,8 @@ fn main() {
         // Serveurs MCP : transport stdio et HTTP (le protocole est géré par l'app)
         .manage(mcp::McpState::default())
         .manage(tool_runner::ToolState::default())
-        .invoke_handler(tauri::generate_handler![vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
+        .manage(roots::RootsState::default())
+        .invoke_handler(tauri::generate_handler![vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

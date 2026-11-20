@@ -4,7 +4,7 @@
  */
 import toast from 'react-hot-toast';
 import { useProjectStore } from '@/stores/projectStore';
-import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
+import { showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 
 const norm = (p: string) => p.replace(/\\/g, '/').replace(/\/+$/, '');
 
@@ -28,40 +28,33 @@ export function activateWorkspace(path: string): string {
   return project.id;
 }
 
-/** Dialogue natif → dossier existant. Retourne l'id du projet, ou null si annulé/refusé. */
-export async function openWorkspaceFolder(): Promise<string | null> {
+/**
+ * Les dossiers de projet sont choisis dans un sélecteur natif lancé par Rust : seul ce choix
+ * de l'utilisateur ajoute un dossier à la liste autorisée (périmètre fichiers de la webview et
+ * commandes de l'agent), enregistrée et ré-autorisée au démarrage.
+ */
+async function pickWithRust(command: 'project_pick_folder' | 'project_create_folder', failure: string): Promise<string | null> {
   try {
-    const { open } = await import('@/lib/tauri/dialog');
-    const selected = await open({ directory: true, multiple: false, title: 'Ouvrir un dossier de travail' });
-    if (!selected || typeof selected !== 'string') return null;
-    if (!(await isAllowedProjectRoot(selected))) {
-      await showPathNotAllowedMessage();
-      return null;
-    }
-    return activateWorkspace(selected);
+    const { invoke } = await import('@tauri-apps/api/core');
+    const selected = await invoke<string | null>(command);
+    return selected ? activateWorkspace(selected) : null;
   } catch (err) {
-    console.error('Open folder failed:', err);
-    toast.error("Impossible d'ouvrir le dossier (fonction desktop).");
+    console.error(`${command} failed:`, err);
+    const reason = typeof err === 'string' ? err : '';
+    if (reason) await showPathNotAllowedMessage(reason);
+    else toast.error(failure);
     return null;
   }
 }
 
+/** Dialogue natif → dossier existant. Retourne l'id du projet, ou null si annulé/refusé. */
+export function openWorkspaceFolder(): Promise<string | null> {
+  return pickWithRust('project_pick_folder', "Impossible d'ouvrir le dossier (fonction desktop).");
+}
+
 /** Dialogue natif → nouvel emplacement (dossier vierge que l'agent remplira). */
-export async function createWorkspaceFolder(): Promise<string | null> {
-  try {
-    const { save } = await import('@/lib/tauri/dialog');
-    const selected = await save({ title: 'Nouveau projet — choisir un emplacement' });
-    if (!selected || typeof selected !== 'string') return null;
-    if (!(await isAllowedProjectRoot(selected))) {
-      await showPathNotAllowedMessage();
-      return null;
-    }
-    return activateWorkspace(selected);
-  } catch (err) {
-    console.error('New folder failed:', err);
-    toast.error('Impossible de créer le dossier.');
-    return null;
-  }
+export function createWorkspaceFolder(): Promise<string | null> {
+  return pickWithRust('project_create_folder', 'Impossible de créer le dossier.');
 }
 
 /**

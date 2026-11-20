@@ -575,12 +575,13 @@ export default function ChatInput({
     let mounted = true;
     (async () => {
       try {
-        const { listen } = await import('@tauri-apps/api/event');
-        const u1 = await listen('tauri://file-drop-hover', () => setIsDropHover(true));
-        const u2 = await listen('tauri://file-drop-cancelled', () => setIsDropHover(false));
-        const u3 = await listen<string[]>('tauri://file-drop', async (event) => {
+        // Tauri 2 : un seul flux d'événements (enter / over / drop / leave)
+        const { getCurrentWebview } = await import('@tauri-apps/api/webview');
+        const u1 = await getCurrentWebview().onDragDropEvent(async ({ payload }) => {
+          if (payload.type === 'enter' || payload.type === 'over') { setIsDropHover(true); return; }
+          if (payload.type === 'leave') { setIsDropHover(false); return; }
           setIsDropHover(false);
-          const paths = (event.payload || []).slice(0, 8);
+          const paths = (payload.paths || []).slice(0, 8);
           if (paths.length === 0) return;
           const loadingToast = toast.loading('Lecture des fichiers…');
           const items: ChatAttachment[] = [];
@@ -592,8 +593,8 @@ export default function ChatInput({
           toast.success(`${items.length} fichier${items.length > 1 ? 's' : ''} joint${items.length > 1 ? 's' : ''} — pose ta question !`);
           textareaRef.current?.focus();
         });
-        if (mounted) unsubs.push(u1, u2, u3);
-        else { u1(); u2(); u3(); }
+        if (mounted) unsubs.push(u1);
+        else u1();
       } catch { /* web mode : pas de drop natif */ }
     })();
     return () => { mounted = false; unsubs.forEach(u => u()); };

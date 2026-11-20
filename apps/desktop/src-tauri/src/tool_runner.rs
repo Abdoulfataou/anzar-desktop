@@ -181,6 +181,9 @@ pub fn tool_spawn(
     }
     validate_args(&program, &args)?;
     let (root_p, cwd_p) = validate_dir(&root, &cwd)?;
+    if !crate::roots::is_allowed_root(&app, &root_p) {
+        return Err("Dossier non autorisé : ouvre-le d'abord comme projet dans ANZAR.".into());
+    }
 
     // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
     let isolated = sandbox.unwrap_or(true) && crate::sandbox::available();

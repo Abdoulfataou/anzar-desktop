@@ -7,8 +7,9 @@ function normalize(p: string): string {
 }
 
 /**
- * Checks if a project path is within allowed directories (tauri.conf.json scope).
- * Allowed: Documents, Desktop, Downloads, $HOME.
+ * Pré-contrôle grossier : le chemin est-il dans le dossier personnel ?
+ * Le vrai contrôle est fait par Rust (src-tauri/src/roots.rs) : seuls les dossiers choisis
+ * par l'utilisateur sont dans le périmètre fichiers de la webview.
  */
 export async function isAllowedProjectRoot(selectedPath: string): Promise<boolean> {
   const selected = normalize(selectedPath)
@@ -36,11 +37,11 @@ export async function isAllowedProjectRoot(selectedPath: string): Promise<boolea
   }
 }
 
-export async function showPathNotAllowedMessage(): Promise<void> {
+export async function showPathNotAllowedMessage(reason?: string): Promise<void> {
   try {
     const { message } = await import('@/lib/tauri/dialog')
     await message(
-      "Dossier non autorisé. Vérifie que le dossier est dans ton répertoire personnel (Documents, Bureau, etc.).",
+      reason || "Dossier non autorisé. Vérifie que le dossier est dans ton répertoire personnel (Documents, Bureau, etc.).",
       { title: 'Dossier non autorisé', kind: 'warning' }
     )
   } catch {

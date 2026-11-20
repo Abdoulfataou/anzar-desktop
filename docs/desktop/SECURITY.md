@@ -192,3 +192,23 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   profondeur, en plus de la politique de commandes et des accords.
 - Windows et Linux : pas encore d'isolation système (étape suivante : jeton restreint et
   job object sur Windows).
+
+## Dossiers de projet autorisés (novembre 2026)
+
+Le périmètre fichiers de la webview (`capabilities/migrated.json`) est réduit au strict
+nécessaire : dossier de données de l'app, `Documents/ANZAR` (espace ANZAR, worktrees) et
+dossiers de skills partagés. Les anciens accès larges (`Documents/**`, `Bureau/**`,
+`Téléchargements/**`, `~/Projects`, `~/Developer`) sont retirés.
+
+Un dossier de projet n'entre dans le périmètre que par `src-tauri/src/roots.rs` :
+
+| Entrée | Effet |
+|---|---|
+| `project_pick_folder` / `project_create_folder` | Sélecteur natif lancé par Rust : le dossier choisi par l'utilisateur est validé (dans le dossier personnel, ni le dossier personnel lui-même, ni `~/.ssh`, `~/Library`, `~/.config`…, liens symboliques résolus), autorisé et enregistré dans `allowed_roots.json` (0600) |
+| Démarrage | La liste est relue et chaque dossier ré-autorisé (avant : un dossier hors Documents/Bureau/Téléchargements perdait son accès au redémarrage) |
+| `project_import_roots` | Migration unique des projets déjà connus ; sans effet une fois la liste créée |
+| Glisser-déposer | Les fichiers déposés dans la fenêtre deviennent lisibles (pièces jointes), un par un |
+| `tool_spawn` | Une commande de l'agent n'est acceptée que dans un dossier de la liste, `Documents/ANZAR` ou les données de l'app |
+
+Les sélecteurs de fichiers du plugin dialog (pièce jointe, export) autorisent aussi le fichier
+choisi, pour la session seulement.
