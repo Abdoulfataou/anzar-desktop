@@ -15,6 +15,7 @@
  * usageStore (débit FCFA), chatStore (persistance conversation).
  */
 import { commandRisk, noteAgentWrite } from '@/services/agent/policy/commandGuard';
+import { externalReason, UNTRUSTED_PROMPT_RULE, type ExternalSource } from '@/services/agent/policy/untrusted';
 import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason, type AgentToolOutcome } from '@/services/agent/engine/agentSession';
 import {
   closeDanglingToolCalls, compactHistory, historyChars,
@@ -439,6 +440,9 @@ export class AgentRunner {
     const callModel = (): AIModel => (route ? route.mode : model === 'auto' ? 'thinking' : model);
     if (route) { updateMessage(assistantId, { autoRoute: route }); this.lastRoute = route; }
     let toolErrors = 0;
+    // Contenus externes (web, connecteurs) lus pendant cette demande : les commandes et
+    // actions de connecteur qui suivent demandent l'accord (voir policy/untrusted.ts)
+    const externalSources: ExternalSource[] = [];
     let escalations = 0;
     // Chronologie affichée : texte et actions dans l'ordre où l'agent les produit
     const timeline: TimelineItem[] = resumeFrom ? resumeFrom.timeline.map((t) => ({ ...t })) : [];
@@ -532,6 +536,8 @@ export class AgentRunner {
             // d'origine (servi par le cache) et on donne la version à jour dans la demande.
             turnContext += `\n\n---\n# Contexte mis à jour (remplace celui du début de la conversation)\n${systemRefresh}`;
           }
+          // Conversation commencée avant la règle sur le contenu externe : on la rappelle
+          if (!prevText.includes('## Contenu externe')) turnContext += `\n\n---\n${UNTRUSTED_PROMPT_RULE}`;
           // Si la réponse précédente a été coupée, l'historique doit rester valide pour « continue »
           closeDanglingToolCalls(this.apiHistory);
         }
@@ -795,14 +801,20 @@ export class AgentRunner {
             risk,
             personalSpace,
             trusted: trustedConvs.has(convId),
+            mcpAction: !!mcpRef && !mcpReadOnly,
+            external: externalSources.length ? { suspicious: externalSources.some((x) => x.suspicious) } : null,
           });
+          const afterExternal = externalSources.length > 0
+            && (['run_command', 'spawn_subagents', 'start_dev_server'].includes(call.function.name) || (!!mcpRef && !mcpReadOnly));
           let allowed = decision.allowed;
           let refusal = decision.refusal ?? "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
           if (decision.ask) {
             const scope = personalSpace && risk ? "Autoriser vaut pour toute cette conversation dans l'espace ANZAR." : undefined;
             allowed = await new Promise<boolean>((resolve) => {
               this.approvalResolver = resolve;
-              this.setState({ approval: { id: call.id, name: call.function.name, summary: ev.argsSummary, reason: risk?.reason, detail: risk?.detail, scope } });
+              const reason = [risk?.reason, afterExternal ? externalReason(externalSources) : '']
+                .filter(Boolean).join(' ; ') || undefined;
+              this.setState({ approval: { id: call.id, name: call.function.name, summary: ev.argsSummary, reason, detail: risk?.detail, scope } });
             });
             if (allowed && personalSpace && risk) trustConversation(convId);
           }
@@ -855,7 +867,7 @@ export class AgentRunner {
             return { output: plan.output, stop: 'plan' };
           }
 
-          const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[]; media?: ToolEvent['media'] } = !allowed
+          const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[]; media?: ToolEvent['media']; external?: ExternalSource } = !allowed
             ? { output: refusal, isError: true }
             : await executeGenericTool(call, args, {
                 agentRoot,
@@ -868,6 +880,7 @@ export class AgentRunner {
                   : undefined,
               });
 
+          if (result.external) externalSources.push(result.external);
           // Recherche et lecture web : facturées à part par le serveur, ajoutées au coût de la réponse
           if (result.costFCFA) cost.sum += result.costFCFA;
           this.opts.onProgress?.({ costFCFA: cost.sum });

@@ -4,6 +4,7 @@
  * pour que le cache fournisseur soit réutilisé ; ce qui change (mémoire, skills,
  * instructions) est renvoyé à part dans `systemRefresh`.
  */
+import { UNTRUSTED_PROMPT_RULE } from '../policy/untrusted';
 import type { APIMessage } from '@/types';
 import {
   buildAgentSystemPrompt, memorySection,
@@ -59,7 +60,7 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
     };
     system = {
       role: 'system',
-      content: buildAgentSystemPrompt(promptCtx) + input.skillsSection + input.personal,
+      content: buildAgentSystemPrompt(promptCtx) + '\n\n' + UNTRUSTED_PROMPT_RULE + input.skillsSection + input.personal,
     };
     systemHead = buildAgentSystemPrompt({ ...promptCtx, memory: undefined });
     systemRefresh = [
@@ -94,7 +95,7 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
         "crée les fichiers dedans, vérifie avec capture_page, exporte avec export_animation. Ne produis PAS des widgets " +
         "quand la demande porte sur des pubs, animations ou vidéos à livrer. Si l'espace n'est PAS ouvert et que la " +
         "création l'exige, propose UNE fois à l'utilisateur d'ouvrir un dossier.\n\n" +
-        FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + '\n\n' + CONNECTORS_GUIDE + input.personal,
+        FORMATTING_GUIDE + '\n\n' + VISUALS_GUIDE + '\n\n' + CONNECTORS_GUIDE + '\n\n' + UNTRUSTED_PROMPT_RULE + input.personal,
     };
     systemHead = (system.content as string).slice(0, (system.content as string).length - input.personal.length);
     systemRefresh = input.personal.trim();

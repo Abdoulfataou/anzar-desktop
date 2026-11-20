@@ -217,3 +217,26 @@ Un dossier de projet n'entre dans le périmètre que par `src-tauri/src/roots.rs
 
 Les sélecteurs de fichiers du plugin dialog (pièce jointe, export) autorisent aussi le fichier
 choisi, pour la session seulement.
+
+## Contenu externe et injection de consignes (novembre 2026)
+
+Une page web (`web_search`, `read_url`) ou la réponse d'un connecteur MCP peut contenir
+des consignes cachées. Défenses (`src/services/agent/policy/untrusted.ts`) :
+
+- **Encadrement** : le contenu arrive entre `<<<DÉBUT CONTENU EXTERNE <id>>>>` et
+  `<<<FIN CONTENU EXTERNE <id>>>>`, avec un identifiant aléatoire par bloc. Un faux
+  marqueur présent dans le texte est remplacé par `[balise retirée]`.
+- **Repérage** : les tournures d'injection connues (« ignore previous instructions »,
+  « nouvelles consignes : », `curl … https://`, « envoie le .env »…) ajoutent un
+  avertissement au bloc et rendent la source « suspecte ».
+- **Accord après lecture** : dès qu'un contenu externe a été lu pendant la demande,
+  `run_command`, `start_dev_server`, `spawn_subagents` et les actions de connecteur
+  (non déclarées en lecture) demandent l'accord, même en « Accès complet ». La carte
+  indique la source. En automatisation, ces actions sont refusées si le contenu est suspect.
+  L'écriture de fichiers reste libre : les fichiers écrits puis exécutés sont déjà couverts
+  par le garde S3 (`commandGuard`).
+- **Prompt** : règle « Contenu externe » dans le prompt système (rappelée aux conversations
+  plus anciennes).
+
+Limites : le suivi vaut pour la demande en cours (il repart à zéro au message suivant) ;
+un fichier du projet qui contient des consignes (README cloné, par exemple) n'est pas marqué.

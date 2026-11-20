@@ -8,6 +8,7 @@ import { executeToolCall, type ToolExecutionContext } from './index';
 import { runAgentSession } from '../engine/agentLoop';
 import { executeWebTool, WEB_TOOL_NAMES } from './webTools';
 import { callMcpTool, isMcpTool } from '@/services/mcp/manager';
+import type { ExternalSource } from '../policy/untrusted';
 import { PERSONAL_SPACE_TOOLS } from '@/services/workspace/personalSpace';
 
 export interface GenericToolResult {
@@ -17,6 +18,8 @@ export interface GenericToolResult {
   costFCFA?: number;
   images?: { label: string; dataUrl: string }[];
   media?: { path: string; kind: 'video' | 'image' };
+  /** Contenu externe (web, connecteur) lu par cet outil. */
+  external?: ExternalSource;
 }
 
 export interface GenericToolOptions {

@@ -56,4 +56,20 @@ describe('approvalDecision', () => {
     expect(mcp.allowed).toBe(false);
     expect(mcp.refusal).toContain('GitHub');
   });
+
+  it('après un contenu externe : commande et action de connecteur demandent l’accord, même en Full', () => {
+    const external = { suspicious: false };
+    expect(approvalDecision({ ...base, tool: 'run_command' }).ask).toBe(false);
+    expect(approvalDecision({ ...base, tool: 'run_command', external }).ask).toBe(true);
+    expect(approvalDecision({ ...base, tool: 'mcp__x__send', mcpAction: true, external }).ask).toBe(true);
+    // Écrire un fichier ou lire reste libre en Full
+    expect(approvalDecision({ ...base, tool: 'write_file', external }).ask).toBe(false);
+    expect(approvalDecision({ ...base, tool: 'read_file', external }).ask).toBe(false);
+  });
+
+  it('automatisation : contenu suspect → commande refusée, contenu normal → inchangé', () => {
+    const bg = { ...base, background: true, tool: 'run_command' };
+    expect(approvalDecision({ ...bg, external: { suspicious: true } }).allowed).toBe(false);
+    expect(approvalDecision({ ...bg, external: { suspicious: false } }).allowed).toBe(true);
+  });
 });
