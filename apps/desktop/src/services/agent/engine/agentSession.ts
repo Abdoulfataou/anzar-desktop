@@ -57,7 +57,7 @@ export interface AgentSessionOptions {
   shouldNudge?: () => boolean;
   nudgeMessage?: string;
   /** Appelé avant chaque appel modèle (compaction, estimation de tokens…). */
-  beforeStep?: (messages: APIMessage[], step: number) => void;
+  beforeStep?: (messages: APIMessage[], step: number) => void | Promise<void>;
   onStepStart?: (step: number) => void;
   onTextDelta?: (text: string, step: number) => void;
   onReasoningDelta?: (text: string, step: number) => void;
@@ -143,7 +143,7 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     if (signal?.aborted) return finish('aborted', 'Session annulée.', step - 1);
 
     onStepStart?.(step);
-    options.beforeStep?.(messages, step);
+    await options.beforeStep?.(messages, step);
 
     let assembler = new ToolCallAssembler();
     let text = '';

@@ -42,6 +42,14 @@ Règles :
   complet de la conversation et un journal d'événements (`store/sessions/<id>.json` et
   `.events.jsonl`). Au redémarrage, une conversation reprend avec tout son contexte ; une réponse
   coupée par la fermeture de l'app est marquée et « continue » repart du bon endroit.
+- **Carte du code** : `context/repoRank.ts` classe les fichiers par PageRank sur le graphe des
+  imports (comme la repo map d'Aider). La carte générale reste identique d'un message à l'autre
+  (cache DeepSeek) ; les indices de la tâche utilisent un PageRank personnalisé par les fichiers
+  trouvés, qui fait remonter leurs voisins importants (store, utilitaires, types).
+- **Condenser** : `engine/condenser.ts`. Au-delà du plafond, après la compaction habituelle, le
+  début de la session est résumé par `deepseek-flash` (réflexion courte) ; les 12 derniers
+  messages restent intacts et chaque appel d'outil garde sa réponse. Si le résumé échoue,
+  repli sur une compaction plus forte. Le coût du résumé est compté dans la réponse.
 - **Fermer la fenêtre pendant un travail de fond** propose de la réduire (le travail continue)
   ou de quitter (le ticket reprendra au prochain lancement) : `services/background/closeGuard.ts`.
 - **Ajouter un rôle d'agent** : créer `profiles/<nom>.md` (frontmatter `kind`, `tools`,

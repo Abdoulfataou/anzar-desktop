@@ -16,6 +16,7 @@
 
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { codeIndexer } from '@/services/filesystem/codeIndexer';
+import { pageRank, rankedFiles } from './repoRank';
 
 // ============================================================================
 // TYPES
@@ -78,12 +79,10 @@ function buildCodeMap(index: ReturnType<typeof codeIndexer.indexProject>): strin
   }
   lines.push('');
 
-  // Fichiers triés par importance (hubs du graphe de dépendances d'abord)
-  const ranked = [...index.files.entries()].sort((a, b) => {
-    const ra = (index.reverseDependencies.get(a[0])?.length || 0) + a[1].exports.length;
-    const rb = (index.reverseDependencies.get(b[0])?.length || 0) + b[1].exports.length;
-    return rb - ra;
-  });
+  // Fichiers triés par importance : PageRank sur le graphe des imports (stable d'un message à
+  // l'autre, donc compatible avec le cache DeepSeek)
+  const order = rankedFiles(pageRank([...index.files.keys()], index.dependencies));
+  const ranked = order.map((p) => [p, index.files.get(p)!] as const).filter(([, fi]) => !!fi);
 
   let used = lines.join('\n').length;
   for (const [path, fi] of ranked) {
@@ -113,8 +112,13 @@ function buildTaskHints(
   task: string
 ): string {
   try {
-    const { relevantFiles } = codeIndexer.buildSmartContext(index, task, files, 20_000);
-    if (relevantFiles.length === 0) return '';
+    const { relevantFiles: matched } = codeIndexer.buildSmartContext(index, task, files, 20_000);
+    if (matched.length === 0) return '';
+    // PageRank personnalisé par les fichiers trouvés pour la tâche : ils restent en tête, et
+    // leurs voisins importants (store, utilitaires, types) remontent avec eux.
+    const personalization = new Map(matched.slice(0, 12).map((p, i) => [p, 1 / (i + 1)]));
+    const rank = pageRank([...index.files.keys()], index.dependencies, { personalization });
+    const relevantFiles = rankedFiles(rank).filter((p) => rank.get(p)! > 0);
 
     const lines: string[] = [];
     let used = 0;

@@ -118,7 +118,7 @@ skills personnelles.
 | Module | Commande | État |
 |---|---|---|
 | API | `cd services/api && python -m pytest tests/` | 77 tests |
-| Desktop | `cd apps/desktop && npm run smoke` | 33 fichiers, 158 tests Vitest |
+| Desktop | `cd apps/desktop && npm run smoke` | 36 fichiers, 168 tests Vitest |
 | Rust | `cd apps/desktop/src-tauri && cargo test` | tests de `tool_runner` et `sandbox` |
 
 ## 8. Feuille de route
@@ -132,8 +132,9 @@ skills personnelles.
 - [x] Sessions durables (historique + journal) ; client MCP 2026-07-28
 
 ### Ensuite
-- [ ] Écritures de fichiers de l'agent via Rust, liées à la racine de session ; scope `fs` de la webview réduit
+- [x] Dossiers de projet tenus par Rust ; périmètre fichiers de la webview réduit
 - [ ] Isolation des commandes sur Windows (jeton restreint, job object)
 - [ ] Paiements réels en production (FedaPay, Stripe) et iPay Money
-- [ ] Carte du code par tree-sitter, condenser d'historique, budgets en FCFA par sous-agent
+- [x] Carte du code par PageRank sur les imports, condenser d'historique
+- [ ] Analyse syntaxique tree-sitter pour la carte, budgets en FCFA par sous-agent
 - [ ] Banc d'essai de tâches types rejoué à chaque version

@@ -21,6 +21,7 @@ export type SessionEvent =
   | { type: 'step'; step: number; text: number; toolCalls: string[] }
   | { type: 'tool'; name: string; isError: boolean; output: string }
   | { type: 'verify'; passed: boolean }
+  | { type: 'condense'; ok: boolean }
   | { type: 'done'; stopReason: string; costFCFA?: number }
   | { type: 'error'; message: string };
 

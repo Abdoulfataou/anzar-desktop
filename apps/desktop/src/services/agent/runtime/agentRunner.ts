@@ -26,6 +26,7 @@ import { approvalDecision } from '@/services/agent/policy/toolPolicy';
 import { executeGenericTool } from '@/services/agent/tools/toolExecution';
 import { runVerification } from '@/services/agent/verify/agentVerifier';
 import { loadSession, recordSessionEvent, saveSession } from './sessionStore';
+import { CONDENSER_PROMPT, condenseHistory } from '@/services/agent/engine/condenser';
 export type { PermissionMode } from '@/services/agent/policy/permissions';
 import { loadPersonalInstructions, personalInstructionsSection } from '@/services/workspace/personalInstructions';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
@@ -606,12 +607,28 @@ export class AgentRunner {
         // Le chat principal n'impose pas de plafond d'erreurs d'outils : le mode Auto escalade.
         maxConsecutiveErrors: 0,
         signal: controller.signal,
-        beforeStep: () => {
+        beforeStep: async () => {
           // Compaction en une fois, seulement au-delà du plafond, pour garder le cache.
           if (historyChars(this.apiHistory) > SOFT_LIMIT_CHARS) {
             compactHistory(this.apiHistory, KEEP_RECENT_TOOL_RESULTS, STUB_CHARS);
             if (historyChars(this.apiHistory) > SOFT_LIMIT_CHARS * 0.6) {
-              compactHistory(this.apiHistory, 2, 300);
+              // Encore trop long : le début du travail est résumé par le modèle (rapide, réflexion
+              // courte) ; si le résumé échoue, repli sur une compaction plus forte.
+              const condensed = await condenseHistory(this.apiHistory, {
+                keepRecent: 12,
+                summarize: async (text) => {
+                  const res: any = await aiService.chat(
+                    [{ role: 'system', content: CONDENSER_PROMPT }, { role: 'user', content: text }],
+                    { model: 'fast', reasoningEffort: 'low', signal: controller.signal },
+                  );
+                  const fcfa = Number(res?.anzar?.cost_fcfa);
+                  if (Number.isFinite(fcfa) && fcfa > 0) { cost.sum += fcfa; cost.reports++; }
+                  cost.calls++;
+                  return String(res?.choices?.[0]?.message?.content || '');
+                },
+              });
+              recordSessionEvent(convId, { type: 'condense', ok: condensed });
+              if (!condensed) compactHistory(this.apiHistory, 2, 300);
             }
           }
           promptTokens += estimateHistoryTokens(this.apiHistory);
