@@ -106,7 +106,18 @@ export async function execDeleteFile(args: any, ctx: ToolExecutionContext): Prom
 export async function execListDir(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const abs = await resolvePath(ctx.projectRoot, args.path);
   const depth = Math.min(Math.max(args.depth ?? 2, 1), 4);
-  const tree = await fileSystemService.readDirectoryTree(abs, depth);
+  let tree: unknown[];
+  try {
+    tree = await fileSystemService.readDirectoryTree(abs, depth, { throwOnError: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return {
+      output: `Erreur list_dir: impossible de lire « ${args.path} » (${msg}). `
+        + "Ce n'est pas un dossier vide : ne crée pas de fichiers pour le remplacer. "
+        + "Si le dossier n'est pas autorisé, demande à l'utilisateur de le rouvrir avec « Ouvrir un dossier ».",
+      isError: true,
+    };
+  }
 
   const lines: string[] = [];
   const walk = (nodes: any[], prefix: string) => {

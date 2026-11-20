@@ -132,7 +132,8 @@ class FileSystemService {
    */
   async readDirectoryTree(
     dirPath: string,
-    maxDepth: number = 8
+    maxDepth: number = 8,
+    options: { throwOnError?: boolean } = {}
   ): Promise<FileNode[]> {
     if (!this.isTauri) {
       console.warn('FileSystemService: Tauri not available');
@@ -184,6 +185,8 @@ class FileSystemService {
         return a.name.localeCompare(b.name);
       });
     } catch (error) {
+      // L'agent doit distinguer « dossier vide » de « dossier illisible » (S-fs).
+      if (options.throwOnError) throw error;
       console.error('Failed to read directory:', error);
       return [];
     }

@@ -142,12 +142,18 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
 
+  // Une lecture plus ancienne (projet précédent, ou rafraîchissement dépassé) ne doit pas
+  // écraser la plus récente : seule la dernière demande applique son résultat.
+  const listSeq = useRef(0);
+
   const listWorkspace = useCallback(async () => {
     if (!workspacePath) return;
+    const seq = ++listSeq.current;
     setLoading(true);
     try {
       const root = workspacePath.replace(/[\\/]+$/, '');
       const tree = await fileSystemService.readDirectoryTree(root, 8);
+      if (seq !== listSeq.current) return;
       const paths: string[] = [];
       const walk = (nodes: FileNode[]) => {
         for (const n of nodes) {
@@ -169,7 +175,7 @@ export default function WorkspacePanel({ workspacePath, refreshKey, focusFile, o
     } catch (e) {
       console.error('Workspace list failed:', e);
     } finally {
-      setLoading(false);
+      if (seq === listSeq.current) setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workspacePath]);
