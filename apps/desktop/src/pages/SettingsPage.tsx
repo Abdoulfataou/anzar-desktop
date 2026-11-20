@@ -240,6 +240,9 @@ function GeneralSection() {
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const webTools = useSettingsStore((s) => s.settings.webTools !== false);
   const codeDiagnostics = useSettingsStore((s) => s.settings.codeDiagnostics !== false);
+  const autoVerify = useSettingsStore((s) => s.settings.autoVerifyAfterApply !== false);
+  const sandbox = useSettingsStore((s) => s.settings.sandboxCommands !== false);
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
   const [mode, setMode] = useState<PermissionMode>(() => {
     try {
       const v = localStorage.getItem('anzar.permissionMode');
@@ -279,6 +282,28 @@ function GeneralSection() {
           options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
         />
       </Row>
+      <Row
+        label="Vérification automatique"
+        description="Quand l'agent a modifié le projet, il lance lint, build et tests avant d'annoncer qu'il a fini. Si ça échoue, il corrige (3 essais au plus). Une commande qui exécute du code qu'il a modifié te demande d'abord ton accord."
+      >
+        <Segmented
+          value={autoVerify ? 'on' : 'off'}
+          onChange={(v) => updateSettings({ autoVerifyAfterApply: v === 'on' })}
+          options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
+        />
+      </Row>
+      {isMac && (
+        <Row
+          label="Isoler les commandes"
+          description="Les commandes lancées par l'agent ne peuvent écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo), et ne peuvent pas lire tes clés (~/.ssh, ~/.aws…). Désactive seulement si un outil légitime est bloqué."
+        >
+          <Segmented
+            value={sandbox ? 'on' : 'off'}
+            onChange={(v) => updateSettings({ sandboxCommands: v === 'on' })}
+            options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
+          />
+        </Row>
+      )}
       <Row label="Permissions par défaut" description="Ce que l'agent peut faire sans te demander. Modifiable à tout moment depuis la saisie.">
         <select
           value={mode}

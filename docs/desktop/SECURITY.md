@@ -170,3 +170,25 @@ Effectuée sur macOS :
 redémarrage (restauration Stronghold), ouverture de dossier, éditeur, terminal
 et arrêt de processus, connecteurs MCP, mise à jour signée, installeur NSIS.
 Voir `MIGRATION_TAURI2.md`.
+
+## Isolation des commandes (novembre 2026)
+
+Sur macOS, chaque commande lancée pour l'agent (`tool_spawn` : npm, node, git, cargo,
+python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
+`src-tauri/src/sandbox.rs` :
+
+| Règle | Effet |
+|---|---|
+| Écriture | Autorisée seulement dans le dossier du projet, le dossier git du dépôt (worktrees des tickets), les dossiers temporaires et les caches (`~/Library/Caches`, `~/.npm`, `~/.cache`, `~/.cargo`) |
+| Git | `.git/hooks` et `.git/config` en lecture seule, y compris pour une worktree |
+| Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials` illisibles |
+| Réseau | Non restreint (serveurs de développement, téléchargements des outils) |
+
+- Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
+  commandes s'exécutent comme avant.
+- Quand une écriture est refusée, la sortie de la commande se termine par une ligne
+  `[ANZAR] Bloqué par l'isolation des commandes…` que l'agent comprend.
+- Limite connue : le réglage est transmis par la webview ; l'isolation est une défense en
+  profondeur, en plus de la politique de commandes et des accords.
+- Windows et Linux : pas encore d'isolation système (étape suivante : jeton restreint et
+  job object sur Windows).

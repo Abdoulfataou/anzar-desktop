@@ -6,6 +6,7 @@ mod node_runtime;
 mod tool_runtime;
 mod programs;
 mod tool_runner;
+mod sandbox;
 
 fn main() {
     // Une app lancée depuis le Finder ou le Dock ne reçoit pas le PATH du terminal

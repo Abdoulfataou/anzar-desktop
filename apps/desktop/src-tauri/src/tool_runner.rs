@@ -115,6 +115,12 @@ fn validate_dir(root: &str, cwd: &str) -> Result<(std::path::PathBuf, std::path:
     Ok((root_p, cwd_p))
 }
 
+/// Cherche un programme dans le PATH de l'app (sandbox-exec ne dit pas clairement qu'il manque).
+fn find_in_path(program: &str) -> Option<std::path::PathBuf> {
+    let path = crate::mcp::enriched_path();
+    std::env::split_paths(&path).map(|dir| dir.join(program)).find(|p| p.is_file())
+}
+
 fn apply_base_env(cmd: &mut Command) {
     cmd.env_clear();
     for key in ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "TERM", "TZ",
@@ -166,6 +172,7 @@ pub fn tool_spawn(
     args: Vec<String>,
     cwd: String,
     root: String,
+    sandbox: Option<bool>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
     let program = program.trim().to_lowercase();
@@ -173,10 +180,21 @@ pub fn tool_spawn(
         return Err("Programme non autorisé.".into());
     }
     validate_args(&program, &args)?;
-    let (_root_p, cwd_p) = validate_dir(&root, &cwd)?;
+    let (root_p, cwd_p) = validate_dir(&root, &cwd)?;
 
-    let mut cmd = Command::new(&program);
-    cmd.args(&args)
+    // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
+    let isolated = sandbox.unwrap_or(true) && crate::sandbox::available();
+    if isolated && find_in_path(&program).is_none() {
+        return Err(format!("« {program} » est introuvable sur cet ordinateur."));
+    }
+    let wrapped = if isolated {
+        crate::sandbox::wrap(&program, &args, &root_p)
+    } else {
+        crate::sandbox::Wrapped { program: program.clone(), args: args.clone() }
+    };
+
+    let mut cmd = Command::new(&wrapped.program);
+    cmd.args(&wrapped.args)
         .current_dir(&cwd_p)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

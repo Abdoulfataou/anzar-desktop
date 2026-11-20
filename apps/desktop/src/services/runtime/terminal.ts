@@ -13,10 +13,22 @@ import { exists, readTextFile } from '@/lib/tauri/fs'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { isTauri } from '@/lib/utils'
+import { useSettingsStore } from '@/stores/settingsStore'
 import { COMMAND_NAME_MAP, MAX_ARGS, parseExecutable, validateCommand } from '@/services/agent/policy/commandPolicy';
 import { isPathWithin } from '@/lib/pathGuard';
 import { ensureNode, manualNodeHelp, needsNode } from '@/services/runtime/nodeRuntime';
 import { checkPython, ensureGit, isPython } from '@/services/runtime/programs';
+
+/** Isolation des commandes (macOS) : activée sauf si coupée dans les Paramètres. */
+export const sandboxEnabled = (): boolean => useSettingsStore.getState().settings.sandboxCommands !== false;
+
+const SANDBOX_DENIED = /operation not permitted|EPERM|sandbox.*deny|deny.*file-write/i;
+
+/** Ajoute une explication quand l'isolation a bloqué une écriture hors du projet. */
+export function withSandboxHint(code: number, stderr: string): string {
+  if (code === 0 || !sandboxEnabled() || !SANDBOX_DENIED.test(stderr)) return stderr;
+  return `${stderr}\n[ANZAR] Bloqué par l'isolation des commandes : une commande ne peut écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo). Écris le fichier dans le projet, ou désactive l'isolation dans Paramètres → Général si c'est voulu.`;
+}
 
 // ============================================================================
 // TYPES
@@ -223,12 +235,12 @@ class TerminalService {
   ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number }> {
     const start = Date.now();
     await this.ensureToolEvents();
-    await invoke('tool_spawn', { id, program, args, cwd, root: this.rootFor(cwd) });
+    await invoke('tool_spawn', { id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled() });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
     try {
       const result = await invoke<{ code: number; stdout: string; stderr: string }>('tool_wait', { id });
-      return { ...result, durationMs: Date.now() - start };
+      return { ...result, stderr: withSandboxHint(result.code, result.stderr), durationMs: Date.now() - start };
     } finally {
       if (timer) clearTimeout(timer);
     }
@@ -321,6 +333,7 @@ class TerminalService {
         args: parsed.args,
         cwd: options.cwd,
         root: this.rootFor(options.cwd),
+        sandbox: sandboxEnabled(),
       });
       process.pid = pid;
       return processId;

@@ -34,6 +34,9 @@ export interface Settings {
   /** Erreurs de code (TypeScript, Python) vérifiées après chaque fichier écrit par l'agent */
   codeDiagnostics?: boolean;
 
+  /** Commandes de l'agent isolées par le système (macOS) : écriture limitée au projet */
+  sandboxCommands?: boolean;
+
   // Interface
   theme: 'light' | 'dark' | 'system';
   language: 'fr' | 'en';
@@ -171,6 +174,7 @@ export const useSettingsStore = create<SettingsStore>()(
           model: state.settings.model,
           webTools: state.settings.webTools,
           codeDiagnostics: state.settings.codeDiagnostics,
+          sandboxCommands: state.settings.sandboxCommands,
           provider: state.settings.provider,
           backendUrl: state.settings.backendUrl,
           theme: state.settings.theme,
