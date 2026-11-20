@@ -119,7 +119,7 @@ skills personnelles.
 |---|---|---|
 | API | `cd services/api && python -m pytest tests/` | 77 tests |
 | Desktop | `cd apps/desktop && npm run smoke` | 36 fichiers, 168 tests Vitest |
-| Rust | `cd apps/desktop/src-tauri && cargo test` | tests de `tool_runner` et `sandbox` |
+| Rust | `cd apps/desktop/src-tauri && cargo test` | tests de `tool_runner`, `sandbox` et `roots` ; `cargo check` croisé macOS et Windows |
 
 ## 8. Feuille de route
 
@@ -133,7 +133,8 @@ skills personnelles.
 
 ### Ensuite
 - [x] Dossiers de projet tenus par Rust ; périmètre fichiers de la webview réduit
-- [ ] Isolation des commandes sur Windows (jeton restreint, job object)
+- [x] Windows : commandes dans un job object (arborescence arrêtée, presse-papiers et réglages système inaccessibles)
+- [ ] Windows : confinement des écritures (jeton restreint ou AppContainer)
 - [ ] Paiements réels en production (FedaPay, Stripe) et iPay Money
 - [x] Carte du code par PageRank sur les imports, condenser d'historique
 - [ ] Analyse syntaxique tree-sitter pour la carte, budgets en FCFA par sous-agent

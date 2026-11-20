@@ -8,6 +8,8 @@ mod programs;
 mod tool_runner;
 mod sandbox;
 mod roots;
+#[cfg(windows)]
+mod winjob;
 
 fn main() {
     // Une app lancée depuis le Finder ou le Dock ne reçoit pas le PATH du terminal

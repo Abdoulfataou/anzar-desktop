@@ -190,8 +190,13 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   `[ANZAR] Bloqué par l'isolation des commandes…` que l'agent comprend.
 - Limite connue : le réglage est transmis par la webview ; l'isolation est une défense en
   profondeur, en plus de la politique de commandes et des accords.
-- Windows et Linux : pas encore d'isolation système (étape suivante : jeton restreint et
-  job object sur Windows).
+- Windows : chaque commande tourne dans un « job object » (`src-tauri/src/winjob.rs`).
+  Arrêter la commande arrête toute son arborescence de processus, et fermer ANZAR tue ce qui
+  reste. Le presse-papiers (lecture et écriture), l'arrêt de la session et les réglages système
+  et d'affichage sont inaccessibles. Les écritures de fichiers ne sont pas encore confinées
+  (prochaine étape : jeton restreint ou AppContainer, qui demandent d'ajuster les droits du
+  dossier du projet).
+- Linux : pas d'isolation système (l'app n'est pas distribuée pour Linux).
 
 ## Dossiers de projet autorisés (novembre 2026)
 

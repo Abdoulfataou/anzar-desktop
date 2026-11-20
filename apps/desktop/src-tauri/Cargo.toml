@@ -38,6 +38,11 @@ tauri-plugin-process = "2"
 tauri-plugin-opener = "2"
 keyring = "4.2.0"
 
+# Windows : les commandes de l'agent tournent dans un « job object » (arrêt de toute
+# l'arborescence de processus, presse-papiers et réglages système inaccessibles).
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
+
 # Stronghold : le hachage scrypt est lent en debug (recommandation du plugin).
 [profile.dev.package.scrypt]
 opt-level = 3

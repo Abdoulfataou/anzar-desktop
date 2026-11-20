@@ -32,6 +32,9 @@ struct Proc {
     stdout: Mutex<String>,
     stderr: Mutex<String>,
     killed: AtomicBool,
+    /// Windows : job object de la commande (arrêt de toute l'arborescence).
+    #[cfg(windows)]
+    job: Option<crate::winjob::Job>,
 }
 
 #[derive(Clone, Serialize)]
@@ -216,6 +219,8 @@ pub fn tool_spawn(
         }
     })?;
     let pid = child.id();
+    #[cfg(windows)]
+    let job = crate::winjob::Job::assign(&child);
     let stdout = child.stdout.take().ok_or("Sortie indisponible")?;
     let stderr = child.stderr.take().ok_or("Sortie d'erreur indisponible")?;
     let child = Arc::new(Mutex::new(child));
@@ -225,6 +230,8 @@ pub fn tool_spawn(
         stdout: Mutex::new(String::new()),
         stderr: Mutex::new(String::new()),
         killed: AtomicBool::new(false),
+        #[cfg(windows)]
+        job,
     });
     spawn_reader(stdout, id.clone(), "stdout", app.clone(), target.clone());
     spawn_reader(stderr, id.clone(), "stderr", app.clone(), target.clone());
@@ -254,6 +261,10 @@ pub fn tool_wait(state: State<'_, ToolState>, id: String) -> Result<ToolWaitResu
 pub fn tool_kill(state: State<'_, ToolState>, id: String) -> Result<(), String> {
     let proc = state.procs.lock().unwrap().get(&id).cloned().ok_or("Processus inconnu.")?;
     proc.killed.store(true, Ordering::SeqCst);
+    #[cfg(windows)]
+    if let Some(job) = &proc.job {
+        job.terminate(130);
+    }
     let mut child = proc.child.lock().unwrap();
     #[cfg(unix)]
     {
