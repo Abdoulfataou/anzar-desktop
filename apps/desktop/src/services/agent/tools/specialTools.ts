@@ -7,7 +7,7 @@
 import type { AgentQuestion, QuestionAnswer } from './questions';
 import { formatAnswers, parseQuestions } from './questions';
 import { findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
-import { SKILL_RESULT_PREFIX } from './history';
+import { SKILL_RESULT_PREFIX } from '../engine/history';
 
 export interface ToolOutput {
   output: string;

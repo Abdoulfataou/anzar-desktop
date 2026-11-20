@@ -16,10 +16,10 @@
 import { APIMessage, AIModel, AIProvider } from '@/types';
 import { aiService } from '@/services/ai/ai';
 import { terminalService } from '@/services/runtime/terminal';
-import { AGENT_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from './agentTools';
-import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from './agentPrompts';
-import { runVerification, VerifyCommandResult } from './agentVerifier';
-import { buildAgentContext } from './agentContext';
+import { AGENT_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from '../tools';
+import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from '../context/agentPrompts';
+import { runVerification, VerifyCommandResult } from '../verify/agentVerifier';
+import { buildAgentContext } from '../context/agentContext';
 import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason } from './agentSession';
 export type { AgentStopReason } from './agentSession';
 import { compactHistory, historyChars, SOFT_LIMIT_CHARS } from './history';
@@ -57,7 +57,7 @@ export interface AgentLoopOptions {
   /** Checkpoint git automatique avant de commencer (défaut: true) */
   gitCheckpoint?: boolean;
   /**
-   * Vérification automatique au task_done (défaut: true).
+   * Vérification automatique au task_done (défaut: false ; le chat principal la pilote via le réglage autoVerifyAfterApply).
    * Si lint/build/tests échouent, task_done est REFUSÉ et les erreurs
    * sont réinjectées à l'agent pour correction (boucle Verify→Fix→Verify).
    */
@@ -138,6 +138,7 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     projectRoot: prompt.projectRoot,
     signal,
     subagentDepth,
+    runSubagent: runAgentSession,
     onFileChanged: (path, content, action) => {
       filesChanged.add(path);
       onFileChanged?.(path, content, action);

@@ -15,7 +15,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
-import { initUndoIndex } from '@/services/agent/fileChanges';
+import { initUndoIndex } from '@/services/agent/tools/fileChanges';
 
 /** L'historique est lu sur le disque (asynchrone) : on attend qu'il soit chargé avant d'afficher l'app. */
 function storesHydrated(): Promise<void> {

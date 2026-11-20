@@ -19,7 +19,7 @@ import {
 } from '@/stores/ticketStore';
 import { splitIntoTickets, type ProposedTicket } from '@/services/superagent/router';
 import { cleanupMerged, discardTicket, mergeTicket, ticketDiff } from '@/services/superagent/ticketGit';
-import { buildAgentContext } from '@/services/agent/agentContext';
+import { buildAgentContext } from '@/services/agent/context/agentContext';
 import type { AIModel } from '@/types';
 import { TICKET_TEMPLATES } from '@/services/workspace/templates';
 

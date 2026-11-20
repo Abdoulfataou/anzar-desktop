@@ -6,7 +6,7 @@
  *   car il n'y a pas d'onglet Fichiers sans workspace.
  */
 import { useProjectStore } from '@/stores/projectStore';
-import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
+import { OPEN_FILE_EVENT } from '@/services/agent/tools/fileChanges';
 import { personalSpaceRoot } from '@/services/workspace/personalSpace';
 
 /** Racine des fichiers de chat : projet ouvert, sinon espace ANZAR. */

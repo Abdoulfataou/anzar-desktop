@@ -1,5 +1,42 @@
 # Moteur agent — état et feuille de route
 
+## 0. Organisation du code (novembre 2026)
+
+```text
+src/services/agent/
+├── engine/      boucle générique (agentSession), adaptateur sous-agents (agentLoop),
+│                assemblage des tool_calls, historique et compaction, timeline et coûts
+├── tools/       registre (index.ts) + un fichier par famille d'outils :
+│                fsTools, shellTools, browserTools, mediaTools, metaTools,
+│                definitions (schémas envoyés au modèle), shared (chemins confinés), types
+├── policy/      modes d'approbation, décision d'approbation, garde des commandes,
+│                politique des sous-agents
+├── context/     prompts système, carte du code + ANZAR.md, pièces jointes, dossier de travail
+├── subagents/   explorateurs (lecture seule) et spawn_subagents
+├── verify/      détection et exécution lint / build / tests
+└── profiles/    un fichier Markdown par rôle d'agent (explorer, motion-designer, dev, redaction)
+src/services/skills/
+├── index.ts     chargement des skills (projet, personnelles, intégrées)
+├── format.ts    lecture/écriture SKILL.md (agentskills.io, `allowed-tools` compris)
+├── installer.ts installation depuis GitHub
+├── remote.ts    skills servies par l'API
+└── pack/        pack intégré + bibliothèques vendées (GSAP)
+```
+
+Règles :
+
+- **Une seule boucle** : `engine/agentSession.ts` (`runAgentEngine`). Le chat, les sous-agents,
+  les explorateurs et le sauvetage export en sont des adaptateurs.
+- **Pas de cycle d'imports** : les outils ne connaissent pas la boucle. Le lanceur de
+  sous-agents leur est transmis par `ToolExecutionContext.runSubagent`.
+- **Vérification** : au `task_done`, si l'agent a modifié le projet et que le réglage
+  « vérifier après application » est actif, lint / build / tests sont lancés ; un échec refuse
+  `task_done` (3 tentatives). Une commande qui exécute du code modifié par l'agent demande un accord.
+- **Ajouter un rôle d'agent** : créer `profiles/<nom>.md` (frontmatter `kind`, `tools`,
+  `max_steps`, `model`, `reasoning`, `skills`, puis les consignes).
+
+Les chemins de la section suivante sont ceux d'avant cette réorganisation.
+
 ## 1. Ce qui a été consolidé
 
 Le moteur existait sous deux formes :

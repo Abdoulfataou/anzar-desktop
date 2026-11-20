@@ -13,7 +13,7 @@ import { exists, readTextFile } from '@/lib/tauri/fs'
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { isTauri } from '@/lib/utils'
-import { COMMAND_NAME_MAP, MAX_ARGS, parseExecutable, validateCommand } from '@/services/agent/commandPolicy';
+import { COMMAND_NAME_MAP, MAX_ARGS, parseExecutable, validateCommand } from '@/services/agent/policy/commandPolicy';
 import { isPathWithin } from '@/lib/pathGuard';
 import { ensureNode, manualNodeHelp, needsNode } from '@/services/runtime/nodeRuntime';
 import { checkPython, ensureGit, isPython } from '@/services/runtime/programs';

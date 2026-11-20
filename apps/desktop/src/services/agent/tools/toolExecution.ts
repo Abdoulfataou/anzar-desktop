@@ -4,7 +4,8 @@
  * snapshots restent dans l'adaptateur de chat.
  */
 import type { ToolCall } from '@/types';
-import { executeToolCall, type ToolExecutionContext } from './agentTools';
+import { executeToolCall, type ToolExecutionContext } from './index';
+import { runAgentSession } from '../engine/agentLoop';
 import { executeWebTool, WEB_TOOL_NAMES } from './webTools';
 import { callMcpTool, isMcpTool } from '@/services/mcp/manager';
 import { PERSONAL_SPACE_TOOLS } from '@/services/workspace/personalSpace';
@@ -49,6 +50,7 @@ export async function executeGenericTool(
       },
       onSubagentProgress: call.function.name === 'spawn_subagents' ? options.onSubagentProgress : undefined,
       permissionMode: options.permissionMode,
+      runSubagent: runAgentSession,
     });
   }
 

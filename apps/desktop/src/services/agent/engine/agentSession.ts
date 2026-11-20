@@ -248,7 +248,7 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
       }
 
       consecutiveErrors = outcome.isError ? consecutiveErrors + 1 : 0;
-      if (maxConsecutiveErrors > 0 && consecutiveErrors >= maxConsecutiveErrors * 2) {
+      if (maxConsecutiveErrors > 0 && consecutiveErrors >= maxConsecutiveErrors) {
         return finish('error', 'Trop d’erreurs consécutives — session interrompue pour éviter une boucle infinie.', step);
       }
     }

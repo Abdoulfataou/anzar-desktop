@@ -6,7 +6,7 @@ vi.mock('@/services/filesystem/fileSystem', () => ({
 }));
 
 import { commandRisk, noteAgentWrite } from './commandGuard';
-import { AGENT_TOOLS, isProtectedWritePath, precheckCommand } from './agentTools';
+import { AGENT_TOOLS, isProtectedWritePath, precheckCommand } from '../tools';
 
 describe('command policy P0', () => {
   it('refuse npx dans les commandes agent', () => {

@@ -23,7 +23,7 @@ import {
 import {
   parseGitHubInput, scanRepo, previewSkill, installSkill, SUGGESTED_REPOS,
   type RepoScan, type SkillPreview,
-} from '@/services/skillInstaller';
+} from '@/services/skills/installer';
 
 const TEMPLATE = `## Quand l'utiliser
 Décris les situations où l'agent doit suivre cette fiche.

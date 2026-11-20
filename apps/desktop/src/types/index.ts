@@ -185,7 +185,7 @@ export interface Message {
   /** Plan proposé en mode plan (onglet « Plan ») */
   plan?: { title: string; markdown: string; status: 'pending' | 'approved' | 'rejected' };
   /** Fichiers modifiés par l'agent pendant cette réponse */
-  fileChanges?: import('@/services/agent/fileChanges').FileChange[];
+  fileChanges?: import('@/services/agent/tools/fileChanges').FileChange[];
   /** Les modifications de cette réponse ont été annulées */
   changesUndone?: boolean;
   /** Coût réel de la réponse en FCFA (différence de solde serveur) */

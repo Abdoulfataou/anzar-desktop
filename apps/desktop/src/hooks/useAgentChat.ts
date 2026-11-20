@@ -10,42 +10,42 @@
  * (sécurité Tauri allowlist + anti-traversal), buildAgentSystemPrompt/context,
  * usageStore (débit FCFA), chatStore (persistance conversation).
  */
-import { commandRisk, noteAgentWrite } from '@/services/agent/commandGuard';
-import { ToolCallAssembler } from '@/services/agent/toolCallAssembler';
-import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason, type AgentToolOutcome } from '@/services/agent/agentSession';
+import { commandRisk, noteAgentWrite } from '@/services/agent/policy/commandGuard';
+import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason, type AgentToolOutcome } from '@/services/agent/engine/agentSession';
 import {
   closeDanglingToolCalls, compactHistory, historyChars,
   KEEP_RECENT_TOOL_RESULTS, SOFT_LIMIT_CHARS, STUB_CHARS, SKILL_RESULT_PREFIX,
-} from '@/services/agent/history';
-import { READ_ONLY_TOOLS, type PermissionMode } from '@/services/agent/permissions';
-import { summarizeArgs, toolDelta, toolFilePath } from '@/services/agent/toolDisplay';
-import { approvalDecision } from '@/services/agent/toolPolicy';
-import { executeGenericTool } from '@/services/agent/toolExecution';
-export type { PermissionMode } from '@/services/agent/permissions';
+} from '@/services/agent/engine/history';
+import { READ_ONLY_TOOLS, type PermissionMode } from '@/services/agent/policy/permissions';
+import { summarizeArgs, toolDelta, toolFilePath } from '@/services/agent/tools/toolDisplay';
+import { approvalDecision } from '@/services/agent/policy/toolPolicy';
+import { executeGenericTool } from '@/services/agent/tools/toolExecution';
+import { runVerification } from '@/services/agent/verify/agentVerifier';
+export type { PermissionMode } from '@/services/agent/policy/permissions';
 import { loadPersonalInstructions, personalInstructionsSection } from '@/services/workspace/personalInstructions';
 import { useCallback, useRef, useState } from 'react';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
-import { AGENT_TOOLS, executeToolCall } from '@/services/agent/agentTools';
-import { WEB_TOOLS } from '@/services/agent/webTools';
+import { AGENT_TOOLS, executeToolCall } from '@/services/agent/tools';
+import { WEB_TOOLS } from '@/services/agent/tools/webTools';
 import { useSettingsStore } from '@/stores/settingsStore';
-import { buildSessionSystemPrompt } from '@/services/agent/systemPrompt';
-import { withAttachments } from '@/services/agent/attachments';
-import { resolveAgentRoot } from '@/services/agent/agentRoot';
-import { buildAgentContext } from '@/services/agent/agentContext';
+import { buildSessionSystemPrompt } from '@/services/agent/context/systemPrompt';
+import { withAttachments } from '@/services/agent/context/attachments';
+import { resolveAgentRoot } from '@/services/agent/context/agentRoot';
+import { buildAgentContext } from '@/services/agent/context/agentContext';
 import { useChatStore } from '@/stores/chatStore';
 import { useUsageStore } from '@/stores/usageStore';
 import { refreshCredits } from '@/lib/credits';
 import { routeRequest, escalate, type Route } from '@/services/ai/autoRouter';
-import type { QuestionRequest, QuestionAnswer } from '@/services/agent/questions';
-import { askUser, loadSkill, parsePlan } from '@/services/agent/specialTools';
+import type { QuestionRequest, QuestionAnswer } from '@/services/agent/tools/questions';
+import { askUser, loadSkill, parsePlan } from '@/services/agent/tools/specialTools';
 import {
   appendTimelineText, appendTimelineTool, computeSessionCost,
   estimateCompletionTokens, estimateHistoryTokens, hasExactCost, snapshotTimeline,
-} from '@/services/agent/chatSession';
-import { detectDevCommand } from '@/services/agent/devServer';
+} from '@/services/agent/engine/chatSession';
+import { detectDevCommand } from '@/services/agent/tools/devServer';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
-import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/fileChanges';
+import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/tools/fileChanges';
 import { copyAttachmentsToWorkspace } from '@/services/workspace/attachmentFiles';
 import { PERSONAL_SPACE_TOOLS, PERSONAL_SUBDIR, conversationUsesPersonalSpace, ensurePersonalSpace, personalSpaceContext } from '@/services/workspace/personalSpace';
 import type { AIModel, APIMessage, ChatAttachment, Message, TimelineItem, ToolDefinition, ToolEvent } from '@/types';
@@ -546,6 +546,8 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
       let stepReasoning = '';
       let stepImages: { label: string; dataUrl: string }[] = [];
       let doneInBatch = false;
+      /** Écritures réussies dans le projet : déclenchent la vérification au task_done */
+      let filesWritten = 0;
       let retryNoticeShown = false;
       const toolEvents = new Map<string, ToolEvent>();
 
@@ -640,6 +642,45 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           stepContent = '';
           stepReasoning = '';
           flush();
+        },
+        // ── Vérification automatique (Verify → Fix → Verify) ──
+        // Au task_done, si l'agent a modifié le projet : lint / build / tests détectés.
+        // En cas d'échec, task_done est refusé et les erreurs sont renvoyées à l'agent.
+        shouldVerify: () => filesWritten > 0
+          && !!workspacePath
+          && !!agentRoot
+          && modeRef.current !== 'plan'
+          && useSettingsStore.getState().settings.autoVerifyAfterApply !== false,
+        maxVerifyAttempts: 3,
+        verify: async () => {
+          let current: ToolEvent | null = null;
+          const report = await runVerification(agentRoot as string, {
+            signal: controller.signal,
+            // Une commande qui exécute du code modifié par l'agent demande un accord,
+            // comme run_command ; sans personne devant l'écran, elle n'est pas lancée.
+            approve: async (cmd) => {
+              const risk = await commandRisk(convId, agentRoot as string, cmd.command).catch(() => null);
+              if (!risk) return true;
+              if (background) return false;
+              return new Promise<boolean>((resolve) => {
+                approvalResolver.current = resolve;
+                setApproval({ id: `verify-${Date.now()}`, name: 'run_command', summary: cmd.command, reason: risk.reason, detail: risk.detail });
+              });
+            },
+            onCommandStart: (cmd) => {
+              current = { id: `verify-${Date.now()}-${events.length}`, name: 'run_command', argsSummary: `Vérification · ${cmd.command}`, status: 'running' };
+              events.push(current);
+              appendTimelineTool(timeline, current.id);
+              flush();
+            },
+            onCommandResult: (r) => {
+              if (!current) return;
+              current.status = r.skipped || r.passed ? 'ok' : 'error';
+              current.output = r.output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+              flush();
+            },
+          });
+          return { passed: report.passed, failureSummary: report.failureSummary };
         },
         onToolCall: (call) => {
           let args: Record<string, any> = {};
@@ -797,6 +838,7 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
           ev.output = (result.output || '').slice(0, MAX_TOOL_OUTPUT_DISPLAY);
           flush();
 
+          if (allowed && !result.isError && ['write_file', 'edit_file', 'delete_file'].includes(call.function.name)) filesWritten++;
           if (result.isDone) doneInBatch = true;
           return {
             output: result.output || '(vide)',
@@ -856,20 +898,28 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
             "ou vidéo demandée (la vidéo doit être livrée), puis conclus en texte. Aucune autre modification : " +
             "la version actuelle des pages fait foi.",
         });
-        for (let rescue = 0; rescue < 4; rescue++) {
-          if (controller.signal.aborted) break;
-          const assembler = new ToolCallAssembler();
-          let rescueText = '';
-          try {
-            const stream = aiService.chatStream(apiHistoryRef.current, { model: callModel(), tools: EXPORT_ONLY, signal: controller.signal });
-            for await (const delta of stream) {
-              if (delta.content) { rescueText += delta.content; flushLive(rescueText); }
-              if (delta.tool_calls) assembler.add(delta.tool_calls);
-            }
-          } catch { break; }
-          if (rescueText) { accContent += (accContent ? '\n\n' : '') + rescueText; appendTimelineText(timeline, rescueText); }
-          if (!assembler.hasCalls) break;
-          for (const call of assembler.finish()) {
+        // Même moteur que la session principale, avec export_animation pour seul outil.
+        const rescueEvents = new Map<string, ToolEvent>();
+        let rescueText = '';
+        const rescue = await runAgentEngine({
+          messages: apiHistoryRef.current,
+          tools: EXPORT_ONLY,
+          allowedTools: new Set(['export_animation']),
+          maxSteps: 4,
+          maxConsecutiveErrors: 0,
+          signal: controller.signal,
+          stream: (messages, tools) => aiService.chatStream(messages, { model: callModel(), tools, signal: controller.signal }),
+          onStepStart: () => { rescueText = ''; },
+          onTextDelta: (text) => { rescueText += text; flushLive(rescueText); },
+          onStepEnd: ({ text }) => {
+            if (text) { accContent += (accContent ? '\n\n' : '') + text; appendTimelineText(timeline, text); }
+            cost.calls++;
+            lastCallAtRef.current = Date.now();
+            rescueText = '';
+            flush();
+          },
+          onCostDelta: (c) => { cost.sum += c; cost.reports++; },
+          onToolCall: (call) => {
             let args: Record<string, any> = {};
             try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
             const ev: ToolEvent = {
@@ -878,21 +928,29 @@ export function useAgentChat({ workspacePath, workspaceName, model, permissionMo
               filePath: toolFilePath(call.function.name, args),
               status: 'running',
             };
+            rescueEvents.set(call.id, ev);
             events.push(ev);
             appendTimelineTool(timeline, ev.id);
             flush();
+          },
+          executeTool: async (call): Promise<AgentToolOutcome> => {
             const result = await executeToolCall(call, {
               projectRoot: agentRoot,
               signal: controller.signal,
               onFileChanged: (rel: string, _c: string, action: 'create' | 'edit' | 'delete') => { if (workspacePath) onFileChanged?.(rel, action); },
             });
-            ev.status = result.isError ? 'error' : 'ok';
-            ev.output = (result.output || '').slice(0, MAX_TOOL_OUTPUT_DISPLAY);
-            flush();
-            apiHistoryRef.current.push({ role: 'assistant', content: rescueText || null, tool_calls: [call] });
-            apiHistoryRef.current.push({ role: 'tool', tool_call_id: call.id, content: result.output || '(vide)' });
-          }
-        }
+            const ev = rescueEvents.get(call.id);
+            if (ev) {
+              ev.status = result.isError ? 'error' : 'ok';
+              if (!result.isError && result.media) ev.media = result.media;
+              ev.output = (result.output || '').slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+              flush();
+            }
+            return { output: result.output || '(vide)', isError: result.isError, media: result.media };
+          },
+        });
+        // Conclusion écrite pendant le sauvetage : inutile de forcer une synthèse en plus.
+        if (rescue.stopReason === 'final_answer') answered = true;
       }
 
       // ── Limite d'étapes atteinte sans réponse → synthèse forcée, sans outils ──

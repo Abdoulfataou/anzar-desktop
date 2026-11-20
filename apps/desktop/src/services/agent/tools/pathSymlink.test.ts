@@ -6,7 +6,7 @@ vi.mock('@/services/filesystem/fileSystem', () => ({
 }));
 
 import { invoke } from '@tauri-apps/api/core';
-import { resolvePath } from './agentTools';
+import { resolvePath } from './index';
 
 describe('resolvePath — liens symboliques', () => {
   it('canonicalise un chemin normal sous la racine', async () => {

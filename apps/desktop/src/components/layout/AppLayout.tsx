@@ -16,7 +16,7 @@ import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { useOffline } from '@/hooks/useOffline';
 import { loadMcpConfig, startServer } from '@/services/mcp/manager';
-import { prefetchRemoteSkills } from '@/services/remoteSkills';
+import { prefetchRemoteSkills } from '@/services/skills/remote';
 
 interface AppLayoutProps {
   className?: string;

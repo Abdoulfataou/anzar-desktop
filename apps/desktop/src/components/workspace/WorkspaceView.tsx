@@ -35,7 +35,7 @@ import ProjectPicker from './ProjectPicker';
 import { OPEN_GIT_EVENT } from './GitPanel';
 import { NewWorktreeDialog } from './WorktreesDialog';
 import { terminalService } from '@/services/runtime/terminal';
-import { FILES_CHANGED_EVENT } from '@/services/agent/fileChanges';
+import { FILES_CHANGED_EVENT } from '@/services/agent/tools/fileChanges';
 import { APPROVE_PLAN_EVENT } from '@/components/chat/PlanView';
 import { BUILTIN_COMMANDS, type SlashCommand } from '@/components/chat/composerSuggestions';
 import { listSkills } from '@/services/skills';

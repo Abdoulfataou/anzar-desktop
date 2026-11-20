@@ -1,0 +1,70 @@
+/**
+ * Outils de commandes : run_command (pré-contrôle) et install_tool.
+ */
+import { terminalService } from '@/services/runtime/terminal';
+import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/runtime/toolsRuntime';
+import { validateCommand } from '../policy/commandPolicy';
+import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_CHARS, resolvePath, truncate } from './shared';
+import { ToolExecutionContext, ToolResult } from './types';
+
+const RUNNABLE = new Set(['npm', 'node', 'git', 'cargo', 'python', 'python3', 'pip', 'pip3']);
+const READ_INSTEAD: Record<string, string> = {
+  grep: 'search_files', rg: 'search_files', find: 'search_files ou list_dir', ls: 'list_dir', tree: 'list_dir',
+  cat: 'read_file', head: 'read_file', tail: 'read_file', less: 'read_file', wc: 'read_file',
+};
+
+/**
+ * Refuse tôt, avec une consigne utile, ce que le terminal bloquerait de toute façon :
+ * l'agent comprend quoi faire à la place au lieu de réessayer la même erreur.
+ */
+export function precheckCommand(command: string): string | null {
+  const cmd = String(command || '').trim();
+  const validation = validateCommand(cmd);
+  if (!validation.safe) return validation.reason || 'Commande refusée.';
+  const exe = (cmd.split(/\s+/)[0] || '').toLowerCase();
+  if (!RUNNABLE.has(exe)) {
+    const alt = READ_INSTEAD[exe];
+    return alt
+      ? `Refusé : « ${exe} » n'est pas disponible. Utilise l'outil ${alt}.`
+      : `Refusé : « ${exe} » n'est pas autorisé. Programmes possibles : ${[...RUNNABLE].join(', ')}.`;
+  }
+  return null;
+}
+
+export async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const refused = precheckCommand(args.command);
+  if (refused) return { output: refused, isError: true };
+  const cwd = await resolvePath(ctx.projectRoot, args.cwd);
+  const result = await terminalService.exec(args.command, {
+    cwd,
+    timeout: COMMAND_TIMEOUT_MS,
+    silent: false,
+  });
+
+  const parts = [
+    `exit_code: ${result.exitCode} (${result.durationMs}ms)`,
+    result.stdout ? `stdout:\n${truncate(result.stdout, MAX_COMMAND_OUTPUT_CHARS, 'stdout')}` : '',
+    result.stderr ? `stderr:\n${truncate(result.stderr, MAX_COMMAND_OUTPUT_CHARS, 'stderr')}` : '',
+  ].filter(Boolean);
+
+  return { output: parts.join('\n\n'), isError: !result.success };
+}
+
+export async function execInstallTool(args: Record<string, any>): Promise<ToolResult> {
+  const catalog = await toolsCatalog();
+  const info = catalog.find((t) => t.name === String(args.tool || ''));
+  if (!info) {
+    return { output: `Outil inconnu. Catalogue : ${catalog.map((t) => t.name).join(', ') || 'vide'}.`, isError: true };
+  }
+  if (info.installed) return { output: `${info.name} ${info.version} est déjà installé : utilisable directement dans run_command.` };
+  if (!info.available) return { output: `${info.name} n'est pas disponible sur cette plateforme.`, isError: true };
+
+  // Accord explicite de l'utilisateur — jamais d'installation silencieuse
+  const ok = await confirmToolInstall(info);
+  if (!ok) {
+    return { output: "L'utilisateur a refusé l'installation. Ne réessaie pas dans cette tâche ; propose une alternative sans cet outil." };
+  }
+  const r = await toolInstall(info.name);
+  if (!r.ok) return { output: `Échec de l'installation de ${info.name} : ${r.error}`, isError: true };
+  return { output: `${info.name} ${r.version} installé et vérifié. La commande est maintenant disponible dans run_command (le PATH de l'app est à jour).` };
+}

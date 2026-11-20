@@ -5,29 +5,29 @@ vi.mock('@/services/ai/ai', () => ({
   aiService: { chatStream: vi.fn() },
   markSlowNetwork: vi.fn(),
 }));
-vi.mock('@/services/agent/agentTools', () => ({
+vi.mock('@/services/agent/tools', () => ({
   AGENT_TOOLS: [
     { type: 'function', function: { name: 'write_file', description: '', parameters: { type: 'object', properties: {} } } },
     { type: 'function', function: { name: 'read_file', description: '', parameters: { type: 'object', properties: {} } } },
   ],
   executeToolCall: vi.fn(),
 }));
-vi.mock('@/services/agent/webTools', () => ({
+vi.mock('@/services/agent/tools/webTools', () => ({
   WEB_TOOLS: [],
   WEB_TOOL_NAMES: new Set(),
   executeWebTool: vi.fn(),
 }));
-vi.mock('@/services/agent/agentPrompts', () => ({
+vi.mock('@/services/agent/context/agentPrompts', () => ({
   buildAgentSystemPrompt: () => 'SYSTEM',
   memorySection: () => '',
   FORMATTING_GUIDE: '',
   VISUALS_GUIDE: '',
   CONNECTORS_GUIDE: '',
 }));
-vi.mock('@/services/agent/agentContext', () => ({
+vi.mock('@/services/agent/context/agentContext', () => ({
   buildAgentContext: vi.fn().mockResolvedValue({ codeMap: '', taskHints: '', memory: undefined }),
 }));
-vi.mock('@/services/agent/commandGuard', () => ({
+vi.mock('@/services/agent/policy/commandGuard', () => ({
   commandRisk: vi.fn().mockResolvedValue(null),
   noteAgentWrite: vi.fn(),
 }));
@@ -35,7 +35,7 @@ vi.mock('@/services/workspace/personalInstructions', () => ({
   loadPersonalInstructions: vi.fn().mockResolvedValue(''),
   personalInstructionsSection: () => '',
 }));
-vi.mock('@/services/agent/fileChanges', () => ({
+vi.mock('@/services/agent/tools/fileChanges', () => ({
   snapshotBeforeChange: vi.fn(),
   collectChanges: vi.fn().mockResolvedValue(undefined),
 }));
@@ -64,7 +64,7 @@ vi.mock('@/services/skills', () => ({
   readSkillFile: vi.fn(),
   skillToolOutput: vi.fn(),
 }));
-vi.mock('@/services/agent/devServer', () => ({
+vi.mock('@/services/agent/tools/devServer', () => ({
   detectDevCommand: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@/lib/credits', () => ({
@@ -74,10 +74,10 @@ vi.mock('@/lib/credits', () => ({
 
 import { aiService } from '@/services/ai/ai';
 import { copyAttachmentsToWorkspace } from '@/services/workspace/attachmentFiles';
-import { noteAgentWrite } from '@/services/agent/commandGuard';
+import { noteAgentWrite } from '@/services/agent/policy/commandGuard';
 import { ensurePersonalSpace } from '@/services/workspace/personalSpace';
-import { buildAgentContext } from '@/services/agent/agentContext';
-import { executeToolCall } from '@/services/agent/agentTools';
+import { buildAgentContext } from '@/services/agent/context/agentContext';
+import { executeToolCall } from '@/services/agent/tools';
 import { useAgentChat, type AgentChatResult } from './useAgentChat';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';

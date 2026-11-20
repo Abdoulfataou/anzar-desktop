@@ -15,12 +15,15 @@
  * Emplacements, du plus prioritaire au moins prioritaire (même nom = le premier gagne) :
  * - projet    : .anzar/skills, .agents/skills, .dsh/skills, .claude/skills du dossier ouvert
  * - personnel : dossier de données de l'app (store/skills), puis ~/.agents/skills et ~/.dsh/skills
- * - intégré   : le pack fourni avec ANZAR (services/skillsPack)
+ * - intégré   : le pack fourni avec ANZAR (services/skills/pack)
  */
-import { getRemoteSkills } from '@/services/remoteSkills';
+import { getRemoteSkills } from '@/services/skills/remote';
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { ensureDir, removeDirEntry, storeRoot, writeText } from '@/lib/fileStore';
-import { BUILTIN_SKILLS } from '@/services/skillsPack';
+import { BUILTIN_SKILLS } from '@/services/skills/pack';
+import { parseSkill, serializeSkill, slugifySkillName } from './format';
+
+export { parseFrontmatter, parseSkill, parseToolList, serializeSkill, slugifySkillName, type ParsedSkill } from './format';
 
 export type SkillSource = 'project' | 'personal' | 'builtin';
 
@@ -37,6 +40,8 @@ export interface Skill {
   files: string[];
   /** Skill personnelle modifiable dans l'app (créée ou installée par ANZAR) */
   editable: boolean;
+  /** Outils pré-approuvés déclarés dans le frontmatter (`allowed-tools`) */
+  allowedTools?: string[];
 }
 
 export const MAX_SKILL_BODY_CHARS = 20_000;
@@ -47,73 +52,6 @@ const MAX_FILES_PER_SKILL = 60;
 export const PROJECT_SKILL_DIRS = ['.anzar/skills', '.agents/skills', '.dsh/skills', '.claude/skills'];
 /** Dossiers personnels partagés avec les autres outils compatibles. */
 const HOME_SKILL_DIRS = ['.agents/skills', '.dsh/skills'];
-
-/** Nom de skill : minuscules, chiffres et tirets. */
-export function slugifySkillName(raw: string): string {
-  return raw
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
-    .toLowerCase().trim()
-    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
-    .slice(0, 64);
-}
-
-// ============================================================================
-// FORMAT SKILL.md
-// ============================================================================
-
-const unquote = (v: string) => v.trim().replace(/^(["'])([\s\S]*)\1$/, '$2');
-
-/**
- * Lit le frontmatter YAML des clés simples (name, description, license…), y compris
- * les blocs multi-lignes « > » et « | » et les valeurs qui continuent à la ligne suivante.
- * Les clés imbriquées (metadata:, allowed-tools:) sont ignorées sans erreur.
- */
-export function parseFrontmatter(yaml: string): Record<string, string> {
-  const meta: Record<string, string> = {};
-  const lines = yaml.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    const m = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(lines[i]);
-    if (!m) continue;
-    const key = m[1].toLowerCase();
-    let value = m[2].trim();
-    const block = /^([>|])[+-]?$/.exec(value);
-    if (block || value === '') {
-      // Bloc indenté : « > » replie les lignes, « | » les garde
-      const parts: string[] = [];
-      while (i + 1 < lines.length && (/^\s+\S/.test(lines[i + 1]) || lines[i + 1].trim() === '')) {
-        parts.push(lines[++i].trim());
-      }
-      if (!block && parts.some((p) => /^[\w-]+\s*:/.test(p) || p.startsWith('- '))) continue; // objet ou liste
-      value = block?.[1] === '|' ? parts.join('\n').trim() : parts.filter(Boolean).join(' ');
-    } else {
-      // Valeur simple qui continue sur des lignes indentées
-      while (i + 1 < lines.length && /^\s+\S/.test(lines[i + 1]) && !/^\s+[\w-]+\s*:/.test(lines[i + 1])) {
-        value += ' ' + lines[++i].trim();
-      }
-    }
-    meta[key] = unquote(value);
-  }
-  return meta;
-}
-
-export function parseSkill(markdown: string, fallbackName: string): { name: string; description: string; body: string; license?: string } {
-  const text = markdown.replace(/^﻿/, '');
-  const fm = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/.exec(text);
-  const meta = fm ? parseFrontmatter(fm[1]) : {};
-  const body = (fm ? text.slice(fm[0].length) : text).trim();
-  const firstLine = body.split('\n').find((l) => l.trim())?.replace(/^#+\s*/, '') || '';
-  return {
-    name: slugifySkillName(meta.name || fallbackName) || slugifySkillName(fallbackName) || 'skill',
-    description: (meta.description || firstLine).replace(/\s+/g, ' ').slice(0, 500),
-    body,
-    license: meta.license,
-  };
-}
-
-export function serializeSkill(skill: { name: string; description: string; body: string }): string {
-  const desc = skill.description.replace(/\s+/g, ' ').trim().replace(/"/g, '\\"');
-  return `---\nname: ${skill.name}\ndescription: "${desc}"\n---\n\n${skill.body.trim()}\n`;
-}
 
 // ============================================================================
 // LECTURE DES SKILLS
@@ -262,5 +200,6 @@ export function skillToolOutput(skill: Skill, prefix: string): string {
   const files = skill.files.length
     ? `\n\n---\nFichiers joints (load_skill avec name="${skill.name}" et file="<chemin>") :\n${skill.files.map((f) => `- ${f}`).join('\n')}`
     : '';
-  return `${prefix}${skill.name} »\n\n${skill.body.slice(0, MAX_SKILL_BODY_CHARS)}${files}`;
+  const tools = skill.allowedTools?.length ? `\n\nOutils prévus par cette skill : ${skill.allowedTools.join(', ')}` : '';
+  return `${prefix}${skill.name} »\n\n${skill.body.slice(0, MAX_SKILL_BODY_CHARS)}${tools}${files}`;
 }

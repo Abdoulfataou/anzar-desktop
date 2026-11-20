@@ -126,6 +126,11 @@ export async function runVerification(
     /** Callback par commande (UI temps réel) */
     onCommandStart?: (cmd: VerifyCommand) => void;
     onCommandResult?: (result: VerifyCommandResult) => void;
+    /**
+     * Accord avant chaque commande (garde des scripts modifiés par l'agent).
+     * false → commande non exécutée, comptée comme « skipped ».
+     */
+    approve?: (cmd: VerifyCommand) => Promise<boolean>;
   } = {}
 ): Promise<VerifyReport> {
   const commands = await detectVerifyCommands(projectRoot);
@@ -144,6 +149,21 @@ export async function runVerification(
   for (const cmd of commands) {
     if (options.signal?.aborted) break;
     options.onCommandStart?.(cmd);
+
+    if (options.approve && !(await options.approve(cmd).catch(() => false))) {
+      const refused: VerifyCommandResult = {
+        label: cmd.label,
+        command: cmd.command,
+        passed: false,
+        skipped: true,
+        exitCode: -1,
+        output: "Non exécutée : la commande lance du code modifié par l'agent et n'a pas été autorisée.",
+        durationMs: 0,
+      };
+      results.push(refused);
+      options.onCommandResult?.(refused);
+      continue;
+    }
 
     const r = await terminalService.exec(cmd.command, {
       cwd: projectRoot,

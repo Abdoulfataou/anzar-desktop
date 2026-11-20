@@ -5,17 +5,17 @@ vi.mock('@/services/ai/ai', () => ({ aiService: { chatStream: vi.fn() } }));
 vi.mock('@/services/runtime/terminal', () => ({
   terminalService: { gitIsRepo: vi.fn(), gitInit: vi.fn(), gitCommit: vi.fn() },
 }));
-vi.mock('./agentTools', () => ({ AGENT_TOOLS: [], executeToolCall: vi.fn() }));
-vi.mock('./agentPrompts', () => ({
+vi.mock('../tools', () => ({ AGENT_TOOLS: [], executeToolCall: vi.fn() }));
+vi.mock('../context/agentPrompts', () => ({
   buildAgentSystemPrompt: () => 'SYSTEM',
   taskHintsSection: () => '',
 }));
-vi.mock('./agentVerifier', () => ({ runVerification: vi.fn() }));
-vi.mock('./agentContext', () => ({ buildAgentContext: vi.fn() }));
+vi.mock('../verify/agentVerifier', () => ({ runVerification: vi.fn() }));
+vi.mock('../context/agentContext', () => ({ buildAgentContext: vi.fn() }));
 
 import { aiService } from '@/services/ai/ai';
-import { executeToolCall } from './agentTools';
-import { runVerification } from './agentVerifier';
+import { executeToolCall } from '../tools';
+import { runVerification } from '../verify/agentVerifier';
 import { runAgentSession } from './agentLoop';
 
 const chatStream = vi.mocked(aiService.chatStream);

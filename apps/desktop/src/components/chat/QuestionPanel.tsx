@@ -6,10 +6,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, ChevronLeft, MessageCircleQuestion, Timer, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { AgentQuestion, QuestionAnswer, QuestionRequest } from '@/services/agent/questions';
+import type { AgentQuestion, QuestionAnswer, QuestionRequest } from '@/services/agent/tools/questions';
 
-export type { AgentQuestion, AgentQuestionOption, QuestionAnswer, QuestionRequest } from '@/services/agent/questions';
-export { formatAnswers, parseQuestions } from '@/services/agent/questions';
+export type { AgentQuestion, AgentQuestionOption, QuestionAnswer, QuestionRequest } from '@/services/agent/tools/questions';
+export { formatAnswers, parseQuestions } from '@/services/agent/tools/questions';
 
 /** Délai avant réponse automatique (options recommandées), en secondes. */
 export const QUESTION_TIMEOUT_S = 25;

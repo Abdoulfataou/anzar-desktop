@@ -10,7 +10,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import {
   canUndo, undoChanges, FILES_CHANGED_EVENT, OPEN_FILE_EVENT, type FileChange,
-} from '@/services/agent/fileChanges';
+} from '@/services/agent/tools/fileChanges';
 
 export default function FileChangesCard({
   messageId, changes, undone,

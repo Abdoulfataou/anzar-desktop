@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { ToolEvent } from '@/hooks/useAgentChat';
-import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
+import { OPEN_FILE_EVENT } from '@/services/agent/tools/fileChanges';
 import { useProjectStore } from '@/stores/projectStore';
 import { resolveChatAbsPath, openFromChat } from '@/lib/openFromChat';
 

@@ -21,7 +21,7 @@ import StudioPreview from '@/components/vibecoding/StudioPreview';
 import MediaViewer, { isMediaFile } from './MediaViewer';
 import type { StudioFile } from '@/types/studio';
 import type { FileNode } from '@/types/file-project';
-import { OPEN_FILE_EVENT } from '@/services/agent/fileChanges';
+import { OPEN_FILE_EVENT } from '@/services/agent/tools/fileChanges';
 import { PlanPanel, OPEN_PLAN_EVENT } from '@/components/chat/PlanView';
 import type { Message } from '@/types';
 

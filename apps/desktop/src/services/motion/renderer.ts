@@ -125,7 +125,7 @@ export async function renderFrames(job: RenderJob, opts: RenderOptions = {}): Pr
   const first = await renderOnce(job, opts);
   if (first.code !== 'NO_BROWSER') return first;
   await cleanupRender(first);
-  const { hooks } = await import('@/services/agent/browserCheck');
+  const { hooks } = await import('@/services/agent/tools/browserCheck');
   if (!(await hooks.installChromium())) return first;
   return renderOnce(job, opts);
 }

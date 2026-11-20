@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolCall } from '@/types';
 
-vi.mock('./agentTools', () => ({ executeToolCall: vi.fn() }));
+vi.mock('./index', () => ({ executeToolCall: vi.fn() }));
 vi.mock('./webTools', () => ({
   executeWebTool: vi.fn(),
   WEB_TOOL_NAMES: new Set(['web_search', 'read_url']),
@@ -14,7 +14,7 @@ vi.mock('@/services/workspace/personalSpace', () => ({
   PERSONAL_SPACE_TOOLS: new Set(['read_file']),
 }));
 
-import { executeToolCall } from './agentTools';
+import { executeToolCall } from './index';
 import { executeWebTool } from './webTools';
 import { callMcpTool } from '@/services/mcp/manager';
 import { executeGenericTool } from './toolExecution';
