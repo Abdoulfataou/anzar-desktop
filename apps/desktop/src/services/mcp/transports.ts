@@ -6,7 +6,7 @@
 import { ensureNode, needsNode } from '@/services/runtime/nodeRuntime';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { McpError, parseHttpMessages, type JsonRpcMessage, type McpTransport } from './client';
+import { MODERN_PROTOCOL_VERSION, McpError, parseHttpMessages, type JsonRpcMessage, type McpTransport } from './client';
 
 export class StdioTransport implements McpTransport {
   private unlisten: UnlistenFn[] = [];
@@ -103,15 +103,22 @@ export class HttpTransport implements McpTransport {
     this.protocolVersion = version;
   }
 
-  private requestHeaders(): Record<string, string> {
+  private requestHeaders(msg?: JsonRpcMessage): Record<string, string> {
     const h: Record<string, string> = { Accept: 'application/json, text/event-stream' };
     if (this.sessionId) h['Mcp-Session-Id'] = this.sessionId;
-    if (this.protocolVersion) h['MCP-Protocol-Version'] = this.protocolVersion;
+    const version = this.protocolVersion ?? (msg?.method === 'server/discover' ? MODERN_PROTOCOL_VERSION : null);
+    if (version) h['MCP-Protocol-Version'] = version;
+    // 2026-07-28 : méthode (et nom de l'outil, du prompt ou de la ressource) en en-têtes
+    if (version === MODERN_PROTOCOL_VERSION && msg?.method) {
+      h['Mcp-Method'] = msg.method;
+      const name = msg.params?.name ?? msg.params?.uri;
+      if (typeof name === 'string' && /^[\x20-\x7e]{1,200}$/.test(name)) h['Mcp-Name'] = name;
+    }
     return h;
   }
 
   async send(msg: JsonRpcMessage): Promise<void> {
-    const res = await invoke<HttpResponse>('mcp_http', { serverId: this.serverId, url: '', headers: this.requestHeaders(), body: JSON.stringify(msg), method: 'POST' })
+    const res = await invoke<HttpResponse>('mcp_http', { serverId: this.serverId, url: '', headers: this.requestHeaders(msg), body: JSON.stringify(msg), method: 'POST' })
       .catch((e) => { throw new McpError(String(e)); });
     const sid = res.headers['mcp-session-id'];
     if (sid) this.sessionId = sid;

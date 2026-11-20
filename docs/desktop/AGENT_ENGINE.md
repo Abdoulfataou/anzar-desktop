@@ -38,6 +38,10 @@ Règles :
   qu'un adaptateur (`useSyncExternalStore`). Les tickets (`services/superagent/ticketQueue.ts`)
   et les automatisations (`services/background/automationQueue.ts`) créent leur propre
   `AgentRunner`, sans composant ; `startBackgroundQueues()` les démarre avec la session.
+- **Sessions durables** : `runtime/sessionStore.ts` écrit après chaque étape l'historique API
+  complet de la conversation et un journal d'événements (`store/sessions/<id>.json` et
+  `.events.jsonl`). Au redémarrage, une conversation reprend avec tout son contexte ; une réponse
+  coupée par la fermeture de l'app est marquée et « continue » repart du bon endroit.
 - **Fermer la fenêtre pendant un travail de fond** propose de la réduire (le travail continue)
   ou de quitter (le ticket reprendra au prochain lancement) : `services/background/closeGuard.ts`.
 - **Ajouter un rôle d'agent** : créer `profiles/<nom>.md` (frontmatter `kind`, `tools`,

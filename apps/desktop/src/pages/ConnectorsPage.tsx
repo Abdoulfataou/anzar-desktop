@@ -232,7 +232,7 @@ function ServerRow({ server, rt, open, onToggleOpen, onToggle, onRemove }: {
           {status === 'ready' && rt && (
             <div>
               <p className="text-text-secondary mb-1">
-                {rt.info?.name}{rt.info?.version ? ` ${rt.info.version}` : ''} — {rt.tools.length} outils dont {readOnly} en lecture seule
+                {rt.info?.name}{rt.info?.version ? ` ${rt.info.version}` : ''} — {rt.tools.length} outils dont {readOnly} en lecture seule{rt.info?.protocolVersion ? ` · MCP ${rt.info.protocolVersion}` : ''}
               </p>
               <ul className="max-h-64 overflow-y-auto rounded-lg border border-border-subtle divide-y divide-border-subtle">
                 {rt.tools.map((t) => (

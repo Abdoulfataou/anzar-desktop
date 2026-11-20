@@ -146,6 +146,8 @@ export const useChatStore = create<ChatStore>()(
        * Delete a conversation and switch to another if it was active
        */
       deleteConversation: (id: string) => {
+        // Historique de l'agent et journal de la session : supprimés avec la conversation
+        void import('@/services/agent/runtime/sessionStore').then((m) => m.deleteSession(id)).catch(() => {});
         set((state) => {
           const filtered = state.conversations.filter((c) => c.id !== id);
           let newActiveId = state.activeConversationId;
@@ -297,6 +299,14 @@ export const useChatStore = create<ChatStore>()(
       onRehydrateStorage: () => (state, error) => {
         if (error) return;
         if (!state) return;
+        // Réponses coupées par une fermeture ou un crash : plus « en cours », et reprenables.
+        // L'historique de l'agent est sur disque (sessionStore) : « continue » repart du bon endroit.
+        for (const conv of state.conversations || []) {
+          if (!conv.messages?.some((m) => m.isStreaming)) continue;
+          conv.messages = conv.messages.map((m) => (m.isStreaming
+            ? { ...m, isStreaming: false, notice: "Réponse interrompue par la fermeture de l'app. Écris « continue » pour que l'agent reprenne là où il s'est arrêté." }
+            : m));
+        }
         if (!state.activeConversationId && state.conversations?.length) {
           // Important: ici on peut muter l'état réhydraté avant usage (pattern zustand persist).
           state.activeConversationId = state.conversations[0].id;

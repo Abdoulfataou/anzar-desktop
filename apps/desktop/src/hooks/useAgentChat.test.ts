@@ -67,6 +67,11 @@ vi.mock('@/services/skills', () => ({
 vi.mock('@/services/agent/tools/devServer', () => ({
   detectDevCommand: vi.fn().mockResolvedValue(null),
 }));
+vi.mock('@/services/agent/runtime/sessionStore', () => ({
+  loadSession: vi.fn().mockResolvedValue(null),
+  saveSession: vi.fn().mockResolvedValue(undefined),
+  recordSessionEvent: vi.fn(),
+}));
 vi.mock('@/lib/credits', () => ({
   refreshCredits: vi.fn().mockResolvedValue(0),
   LOW_BALANCE_FCFA: 100,
@@ -79,6 +84,7 @@ import { ensurePersonalSpace } from '@/services/workspace/personalSpace';
 import { buildAgentContext } from '@/services/agent/context/agentContext';
 import { executeToolCall } from '@/services/agent/tools';
 import { useAgentChat, type AgentChatResult } from './useAgentChat';
+import { loadSession, saveSession } from '@/services/agent/runtime/sessionStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 
@@ -329,5 +335,23 @@ describe('useAgentChat — parcours agent', () => {
 
     const conversation = useChatStore.getState().getActiveConversation();
     expect(conversation?.messages.at(-1)?.content).toContain('Travail terminé');
+  });
+});
+
+describe('useAgentChat — sessions durables', () => {
+  it("reprend une conversation avec l'historique enregistré (outils compris)", async () => {
+    useChatStore.setState({ conversations: [{ id: 'conv-saved', title: 'x', messages: [], createdAt: 0, updatedAt: 0 } as any], activeConversationId: 'conv-saved' });
+    vi.mocked(loadSession).mockResolvedValueOnce([
+      { role: 'system', content: 'SYSTEM' },
+      { role: 'user', content: 'Lis App.tsx' },
+      { role: 'assistant', content: null, tool_calls: [{ id: 'old', type: 'function', function: { name: 'read_file', arguments: '{}' } }] },
+      { role: 'tool', tool_call_id: 'old', content: 'CONTENU-DEJA-LU' },
+    ]);
+    vi.mocked(aiService.chatStream).mockReturnValueOnce(stream({ content: 'Je continue' }) as any);
+    const { result } = renderChat();
+    await act(async () => { await result.current.sendMessage('continue', [], undefined, { conversationId: 'conv-saved' }); });
+    const sent = vi.mocked(aiService.chatStream).mock.calls[0][0] as any[];
+    expect(sent.some((m) => m.role === 'tool' && m.content === 'CONTENU-DEJA-LU')).toBe(true);
+    expect(saveSession).toHaveBeenCalledWith('conv-saved', expect.any(Array));
   });
 });

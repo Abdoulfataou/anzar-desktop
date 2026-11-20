@@ -25,6 +25,7 @@ import { summarizeArgs, toolDelta, toolFilePath } from '@/services/agent/tools/t
 import { approvalDecision } from '@/services/agent/policy/toolPolicy';
 import { executeGenericTool } from '@/services/agent/tools/toolExecution';
 import { runVerification } from '@/services/agent/verify/agentVerifier';
+import { loadSession, recordSessionEvent, saveSession } from './sessionStore';
 export type { PermissionMode } from '@/services/agent/policy/permissions';
 import { loadPersonalInstructions, personalInstructionsSection } from '@/services/workspace/personalInstructions';
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
@@ -358,7 +359,9 @@ export class AgentRunner {
 
     // Reset de l'historique API si on change de conversation
     if (!resumeFrom && this.activeConv !== convId) {
-      this.apiHistory = [];
+      // Session enregistrée (redémarrage, crash, autre fenêtre) : l'agent garde tout son contexte.
+      const saved = await loadSession(convId).catch(() => null);
+      this.apiHistory = saved ?? [];
       this.lastCallAt = 0;
       this.lastRoute = null;
       this.activeConv = convId;
@@ -380,6 +383,9 @@ export class AgentRunner {
         : undefined,
     };
     if (!resumeFrom) addMessage(userMsg, convId);
+    if (!resumeFrom) recordSessionEvent(convId, { type: 'user', chars: content.length, attachments: attachments.length });
+    /** Écrit la session sur disque (historique + journal) ; jamais bloquant. */
+    const persist = () => { void saveSession(convId, this.apiHistory); };
 
     const assistantId = resumeFrom?.assistantId ?? `msg_${Date.now()}_a`;
     if (resumeFrom) {
@@ -633,7 +639,8 @@ export class AgentRunner {
           // sans détail pendant toute la phase de réflexion)
           flushLive(stepContent);
         },
-        onStepEnd: ({ text, reasoning, toolCalls }) => {
+        onStepEnd: ({ step, text, reasoning, toolCalls }) => {
+          recordSessionEvent(convId, { type: 'step', step, text: text.length, toolCalls: toolCalls.map((c) => c.function.name) });
           accReasoning += reasoning;
           if (text) {
             accContent += (accContent ? '\n\n' : '') + text;
@@ -704,6 +711,7 @@ export class AgentRunner {
               flush();
             },
           });
+          recordSessionEvent(convId, { type: 'verify', passed: report.passed });
           return { passed: report.passed, failureSummary: report.failureSummary };
         },
         onToolCall: (call) => {
@@ -733,6 +741,7 @@ export class AgentRunner {
             });
           }
           stepImages = [];
+          persist();
         },
         executeTool: async (call): Promise<AgentToolOutcome> => {
           const ev = toolEvents.get(call.id);
@@ -859,6 +868,7 @@ export class AgentRunner {
               this.lastRoute = up;
             }
           }
+          recordSessionEvent(convId, { type: 'tool', name: call.function.name, isError: !!result.isError, output: (result.output || '').slice(0, 300) });
           ev.output = (result.output || '').slice(0, MAX_TOOL_OUTPUT_DISPLAY);
           flush();
 
@@ -1077,6 +1087,8 @@ export class AgentRunner {
       } catch (err) {
         console.warn('[agent] comptabilité du coût impossible', err);
       }
+      recordSessionEvent(convId, { type: 'done', stopReason: wasAborted ? 'aborted' : finalStopReason, costFCFA: finalCostFCFA });
+      persist();
       return {
         stopReason: wasAborted ? 'aborted' : finalStopReason,
         content: finalContent,
@@ -1088,6 +1100,10 @@ export class AgentRunner {
       };
     } catch (e: any) {
       const aborted = controller.signal.aborted;
+      recordSessionEvent(convId, aborted ? { type: 'done', stopReason: 'aborted' } : { type: 'error', message: String(e?.message || e).slice(0, 300) });
+      // L'historique reste valide pour « continue », même après un redémarrage.
+      closeDanglingToolCalls(this.apiHistory);
+      persist();
       // On garde de quoi reprendre exactement ici (bouton « Reprendre »)
       this.resumeState = aborted
         ? null

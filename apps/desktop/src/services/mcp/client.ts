@@ -1,12 +1,23 @@
 /**
  * Client MCP (Model Context Protocol) : JSON-RPC 2.0 au-dessus d'un transport.
- * Gère l'initialisation, la liste paginée des outils, les appels, l'annulation
- * et les requêtes du serveur (ping, roots/list). Indépendant du transport
- * (stdio ou HTTP), donc testable hors de l'app.
+ * Indépendant du transport (stdio ou HTTP), donc testable hors de l'app.
+ *
+ * Deux cycles de vie :
+ * - moderne (2026-07-28, sans état) : `server/discover` d'abord, puis chaque requête porte sa
+ *   version et les capacités du client dans `_meta` ; pas de poignée de main ;
+ * - historique (2024-11-05 → 2025-11-25) : `initialize` puis `notifications/initialized`.
+ * À la connexion, le client sonde `server/discover` et revient à `initialize` si le serveur
+ * ne le connaît pas.
  */
 
-export const PROTOCOL_VERSION = '2025-06-18';
-const SUPPORTED_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+/** Version moderne, sans état. */
+export const MODERN_PROTOCOL_VERSION = '2026-07-28';
+/** Version proposée à `initialize` aux serveurs historiques. */
+export const PROTOCOL_VERSION = '2025-11-25';
+const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
+const CLIENT_INFO = { name: 'anzar', title: 'ANZAR', version: '2.0.0' };
+/** Sonde server/discover : courte, un serveur historique peut ne jamais y répondre. */
+const DISCOVER_TIMEOUT_MS = 6_000;
 
 export type JsonRpcMessage = {
   jsonrpc: '2.0';
@@ -63,6 +74,8 @@ export interface McpServerInfo {
   version?: string;
   protocolVersion: string;
   instructions?: string;
+  /** Cycle de vie utilisé avec ce serveur. */
+  lifecycle: 'modern' | 'legacy';
 }
 
 export class McpError extends Error {
@@ -76,6 +89,8 @@ export class McpClient {
   private pending = new Map<number, { resolve: (v: any) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private closed = false;
   info: McpServerInfo | null = null;
+  /** Mode moderne : version et capacités envoyées dans le _meta de chaque requête. */
+  private modern = false;
   /** Appelé quand le serveur annonce que sa liste d'outils a changé */
   onToolsChanged?: () => void;
   /** Appelé quand le transport se ferme sans qu'on l'ait demandé */
@@ -93,13 +108,44 @@ export class McpClient {
         this.onClosed?.(reason);
       },
     );
+    const modern = await this.discover(Math.min(timeoutMs, DISCOVER_TIMEOUT_MS));
+    if (modern) return modern;
+    if (this.closed) throw new McpError('Le serveur s\'est arrêté pendant la connexion.');
+    return this.initializeLegacy(timeoutMs);
+  }
+
+  /** Cycle moderne : server/discover. Renvoie null si le serveur ne le prend pas en charge. */
+  private async discover(timeoutMs: number): Promise<McpServerInfo | null> {
+    let res: any;
+    try {
+      res = await this.request('server/discover', { _meta: this.meta(MODERN_PROTOCOL_VERSION) }, timeoutMs);
+    } catch {
+      return null; // méthode inconnue, refus ou silence : serveur historique
+    }
+    const versions: string[] = Array.isArray(res?.supportedVersions) ? res.supportedVersions.map(String) : [];
+    if (!versions.includes(MODERN_PROTOCOL_VERSION)) return null;
+    this.modern = true;
+    this.transport.setProtocolVersion?.(MODERN_PROTOCOL_VERSION);
+    const server = res?._meta?.['io.modelcontextprotocol/serverInfo'] || res?.serverInfo || {};
+    this.info = {
+      name: server.title || server.name || 'serveur',
+      version: server.version,
+      protocolVersion: MODERN_PROTOCOL_VERSION,
+      instructions: typeof res?.instructions === 'string' ? res.instructions : undefined,
+      lifecycle: 'modern',
+    };
+    return this.info;
+  }
+
+  /** Cycle historique : initialize puis notifications/initialized. */
+  private async initializeLegacy(timeoutMs: number): Promise<McpServerInfo> {
     const res = await this.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       capabilities: { roots: { listChanged: false } },
-      clientInfo: { name: 'anzar', title: 'ANZAR', version: '2.0.0' },
+      clientInfo: CLIENT_INFO,
     }, timeoutMs);
     const version = String(res?.protocolVersion || PROTOCOL_VERSION);
-    if (!SUPPORTED_VERSIONS.includes(version)) {
+    if (!LEGACY_VERSIONS.includes(version)) {
       throw new McpError(`Version du protocole non prise en charge par ANZAR : ${version}`);
     }
     this.transport.setProtocolVersion?.(version);
@@ -109,8 +155,18 @@ export class McpClient {
       version: res?.serverInfo?.version,
       protocolVersion: version,
       instructions: typeof res?.instructions === 'string' ? res.instructions : undefined,
+      lifecycle: 'legacy',
     };
     return this.info;
+  }
+
+  /** _meta d'une requête moderne : version, capacités et identité du client. */
+  private meta(version: string): Record<string, unknown> {
+    return {
+      'io.modelcontextprotocol/protocolVersion': version,
+      'io.modelcontextprotocol/clientCapabilities': {},
+      'io.modelcontextprotocol/clientInfo': CLIENT_INFO,
+    };
   }
 
   async listTools(): Promise<McpTool[]> {
@@ -167,7 +223,10 @@ export class McpClient {
         reject: (e) => { signal?.removeEventListener('abort', onAbort); reject(e); },
         timer,
       });
-      this.transport.send({ jsonrpc: '2.0', id, method, ...(params !== undefined ? { params } : {}) }).catch((e) => {
+      const body = this.modern
+        ? { ...((params as Record<string, unknown>) || {}), _meta: { ...this.meta(MODERN_PROTOCOL_VERSION), ...((params as any)?._meta || {}) } }
+        : params;
+      this.transport.send({ jsonrpc: '2.0', id, method, ...(body !== undefined ? { params: body } : {}) }).catch((e) => {
         const p = this.pending.get(id);
         if (!p) return;
         clearTimeout(p.timer);
@@ -199,7 +258,10 @@ export class McpClient {
       clearTimeout(p.timer);
       this.pending.delete(Number(msg.id));
       if (msg.error) p.reject(new McpError(msg.error.message || 'Erreur du serveur', msg.error.code));
-      else p.resolve(msg.result);
+      // Sans resultType (serveur historique), le résultat est complet.
+      else if (msg.result?.resultType === 'input_required') {
+        p.reject(new McpError("Ce connecteur demande une information supplémentaire pendant l'appel (requêtes en plusieurs allers-retours), ce qu'ANZAR ne prend pas encore en charge."));
+      } else p.resolve(msg.result);
       return;
     }
     // Requête du serveur : on répond toujours, sinon il attend
