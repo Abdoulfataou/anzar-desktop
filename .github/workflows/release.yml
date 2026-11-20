@@ -29,10 +29,10 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: desktop/package-lock.json
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - name: Install frontend deps
-        working-directory: desktop
+        working-directory: apps/desktop
         run: npm ci
 
       - name: Setup Rust
@@ -42,7 +42,7 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: |
-            desktop/src-tauri -> target
+            apps/desktop/src-tauri -> target
 
       - name: Build & publish (Tauri)
         uses: tauri-apps/tauri-action@v0
@@ -57,7 +57,7 @@ jobs:
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         with:
-          projectPath: desktop
+          projectPath: apps/desktop
           args: ${{ matrix.args }}
           tagName: v__VERSION__
           releaseName: "ANZAR v__VERSION__"

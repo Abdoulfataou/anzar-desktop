@@ -31,7 +31,7 @@ services:
     pids_limit: 256
 
   api:
-    build: ../backend
+    build: ../services/api
     restart: unless-stopped
     depends_on:
       db:
@@ -77,7 +77,7 @@ services:
   # Panneau admin (fichiers statiques) : le Caddy de ShagoStore le sert sur anzar-admin.issalanhub.com
   admin:
     build:
-      context: ../Admin
+      context: ../apps/admin
       args:
         VITE_BACKEND_URL: https://anzar-api.issalanhub.com
     restart: unless-stopped
@@ -95,7 +95,7 @@ services:
 
   # Vitrine getanzar.com (fichiers statiques) : le Caddy de ShagoStore la sert sur getanzar.com
   site:
-    build: ../site
+    build: ../apps/site
     restart: unless-stopped
     networks:
       passerelle:

@@ -16,8 +16,8 @@ target/
 .env.local
 .env.production
 .env.tauri
-desktop/.env.tauri
-Admin/.env.tauri
+apps/desktop/.env.tauri
+apps/admin/.env.tauri
 
 # IDE
 .idea/
@@ -39,10 +39,10 @@ logs/
 data/
 
 # Tauri build
-desktop/src-tauri/target/
+apps/desktop/src-tauri/target/
 
 # Admin build
-Admin/src-tauri/target/
+apps/admin/src-tauri/target/
 
 .zcode/
 *.tsbuildinfo

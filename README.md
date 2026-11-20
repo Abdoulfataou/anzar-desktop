@@ -1,79 +1,81 @@
 # ANZAR
 
-Assistant IA de *vibecoding* : tu décris un projet, ANZAR planifie, génère le code, propose des changements **avec preview**, puis boucle **Verify → Fix → Verify** pour stabiliser le projet (style “Cowork”).
+Assistant IA de *vibecoding* pour l'Afrique : tu décris ce que tu veux, l'agent d'ANZAR lit ton projet,
+modifie les fichiers, lance les commandes et vérifie le résultat. 100 % DeepSeek, facturé en crédits
+prépayés (FCFA).
 
-> Important : ANZAR utilise des modèles via **API payantes** (ex. DeepSeek). Les clés API restent **côté backend** — jamais dans le client.
+> Les clés API restent **côté serveur** (`services/api`) — jamais dans l'app.
 
-## Fonctionnalités (Desktop)
+## Organisation du dépôt
 
-- **Chat cowork-style** : actions sous forme de *Command Cards* (Run/Stop/Retry + logs) + dock.
-- **Builder multi-agents** : `/plan → /execute` (SSE) + annulation.
-- **Changements contrôlés** : *ChangeSets* “Preview → Apply” avant écriture sur disque.
-- **Auto-verify** configurable + suggestions de correctifs (commandes allowlistées + patches de code en ChangeSet).
-- **Sécurité** : allowlist shell + confirmations sur commandes risquées + scopes FS.
-- **Observabilité** : Sentry (optionnel) + export des logs de run.
-- **Auto-update** : Tauri updater via GitHub Releases.
+```
+anzar/
+├── apps/
+│   ├── desktop/        # l'app ANZAR (Tauri 2 + React + TypeScript) — l'agent tourne ici
+│   ├── admin/          # console d'administration (React + Vite)
+│   └── site/           # vitrine getanzar.com et page de téléchargement
+├── services/
+│   └── api/            # API FastAPI : proxy DeepSeek facturé, comptes, crédits, paiements
+├── deploy/             # déploiement sur le VPS Hetzner (docker compose, sauvegardes, mises à jour)
+├── docs/               # BLUEPRINT, audits, documentation technique du desktop
+│   ├── audits/
+│   └── desktop/
+├── archive/
+│   └── mobile/         # ancienne app Expo, gelée (hors CI)
+└── .github/workflows/  # CI (API + desktop), releases Tauri
+```
 
-## Monorepo (aperçu)
+## Démarrer
 
-Ce repo contient plusieurs modules (desktop, backend, admin, etc.). Pour la prod desktop :
-
-- `desktop/` : app Tauri (React + TypeScript)
-- `desktop/src-tauri/` : runtime Tauri (Rust)
-
-## Prérequis
-
-- Node.js 20+
-- Rust toolchain (stable) + dépendances Tauri
-- Un **backend ANZAR** accessible (voir `desktop/.env.example`)
-
-## Démarrage (Desktop)
+**API**
 
 ```bash
-cd desktop
+cd services/api
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env          # DEEPSEEK_API_KEY, JWT_SECRET…
+uvicorn main:app --reload --port 8000
+```
+
+**Desktop**
+
+```bash
+cd apps/desktop
 npm install
-cp .env.example .env
-# Editer .env et configurer VITE_BACKEND_URL (backend ANZAR)
+cp .env.example .env          # VITE_BACKEND_URL=http://127.0.0.1:8000
 npm run tauri:dev
 ```
 
-## Configuration (Desktop)
+**Admin**
 
-Fichier : `desktop/.env` (voir `desktop/.env.example`)
+```bash
+cd apps/admin
+npm install
+npm run dev
+```
 
-- `VITE_BACKEND_URL` : URL du backend ANZAR (obligatoire)
-- `VITE_SENTRY_DSN` : DSN public Sentry (optionnel)
-- `VITE_SENTRY_TRACES_SAMPLE_RATE` : (optionnel) défaut `0.1`
+## Vérifier
 
-## Sécurité (résumé)
+| Module | Commande |
+| --- | --- |
+| API | `cd services/api && python -m pytest tests/` |
+| Desktop | `cd apps/desktop && npm run smoke` (lint + tests + build) |
+| Admin | `cd apps/admin && npx tsc --noEmit` |
 
-- **Aucune clé IA** dans le client.
-- **FS scope** limité à : `Documents/ANZAR/**`, `Desktop/ANZAR/**`, `Downloads/ANZAR/**`
-- **Shell** : allowlist stricte + détection de commandes dangereuses + confirmations.
+## Documentation
 
-## Production & Releases
+- Vue d'ensemble : [`docs/BLUEPRINT.md`](docs/BLUEPRINT.md)
+- Moteur de l'agent : [`docs/desktop/AGENT_ENGINE.md`](docs/desktop/AGENT_ENGINE.md)
+- Sécurité du desktop : [`docs/desktop/SECURITY.md`](docs/desktop/SECURITY.md)
+- Production et releases : [`docs/desktop/PRODUCTION.md`](docs/desktop/PRODUCTION.md)
+- Déploiement serveur : [`deploy/README.md`](deploy/README.md)
 
-Voir : `desktop/PRODUCTION.md`
+## Releases et mise à jour automatique
 
-### GitHub Actions
-- CI : `.github/workflows/ci.yml` (lint + build)
-- Release : `.github/workflows/release.yml` (Windows + macOS + release draft)
-
-### Auto-update (Tauri)
-
-Secrets GitHub requis :
-- `TAURI_PRIVATE_KEY`
-- `TAURI_KEY_PASSWORD`
-
-Secrets optionnels (upload sourcemaps Sentry) :
-- `SENTRY_AUTH_TOKEN`
-- `SENTRY_ORG`
-- `SENTRY_PROJECT`
+Les versions desktop sont publiées par `.github/workflows/release.yml` (macOS + Windows).
+Secrets GitHub requis : `TAURI_PRIVATE_KEY`, `TAURI_KEY_PASSWORD` ; optionnels pour Sentry :
+`SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`.
 
 ## Licence
 
-Licence **propriétaire (ISSALANHUB)** — **Tous droits réservés**.
-
-## Support
-
-- Issues : https://github.com/Abdoulfataou/anzar-desktop/issues
+Licence **propriétaire (ISSALANHUB)** — tous droits réservés.

@@ -211,7 +211,7 @@ la protection principale.
 
 ## Vitrine getanzar.com
 
-Le dossier `site/` contient la vitrine et la page de téléchargement (`/telecharger/`). Le conteneur
+Le dossier `apps/site/` contient la vitrine et la page de téléchargement (`/telecharger/`). Le conteneur
 `anzar-site` les sert ; le Caddy de ShagoStore les publie sur `getanzar.com` (et redirige `www`).
 
 1. **DNS (Cloudflare)** : ajoute `getanzar.com` à Cloudflare (offre gratuite), puis remplace chez Turbify
