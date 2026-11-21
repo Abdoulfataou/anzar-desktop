@@ -55,7 +55,7 @@ fn main() {
         .manage(mcp::McpState::default())
         .manage(tool_runner::ToolState::default())
         .manage(roots::RootsState::default())
-        .invoke_handler(tauri::generate_handler![net_proxy_records, vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
+        .invoke_handler(tauri::generate_handler![reveal_path, net_proxy_records, vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -96,6 +96,44 @@ fn harden_store_dir(dir: &std::path::Path) -> Result<(), String> {
 
 /// Canonicalise un chemin existant (résout les liens symboliques).
 /// Utilisé par les outils de fichiers pour empêcher une évasion via symlink.
+/// Ouvre un chemin du projet dans le Finder / l'Explorateur.
+///
+/// Le renderer n'ouvre plus de chemin lui-même (capacité `opener:open-path` retirée) : un
+/// script injecté pouvait lancer un `.command` ou une application hors de toute politique.
+/// Ici le chemin est canonicalisé puis vérifié contre les racines de projet autorisées, les
+/// mêmes que celles des outils de fichiers.
+#[tauri::command]
+fn reveal_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
+    let real = std::fs::canonicalize(&path).map_err(|_| "Chemin introuvable.".to_string())?;
+    if !crate::roots::is_allowed_root(&app, &real) {
+        return Err("Chemin hors des dossiers autorisés.".into());
+    }
+    let is_dir = real.is_dir();
+    #[cfg(target_os = "macos")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("open");
+        if !is_dir { c.arg("-R"); }
+        c
+    };
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("explorer");
+        if is_dir { c.arg(&real); } else { c.arg(format!("/select,{}", real.display())); }
+        c
+    };
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut cmd = {
+        let parent = if is_dir { real.clone() } else { real.parent().map(|p| p.to_path_buf()).ok_or("Chemin invalide.")? };
+        let mut c = std::process::Command::new("xdg-open");
+        c.arg(parent);
+        c
+    };
+    #[cfg(target_os = "macos")]
+    cmd.arg(&real);
+    cmd.spawn().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Journal récent du filtre réseau (diagnostic : « pourquoi cet hôte est-il bloqué ? »).
 #[tauri::command]
 fn net_proxy_records() -> Vec<netproxy::Record> {

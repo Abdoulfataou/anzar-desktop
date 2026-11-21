@@ -74,61 +74,6 @@
     "dialog:allow-ask",
     "dialog:allow-confirm",
     "stronghold:allow-remove-store-record",
-    {
-      "identifier": "opener:allow-open-path",
-      "allow": [
-        {
-          "path": "$HOME/**"
-        },
-        {
-          "path": "$APPDATA/**"
-        },
-        {
-          "path": "$DOCUMENT/**"
-        },
-        {
-          "path": "$DESKTOP/**"
-        },
-        {
-          "path": "$DOWNLOAD/**"
-        }
-      ],
-      "deny": [
-        {
-          "path": "$HOME/.ssh/**"
-        },
-        {
-          "path": "$HOME/.gnupg/**"
-        },
-        {
-          "path": "$HOME/.aws/**"
-        },
-        {
-          "path": "$HOME/.kube/**"
-        },
-        {
-          "path": "$HOME/.docker/config.json"
-        },
-        {
-          "path": "$HOME/.env"
-        },
-        {
-          "path": "$HOME/.npmrc"
-        },
-        {
-          "path": "$HOME/.netrc"
-        },
-        {
-          "path": "$HOME/.git-credentials"
-        },
-        {
-          "path": "$HOME/**/*.pem"
-        },
-        {
-          "path": "$HOME/**/*.key"
-        }
-      ]
-    },
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
     "dialog:default",
