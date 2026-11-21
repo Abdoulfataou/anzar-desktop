@@ -22,11 +22,19 @@ import { checkPython, ensureGit, isPython } from '@/services/runtime/programs';
 /** Isolation des commandes (macOS) : activée sauf si coupée dans les Paramètres. */
 export const sandboxEnabled = (): boolean => useSettingsStore.getState().settings.sandboxCommands !== false;
 
-const SANDBOX_DENIED = /operation not permitted|EPERM|sandbox.*deny|deny.*file-write/i;
+/** Réseau des commandes isolées : coupé par défaut (sauf localhost et téléchargements autorisés). */
+export const commandNetworkOpen = (): boolean => useSettingsStore.getState().settings.commandNetwork === true;
 
-/** Ajoute une explication quand l'isolation a bloqué une écriture hors du projet. */
+const SANDBOX_DENIED = /operation not permitted|EPERM|sandbox.*deny|deny.*file-write/i;
+const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not resolve host|Network is unreachable|Temporary failure in name resolution|NewConnectionError|fetch failed|ECONNRESET.*registry/i;
+
+/** Ajoute une explication quand l'isolation a bloqué une écriture ou une connexion. */
 export function withSandboxHint(code: number, stderr: string): string {
-  if (code === 0 || !sandboxEnabled() || !SANDBOX_DENIED.test(stderr)) return stderr;
+  if (code === 0 || !sandboxEnabled()) return stderr;
+  if (!commandNetworkOpen() && NETWORK_DENIED.test(stderr)) {
+    return `${stderr}\n[ANZAR] Réseau coupé par l'isolation des commandes : seules les connexions vers localhost, les installations que l'utilisateur accepte (npm/pip install) et les téléchargements de cargo et git sont permis. N'essaie pas de contourner : si cette commande a vraiment besoin d'internet, dis-le à l'utilisateur (Paramètres → Général → « Réseau des commandes »).`;
+  }
+  if (!SANDBOX_DENIED.test(stderr)) return stderr;
   return `${stderr}\n[ANZAR] Bloqué par l'isolation des commandes : une commande ne peut écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo). Écris le fichier dans le projet, ou désactive l'isolation dans Paramètres → Général si c'est voulu.`;
 }
 
@@ -265,7 +273,7 @@ class TerminalService {
     await this.ensureToolEvents();
     await invoke('tool_spawn', {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
-      approved: this.takeInstallGrant(program, args),
+      approved: this.takeInstallGrant(program, args), network: commandNetworkOpen(),
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
@@ -366,6 +374,7 @@ class TerminalService {
         root: this.rootFor(options.cwd),
         sandbox: sandboxEnabled(),
         approved: this.takeInstallGrant(displayName, parsed.args),
+        network: commandNetworkOpen(),
       });
       process.pid = pid;
       return processId;

@@ -182,6 +182,7 @@ pub fn tool_spawn(
     root: String,
     sandbox: Option<bool>,
     approved: Option<bool>,
+    network: Option<bool>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
     let program = program.trim().to_lowercase();
@@ -200,7 +201,10 @@ pub fn tool_spawn(
         return Err(format!("« {program} » est introuvable sur cet ordinateur."));
     }
     let wrapped = if isolated {
-        crate::sandbox::wrap(&program, &args, &root_p)
+        // Réseau : réglage « Réseau des commandes » ouvert, ou commande qui télécharge
+        let net = network.unwrap_or(false)
+            || crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false));
+        crate::sandbox::wrap(&program, &args, &root_p, net)
     } else {
         crate::sandbox::Wrapped { program: program.clone(), args: args.clone() }
     };

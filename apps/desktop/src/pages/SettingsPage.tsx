@@ -242,6 +242,7 @@ function GeneralSection() {
   const codeDiagnostics = useSettingsStore((s) => s.settings.codeDiagnostics !== false);
   const autoVerify = useSettingsStore((s) => s.settings.autoVerifyAfterApply !== false);
   const sandbox = useSettingsStore((s) => s.settings.sandboxCommands !== false);
+  const commandNetwork = useSettingsStore((s) => s.settings.commandNetwork === true);
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
   const [mode, setMode] = useState<PermissionMode>(() => {
     try {
@@ -301,6 +302,18 @@ function GeneralSection() {
             value={sandbox ? 'on' : 'off'}
             onChange={(v) => updateSettings({ sandboxCommands: v === 'on' })}
             options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
+          />
+        </Row>
+      )}
+      {isMac && sandbox && (
+        <Row
+          label="Réseau des commandes"
+          description="Coupé : les commandes de l'agent ne joignent que localhost (serveurs de dev), plus les installations que tu acceptes et les téléchargements de cargo et git. Un script ne peut donc pas envoyer ton code ailleurs. Ouvre-le seulement si un build ou un test a besoin d'internet."
+        >
+          <Segmented
+            value={commandNetwork ? 'on' : 'off'}
+            onChange={(v) => updateSettings({ commandNetwork: v === 'on' })}
+            options={[{ id: 'off', label: 'Coupé' }, { id: 'on', label: 'Ouvert' }]}
           />
         </Row>
       )}

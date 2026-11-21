@@ -4,7 +4,8 @@
 //! dossier git du dépôt (worktrees des tickets), les dossiers temporaires et les caches
 //! des outils (npm, cargo…). Les hooks et la config git restent en lecture seule, et
 //! les dossiers de secrets (~/.ssh, ~/.aws, ~/.gnupg, ~/.kube, ~/.netrc,
-//! ~/.git-credentials) sont illisibles. Le réseau n'est pas restreint (serveurs de dev).
+//! ~/.git-credentials) sont illisibles. Le réseau sortant est coupé (sauf localhost : serveurs
+//! de dev, bases locales) quand `allow_network` est faux : voir `network_allowed`.
 //!
 //! Sur Windows et Linux, `wrap` ne change rien pour l'instant : l'isolation repose sur
 //! la politique de commandes et les accords (étape suivante : jetons restreints Windows).
@@ -45,6 +46,29 @@ pub const PROFILE: &str = r#"(version 1)
   (literal (param "NETRC"))
   (literal (param "GITCRED")))
 "#;
+
+/// Ajouté au profil quand la commande n'a pas droit au réseau : connexions sortantes
+/// coupées, sauf vers localhost. Les sockets Unix (résolution DNS du système) ne sont
+/// pas concernés ; l'écoute (serveur de dev) non plus.
+pub const NETWORK_RULES: &str = r#"
+(deny network-outbound (remote ip "*:*"))
+(allow network-outbound (remote ip "localhost:*"))
+"#;
+
+/// La commande a-t-elle besoin d'internet ? Seules les commandes qui téléchargent des
+/// dépendances ou synchronisent un dépôt l'obtiennent ; les installations, seulement
+/// après l'accord de l'utilisateur (`approved`).
+pub fn network_allowed(program: &str, args: &[String], approved: bool) -> bool {
+    let first = args.first().map(|s| s.as_str()).unwrap_or("");
+    match program {
+        "npm" => approved && matches!(first, "install" | "i" | "ci" | "add"),
+        "pip" | "pip3" => approved && first == "install",
+        "python" | "python3" => approved && first == "-m" && args.get(1).map(|s| s == "pip").unwrap_or(false),
+        "cargo" => matches!(first, "build" | "b" | "check" | "c" | "test" | "t" | "fetch" | "update" | "tree"),
+        "git" => matches!(first, "clone" | "fetch" | "pull" | "ls-remote" | "submodule"),
+        _ => false,
+    }
+}
 
 pub struct Wrapped {
     pub program: String,
@@ -108,7 +132,7 @@ pub fn available() -> bool {
 }
 
 /// Enveloppe une commande dans le sandbox (macOS). `root` doit être canonicalisé.
-pub fn wrap(program: &str, args: &[String], root: &Path) -> Wrapped {
+pub fn wrap(program: &str, args: &[String], root: &Path, allow_network: bool) -> Wrapped {
     if !available() {
         return Wrapped { program: program.to_string(), args: args.to_vec() };
     }
@@ -116,7 +140,8 @@ pub fn wrap(program: &str, args: &[String], root: &Path) -> Wrapped {
         .and_then(|h| std::fs::canonicalize(h).ok())
         .unwrap_or_else(|| PathBuf::from("/var/empty"));
     let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| PathBuf::from("/private/tmp"));
-    let mut out = vec!["-p".to_string(), PROFILE.to_string()];
+    let profile = if allow_network { PROFILE.to_string() } else { format!("{PROFILE}{NETWORK_RULES}") };
+    let mut out = vec!["-p".to_string(), profile];
     for (k, v) in profile_params(root, &home, &tmp) {
         out.push("-D".to_string());
         out.push(format!("{k}={v}"));
@@ -142,6 +167,20 @@ mod tests {
         let common = git_common_dir(&wt);
         assert_eq!(common, std::fs::canonicalize(&repo_git).unwrap());
         let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn network_only_for_downloads() {
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(!network_allowed("npm", &a(&["run", "build"]), false));
+        assert!(!network_allowed("npm", &a(&["install"]), false));
+        assert!(network_allowed("npm", &a(&["install", "react"]), true));
+        assert!(!network_allowed("node", &a(&["script.js"]), true));
+        assert!(!network_allowed("cargo", &a(&["run"]), false));
+        assert!(network_allowed("cargo", &a(&["build"]), false));
+        assert!(network_allowed("git", &a(&["pull"]), false));
+        assert!(!network_allowed("git", &a(&["status"]), false));
+        assert!(NETWORK_RULES.contains("localhost:*"));
     }
 
     #[test]

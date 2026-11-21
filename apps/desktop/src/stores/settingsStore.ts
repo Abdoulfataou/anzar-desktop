@@ -36,6 +36,8 @@ export interface Settings {
 
   /** Commandes de l'agent isolées par le système (macOS) : écriture limitée au projet */
   sandboxCommands?: boolean;
+  /** Commandes isolées : accès à internet (localhost toujours permis). Coupé par défaut. */
+  commandNetwork?: boolean;
 
   // Interface
   theme: 'light' | 'dark' | 'system';
@@ -175,6 +177,7 @@ export const useSettingsStore = create<SettingsStore>()(
           webTools: state.settings.webTools,
           codeDiagnostics: state.settings.codeDiagnostics,
           sandboxCommands: state.settings.sandboxCommands,
+          commandNetwork: state.settings.commandNetwork,
           provider: state.settings.provider,
           backendUrl: state.settings.backendUrl,
           theme: state.settings.theme,
