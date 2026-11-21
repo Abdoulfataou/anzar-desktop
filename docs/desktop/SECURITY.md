@@ -182,12 +182,13 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
 | Écriture | Autorisée seulement dans le dossier du projet, le dossier git du dépôt (worktrees des tickets), les dossiers temporaires et les caches (`~/Library/Caches`, `~/.npm`, `~/.cache`, `~/.cargo`) |
 | Git | `.git/hooks` et `.git/config` en lecture seule, y compris pour une worktree |
 | Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials` illisibles |
-| Réseau | Sortant coupé sauf vers localhost (serveurs de dev, bases locales). Exceptions : `npm install`/`pip install` accepté par l'utilisateur, `cargo build/check/test/fetch/update`, `git clone/fetch/pull/ls-remote/submodule` (`sandbox::network_allowed`) |
+| Réseau | Ouvert par défaut (comme un terminal). Si l'utilisateur le coupe (Réglages avancés) : sortant refusé sauf vers localhost, et une carte propose d'autoriser la commande. Exceptions toujours permises : `npm install`/`pip install` accepté par l'utilisateur, `cargo build/check/test/fetch/update`, `git clone/fetch/pull/ls-remote/submodule` (`sandbox::network_allowed`) |
 
 - Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
   commandes s'exécutent comme avant.
-- Réglage « Réseau des commandes » (coupé par défaut) : ouvert, toutes les commandes isolées
-  ont internet. Une connexion refusée ajoute `[ANZAR] Réseau coupé…` à la sortie.
+- Réglage « Réseau des commandes » (ouvert par défaut). La protection contre l'envoi de
+  données repose sur les secrets illisibles et sur l'accord demandé après lecture d'un
+  contenu externe. Coupé, une connexion refusée ajoute `[ANZAR] Réseau coupé…` à la sortie.
 - Quand une écriture est refusée, la sortie de la commande se termine par une ligne
   `[ANZAR] Bloqué par l'isolation des commandes…` que l'agent comprend.
 - Limite connue : le réglage est transmis par la webview ; l'isolation est une défense en

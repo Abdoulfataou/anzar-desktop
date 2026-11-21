@@ -36,7 +36,7 @@ export interface Settings {
 
   /** Commandes de l'agent isolées par le système (macOS) : écriture limitée au projet */
   sandboxCommands?: boolean;
-  /** Commandes isolées : accès à internet (localhost toujours permis). Coupé par défaut. */
+  /** Commandes isolées : accès à internet. Ouvert par défaut ; coupé = localhost et téléchargements seulement. */
   commandNetwork?: boolean;
 
   // Interface

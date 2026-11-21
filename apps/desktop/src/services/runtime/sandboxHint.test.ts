@@ -29,10 +29,10 @@ describe('isolation des commandes', () => {
     expect(withSandboxHint(1, 'Operation not permitted')).toBe('Operation not permitted');
   });
 
-  it('explique une connexion coupée, sauf si le réseau est ouvert', () => {
+  it('réseau ouvert par défaut ; explique une connexion coupée si l’utilisateur l’a coupé', () => {
     const err = 'Error: getaddrinfo ENOTFOUND api.example.com';
+    expect(withSandboxHint(1, err)).toBe(err); // ouvert par défaut
+    settings.commandNetwork = false;
     expect(withSandboxHint(1, err)).toContain('Réseau coupé');
-    settings.commandNetwork = true;
-    expect(withSandboxHint(1, err)).toBe(err);
   });
 });

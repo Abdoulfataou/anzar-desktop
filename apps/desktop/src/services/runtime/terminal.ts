@@ -22,8 +22,9 @@ import { checkPython, ensureGit, isPython } from '@/services/runtime/programs';
 /** Isolation des commandes (macOS) : activée sauf si coupée dans les Paramètres. */
 export const sandboxEnabled = (): boolean => useSettingsStore.getState().settings.sandboxCommands !== false;
 
-/** Réseau des commandes isolées : coupé par défaut (sauf localhost et téléchargements autorisés). */
-export const commandNetworkOpen = (): boolean => useSettingsStore.getState().settings.commandNetwork === true;
+/** Réseau des commandes isolées : ouvert par défaut. Coupé seulement si l'utilisateur
+ *  le choisit (Réglages avancés) : localhost et téléchargements restent alors permis. */
+export const commandNetworkOpen = (): boolean => useSettingsStore.getState().settings.commandNetwork !== false;
 
 /** Marqueur ajouté à la sortie quand l'isolation a coupé une connexion. */
 export const NETWORK_BLOCKED_TAG = '[ANZAR] Réseau coupé';
