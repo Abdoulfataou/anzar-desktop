@@ -244,6 +244,7 @@ function GeneralSection() {
   const sandbox = useSettingsStore((s) => s.settings.sandboxCommands !== false);
   const commandNetwork = useSettingsStore((s) => s.settings.commandNetwork === true);
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
+  const [advanced, setAdvanced] = useState(false);
   const [mode, setMode] = useState<PermissionMode>(() => {
     try {
       const v = localStorage.getItem('anzar.permissionMode');
@@ -273,49 +274,60 @@ function GeneralSection() {
           options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
         />
       </Row>
-      <Row
-        label="Vérification du code"
-        description="Après chaque fichier TypeScript, JavaScript ou Python écrit par l'agent, ses erreurs sont vérifiées aussitôt (types, noms inconnus, imports) et l'agent les corrige. Gratuit, sur ton ordinateur ; demande Node.js. Le premier lancement télécharge les vérificateurs."
+      <button
+        type="button"
+        onClick={() => setAdvanced((v) => !v)}
+        className="mt-2 text-left text-xs text-text-muted hover:text-text-primary"
       >
-        <Segmented
-          value={codeDiagnostics ? 'on' : 'off'}
-          onChange={(v) => updateSettings({ codeDiagnostics: v === 'on' })}
-          options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
-        />
-      </Row>
-      <Row
-        label="Vérification automatique"
-        description="Quand l'agent a modifié le projet, il lance lint, build et tests avant d'annoncer qu'il a fini. Si ça échoue, il corrige (3 essais au plus). Une commande qui exécute du code qu'il a modifié te demande d'abord ton accord."
-      >
-        <Segmented
-          value={autoVerify ? 'on' : 'off'}
-          onChange={(v) => updateSettings({ autoVerifyAfterApply: v === 'on' })}
-          options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
-        />
-      </Row>
-      {isMac && (
-        <Row
-          label="Isoler les commandes"
-          description="Les commandes lancées par l'agent ne peuvent écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo), et ne peuvent pas lire tes clés (~/.ssh, ~/.aws…). Désactive seulement si un outil légitime est bloqué."
-        >
-          <Segmented
-            value={sandbox ? 'on' : 'off'}
-            onChange={(v) => updateSettings({ sandboxCommands: v === 'on' })}
-            options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
-          />
-        </Row>
-      )}
-      {isMac && sandbox && (
-        <Row
-          label="Réseau des commandes"
-          description="Coupé : les commandes de l'agent ne joignent que localhost (serveurs de dev), plus les installations que tu acceptes et les téléchargements de cargo et git. Un script ne peut donc pas envoyer ton code ailleurs. Ouvre-le seulement si un build ou un test a besoin d'internet."
-        >
-          <Segmented
-            value={commandNetwork ? 'on' : 'off'}
-            onChange={(v) => updateSettings({ commandNetwork: v === 'on' })}
-            options={[{ id: 'off', label: 'Coupé' }, { id: 'on', label: 'Ouvert' }]}
-          />
-        </Row>
+        {advanced ? '▾' : '▸'} Réglages avancés (déjà bien réglés, rien à changer en temps normal)
+      </button>
+      {advanced && (
+        <>
+          <Row
+            label="Vérification du code"
+            description="Après chaque fichier TypeScript, JavaScript ou Python écrit par l'agent, ses erreurs sont vérifiées aussitôt (types, noms inconnus, imports) et l'agent les corrige. Gratuit, sur ton ordinateur ; demande Node.js. Le premier lancement télécharge les vérificateurs."
+          >
+            <Segmented
+              value={codeDiagnostics ? 'on' : 'off'}
+              onChange={(v) => updateSettings({ codeDiagnostics: v === 'on' })}
+              options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
+            />
+          </Row>
+          <Row
+            label="Vérification automatique"
+            description="Quand l'agent a modifié le projet, il lance lint, build et tests avant d'annoncer qu'il a fini. Si ça échoue, il corrige (3 essais au plus). Une commande qui exécute du code qu'il a modifié te demande d'abord ton accord."
+          >
+            <Segmented
+              value={autoVerify ? 'on' : 'off'}
+              onChange={(v) => updateSettings({ autoVerifyAfterApply: v === 'on' })}
+              options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
+            />
+          </Row>
+          {isMac && (
+            <Row
+              label="Isoler les commandes"
+              description="Les commandes lancées par l'agent ne peuvent écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo), et ne peuvent pas lire tes clés (~/.ssh, ~/.aws…). Désactive seulement si un outil légitime est bloqué."
+            >
+              <Segmented
+                value={sandbox ? 'on' : 'off'}
+                onChange={(v) => updateSettings({ sandboxCommands: v === 'on' })}
+                options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
+              />
+            </Row>
+          )}
+          {isMac && sandbox && (
+            <Row
+              label="Réseau des commandes"
+              description="Coupé : les commandes de l'agent ne joignent que localhost (serveurs de dev), plus les installations que tu acceptes et les téléchargements de cargo et git. Un script ne peut donc pas envoyer ton code ailleurs. Ouvre-le seulement si un build ou un test a besoin d'internet."
+            >
+              <Segmented
+                value={commandNetwork ? 'on' : 'off'}
+                onChange={(v) => updateSettings({ commandNetwork: v === 'on' })}
+                options={[{ id: 'off', label: 'Coupé' }, { id: 'on', label: 'Ouvert' }]}
+              />
+            </Row>
+          )}
+        </>
       )}
       <Row label="Permissions par défaut" description="Ce que l'agent peut faire sans te demander. Modifiable à tout moment depuis la saisie.">
         <select

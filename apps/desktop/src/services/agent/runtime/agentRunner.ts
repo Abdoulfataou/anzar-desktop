@@ -49,7 +49,7 @@ import {
   estimateCompletionTokens, estimateHistoryTokens, hasExactCost, snapshotTimeline,
 } from '@/services/agent/engine/chatSession';
 import { detectDevCommand } from '@/services/agent/tools/devServer';
-import { terminalService } from '@/services/runtime/terminal';
+import { NETWORK_BLOCKED_TAG, terminalService } from '@/services/runtime/terminal';
 import { mcpAgentTools, isMcpTool, mcpToolRef, mcpNeedsApproval, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, findSkill, readSkillFile, skillToolOutput, type Skill } from '@/services/skills';
 import { snapshotBeforeChange, collectChanges, type Snapshots } from '@/services/agent/tools/fileChanges';
@@ -867,9 +867,7 @@ export class AgentRunner {
             return { output: plan.output, stop: 'plan' };
           }
 
-          const result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[]; media?: ToolEvent['media']; external?: ExternalSource } = !allowed
-            ? { output: refusal, isError: true }
-            : await executeGenericTool(call, args, {
+          const runTool = () => executeGenericTool(call, args, {
                 agentRoot,
                 workspacePath,
                 signal: controller.signal,
@@ -879,6 +877,30 @@ export class AgentRunner {
                   ? (progress) => { ev.subagents = progress; flush(''); }
                   : undefined,
               });
+          let result: { output: string; isError?: boolean; isDone?: boolean; costFCFA?: number; images?: { label: string; dataUrl: string }[]; media?: ToolEvent['media']; external?: ExternalSource } = !allowed
+            ? { output: refusal, isError: true }
+            : await runTool();
+
+          // Réseau coupé par l'isolation : on demande ici, sans passer par les Paramètres,
+          // puis on relance la commande une fois avec internet.
+          if (allowed && !background && call.function.name === 'run_command' && result.isError
+            && result.output.includes(NETWORK_BLOCKED_TAG) && !controller.signal.aborted) {
+            const command = String(args.command || '');
+            const ok = await new Promise<boolean>((resolve) => {
+              this.approvalResolver = resolve;
+              this.setState({ approval: {
+                id: call.id, name: call.function.name, summary: ev.argsSummary,
+                reason: "cette commande a besoin d'internet. Autoriser son accès réseau (cette commande uniquement, jusqu'à la fermeture d'ANZAR) ?",
+                detail: command,
+              } });
+            });
+            if (ok) {
+              terminalService.grantNetwork(command);
+              result = await runTool();
+            } else {
+              result = { ...result, output: `${result.output}\nL'utilisateur a refusé l'accès internet pour cette commande. Ne contourne pas : fais sans, ou explique-lui ce qui manque.` };
+            }
+          }
 
           if (result.external) externalSources.push(result.external);
           // Recherche et lecture web : facturées à part par le serveur, ajoutées au coût de la réponse

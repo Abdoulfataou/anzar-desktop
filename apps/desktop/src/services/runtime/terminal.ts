@@ -25,6 +25,9 @@ export const sandboxEnabled = (): boolean => useSettingsStore.getState().setting
 /** Réseau des commandes isolées : coupé par défaut (sauf localhost et téléchargements autorisés). */
 export const commandNetworkOpen = (): boolean => useSettingsStore.getState().settings.commandNetwork === true;
 
+/** Marqueur ajouté à la sortie quand l'isolation a coupé une connexion. */
+export const NETWORK_BLOCKED_TAG = '[ANZAR] Réseau coupé';
+
 const SANDBOX_DENIED = /operation not permitted|EPERM|sandbox.*deny|deny.*file-write/i;
 const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not resolve host|Network is unreachable|Temporary failure in name resolution|NewConnectionError|fetch failed|ECONNRESET.*registry/i;
 
@@ -32,10 +35,10 @@ const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not 
 export function withSandboxHint(code: number, stderr: string): string {
   if (code === 0 || !sandboxEnabled()) return stderr;
   if (!commandNetworkOpen() && NETWORK_DENIED.test(stderr)) {
-    return `${stderr}\n[ANZAR] Réseau coupé par l'isolation des commandes : seules les connexions vers localhost, les installations que l'utilisateur accepte (npm/pip install) et les téléchargements de cargo et git sont permis. N'essaie pas de contourner : si cette commande a vraiment besoin d'internet, dis-le à l'utilisateur (Paramètres → Général → « Réseau des commandes »).`;
+    return `${stderr}\n${NETWORK_BLOCKED_TAG} par l'isolation des commandes : seules les connexions vers localhost, les installations acceptées (npm/pip install) et les téléchargements de cargo et git sont permis. ANZAR propose à l'utilisateur d'autoriser internet pour cette commande ; n'essaie pas de contourner (autre outil, autre script).`;
   }
   if (!SANDBOX_DENIED.test(stderr)) return stderr;
-  return `${stderr}\n[ANZAR] Bloqué par l'isolation des commandes : une commande ne peut écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo). Écris le fichier dans le projet, ou désactive l'isolation dans Paramètres → Général si c'est voulu.`;
+  return `${stderr}\n[ANZAR] Bloqué par l'isolation des commandes : une commande ne peut écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo). Écris le fichier dans le projet (ou dans un dossier temporaire) ; si c'est impossible, explique à l'utilisateur ce qui est bloqué.`;
 }
 
 // ============================================================================
@@ -246,6 +249,19 @@ class TerminalService {
     this.installGrants.set(TerminalService.installKey(program, parsed.args), Date.now() + 10 * 60_000);
   }
 
+  /** Commandes autorisées à utiliser internet (accord de l'utilisateur), jusqu'à la fermeture. */
+  private networkGrants = new Set<string>();
+
+  grantNetwork(command: string): void {
+    const parsed = parseExecutable(String(command || '').trim());
+    if (!parsed) return;
+    this.networkGrants.add(TerminalService.installKey(parsed.cmdName.replace(/-\d+$/, ''), parsed.args));
+  }
+
+  private networkFor(program: string, args: string[]): boolean {
+    return commandNetworkOpen() || this.networkGrants.has(TerminalService.installKey(program, args));
+  }
+
   /** Consomme l'accord correspondant, s'il existe et n'a pas expiré. */
   private takeInstallGrant(program: string, args: string[]): boolean {
     const key = TerminalService.installKey(program, args);
@@ -273,7 +289,7 @@ class TerminalService {
     await this.ensureToolEvents();
     await invoke('tool_spawn', {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
-      approved: this.takeInstallGrant(program, args), network: commandNetworkOpen(),
+      approved: this.takeInstallGrant(program, args), network: this.networkFor(program, args),
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
@@ -374,7 +390,7 @@ class TerminalService {
         root: this.rootFor(options.cwd),
         sandbox: sandboxEnabled(),
         approved: this.takeInstallGrant(displayName, parsed.args),
-        network: commandNetworkOpen(),
+        network: this.networkFor(displayName, parsed.args),
       });
       process.pid = pid;
       return processId;
