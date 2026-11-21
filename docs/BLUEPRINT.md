@@ -118,8 +118,9 @@ skills personnelles.
 | Module | Commande | État |
 |---|---|---|
 | API | `cd services/api && python -m pytest tests/` | 77 tests |
-| Desktop | `cd apps/desktop && npm run smoke` | 36 fichiers, 168 tests Vitest |
-| Rust | `cd apps/desktop/src-tauri && cargo test` | tests de `tool_runner`, `sandbox` et `roots` ; `cargo check` croisé macOS et Windows |
+| Desktop | `cd apps/desktop && npm run smoke` | 52 fichiers, 318 tests Vitest |
+| Banc d'essai | `cd apps/desktop && npm run bench` | 14 scénarios du harnais, avec récapitulatif coût/étapes |
+| Rust | `cd apps/desktop/src-tauri && cargo test --all-targets` | 20 tests (`tool_runner`, `sandbox`, `roots`, `mcp`) ; exécutés en CI sur macOS avec `clippy -D warnings` |
 
 ## 8. Feuille de route
 
@@ -128,14 +129,33 @@ skills personnelles.
 - [x] Moteur d'agent unique, outils découpés, profils d'agents en Markdown
 - [x] Vérification automatique Verify → Fix → Verify
 - [x] Harnais sorti de React (`AgentRunner`), tickets et automatisations sans composant
+- [x] Session et tour séparés : `agentRunner` 174 lignes + `turnStart` / `turn` / `turnFinish` / `turnVerify`
+- [x] Profils d'agents déclaratifs : rôles, outils, modèle et mots-clés lus dans les fichiers
+- [x] Politique de commandes unique (`policy/commands.json`), partagée TypeScript / Rust
+- [x] Budgets dérivés des sous-agents (enveloppe du budget restant, consommation remontée)
+- [x] CI Rust : `cargo test --all-targets` et `clippy -D warnings` sur chaque PR (macOS et Windows)
+- [x] Sauvetage d'export via l'hôte d'outils (plus de chemin d'exécution dédoublé)
+- [x] Filtre réseau des commandes : proxy local avec liste d'hôtes (imposé par Seatbelt sur macOS)
+- [x] Banc d'essai du harnais : 14 scénarios déterministes (vérification, boucle, budget),
+      exécutés avec le vrai `AgentRunner` dans la CI (`npm run bench`)
+- [x] Carte du code : symboles extraits par tree-sitter WASM, grammaires chargées à la demande
+- [x] Registre à manifestes, première tranche : validation des profils et budget FCFA par rôle
+- [x] Indexation incrémentale de la carte du code (seuls les fichiers modifiés sont re-parsés)
 - [x] Isolation des commandes sur macOS
 - [x] Sessions durables (historique + journal) ; client MCP 2026-07-28
 
 ### Ensuite
 - [x] Dossiers de projet tenus par Rust ; périmètre fichiers de la webview réduit
 - [x] Windows : commandes dans un job object (arborescence arrêtée, presse-papiers et réglages système inaccessibles)
-- [ ] Windows : confinement des écritures (jeton restreint ou AppContainer)
+- [ ] Windows : confinement des écritures (AppContainer) — plan et tests de validation dans
+      [`docs/desktop/WINDOWS_SANDBOX.md`](desktop/WINDOWS_SANDBOX.md) ; la CI Windows compile
+      désormais ce code à chaque PR
 - [ ] Paiements réels en production (FedaPay, Stripe) et iPay Money
 - [x] Carte du code par PageRank sur les imports, condenser d'historique
-- [ ] Analyse syntaxique tree-sitter pour la carte, budgets en FCFA par sous-agent
-- [ ] Banc d'essai de tâches types rejoué à chaque version
+- [x] Budget moteur (étapes, tokens, FCFA, durée) vérifié avant chaque étape, affiché en
+      direct ; plafonds par automatisation et par ticket
+- [x] Détection de boucle (appels identiques, séries d'échecs) avec arrêt propre et bilan
+- [x] Ligne de base de vérification : seuls les échecs imputables à l'agent bloquent `task_done`
+- [x] Vérification ciblée : lint et tests restreints aux fichiers modifiés, repli sur le complet
+- [x] Analyse syntaxique tree-sitter pour la carte (WASM, TS/TSX/JS/Python, repli regex)
+- [ ] Banc d'essai enrichi : transcriptions réelles rejouées (SSE) et mesures de coût par tâche

@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "limits": {
+    "maxArgs": 8,
+    "maxArgChars": 400,
+    "maxCommandChars": 2000
+  },
+  "programs": [
+    { "name": "npm", "agent": true, "install": true },
+    { "name": "node", "agent": true },
+    { "name": "git", "agent": true },
+    { "name": "cargo", "agent": true },
+    { "name": "python", "agent": true },
+    { "name": "python3", "agent": true },
+    { "name": "pip", "agent": true, "install": true },
+    { "name": "pip3", "agent": true, "install": true },
+    { "name": "ffmpeg", "agent": true },
+    { "name": "ffprobe", "agent": false },
+    { "name": "rg", "agent": true }
+  ],
+  "blocked": [
+    {
+      "id": "inline-node",
+      "pattern": "\\bnode\\s+(-e|--eval|-p|--print)\\b",
+      "flags": "i",
+      "reason": "node -e/--eval est refusé (guillemets et échappements cassés selon le système). Écris ton code dans un fichier script (.mjs) avec write_file, puis lance `node script.mjs`."
+    },
+    {
+      "id": "inline-python",
+      "pattern": "\\bpython3?\\s+-c(\\s|$)",
+      "flags": "i",
+      "reason": "python -c est refusé. Écris ton code dans un fichier .py avec write_file, puis lance `python script.py`."
+    },
+    {
+      "id": "inline-shell",
+      "pattern": "\\b(bash|sh|zsh)\\s+-c\\b",
+      "flags": "i",
+      "reason": "le shell inline (bash/sh -c) est refusé : une seule commande simple par appel."
+    },
+    {
+      "id": "pipe-to-shell",
+      "pattern": "\\|\\s*(sh|bash|zsh|node|python3?|perl|ruby)\\b",
+      "flags": "i",
+      "reason": "Les pipes vers un interpréteur sont refusés. Télécharge avec curl, écris un script avec write_file, puis exécute-le séparément."
+    },
+    {
+      "id": "chain",
+      "pattern": "[|;<>]|&&|\\|\\|",
+      "reason": "Refusé : un seul programme par appel, sans |, ;, &&, >, < ni $(…). Découpe en plusieurs appels run_command, ou utilise search_files / list_dir / read_file."
+    },
+    {
+      "id": "substitution",
+      "pattern": "\\$\\(.*\\)|`[^`]+`",
+      "reason": "Substitution de commande ($(…) ou backticks) refusée : une seule commande simple par appel."
+    },
+    {
+      "id": "curl",
+      "pattern": "\\bcurl\\s",
+      "flags": "i",
+      "reason": "Téléchargement réseau refusé dans run_command. Utilise l'outil web_search / read_url pour lire une page, ou installe une dépendance avec npm/pip."
+    },
+    {
+      "id": "wget",
+      "pattern": "\\bwget\\s",
+      "flags": "i",
+      "reason": "Téléchargement réseau refusé dans run_command. Utilise l'outil web_search / read_url, ou installe une dépendance avec npm/pip."
+    },
+    {
+      "id": "sudo",
+      "pattern": "\\bsudo\\s",
+      "flags": "i",
+      "reason": "Élévation de droits refusée : l'agent ne doit pas exécuter de commande en administrateur."
+    },
+    {
+      "id": "su",
+      "pattern": "\\bsu\\s+-",
+      "flags": "i",
+      "reason": "Élévation de droits refusée : l'agent ne doit pas changer d'utilisateur."
+    },
+    {
+      "id": "rm-rf",
+      "pattern": "\\brm\\s+-rf\\b|rm\\s+-rf\\s+[/~]|rm\\s+-rf\\s+\\.\\.",
+      "flags": "i",
+      "reason": "Suppression récursive refusée : c'est irréversible. Supprime les fichiers un par un avec delete_file."
+    },
+    {
+      "id": "git-reset-hard",
+      "pattern": "\\bgit\\s+reset\\s+--hard\\b",
+      "flags": "i",
+      "reason": "git reset --hard refusé : il efface le travail non commité. Utilise git status puis git checkout <fichier>."
+    },
+    {
+      "id": "git-clean",
+      "pattern": "\\bgit\\s+clean\\s+-[a-z]*f",
+      "flags": "i",
+      "reason": "git clean -f refusé : il supprime les fichiers non suivis du projet."
+    },
+    {
+      "id": "dev-write",
+      "pattern": ">\\s*/dev/",
+      "reason": "Écriture dans /dev refusée."
+    },
+    {
+      "id": "env-override",
+      "pattern": "\\bexport\\s+(PATH|LD_PRELOAD|LD_LIBRARY_PATH)\\s*=",
+      "flags": "i",
+      "reason": "Modifier PATH ou LD_PRELOAD est refusé : cela contournerait l'allowlist de programmes."
+    },
+    {
+      "id": "netcat",
+      "pattern": "\\bnc\\s+-",
+      "flags": "i",
+      "reason": "Outil réseau brut (nc) refusé."
+    },
+    {
+      "id": "eval",
+      "pattern": "\\beval\\s*\\(",
+      "flags": "i",
+      "reason": "eval() refusé : code construit à l'exécution."
+    },
+    {
+      "id": "absolute-path",
+      "pattern": "(^|\\s)(/|~/|[A-Za-z]:\\\\)",
+      "reason": "Les chemins absolus sont refusés : utilise un chemin relatif au projet (ex. scripts/build.mjs)."
+    }
+  ]
+}

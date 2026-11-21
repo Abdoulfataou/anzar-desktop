@@ -4,58 +4,61 @@
  * `terminal.ts` et `agentTools.precheckCommand`.
  */
 
-/** Dangerous patterns that must NEVER be executed */
-export const BLOCKED_PATTERNS: RegExp[] = [
-  /sudo\s/i,
-  /su\s+-/i,
-  /\brm\s+-rf\b/i,
-  /\bgit\s+reset\s+--hard\b/i,
-  /\bgit\s+clean\s+-fd\b/i,
-  /rm\s+-rf\s+[/~]/i,
-  /rm\s+-rf\s+\.\./i,
-  />\s*\/dev\//i,
-  /\|/i,
-  />/i,
-  /</i,
-  /;\s*/i,
-  /&&/i,
-  /\|\|/i,
-  /curl\s/i,
-  /wget\s/i,
-  /eval\s*\(/i,
-  /\$\(.*\)/,
-  /`[^`]+`/,
-  />\s*\/etc\//i,
-  />\s*~\/\./i,
-  /export\s+(PATH|LD_PRELOAD|LD_LIBRARY_PATH)\s*=/i,
-  /nc\s+-/i,
-  /python3?\s+-c\s/i,
-  /node\s+(-e|--eval)\b/i,
-  /\b(bash|sh|zsh)\s+-c\b/i,
-  /(^|\s)(\/|~\/|[A-Za-z]:\\)/,
-];
+/**
+ * Politique de commandes — source unique : `commands.json`.
+ *
+ * Le même fichier est inclus par Rust à la compilation (`include_str!` dans
+ * `tool_runner.rs`) : la liste des programmes autorisés et les plafonds d'arguments ne
+ * peuvent plus diverger entre le pré-contrôle TypeScript et l'exécution réelle.
+ *
+ * Les motifs `blocked` sont la couche de **pré-contrôle** (message actionnable avant même
+ * d'appeler Rust). L'application reste structurelle côté Rust : pas de shell, programme
+ * allowlisté, arguments contrôlés — un motif oublié ici ne peut donc pas exécuter grand-chose.
+ */
+import manifest from './commands.json';
 
-function blockedReason(command: string, pattern: RegExp): string {
-  if (/node\s+-e|deno eval|bun -e/i.test(command)) {
-    return "node -e est refusé (guillemets et échappements cassés selon le système). Écris ton code dans un fichier script (.mjs) avec write_file, puis lance `node script.mjs`.";
-  }
-  if (/python3?\s+-c/i.test(command)) {
-    return "python -c est refusé. Écris ton code dans un fichier .py avec write_file, puis lance `python script.py`.";
-  }
-  if (/\|\s*sh|curl[^|]*\|/i.test(command)) {
-    return 'Les pipes vers un shell sont refusés. Télécharge avec curl, écris un script avec write_file, puis exécute-le séparément.';
-  }
-  if (/[|;<>]|&&|\|\|/.test(command)) {
-    return 'Refusé : un seul programme par appel, sans |, ;, &&, >, < ni $(…). Découpe en plusieurs appels run_command, ou utilise search_files / list_dir / read_file.';
-  }
-  return `Commande bloquée (motif: ${pattern.source}). Utilise une seule commande simple de la liste autorisée.`;
+interface BlockedRule {
+  id: string;
+  pattern: string;
+  flags?: string;
+  reason: string;
 }
+
+interface CommandsManifest {
+  version: number;
+  limits: { maxArgs: number; maxArgChars: number; maxCommandChars: number };
+  programs: { name: string; agent?: boolean; install?: boolean }[];
+  blocked: BlockedRule[];
+}
+
+const policy = manifest as unknown as CommandsManifest;
+
+export const MAX_ARGS = policy.limits.maxArgs;
+export const MAX_ARG_CHARS = policy.limits.maxArgChars;
+export const MAX_COMMAND_CHARS = policy.limits.maxCommandChars;
+
+/** Tous les programmes que le lanceur accepte (agent ou usage interne). */
+export const PROGRAMS: string[] = policy.programs.map((p) => p.name);
+/** Programmes que l'agent peut réellement lancer via `run_command`. */
+export const AGENT_PROGRAMS: string[] = policy.programs.filter((p) => p.agent).map((p) => p.name);
+/** Programmes dont l'installation exige l'accord de l'utilisateur. */
+export const INSTALL_PROGRAMS: string[] = policy.programs.filter((p) => p.install).map((p) => p.name);
+
+/** Motifs interdits, avec leur raison affichée à l'agent. */
+export const BLOCKED_RULES: (BlockedRule & { re: RegExp })[] = policy.blocked.map((rule) => ({
+  ...rule,
+  re: new RegExp(rule.pattern, rule.flags || ''),
+}));
+/** Mêmes motifs, pour les tests et les appelants qui ne veulent que les expressions. */
+export const BLOCKED_PATTERNS: RegExp[] = BLOCKED_RULES.map((r) => r.re);
 
 export function validateCommand(command: string): { safe: boolean; reason?: string } {
   if (!command.trim()) return { safe: false, reason: 'Commande vide' };
-  if (command.length > 2000) return { safe: false, reason: 'Commande trop longue (max 2000 caractères)' };
-  for (const pattern of BLOCKED_PATTERNS) {
-    if (pattern.test(command)) return { safe: false, reason: blockedReason(command, pattern) };
+  if (command.length > MAX_COMMAND_CHARS) {
+    return { safe: false, reason: `Commande trop longue (max ${MAX_COMMAND_CHARS} caractères)` };
+  }
+  for (const rule of BLOCKED_RULES) {
+    if (rule.re.test(command)) return { safe: false, reason: rule.reason };
   }
   return { safe: true };
 }
@@ -87,23 +90,10 @@ export function tokenize(command: string): string[] {
   return out;
 }
 
-/** Map "typed command" -> tauri allowlisted command name. */
-export const COMMAND_NAME_MAP: Record<string, string> = {
-  npm: 'npm',
-  node: 'node',
-  git: 'git',
-  cargo: 'cargo',
-  python3: 'python3',
-  python: 'python',
-  pip3: 'pip3',
-  pip: 'pip',
-  ffmpeg: 'ffmpeg',
-  ffprobe: 'ffprobe',
-  rg: 'rg',
-};
-
-/** Nombre maximal d'arguments par commande (les capabilities déclarent 0 à 9 arguments). */
-export const MAX_ARGS = 8;
+/** Map "typed command" -> nom de programme autorisé (dérivée du manifeste). */
+export const COMMAND_NAME_MAP: Record<string, string> = Object.fromEntries(
+  PROGRAMS.map((name) => [name, name]),
+);
 
 export function parseExecutable(command: string): { cmdName: string; args: string[] } | null {
   const parts = tokenize(command);

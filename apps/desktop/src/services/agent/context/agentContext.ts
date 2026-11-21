@@ -16,6 +16,7 @@
 
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { codeIndexer } from '@/services/filesystem/codeIndexer';
+import { prepareTreeSitter } from '@/services/filesystem/treeSitter';
 import { pageRank, rankedFiles } from './repoRank';
 
 // ============================================================================
@@ -230,7 +231,11 @@ export async function buildAgentContext(
       ({ files, index } = cached);
     } else {
       files = await readProjectAsRecord(projectRoot);
-      index = codeIndexer.indexProject(files);
+      // Analyse syntaxique réelle si les grammaires WASM sont disponibles ; sinon
+      // `indexProject` garde son extraction regex (aucun échec possible).
+      await prepareTreeSitter(Object.keys(files)).catch(() => false);
+      // Incrémental : seuls les fichiers modifiés sont re-parsés (symboles mis en cache).
+      index = codeIndexer.indexProjectIncremental(projectRoot, files);
       indexCache.set(projectRoot, { at: Date.now(), files, index });
     }
     return {

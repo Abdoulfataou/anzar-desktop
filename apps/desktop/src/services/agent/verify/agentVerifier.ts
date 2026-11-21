@@ -10,6 +10,7 @@
 
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { terminalService } from '@/services/runtime/terminal';
+import { collectRelatedTests, planVerification } from './targeted';
 
 // ============================================================================
 // TYPES
@@ -39,6 +40,10 @@ export interface VerifyReport {
   results: VerifyCommandResult[];
   /** Résumé compact à réinjecter au modèle en cas d'échec */
   failureSummary: string;
+  /** Décisions de la vérification ciblée (affichées à l'utilisateur, pas au modèle). */
+  notes?: string[];
+  /** Commandes écartées par le ciblage, avec leur raison. */
+  skippedCommands?: { label: string; reason: string }[];
 }
 
 const MAX_OUTPUT_CHARS = 8_000;
@@ -131,6 +136,13 @@ export async function runVerification(
      * false → commande non exécutée, comptée comme « skipped ».
      */
     approve?: (cmd: VerifyCommand) => Promise<boolean>;
+    /**
+     * Fichiers modifiés par l'agent pendant le tour : ils permettent de restreindre lint et
+     * tests. Vide ou absent = vérification complète (référence, ou aucun suivi).
+     */
+    changedFiles?: string[];
+    /** Commande écartée par le ciblage (affichage). */
+    onPlanSkipped?: (label: string, reason: string) => void;
   } = {}
 ): Promise<VerifyReport> {
   const commands = await detectVerifyCommands(projectRoot);
@@ -144,9 +156,31 @@ export async function runVerification(
     };
   }
 
+  // Ciblage : seules les commandes concernées par les fichiers modifiés sont conservées.
+  const root = projectRoot.replace(/[\\/]+$/, '');
+  const changedFiles = options.changedFiles || [];
+  const pkg = changedFiles.length ? await readJsonSafe(`${root}/package.json`) : null;
+  const scripts: Record<string, string> = pkg && typeof pkg.scripts === 'object' && pkg.scripts ? pkg.scripts : {};
+  const relatedTests = changedFiles.length
+    ? await collectRelatedTests(changedFiles, (rel) => fileSystemService.exists(`${root}/${rel}`))
+    : [];
+  const plan = planVerification(commands, { scripts, changedFiles, relatedTests });
+  for (const skipped of plan.skipped) options.onPlanSkipped?.(skipped.label, skipped.reason);
+
+  if (plan.commands.length === 0) {
+    return {
+      passed: true,
+      nothingToVerify: true,
+      results: [],
+      failureSummary: '',
+      notes: plan.notes,
+      skippedCommands: plan.skipped,
+    };
+  }
+
   const results: VerifyCommandResult[] = [];
 
-  for (const cmd of commands) {
+  for (const cmd of plan.commands) {
     if (options.signal?.aborted) break;
     options.onCommandStart?.(cmd);
 
@@ -200,5 +234,12 @@ export async function runVerification(
         .map(f => `### ${f.label} — \`${f.command}\` (exit ${f.exitCode})\n${f.output}`)
         .join('\n\n');
 
-  return { passed, nothingToVerify: executed.length === 0, results, failureSummary };
+  return {
+    passed,
+    nothingToVerify: executed.length === 0,
+    results,
+    failureSummary,
+    notes: plan.notes,
+    skippedCommands: plan.skipped,
+  };
 }

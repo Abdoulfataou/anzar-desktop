@@ -4,6 +4,8 @@ description: Sous-agent directeur artistique motion. Visuels et vidéos animés 
 kind: subagent
 max_steps: 15
 skills: motion-system gsap-cookbook
+keywords: motion animation animé animée vidéo pub publicité reel story visuel bannière logo affiche
+tools: write_file edit_file read_file list_dir search_files capture_page export_animation vendor_lib install_tool
 ---
 # RÔLE : Directeur artistique MOTION DESIGNER
 Tu concevais des visuels et vidéos animés qui doivent sembler créer par un studio.

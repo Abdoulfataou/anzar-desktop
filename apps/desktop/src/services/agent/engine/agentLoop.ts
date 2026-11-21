@@ -13,7 +13,7 @@
  *   - Budgets stricts : étapes, erreurs consécutives, taille de l'historique
  */
 
-import { APIMessage, AIModel, AIProvider } from '@/types';
+import { APIMessage, AIModel, AIProvider, ReasoningEffort } from '@/types';
 import { aiService } from '@/services/ai/ai';
 import { terminalService } from '@/services/runtime/terminal';
 import { AGENT_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from '../tools';
@@ -23,6 +23,8 @@ import { buildAgentContext } from '../context/agentContext';
 import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason } from './agentSession';
 export type { AgentStopReason } from './agentSession';
 import { compactHistory, historyChars, SOFT_LIMIT_CHARS } from './history';
+import { estimateCompletionTokens, estimateHistoryTokens } from './chatSession';
+import type { BudgetLedger } from './budget';
 
 // ============================================================================
 // TYPES
@@ -51,6 +53,8 @@ export interface AgentLoopOptions {
   history?: APIMessage[];
   /** Modèle ('fast' par défaut — 'thinking' pour les tâches complexes) */
   model?: AIModel;
+  /** Effort de réflexion demandé par le profil du rôle. */
+  reasoningEffort?: ReasoningEffort;
   provider?: AIProvider;
   /** Nombre max d'itérations de la boucle (défaut: 40) */
   maxSteps?: number;
@@ -70,6 +74,8 @@ export interface AgentLoopOptions {
   allowedTools?: Set<string>;
   /** Profondeur de récursion des sous-agents (0 = agent principal). */
   subagentDepth?: number;
+  /** Budget du sous-agent (enveloppe dérivée du parent). */
+  budget?: BudgetLedger;
   /** Callback événements (UI) */
   onEvent?: (event: AgentEvent) => void;
   signal?: AbortSignal;
@@ -120,8 +126,10 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     task,
     history = [],
     model = 'fast',
+    reasoningEffort,
     provider = 'deepseek',
     maxSteps = DEFAULT_MAX_STEPS,
+    budget,
     gitCheckpoint = true,
     autoVerify = false,
     maxVerifyAttempts = 3,
@@ -184,13 +192,17 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
       : AGENT_TOOLS,
     allowedTools: options.allowedTools,
     maxSteps,
+    budget,
     maxConsecutiveErrors: MAX_CONSECUTIVE_ERRORS,
     signal,
     beforeStep: (msgs) => {
       // Compaction rare et en une fois, compatible avec le cache fournisseur.
       if (historyChars(msgs) > SOFT_LIMIT_CHARS) compactHistory(msgs, 6, 160);
+      budget?.charge({ tokensIn: estimateHistoryTokens(msgs) });
     },
-    stream: (msgs, tools) => aiService.chatStream(msgs, { model, provider, tools, signal }),
+    stream: (msgs, tools) => aiService.chatStream(msgs, {
+      model, provider, tools, signal, ...(reasoningEffort ? { reasoningEffort } : {}),
+    }),
     executeTool: async (call) => {
       const r: ToolResult = await executeToolCall(call, toolCtx);
       return {
@@ -231,6 +243,8 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     onStepStart: (step) => emit({ type: 'step_start', step, maxSteps }),
     onTextDelta: (content) => emit({ type: 'text', content }),
     onReasoningDelta: (content) => emit({ type: 'reasoning', content }),
+    onStepEnd: ({ text, toolCalls }) => budget?.charge({ tokensOut: estimateCompletionTokens(text, toolCalls) }),
+    onCostDelta: (cost) => budget?.charge({ fcfa: cost }),
     onToolCall: (call, step) => {
       let args: Record<string, any> = {};
       try {

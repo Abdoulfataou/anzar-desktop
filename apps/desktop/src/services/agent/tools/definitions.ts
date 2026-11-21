@@ -2,6 +2,7 @@
  * Définitions des outils envoyées au modèle (format function-calling).
  */
 import { ToolDefinition } from '@/types';
+import { SUBAGENT_ROLES } from '../profiles';
 
 // ============================================================================
 // DÉFINITIONS (envoyées au modèle)
@@ -268,7 +269,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'run_command',
       description:
-        "Exécute UNE commande dans le projet. Programmes autorisés : npm, node, git, python, pip, cargo — rien d'autre (pas de grep, ls, cat, find, head, echo). " +
+        "Exécute UNE commande dans le projet. Programmes autorisés : npm, node, git, python, pip, cargo, ffmpeg (après install_tool), rg — rien d'autre (pas de grep, ls, cat, find, head, echo). " +
         "Jamais node -e ni python -c (refusés) : pour un traitement, écris un fichier script (.mjs/.py) avec write_file puis lance-le. Interdits : |, ;, &&, ||, >, <, $(…) et chemins absolus. Pour chercher dans le code utilise search_files, pour lister list_dir, pour lire read_file. " +
         "Sert à installer des dépendances, lancer build/lint/tests et VÉRIFIER ton travail. Renvoie stdout/stderr + code de sortie.",
       parameters: {
@@ -287,7 +288,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       name: 'spawn_subagents',
       description:
         "Lance 2 à 3 sous-agents pour des sous-tâches INDÉPENDANTES (fichiers différents, aucun chevauchement). Hors Accès complet, ils sont en lecture seule ; en Accès complet, ils peuvent écrire mais sont exécutés séquentiellement pour éviter les conflits. Chaque sous-agent a un budget réduit et pas de vérification finale — c'est TOI qui vérifies après consolidation. " +
-        "Précise le rôle de chacun : 'motion-designer' (visuels/animations/vidéos — reçoit automatiquement les skills motion-system et gsap-cookbook), 'redaction' (textes), 'dev' (code, défaut). Idéal pour plusieurs variantes de visuels.",
+        "Précise le rôle de chacun : chaque rôle est un profil d'agent (services/agent/profiles) qui définit ses outils, son modèle et ses skills — 'motion-designer' (visuels/animations/vidéos), 'redaction' (textes), 'dev' (code, défaut). Idéal pour plusieurs variantes de visuels.",
       parameters: {
         type: 'object',
         properties: {
@@ -297,7 +298,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
               type: 'object',
               properties: {
                 task: { type: 'string', description: 'La sous-tâche complète et autonome (fichiers cibles inclus)' },
-                role: { type: 'string', enum: ['motion-designer', 'dev', 'redaction'], description: 'Spécialisation (défaut : déduite de la tâche)' },
+                role: { type: 'string', enum: SUBAGENT_ROLES, description: 'Spécialisation déclarée par un profil (défaut : déduite de la tâche)' },
               },
               required: ['task'],
             },

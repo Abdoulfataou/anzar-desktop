@@ -60,3 +60,75 @@ jobs:
       - name: Build (Vite)
         run: npm run build
 
+  rust:
+    name: Desktop Rust (cargo)
+    # macOS : c'est la plateforme où l'isolation Seatbelt est utilisée, et le seul runner
+    # qui compile Tauri sans dépendance système supplémentaire. Windows est couvert par le
+    # build de release (tag).
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/desktop/src-tauri
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # tauri::generate_context! lit frontendDist (../dist) à la compilation : un index
+      # minimal suffit pour les tests unitaires, sans payer le build Vite complet.
+      - name: Frontend placeholder
+        working-directory: apps/desktop
+        run: mkdir -p dist && printf '<!doctype html><title>ANZAR CI</title>' > dist/index.html
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/desktop/src-tauri -> target"
+
+      - name: Tests (cargo test)
+        run: cargo test --all-targets
+
+      # too_many_arguments : les commandes Tauri exposent leurs paramètres un par un.
+      - name: Lint (clippy)
+        run: cargo clippy --all-targets -- -D warnings -A clippy::too_many_arguments
+
+  rust-windows:
+    name: Desktop Rust (Windows)
+    # Compile et exécute réellement le code `#[cfg(windows)]` (job object, chemins,
+    # futurs jetons restreints). Sans ce job, une erreur Windows ne se découvre qu'au
+    # moment de publier une release.
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: apps/desktop/src-tauri
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # tauri::generate_context! lit frontendDist (../dist) à la compilation.
+      - name: Frontend placeholder
+        working-directory: apps/desktop
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Set-Content -Path dist/index.html -Value '<!doctype html><title>ANZAR CI</title>'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "apps/desktop/src-tauri -> target"
+
+      - name: Tests (cargo test)
+        run: cargo test --all-targets
+
+      - name: Lint (clippy)
+        run: cargo clippy --all-targets -- -D warnings -A clippy::too_many_arguments

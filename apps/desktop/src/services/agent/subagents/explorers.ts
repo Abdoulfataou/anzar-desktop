@@ -16,6 +16,9 @@ import { buildAgentContext } from '../context/agentContext';
 import { runAgentEngine, type AgentEngineResult, type AgentSessionOptions } from '../engine/agentSession';
 import { getProfile } from '../profiles';
 
+/** Profil de l'explorateur : services/agent/profiles/explorer.md */
+const EXPLORER = getProfile('explorer');
+
 /** Seuls outils d'un explorateur : lecture, recherche et diagnostics. */
 const EXPLORER_EXECUTORS: Record<string, (args: any, ctx: ToolExecutionContext) => Promise<ToolResult>> = {
   read_file: execReadFile,
@@ -23,12 +26,16 @@ const EXPLORER_EXECUTORS: Record<string, (args: any, ctx: ToolExecutionContext) 
   search_files: execSearchFiles,
   get_diagnostics: execGetDiagnostics,
 };
-const EXPLORER_TOOLS = AGENT_TOOLS.filter((t) => t.function.name in EXPLORER_EXECUTORS);
+// Le profil déclare les outils ; on ne garde que ceux qui ont un exécuteur (défense en
+// profondeur) : un profil ne peut pas exposer un outil d'écriture à un explorateur.
+const EXPLORER_TOOL_NAMES = new Set(
+  (EXPLORER.tools.length ? EXPLORER.tools : Object.keys(EXPLORER_EXECUTORS))
+    .filter((name) => name in EXPLORER_EXECUTORS),
+);
+const EXPLORER_TOOLS = AGENT_TOOLS.filter((t) => EXPLORER_TOOL_NAMES.has(t.function.name));
 const MAX_QUESTIONS = 8;
 /** Le serveur accepte 4 requêtes simultanées par compte : l'agent principal attend pendant ce temps */
 const MAX_PARALLEL = 4;
-/** Profil de l'explorateur : services/agent/profiles/explorer.md */
-const EXPLORER = getProfile('explorer');
 const MAX_STEPS = EXPLORER.maxSteps;
 const MAX_SUMMARY_CHARS = 3_000;
 
@@ -90,7 +97,7 @@ async function exploreOne(
   let result: AgentEngineResult = await runAgentEngine({
     ...common,
     tools: EXPLORER_TOOLS,
-    allowedTools: new Set(Object.keys(EXPLORER_EXECUTORS)),
+    allowedTools: EXPLORER_TOOL_NAMES,
     maxSteps: MAX_STEPS,
     stream: (msgs, tools) => aiService.chatStream(msgs, { model: EXPLORER.model ?? 'fast', reasoningEffort: EXPLORER.reasoningEffort ?? 'low', tools, signal: ctx.signal }),
     executeTool: (call) => runReadOnlyTool(call, ctx),

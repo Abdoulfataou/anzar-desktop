@@ -27,12 +27,15 @@ export async function runAutomation(automation: Automation): Promise<void> {
     projectId: project.id,
   });
   store.markStarted(automation.id, conv.id);
+  const fcfa = Number.isFinite(automation.budgetFCFA) ? Number(automation.budgetFCFA) : 200;
+  const minutes = Number.isFinite(automation.maxMinutes) ? Number(automation.maxMinutes) : 15;
   const runner = new AgentRunner({
     workspacePath,
     workspaceName: project.name,
     model: automation.model,
     permissionMode: automation.mode,
     background: true,
+    budget: { fcfa: fcfa > 0 ? fcfa : undefined, wallMs: minutes > 0 ? minutes * 60_000 : undefined },
   });
   current = runner;
   let ok = false;
@@ -43,13 +46,19 @@ export async function runAutomation(automation: Automation): Promise<void> {
       ok = !result.isError
         && result.stopReason !== 'max_steps'
         && result.stopReason !== 'aborted'
+        && result.stopReason !== 'budget_exhausted'
+        && result.stopReason !== 'loop_detected'
         && result.content.trim().length > 0;
     } else {
       const msgs = useChatStore.getState().conversations.find((c) => c.id === conv.id)?.messages || [];
       const last = msgs[msgs.length - 1];
       ok = !!last && last.role === 'assistant' && !last.isError;
     }
-    if (!ok) error = "La réponse a échoué ou n'a pas abouti. Ouvre la tâche pour reprendre.";
+    if (!ok) {
+      error = result?.stopReason === 'budget_exhausted'
+        ? `Budget de ${fcfa} FCFA atteint. Ouvre la tâche pour reprendre, ou augmente le budget.`
+        : "La réponse a échoué ou n'a pas abouti. Ouvre la tâche pour reprendre.";
+    }
   } catch (e: any) {
     error = e?.message || 'erreur inconnue';
   } finally {

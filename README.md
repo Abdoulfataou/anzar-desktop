@@ -60,6 +60,7 @@ npm run dev
 | --- | --- |
 | API | `cd services/api && python -m pytest tests/` |
 | Desktop | `cd apps/desktop && npm run smoke` (lint + tests + build) |
+| Banc d'essai | `cd apps/desktop && npm run bench` (14 scénarios du harnais, voir `bench/README.md`) |
 | Admin | `cd apps/admin && npx tsc --noEmit` |
 
 ## Documentation

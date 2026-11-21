@@ -50,19 +50,31 @@ export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): 
     return a ? `${name} · ${String(a).slice(0, 60)}` : name;
   };
 
-  const allowedTools = subagentAllowedTools(
-    AGENT_TOOLS.map((tool) => tool.function.name),
-    ctx.permissionMode,
-    READ_ONLY_TOOLS,
-  );
+  // Le profil du rôle restreint les outils ; le modèle et la réflexion déclarés s'appliquent.
+  const allToolNames = AGENT_TOOLS.map((tool) => tool.function.name);
+
+  // Répartit 80 % du budget restant entre les sous-agents (le parent garde 20 %).
+  const share = 0.8 / tasks.length;
 
   const runOne = async ({ task, role }: { task: string; role: SubagentRole }, i: number) => {
+    const profile = AGENT_PROFILES[role];
+    const allowedTools = subagentAllowedTools({
+      allToolNames,
+      mode: ctx.permissionMode,
+      readOnlyTools: READ_ONLY_TOOLS,
+      profileTools: profile?.tools,
+    });
+    // L'enveloppe dérivée du parent est plafonnée par le manifeste du rôle.
+    const budget = ctx.childBudget?.(share, profile?.budgetFCFA);
     try {
       const r = await runAgentSession({
         prompt: { projectName, projectRoot: ctx.projectRoot },
         task,
         systemPromptExtra: extraFor(role),
-        maxSteps: AGENT_PROFILES[role]?.maxSteps ?? 15,
+        maxSteps: profile?.maxSteps ?? 15,
+        model: profile?.model,
+        reasoningEffort: profile?.reasoningEffort,
+        budget,
         gitCheckpoint: false,   // le checkpoint parent couvre déjà la session
         autoVerify: false,      // le parent vérifie après consolidation
         allowedTools,
@@ -117,7 +129,7 @@ export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): 
     )
     .join('\n\n');
 
-  const anyError = results.some(r => r.stopReason === 'error');
+  const anyError = results.some(r => r.stopReason === 'error' || r.stopReason === 'budget_exhausted');
   return {
     output: `${report}\n\n→ Vérifie maintenant la cohérence de l'ensemble (imports croisés, build) avant task_done.`,
     isError: anyError,

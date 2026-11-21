@@ -1,7 +1,10 @@
 /**
- * Profils d'agents : chaque rôle (explorateur, sous-agents spécialisés) est déclaré dans un
- * fichier Markdown de ce dossier — frontmatter (outils, budget, modèle, skills) + consignes.
- * Ajouter un rôle = ajouter un fichier, sans toucher à la boucle.
+ * Profils d'agents : chaque rôle est déclaré dans un fichier Markdown de ce dossier —
+ * frontmatter (outils, budget, modèle, skills, mots-clés) + consignes.
+ *
+ * Ajouter un rôle = ajouter un fichier : la liste des rôles de sous-agents est dérivée du
+ * dossier (`kind: subagent`), et ses `tools` / `model` / `reasoning` sont réellement
+ * appliqués par `subagents/spawn.ts` (intersection avec la politique du mode).
  */
 import { parseFrontmatter } from '@/services/skills/format';
 import { BUILTIN_SKILLS } from '@/services/skills/pack';
@@ -18,6 +21,10 @@ export interface AgentProfile {
   reasoningEffort?: ReasoningEffort;
   /** Skills du pack intégré injectées dans le prompt système. */
   skills: string[];
+  /** Mots-clés servant à deviner le rôle quand l'agent ne le précise pas. */
+  keywords: string[];
+  /** Plafond de coût de ce rôle, en FCFA (plafonne l'enveloppe dérivée du parent). */
+  budgetFCFA?: number;
   /** Consignes (corps Markdown), {{max_steps}} remplacé. */
   prompt: string;
 }
@@ -38,6 +45,8 @@ export function parseProfile(markdown: string, fallbackName: string): AgentProfi
     ...(meta.model ? { model: meta.model as AIModel } : {}),
     ...(meta.reasoning ? { reasoningEffort: meta.reasoning as ReasoningEffort } : {}),
     skills: list(meta.skills),
+    keywords: list(meta.keywords),
+    ...(Number(meta.budget_fcfa) > 0 ? { budgetFCFA: Math.round(Number(meta.budget_fcfa)) } : {}),
     prompt: body.replace(/\{\{max_steps\}\}/g, String(maxSteps)),
   };
 }
@@ -58,18 +67,32 @@ export function getProfile(name: string): AgentProfile {
 }
 
 // ── Sous-agents spécialisés (spawn_subagents) ──
+// La liste vient des profils : un fichier `kind: subagent` suffit à créer un rôle.
 
-export type SubagentRole = 'motion-designer' | 'dev' | 'redaction';
-export const SUBAGENT_ROLES: SubagentRole[] = ['motion-designer', 'dev', 'redaction'];
+export type SubagentRole = string;
+
+export const SUBAGENT_ROLES: SubagentRole[] = Object.values(AGENT_PROFILES)
+  .filter((p) => p.kind === 'subagent')
+  .map((p) => p.name)
+  .sort();
 
 export const isSubagentRole = (v: unknown): v is SubagentRole =>
-  typeof v === 'string' && (SUBAGENT_ROLES as string[]).includes(v);
+  typeof v === 'string' && SUBAGENT_ROLES.includes(v);
 
-/** Détecte un rôle depuis l'énoncé de la tâche quand l'agent principal ne l'a pas précisé. */
+/**
+ * Devine un rôle depuis l'énoncé de la tâche, en comptant les mots-clés déclarés par chaque
+ * profil. Sans correspondance : `dev` s'il existe, sinon le premier rôle déclaré.
+ */
 export function detectSubagentRole(task: string): SubagentRole {
-  if (/motion|animat|vid[ée]o|pub |publicit|visuel|banni[èe]re|logo|motion ?design|reel|story|affiche/i.test(task)) return 'motion-designer';
-  if (/texte|slogan|r[ée]daction|description|copywriting|contenu du site/i.test(task)) return 'redaction';
-  return 'dev';
+  const text = String(task || '').toLowerCase();
+  let best: { role: SubagentRole; score: number } | null = null;
+  for (const role of SUBAGENT_ROLES) {
+    const score = (AGENT_PROFILES[role]?.keywords || [])
+      .filter((k) => k && text.includes(k.toLowerCase())).length;
+    if (score > 0 && (!best || score > best.score)) best = { role, score };
+  }
+  if (best) return best.role;
+  return SUBAGENT_ROLES.includes('dev') ? 'dev' : SUBAGENT_ROLES[0] || 'dev';
 }
 
 /** Prompt additionnel d'un sous-agent : consignes du rôle + skills obligatoires du profil. */

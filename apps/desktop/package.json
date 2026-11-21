@@ -16,7 +16,8 @@
     "smoke": "npm run lint && npm test && npm run build",
     "a11y:check": "node scripts/check-a11y.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bench": "vitest run bench --reporter=verbose"
   },
   "dependencies": {
     "@mediabunny/aac-encoder": "^1.66.0",
@@ -45,6 +46,8 @@
     "remark-gfm": "^4.0.0",
     "tailwind-merge": "^2.6.0",
     "tesseract.js": "^5.1.1",
+    "tree-sitter-wasms": "^0.1.13",
+    "web-tree-sitter": "^0.25.10",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

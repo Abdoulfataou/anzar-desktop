@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, isTauri, generateId } from '@/lib/utils';
+import type { BudgetView } from '@/services/agent/engine/budget';
+import { BudgetBadge } from './BudgetBadge';
 import { AIModel, Project, ChatAttachment, ChatAttachmentKind } from '@/types';
 import {
   findSuggestionQuery, rankFiles, rankCommands, SuggestionMenu,
@@ -31,6 +33,8 @@ interface ChatInputProps {
   onModelChange?: (model: AIModel) => void;
   permissionMode?: PermissionMode;
   onPermissionChange?: (mode: PermissionMode) => void;
+  /** Budget du tour en cours (compteur FCFA en pied de zone de saisie). */
+  budget?: BudgetView | null;
   placeholder?: string;
   maxHeight?: number;
   /** Fichiers du projet proposés après « @ » (chemins relatifs) */
@@ -506,6 +510,7 @@ export default function ChatInput({
   onModelChange,
   permissionMode = 'auto',
   onPermissionChange,
+  budget,
   placeholder = 'Décris ta tâche, ANZAR s\'en occupe...',
   maxHeight = MAX_HEIGHT,
   mentionFiles = [],
@@ -958,6 +963,8 @@ export default function ChatInput({
               >
                 <Plus size={16} />
               </button>
+
+              <BudgetBadge view={budget ?? null} />
 
               {onPermissionChange && (
                 <ToolbarMenu

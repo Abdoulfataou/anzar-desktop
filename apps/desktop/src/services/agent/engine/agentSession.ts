@@ -8,12 +8,16 @@
  */
 import type { APIMessage, StreamDelta, ToolCall, ToolDefinition } from '@/types';
 import { ToolCallAssembler } from './toolCallAssembler';
+import { budgetStopMessage, type BudgetLedger } from './budget';
+import { LoopGuard } from './loopGuard';
 
 export type AgentStopReason =
   | 'task_done'
   | 'final_answer'
   | 'plan'
   | 'max_steps'
+  | 'budget_exhausted'
+  | 'loop_detected'
   | 'verify_failed'
   | 'aborted'
   | 'error';
@@ -48,6 +52,16 @@ export interface AgentSessionOptions {
   ) => AsyncGenerator<StreamDelta, void, undefined>;
   executeTool: (call: ToolCall, step: number) => Promise<AgentToolOutcome>;
   maxSteps?: number;
+  /**
+   * Budget du tour (étapes, tokens, FCFA, durée). S'il fournit `steps`, il remplace
+   * `maxSteps`. Vérifié avant chaque étape : le dépassement est coopératif.
+   */
+  budget?: BudgetLedger;
+  /**
+   * Détection de boucle : appels identiques répétés et séries d'échecs. Fourni, il sert
+   * de compteur partagé ; absent, un garde par défaut protège quand même la session.
+   */
+  loopGuard?: LoopGuard;
   maxConsecutiveErrors?: number;
   signal?: AbortSignal;
   retry?: AgentRetryPolicy;
@@ -102,6 +116,8 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     messages,
     allowedTools,
     maxSteps = DEFAULT_MAX_STEPS,
+    budget,
+    loopGuard,
     maxConsecutiveErrors = 4,
     signal,
     retry,
@@ -139,8 +155,16 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     ...(error ? { errorMessage: error } : {}),
   });
 
-  for (let step = 1; step <= maxSteps; step++) {
+  const loop = loopGuard ?? new LoopGuard();
+  const stepLimit = budget?.spec.steps ?? maxSteps;
+
+  for (let step = 1; step <= stepLimit; step++) {
     if (signal?.aborted) return finish('aborted', 'Session annulée.', step - 1);
+
+    // Budget épuisé : on refuse le pas suivant plutôt que de couper un flux en cours.
+    const limited = budget?.exhaustedBy();
+    if (limited && budget) return finish('budget_exhausted', budgetStopMessage(limited, budget), step - 1);
+    budget?.countStep();
 
     onStepStart?.(step);
     await options.beforeStep?.(messages, step);
@@ -220,18 +244,31 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     for (const call of toolCalls) {
       if (signal?.aborted) return finish('aborted', 'Session annulée.', step);
       onToolCall?.(call, step);
+
+      // Appel identique déjà vu, ou déjà refusé : on ne l'exécute pas.
+      const verdict = loop.before(call);
       let outcome: AgentToolOutcome;
-      if (allowedTools && !allowedTools.has(call.function.name)) {
+      if (verdict.action === 'block') {
+        loop.onBlocked(call);
+        outcome = { output: verdict.message, isError: true };
+        if (verdict.stop) {
+          onToolResult?.(call, outcome, step);
+          messages.push({ role: 'tool', tool_call_id: call.id, content: outcome.output });
+          return finish('loop_detected', verdict.message, step);
+        }
+      } else if (allowedTools && !allowedTools.has(call.function.name)) {
         outcome = {
           output: `Outil non autorisé pour cette session : ${call.function.name}.`,
           isError: true,
         };
+        loop.after(call, outcome);
       } else {
         try {
           outcome = await options.executeTool(call, step);
         } catch (e) {
           outcome = { output: `Erreur outil : ${errorMessage(e)}`, isError: true };
         }
+        loop.after(call, outcome);
       }
       onToolResult?.(call, outcome, step);
 
@@ -251,6 +288,9 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
       if (maxConsecutiveErrors > 0 && consecutiveErrors >= maxConsecutiveErrors) {
         return finish('error', 'Trop d’erreurs consécutives — session interrompue pour éviter une boucle infinie.', step);
       }
+      // Filet indépendant de `maxConsecutiveErrors` : le chat le désactive pour laisser
+      // le mode Auto escalader, ce qui ne doit pas ouvrir une boucle sans fin.
+      if (loop.exhausted()) return finish('loop_detected', loop.stopMessage(), step);
     }
 
     onToolBatchEnd?.(step);
@@ -289,5 +329,8 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     }
   }
 
-  return finish('max_steps', `Budget d'étapes épuisé (${maxSteps}). Relance l'agent pour continuer.`, maxSteps);
+  // Sortie de boucle : soit les étapes du budget sont atteintes, soit le plafond du moteur.
+  const limitedAtEnd = budget?.exhaustedBy();
+  if (limitedAtEnd && budget) return finish('budget_exhausted', budgetStopMessage(limitedAtEnd, budget), stepLimit);
+  return finish('max_steps', `Budget d'étapes épuisé (${stepLimit}). Relance l'agent pour continuer.`, stepLimit);
 }

@@ -10,8 +10,10 @@ import { AGENT_TOOLS, isProtectedWritePath, precheckCommand } from '../tools';
 
 describe('command policy P0', () => {
   it('refuse npx dans les commandes agent', () => {
-    const refusal = precheckCommand('npx -c "node --eval 1"');
-    expect(refusal).toMatch(/npx|autoris/i);
+    // Une commande npx est refusée : soit pour le programme, soit pour le motif qu'elle
+    // contient (ici node --eval, dont le message est plus précis que « npx interdit »).
+    expect(precheckCommand('npx -c "node --eval 1"')).toBeTruthy();
+    expect(precheckCommand('npx -y package')).toMatch(/npx|autoris/i);
     expect(precheckCommand('npm run build')).toBeNull();
     expect(precheckCommand('node script.mjs')).toBeNull();
   });

@@ -5,21 +5,55 @@
 //! appliquée ici, avant tout `Command::new`, et aucun shell intermédiaire
 //! (`sh -c`, `cmd /C`) n'est utilisé.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, State};
 
-const PROGRAMS: &[&str] = &[
-    "npm", "node", "git", "cargo", "python", "python3", "pip", "pip3",
-    "ffmpeg", "ffprobe", "rg",
-];
-const MAX_ARGS: usize = 8;
-const MAX_ARG_CHARS: usize = 400;
+/// Politique de commandes : source unique partagée avec TypeScript
+/// (`src/services/agent/policy/commands.json`), incluse à la compilation — impossible de
+/// la faire diverger entre les deux côtés sans casser ce test de parité.
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct CommandLimits {
+    #[serde(rename = "maxArgs")]
+    max_args: usize,
+    #[serde(rename = "maxArgChars")]
+    max_arg_chars: usize,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct CommandProgram {
+    name: String,
+    #[serde(default)]
+    agent: bool,
+    #[serde(default)]
+    install: bool,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+struct CommandsPolicy {
+    version: u32,
+    limits: CommandLimits,
+    programs: Vec<CommandProgram>,
+}
+
+const COMMANDS_POLICY_JSON: &str = include_str!("../../src/services/agent/policy/commands.json");
+
+fn commands_policy() -> &'static CommandsPolicy {
+    static POLICY: OnceLock<CommandsPolicy> = OnceLock::new();
+    POLICY.get_or_init(|| serde_json::from_str(COMMANDS_POLICY_JSON).expect("commands.json invalide"))
+}
+
+fn is_allowed_program(name: &str) -> bool {
+    commands_policy().programs.iter().any(|p| p.name == name)
+}
 
 #[derive(Default)]
 pub struct ToolState {
@@ -28,6 +62,8 @@ pub struct ToolState {
 
 struct Proc {
     child: Arc<Mutex<Child>>,
+    /// Séquence du journal réseau au lancement : les refus postérieurs concernent cette commande.
+    blocked_seq: u64,
     status: (Mutex<Option<i32>>, Condvar),
     stdout: Mutex<String>,
     stderr: Mutex<String>,
@@ -61,12 +97,16 @@ fn validate_id(id: &str) -> Result<(), String> {
 /// `approved` : l'utilisateur a accepté CETTE commande d'installation dans ANZAR
 /// (carte « L'agent demande ton accord »). Sans accord, l'installation reste refusée.
 fn validate_args(program: &str, args: &[String], approved: bool) -> Result<(), String> {
-    if args.len() > MAX_ARGS {
-        return Err(format!("Trop d'arguments (max {MAX_ARGS})."));
+    let limits = &commands_policy().limits;
+    if args.len() > limits.max_args {
+        return Err(format!("Trop d'arguments (max {}).", limits.max_args));
     }
     for a in args {
-        if a.contains('\r') || a.contains('\n') || a.chars().count() > MAX_ARG_CHARS {
-            return Err("Argument invalide (retour à la ligne ou plus de 400 caractères).".into());
+        if a.contains('\r') || a.contains('\n') || a.chars().count() > limits.max_arg_chars {
+            return Err(format!(
+                "Argument invalide (retour à la ligne ou plus de {} caractères).",
+                limits.max_arg_chars
+            ));
         }
     }
     let first = args.first().map(|s| s.as_str()).unwrap_or("");
@@ -129,6 +169,21 @@ fn find_in_path(program: &str) -> Option<std::path::PathBuf> {
     std::env::split_paths(&path).map(|dir| dir.join(program)).find(|p| p.is_file())
 }
 
+/// Fait passer les outils par le proxy local (npm, pip, cargo, git respectent ces variables).
+fn apply_proxy_env(cmd: &mut Command, port: u16) {
+    let proxy = format!("http://127.0.0.1:{port}");
+    for key in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"] {
+        cmd.env(key, &proxy);
+    }
+    cmd.env("NO_PROXY", "localhost,127.0.0.1,::1");
+    cmd.env("no_proxy", "localhost,127.0.0.1,::1");
+    // npm lit sa configuration par variables d'environnement `npm_config_*`.
+    cmd.env("npm_config_proxy", &proxy);
+    cmd.env("npm_config_https_proxy", &proxy);
+    // Node 24+ : `fetch` honore les variables d'environnement avec ce drapeau.
+    cmd.env("NODE_USE_ENV_PROXY", "1");
+}
+
 fn apply_base_env(cmd: &mut Command) {
     cmd.env_clear();
     for key in ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "TERM", "TZ",
@@ -183,10 +238,16 @@ pub fn tool_spawn(
     sandbox: Option<bool>,
     approved: Option<bool>,
     network: Option<bool>,
+    proxy: Option<bool>,
+    proxy_hosts: Option<Vec<String>>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
+    // Liste d'hôtes autorisés fournie par les réglages (s'applique aussi sans redémarrage).
+    if let Some(hosts) = proxy_hosts {
+        crate::netproxy::set_extra_hosts(hosts);
+    }
     let program = program.trim().to_lowercase();
-    if program.contains('/') || program.contains('\\') || !PROGRAMS.contains(&program.as_str()) {
+    if program.contains('/') || program.contains('\\') || !is_allowed_program(&program) {
         return Err("Programme non autorisé.".into());
     }
     validate_args(&program, &args, approved.unwrap_or(false))?;
@@ -200,11 +261,16 @@ pub fn tool_spawn(
     if isolated && find_in_path(&program).is_none() {
         return Err(format!("« {program} » est introuvable sur cet ordinateur."));
     }
+    // Réseau : réglage « Réseau des commandes » ouvert, ou commande qui télécharge.
+    let net = network.unwrap_or(false)
+        || crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false));
+    // Filtrage : quand il est actif, la commande ne sort que par le proxy (localhost) et le
+    // proxy n'ouvre que les hôtes autorisés. S'il ne démarre pas, on garde le comportement
+    // précédent plutôt que de bloquer l'utilisateur.
+    let proxy_port = if proxy.unwrap_or(false) && net { crate::netproxy::ensure() } else { None };
+    let allow_network = net && proxy_port.is_none();
     let wrapped = if isolated {
-        // Réseau : réglage « Réseau des commandes » ouvert, ou commande qui télécharge
-        let net = network.unwrap_or(false)
-            || crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false));
-        crate::sandbox::wrap(&program, &args, &root_p, net)
+        crate::sandbox::wrap(&program, &args, &root_p, allow_network)
     } else {
         crate::sandbox::Wrapped { program: program.clone(), args: args.clone() }
     };
@@ -216,6 +282,9 @@ pub fn tool_spawn(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     apply_base_env(&mut cmd);
+    if let Some(port) = proxy_port {
+        apply_proxy_env(&mut cmd, port);
+    }
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;
@@ -236,6 +305,7 @@ pub fn tool_spawn(
     let child = Arc::new(Mutex::new(child));
     let target = Arc::new(Proc {
         child: child.clone(),
+        blocked_seq: crate::netproxy::blocked_seq(),
         status: (Mutex::new(None), Condvar::new()),
         stdout: Mutex::new(String::new()),
         stderr: Mutex::new(String::new()),
@@ -263,7 +333,16 @@ pub fn tool_wait(state: State<'_, ToolState>, id: String) -> Result<ToolWaitResu
     }
     let code = guard.unwrap_or(1);
     let stdout = proc.stdout.lock().unwrap().clone();
-    let stderr = proc.stderr.lock().unwrap().clone();
+    let mut stderr = proc.stderr.lock().unwrap().clone();
+    // Hôtes refusés par le filtre réseau pendant cette commande : l'agent (et l'utilisateur)
+    // doivent savoir quoi autoriser, sinon l'échec est incompréhensible.
+    let blocked = crate::netproxy::blocked_hosts_since(proc.blocked_seq);
+    if !blocked.is_empty() {
+        stderr.push_str(&format!(
+            "\n[ANZAR] Hôtes bloqués par le filtre réseau : {}. Ajoute-les dans Paramètres → Réseau si c'est légitime.",
+            blocked.join(", ")
+        ));
+    }
     Ok(ToolWaitResult { code, stdout, stderr })
 }
 
@@ -310,6 +389,21 @@ mod security_tests {
         assert!(validate_args("cargo", &args(&["install", "x"]), true).is_err());
         assert!(validate_args("git", &args(&["status"]), false).is_ok());
         assert!(validate_args("npm", &args(&["run", "build"]), false).is_ok());
+    }
+
+    #[test]
+    fn command_policy_matches_the_shared_manifest() {
+        let policy = commands_policy();
+        assert_eq!(policy.version, 1);
+        assert_eq!(policy.limits.max_args, 8);
+        assert_eq!(policy.limits.max_arg_chars, 400);
+        for name in ["npm", "node", "git", "cargo", "python", "python3", "pip", "pip3", "ffmpeg", "ffprobe", "rg"] {
+            assert!(is_allowed_program(name), "{name} absent de commands.json");
+        }
+        assert!(!is_allowed_program("curl"));
+        assert!(!is_allowed_program("npx"));
+        // Chaque programme destiné à l'agent doit aussi être autorisé côté Rust.
+        assert!(policy.programs.iter().filter(|p| p.agent).all(|p| is_allowed_program(&p.name)));
     }
 
     #[test]

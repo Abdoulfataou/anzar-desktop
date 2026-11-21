@@ -29,6 +29,7 @@ export interface GenericToolOptions {
   onFileChanged?: (relativePath: string, action: 'create' | 'edit' | 'delete') => void;
   onSubagentProgress?: ToolExecutionContext['onSubagentProgress'];
   permissionMode?: ToolExecutionContext['permissionMode'];
+  childBudget?: ToolExecutionContext['childBudget'];
 }
 
 export async function executeGenericTool(
@@ -54,6 +55,7 @@ export async function executeGenericTool(
       onSubagentProgress: call.function.name === 'spawn_subagents' ? options.onSubagentProgress : undefined,
       permissionMode: options.permissionMode,
       runSubagent: runAgentSession,
+      childBudget: options.childBudget,
     });
   }
 

@@ -3,11 +3,12 @@
  */
 import { terminalService } from '@/services/runtime/terminal';
 import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/runtime/toolsRuntime';
-import { validateCommand } from '../policy/commandPolicy';
+import { AGENT_PROGRAMS, validateCommand } from '../policy/commandPolicy';
 import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_CHARS, resolvePath, truncate } from './shared';
 import { ToolExecutionContext, ToolResult } from './types';
 
-const RUNNABLE = new Set(['npm', 'node', 'git', 'cargo', 'python', 'python3', 'pip', 'pip3']);
+/** Programmes que l'agent peut lancer : dérivés de `policy/commands.json` (avec Rust). */
+const RUNNABLE = new Set(AGENT_PROGRAMS);
 const READ_INSTEAD: Record<string, string> = {
   grep: 'search_files', rg: 'search_files', find: 'search_files ou list_dir', ls: 'list_dir', tree: 'list_dir',
   cat: 'read_file', head: 'read_file', tail: 'read_file', less: 'read_file', wc: 'read_file',

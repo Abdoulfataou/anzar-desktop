@@ -11,15 +11,34 @@ export const SUBAGENT_EXCLUDED_TOOLS = new Set([
   'export_animation',
 ]);
 
+/** `task_done` termine le sous-agent : toujours autorisé, même hors profil. */
+const ALWAYS_ALLOWED = new Set(['task_done']);
+
+export interface SubagentPolicyInput {
+  allToolNames: Iterable<string>;
+  mode?: PermissionMode;
+  readOnlyTools: ReadonlySet<string>;
+  /**
+   * Outils déclarés par le profil du rôle (`tools` du frontmatter). Vide ou absent :
+   * la politique du mode s'applique seule. Sinon, le profil restreint encore la liste.
+   */
+  profileTools?: string[];
+}
+
 /**
- * Hors Full : lecture seule. En Full : tous les outils sauf les outils exclus
- * (le parent garde la main sur les commandes, l'export et la récursion).
+ * Outils d'un sous-agent = politique du mode ∩ déclaration du profil.
+ *
+ * Hors Full : lecture seule. En Full : tout sauf les outils exclus (le parent garde la main
+ * sur les commandes, l'export et la récursion). Un profil ne peut que **réduire** ce
+ * périmètre, jamais l'élargir.
  */
-export function subagentAllowedTools(
-  allToolNames: Iterable<string>,
-  mode: PermissionMode | undefined,
-  readOnlyTools: ReadonlySet<string>,
-): Set<string> {
-  if (mode !== 'full') return new Set([...readOnlyTools, 'task_done', 'load_skill']);
-  return new Set([...allToolNames].filter((name) => !SUBAGENT_EXCLUDED_TOOLS.has(name)));
+export function subagentAllowedTools(input: SubagentPolicyInput): Set<string> {
+  const { allToolNames, mode, readOnlyTools, profileTools } = input;
+  const base = mode !== 'full'
+    ? new Set([...readOnlyTools, 'load_skill', ...ALWAYS_ALLOWED])
+    : new Set([...allToolNames].filter((name) => !SUBAGENT_EXCLUDED_TOOLS.has(name)));
+
+  if (!profileTools?.length) return base;
+  const declared = new Set(profileTools);
+  return new Set([...base].filter((name) => declared.has(name) || ALWAYS_ALLOWED.has(name)));
 }

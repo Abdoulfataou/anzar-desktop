@@ -27,6 +27,8 @@ export function useAgentChat(options: AgentRunnerOptions) {
     resolveApproval: runner.resolveApproval,
     question: state.question,
     resolveQuestion: runner.resolveQuestion,
+    /** Consommation du budget du tour (FCFA, tokens, étapes) pour l'affichage. */
+    budget: state.budget,
     resume: runner.resume,
     setModeNow: runner.setModeNow,
   };

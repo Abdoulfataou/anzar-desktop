@@ -13,6 +13,7 @@
  *   const index = codeIndexer.indexProject(files);
  *   const context = codeIndexer.buildSmartContext(index, userMessage, maxTokens);
  */
+import { treeSitterSymbols } from './treeSitter';
 
 // ============================================================================
 // TYPES
@@ -181,6 +182,13 @@ function extractTS(content: string, path: string): CodeSymbol[] {
       continue;
     }
 
+    // ── Constantes (stores, tables, utilitaires) ──
+    m = clean.match(/^(?:const|let|var)\s+(\w+)/);
+    if (m) {
+      symbols.push({ name: m[1], kind: 'const', line: lineNum, exported: isExported, doc });
+      continue;
+    }
+
     // ── Classes ──
     m = clean.match(/^class\s+(\w+)/);
     if (m) {
@@ -323,7 +331,17 @@ function extractImports(content: string, language: string): FileImport[] {
   const imports: FileImport[] = [];
 
   if (language === 'typescript' || language === 'javascript') {
-    // ES imports: import { X } from 'y' / import X from 'y' / import * as X from 'y'
+    // Ré-exports : ce sont des dépendances à part entière (barrels, index.ts).
+  const reExportRegex = /export\s+(?:\*|\{([^}]*)\})\s+from\s+['"]([^'"]+)['"]/g;
+  let reExport: RegExpExecArray | null;
+  while ((reExport = reExportRegex.exec(content)) !== null) {
+    const names = reExport[1]
+      ? reExport[1].split(',').map((x) => x.trim().split(/\s+as\s+/)[0]).filter(Boolean)
+      : ['*'];
+    imports.push({ names, source: reExport[2], isRelative: reExport[2].startsWith('.'), isTypeOnly: false });
+  }
+
+  // ES imports: import { X } from 'y' / import X from 'y' / import * as X from 'y'
     const importRegex = /import\s+(?:type\s+)?(?:\{([^}]+)\}|(\*\s+as\s+\w+)|(\w+)(?:\s*,\s*\{([^}]+)\})?)\s+from\s+['"]([^'"]+)['"]/g;
     let m: RegExpExecArray | null;
     while ((m = importRegex.exec(content)) !== null) {
@@ -473,70 +491,68 @@ function resolveImportPath(
 // MAIN INDEXER
 // ============================================================================
 
+/** Empreinte courte du contenu : suffit pour détecter un changement de fichier. */
+function hashContent(text: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
+  return `${(h >>> 0).toString(36)}:${text.length}`;
+}
+
 class CodeIndexerService {
-  /**
-   * Index all project files and build the knowledge graph.
-   */
-  indexProject(files: Record<string, string>): ProjectIndex {
-    const fileIndexMap = new Map<string, FileIndex>();
-    const allPaths = new Set(Object.keys(files));
+  /** Cache incrémental : contenus hachés et index par fichier, par projet. */
+  private incremental = new Map<string, { hashes: Map<string, string>; files: Map<string, FileIndex> }>();
+
+  /** Indexe un fichier : symboles (tree-sitter quand disponible), imports, exports. */
+  private buildOne(path: string, content: string): FileIndex {
+    const language = getLang(path);
+    let symbols: CodeSymbol[];
+    if (language === 'typescript' || language === 'javascript') {
+      symbols = treeSitterSymbols(path, content) ?? extractTS(content, path);
+    } else if (language === 'python') {
+      symbols = treeSitterSymbols(path, content) ?? extractPython(content);
+    } else if (['go', 'rust', 'java', 'kotlin', 'dart', 'swift'].includes(language)) {
+      symbols = extractGeneric(content);
+    } else {
+      symbols = [];
+    }
+    return {
+      path,
+      language,
+      size: content.length,
+      symbols,
+      imports: extractImports(content, language),
+      exports: extractExports(content, language),
+      description: extractDescription(content),
+      lineCount: content.split('\n').length,
+    };
+  }
+
+  /** Graphe et statistiques à partir des index de fichiers. */
+  private assemble(fileIndexMap: Map<string, FileIndex>): ProjectIndex {
+    const allPaths = new Set(fileIndexMap.keys());
     const langCounts: Record<string, number> = {};
     const packages = new Set<string>();
     let totalSymbols = 0;
     let totalLines = 0;
 
-    // ── Phase 1: Index each file ──
-    for (const [path, content] of Object.entries(files)) {
-      const language = getLang(path);
-      const lineCount = content.split('\n').length;
-      totalLines += lineCount;
-
-      // Extract symbols based on language
-      let symbols: CodeSymbol[];
-      if (language === 'typescript' || language === 'javascript') {
-        symbols = extractTS(content, path);
-      } else if (language === 'python') {
-        symbols = extractPython(content);
-      } else if (['go', 'rust', 'java', 'kotlin', 'dart', 'swift'].includes(language)) {
-        symbols = extractGeneric(content);
-      } else {
-        symbols = [];
-      }
-
-      const imports = extractImports(content, language);
-      const exports = extractExports(content, language);
-      const description = extractDescription(content);
-
-      // Collect external packages
-      for (const imp of imports) {
+    for (const fileIdx of fileIndexMap.values()) {
+      totalSymbols += fileIdx.symbols.length;
+      totalLines += fileIdx.lineCount;
+      langCounts[fileIdx.language] = (langCounts[fileIdx.language] || 0) + 1;
+      for (const imp of fileIdx.imports) {
         if (!imp.isRelative) packages.add(imp.source.split('/')[0]);
       }
-
-      totalSymbols += symbols.length;
-      langCounts[language] = (langCounts[language] || 0) + 1;
-
-      fileIndexMap.set(path, {
-        path,
-        language,
-        size: content.length,
-        symbols,
-        imports,
-        exports,
-        description,
-        lineCount,
-      });
     }
 
-    // ── Phase 2: Build dependency graph ──
+    // Le graphe est recalculé à chaque fois : la résolution d'un import dépend de l'ensemble
+    // des chemins (un fichier créé peut résoudre une arête qui n'existait pas).
     const dependencies: DependencyEdge[] = [];
     const reverseDeps = new Map<string, string[]>();
-
     for (const [path, fileIdx] of fileIndexMap) {
       for (const imp of fileIdx.imports) {
         const resolvedPath = resolveImportPath(imp.source, path, allPaths);
         if (resolvedPath) {
           dependencies.push({ from: path, to: resolvedPath });
-
           if (!reverseDeps.has(resolvedPath)) reverseDeps.set(resolvedPath, []);
           reverseDeps.get(resolvedPath)!.push(path);
         }
@@ -556,6 +572,55 @@ class CodeIndexerService {
       },
       indexedAt: Date.now(),
     };
+  }
+
+  /**
+   * Indexe tous les fichiers (parsing complet).
+   */
+  indexProject(files: Record<string, string>): ProjectIndex {
+    const map = new Map<string, FileIndex>();
+    for (const [path, content] of Object.entries(files)) map.set(path, this.buildOne(path, content));
+    return this.assemble(map);
+  }
+
+  /**
+   * Indexe un projet en ne re-parsant que les fichiers modifiés. Les symboles des fichiers
+   * inchangés sont repris du cache ; le graphe est recalculé (résolution d'imports peu
+   * coûteuse, et sensible à l'apparition de nouveaux fichiers).
+   */
+  indexProjectIncremental(
+    root: string,
+    files: Record<string, string>,
+  ): ProjectIndex & { incremental: { reused: number; parsed: number; removed: number } } {
+    const previous = this.incremental.get(root);
+    const hashes = new Map<string, string>();
+    const map = new Map<string, FileIndex>();
+    let reused = 0;
+    let parsed = 0;
+
+    for (const [path, content] of Object.entries(files)) {
+      const hash = hashContent(content);
+      hashes.set(path, hash);
+      const cached = previous && previous.hashes.get(path) === hash ? previous.files.get(path) : undefined;
+      if (cached) {
+        map.set(path, cached);
+        reused += 1;
+      } else {
+        map.set(path, this.buildOne(path, content));
+        parsed += 1;
+      }
+    }
+
+    const removed = previous
+      ? [...previous.hashes.keys()].filter((path) => !(path in files)).length
+      : 0;
+    this.incremental.set(root, { hashes, files: map });
+    return { ...this.assemble(map), incremental: { reused, parsed, removed } };
+  }
+
+  /** Vide le cache incrémental (tests, changement de projet). */
+  resetIncrementalCache(): void {
+    this.incremental.clear();
   }
 
   // ==========================================================================

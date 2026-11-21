@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { APIMessage } from '@/types';
 import { runAgentEngine } from './agentSession';
+import { BudgetLedger } from './budget';
 
 async function* stream(...deltas: any[]) {
   for (const delta of deltas) yield delta;
@@ -148,5 +149,115 @@ describe('runAgentEngine', () => {
 
     expect(result.stopReason).toBe('aborted');
     expect(streamFn).not.toHaveBeenCalled();
+  });
+});
+
+describe('runAgentEngine — budget', () => {
+  it('refuse l’étape suivante dès que le budget d’étapes est épuisé', async () => {
+    const messages = [userMessage()];
+    const budget = new BudgetLedger({ steps: 1 });
+    const executeTool = vi.fn().mockResolvedValue({ output: 'résultat' });
+
+    const result = await runAgentEngine({
+      messages,
+      budget,
+      stream: () => stream({ tool_calls: [call('read_file')] }),
+      executeTool,
+    });
+
+    expect(result.stopReason).toBe('budget_exhausted');
+    expect(result.steps).toBe(1);
+    expect(result.summary).toContain('Budget de cette demande atteint');
+    // Une seule étape exécutée : le second appel modèle n'a pas eu lieu.
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(budget.usage().steps).toBe(1);
+  });
+
+  it('utilise le budget pour les étapes quand il en fournit', async () => {
+    const messages = [userMessage()];
+    const budget = new BudgetLedger({ steps: 3 });
+
+    const result = await runAgentEngine({
+      messages,
+      budget,
+      maxSteps: 40,
+      stream: () => stream({ content: 'Bonjour' }),
+      executeTool: vi.fn(),
+    });
+
+    expect(result.stopReason).toBe('final_answer');
+    expect(budget.usage().steps).toBe(1);
+  });
+
+  it('s’arrête aussi sur un plafond de coût', async () => {
+    const messages = [userMessage()];
+    const budget = new BudgetLedger({ fcfa: 5 });
+    budget.charge({ fcfa: 6 });
+
+    const streamSpy = vi.fn(() => stream({ content: 'jamais' }));
+    const result = await runAgentEngine({ messages, budget, stream: streamSpy, executeTool: vi.fn() });
+
+    expect(result.stopReason).toBe('budget_exhausted');
+    expect(result.steps).toBe(0);
+    expect(streamSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('runAgentEngine — boucles', () => {
+  it('bloque un appel identique qui échoue et arrête si le modèle insiste', async () => {
+    const messages = [userMessage()];
+    const executeTool = vi.fn().mockResolvedValue({ output: 'échec', isError: true });
+
+    const result = await runAgentEngine({
+      messages,
+      // Même outil, mêmes arguments à chaque étape.
+      stream: () => stream({ tool_calls: [call('edit_file')] }),
+      executeTool,
+    });
+
+    expect(result.stopReason).toBe('loop_detected');
+    // Deux exécutions réelles, puis un blocage, puis l'arrêt.
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(result.summary).toContain('Boucle détectée');
+  });
+
+  it('arrête après une série d’échecs avec des arguments différents', async () => {
+    let n = 0;
+    const executeTool = vi.fn().mockResolvedValue({ output: 'échec', isError: true });
+    const varying = () => ({
+      index: 0,
+      id: `c${n}`,
+      type: 'function' as const,
+      function: { name: 'read_file', arguments: JSON.stringify({ path: `fichier-${++n}.ts` }) },
+    });
+
+    const result = await runAgentEngine({
+      messages: [userMessage()],
+      // Comme le chat : le plafond d'erreurs du moteur est désactivé (le mode Auto escalade),
+      // c'est la détection de boucle qui doit arrêter.
+      maxConsecutiveErrors: 0,
+      stream: () => stream({ tool_calls: [varying()] }),
+      executeTool,
+    });
+
+    expect(result.stopReason).toBe('loop_detected');
+    expect(executeTool).toHaveBeenCalledTimes(8);
+    expect(result.summary).toContain('échecs');
+  });
+
+  it('laisse passer une répétition légitime sous le seuil', async () => {
+    let n = 0;
+    const executeTool = vi.fn().mockResolvedValue({ output: 'échec', isError: true });
+    const result = await runAgentEngine({
+      messages: [userMessage()],
+      stream: () => stream(n++ < 2
+        ? { tool_calls: [call('read_file', `c${n}`)] }
+        : { content: 'Corrigé' }),
+      executeTool,
+    });
+
+    expect(result.stopReason).toBe('final_answer');
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(result.summary).toBe('Corrigé');
   });
 });

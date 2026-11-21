@@ -182,7 +182,7 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
 | Écriture | Autorisée seulement dans le dossier du projet, le dossier git du dépôt (worktrees des tickets), les dossiers temporaires et les caches (`~/Library/Caches`, `~/.npm`, `~/.cache`, `~/.cargo`) |
 | Git | `.git/hooks` et `.git/config` en lecture seule, y compris pour une worktree |
 | Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials` illisibles |
-| Réseau | Ouvert par défaut (comme un terminal). Si l'utilisateur le coupe (Réglages avancés) : sortant refusé sauf vers localhost, et une carte propose d'autoriser la commande. Exceptions toujours permises : `npm install`/`pip install` accepté par l'utilisateur, `cargo build/check/test/fetch/update`, `git clone/fetch/pull/ls-remote/submodule` (`sandbox::network_allowed`) |
+| Réseau | Filtré par un **proxy local avec liste d'hôtes autorisés** (`src-tauri/src/netproxy.rs`) : les commandes reçoivent `HTTP(S)_PROXY` et `npm_config_*_proxy`. Sur macOS, le profil Seatbelt n'autorise alors que localhost : le proxy est le **seul** chemin vers l'extérieur, et il refuse tout hôte absent de la liste (registres npm/pip/cargo, GitHub, Node.js par défaut, plus les hôtes ajoutés dans Paramètres → Réseau). Si l'utilisateur coupe le réseau, sortant refusé sauf localhost. Sur Windows et Linux, le même filtre s'applique mais n'est **coopératif** (variables d'environnement) : un programme qui ignore le proxy n'est pas arrêté |
 
 - Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
   commandes s'exécutent comme avant.
@@ -191,14 +191,21 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   contenu externe. Coupé, une connexion refusée ajoute `[ANZAR] Réseau coupé…` à la sortie.
 - Quand une écriture est refusée, la sortie de la commande se termine par une ligne
   `[ANZAR] Bloqué par l'isolation des commandes…` que l'agent comprend.
+- Quand un hôte est refusé par le filtre réseau, la sortie se termine par
+  `[ANZAR] Hôtes bloqués par le filtre réseau : …` : l'agent sait quoi signaler, et
+  l'utilisateur peut ajouter l'hôte dans Paramètres → Réseau. Le journal
+  (`net_proxy_records`) donne les refus récents avec leur date.
 - Limite connue : le réglage est transmis par la webview ; l'isolation est une défense en
   profondeur, en plus de la politique de commandes et des accords.
 - Windows : chaque commande tourne dans un « job object » (`src-tauri/src/winjob.rs`).
   Arrêter la commande arrête toute son arborescence de processus, et fermer ANZAR tue ce qui
   reste. Le presse-papiers (lecture et écriture), l'arrêt de la session et les réglages système
-  et d'affichage sont inaccessibles. Les écritures de fichiers ne sont pas encore confinées
-  (prochaine étape : jeton restreint ou AppContainer, qui demandent d'ajuster les droits du
-  dossier du projet).
+  et d'affichage sont inaccessibles. **Les écritures de fichiers ne sont pas encore confinées** :
+  l'implémentation AppContainer (profil, ACE sur le projet, `CreateProcessW` suspendu puis job
+  object) et ses dix tests de validation sont décrits dans
+  [`WINDOWS_SANDBOX.md`](WINDOWS_SANDBOX.md). La CI Windows (`rust-windows`) compile et teste
+  désormais le code `#[cfg(windows)]` à chaque PR : c'est le prérequis pour l'écrire sans casser
+  la release.
 - Linux : pas d'isolation système (l'app n'est pas distribuée pour Linux).
 
 ## Dossiers de projet autorisés (novembre 2026)

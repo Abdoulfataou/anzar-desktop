@@ -4,6 +4,7 @@
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
 import type { SubagentRole } from '../profiles';
 import type { PermissionMode } from '../policy/permissions';
+import type { BudgetLedger } from '../engine/budget';
 
 // ============================================================================
 // TYPES
@@ -38,6 +39,11 @@ export interface ToolExecutionContext {
    * jamais la boucle eux-mêmes : cela évite le cycle outils ↔ boucle.
    */
   runSubagent?: (options: AgentLoopOptions) => Promise<AgentSessionResult>;
+  /**
+   * Enveloppe de budget pour un sous-agent (fraction du budget restant du tour).
+   * Absente : le sous-agent n'est borné que par ses étapes.
+   */
+  childBudget?: (share: number, capFcfa?: number) => BudgetLedger | undefined;
 }
 
 export interface ToolResult {

@@ -55,6 +55,7 @@ export default function AutomationsPage() {
     if (!folders.length) { toast.error("Ouvre d'abord un dossier de projet : l'automatisation y travaillera."); return; }
     setDraft({
       name: '', prompt: '', projectId: folders[0].id, model: 'fast', mode: 'plan',
+      budgetFCFA: 200, maxMinutes: 15,
       schedule: { kind: 'daily', time: '09:00', days: WEEKDAYS },
     });
   };
@@ -65,7 +66,14 @@ export default function AutomationsPage() {
     if (!draft.prompt.trim()) { toast.error('Écris la consigne que l\'agent recevra.'); return; }
     if (draft.schedule.kind === 'daily' && !/^\d{1,2}:\d{2}$/.test(draft.schedule.time)) { toast.error('Heure invalide.'); return; }
     const { id, ...input } = draft;
-    const clean: AutomationInput = { ...input, name: input.name.trim(), prompt: input.prompt.trim() };
+    const clean: AutomationInput = {
+      ...input,
+      name: input.name.trim(),
+      prompt: input.prompt.trim(),
+      // Une automatisation tourne sans surveillance : elle a toujours des plafonds concrets.
+      budgetFCFA: Math.max(0, Number(input.budgetFCFA ?? 200) || 0),
+      maxMinutes: Math.max(1, Number(input.maxMinutes ?? 15) || 15),
+    };
     if (id) updateAutomation(id, clean); else addAutomation(clean);
     toast.success('Automatisation enregistrée');
     setDraft(null);
@@ -196,6 +204,29 @@ export default function AutomationsPage() {
                 ))}
               </div>
               <p className="mt-1 text-ui-sm text-text-muted">Personne n'est là pour valider pendant l'exécution : il n'y a donc pas de mode « demander ».</p>
+            </div>
+            <div>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block">
+                  <span className="text-ui-sm text-text-secondary">Budget par exécution (FCFA)</span>
+                  <input
+                    type="number" min={0} step={50}
+                    value={draft.budgetFCFA ?? 200}
+                    onChange={(e) => setDraft({ ...draft, budgetFCFA: Math.max(0, Number(e.target.value) || 0) })}
+                    className={inputCls}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-ui-sm text-text-secondary">Durée max (minutes)</span>
+                  <input
+                    type="number" min={1} max={180}
+                    value={draft.maxMinutes ?? 15}
+                    onChange={(e) => setDraft({ ...draft, maxMinutes: Math.max(1, Number(e.target.value) || 1) })}
+                    className={inputCls}
+                  />
+                </label>
+              </div>
+              <p className="mt-1 text-ui-sm text-text-muted">L'exécution s'arrête à ce plafond, même si la tâche n'est pas finie : le travail déjà fait est conservé.</p>
             </div>
             <div>
               <span className="text-ui-sm text-text-secondary">Quand</span>

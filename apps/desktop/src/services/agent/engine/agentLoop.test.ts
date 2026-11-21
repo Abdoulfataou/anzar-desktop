@@ -17,6 +17,7 @@ import { aiService } from '@/services/ai/ai';
 import { executeToolCall } from '../tools';
 import { runVerification } from '../verify/agentVerifier';
 import { runAgentSession } from './agentLoop';
+import { BudgetLedger } from './budget';
 
 const chatStream = vi.mocked(aiService.chatStream);
 const execTool = vi.mocked(executeToolCall);
@@ -141,6 +142,34 @@ describe('runAgentSession', () => {
     const result = await runAgentSession({ ...baseOptions, signal: controller.signal });
 
     expect(result.stopReason).toBe('aborted');
+    expect(chatStream).not.toHaveBeenCalled();
+  });
+});
+
+describe('runAgentSession — budget du sous-agent', () => {
+  it('charge tokens et coût dans l’enveloppe fournie', async () => {
+    chatStream.mockReturnValueOnce(
+      stream({ content: 'Terminé' }, { serverCostFCFA: 3 }) as any,
+    );
+    const budget = new BudgetLedger({ fcfa: 50 });
+
+    const result = await runAgentSession({ ...baseOptions, budget });
+
+    expect(result.stopReason).toBe('final_answer');
+    expect(budget.usage().fcfa).toBe(3);
+    expect(budget.usage().tokensOut).toBeGreaterThan(0);
+    expect(budget.usage().tokensIn).toBeGreaterThan(0);
+  });
+
+  it('s’arrête quand l’enveloppe est épuisée', async () => {
+    chatStream.mockReturnValue(stream({ tool_calls: [toolCall('read_file')] }) as any);
+    execTool.mockResolvedValue({ output: 'ok' } as any);
+    const budget = new BudgetLedger({ fcfa: 1 });
+    budget.charge({ fcfa: 2 });
+
+    const result = await runAgentSession({ ...baseOptions, budget });
+
+    expect(result.stopReason).toBe('budget_exhausted');
     expect(chatStream).not.toHaveBeenCalled();
   });
 });

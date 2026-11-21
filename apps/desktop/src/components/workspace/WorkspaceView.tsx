@@ -139,7 +139,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
   ];
 
   // ── Agent chat ──
-  const { sendMessage, stop, isGenerating, approval, resolveApproval, question, resolveQuestion, resume, setModeNow } = useAgentChat({
+  const { sendMessage, stop, isGenerating, approval, resolveApproval, question, resolveQuestion, resume, setModeNow, budget } = useAgentChat({
     workspacePath,
     workspaceName: activeProject?.name,
     model: selectedModel,
@@ -505,6 +505,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                 onModelChange={setSelectedModel}
                 permissionMode={permissionMode}
                 onPermissionChange={workspacePath ? changePermission : undefined}
+                budget={budget}
                 placeholder={workspacePath ? 'Demande à l\'agent… (@ pour un fichier, / pour une commande)' : 'Pose une question, ou ouvre un dossier pour coder…'}
               />
             </div>

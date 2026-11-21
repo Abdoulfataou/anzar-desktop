@@ -24,6 +24,10 @@ export interface Automation {
   model: AIModel;
   mode: AutomationMode;
   schedule: AutomationSchedule;
+  /** Plafond de coût d'une exécution, en FCFA (0 ou absent : budget de fond par défaut). */
+  budgetFCFA?: number;
+  /** Durée maximale d'une exécution, en minutes (absente : budget de fond par défaut). */
+  maxMinutes?: number;
   enabled: boolean;
   createdAt: number;
   nextRunAt: number | null;
@@ -33,7 +37,8 @@ export interface Automation {
   lastConversationId?: string;
 }
 
-export type AutomationInput = Pick<Automation, 'name' | 'prompt' | 'projectId' | 'model' | 'mode' | 'schedule'>;
+export type AutomationInput = Pick<Automation, 'name' | 'prompt' | 'projectId' | 'model' | 'mode' | 'schedule'>
+  & Partial<Pick<Automation, 'budgetFCFA' | 'maxMinutes'>>;
 
 export const DAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
@@ -96,6 +101,9 @@ export const useAutomationStore = create<AutomationState>()(
       addAutomation: (input) => {
         const a: Automation = {
           ...input,
+          // Plafonds par défaut : une automatisation tourne sans personne pour l'arrêter.
+          budgetFCFA: input.budgetFCFA ?? 200,
+          maxMinutes: input.maxMinutes ?? 15,
           id: generateId(),
           enabled: true,
           createdAt: Date.now(),

@@ -38,6 +38,13 @@ export interface Settings {
   sandboxCommands?: boolean;
   /** Commandes isolées : accès à internet. Ouvert par défaut ; coupé = localhost et téléchargements seulement. */
   commandNetwork?: boolean;
+  /**
+   * Filtrage réseau : les commandes passent par un proxy local qui n'ouvre que les hôtes
+   * autorisés. Sur macOS, le profil d'isolation ne laisse alors sortir que vers ce proxy.
+   */
+  networkProxy?: boolean;
+  /** Hôtes autorisés en plus des valeurs par défaut (registres, GitHub, Node.js). */
+  networkAllowedHosts?: string[];
 
   // Interface
   theme: 'light' | 'dark' | 'system';
@@ -107,6 +114,9 @@ const defaultSettings: Settings = {
     'www.anzar.ai',
   ],
   commandExecutionMode: 'manual',
+  // Le filtrage réseau est le seul contrôle qui protège aussi Windows et Linux.
+  networkProxy: true,
+  networkAllowedHosts: [],
   autoVerifyAfterApply: true,
   autoCleanFinishedCommands: true,
 };

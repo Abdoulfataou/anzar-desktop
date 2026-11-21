@@ -26,6 +26,11 @@ export const sandboxEnabled = (): boolean => useSettingsStore.getState().setting
  *  le choisit (Réglages avancés) : localhost et téléchargements restent alors permis. */
 export const commandNetworkOpen = (): boolean => useSettingsStore.getState().settings.commandNetwork !== false;
 
+/** Filtrage réseau des commandes : proxy local avec liste d'hôtes autorisés. */
+export const networkProxyEnabled = (): boolean => useSettingsStore.getState().settings.networkProxy !== false;
+/** Hôtes autorisés en plus des valeurs par défaut. */
+export const networkProxyHosts = (): string[] => useSettingsStore.getState().settings.networkAllowedHosts || [];
+
 /** Marqueur ajouté à la sortie quand l'isolation a coupé une connexion. */
 export const NETWORK_BLOCKED_TAG = '[ANZAR] Réseau coupé';
 
@@ -291,6 +296,7 @@ class TerminalService {
     await invoke('tool_spawn', {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
       approved: this.takeInstallGrant(program, args), network: this.networkFor(program, args),
+      proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(),
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
@@ -392,6 +398,7 @@ class TerminalService {
         sandbox: sandboxEnabled(),
         approved: this.takeInstallGrant(displayName, parsed.args),
         network: this.networkFor(displayName, parsed.args),
+        proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(),
       });
       process.pid = pid;
       return processId;

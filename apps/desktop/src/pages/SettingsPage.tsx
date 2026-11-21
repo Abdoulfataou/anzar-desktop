@@ -243,6 +243,9 @@ function GeneralSection() {
   const autoVerify = useSettingsStore((s) => s.settings.autoVerifyAfterApply !== false);
   const sandbox = useSettingsStore((s) => s.settings.sandboxCommands !== false);
   const commandNetwork = useSettingsStore((s) => s.settings.commandNetwork !== false);
+  const networkProxy = useSettingsStore((s) => s.settings.networkProxy !== false);
+  const [extraHosts, setExtraHosts] = useState(() =>
+    (useSettingsStore.getState().settings.networkAllowedHosts || []).join('\n'));
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
   const [advanced, setAdvanced] = useState(false);
   const [mode, setMode] = useState<PermissionMode>(() => {
@@ -314,6 +317,37 @@ function GeneralSection() {
                 options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
               />
             </Row>
+          )}
+          {commandNetwork && (
+            <>
+              <Row
+                label="Filtrer le réseau des commandes"
+                description="Les commandes passent par un proxy local qui n'ouvre que les hôtes autorisés (registres npm, pip et cargo, GitHub, Node.js). Sur macOS, le système bloque en plus toute sortie directe : le proxy est alors le seul chemin. Windows et Linux ne peuvent pas imposer cette contrainte au niveau système."
+              >
+                <Segmented
+                  value={networkProxy ? 'on' : 'off'}
+                  onChange={(v) => updateSettings({ networkProxy: v === 'on' })}
+                  options={[{ id: 'on', label: 'Activé' }, { id: 'off', label: 'Désactivé' }]}
+                />
+              </Row>
+              {networkProxy && (
+                <Row
+                  label="Hôtes autorisés en plus"
+                  description="Un par ligne (ex. api.monservice.com). Les sous-domaines d'une entrée sont autorisés. Utile quand une commande doit joindre un service qui n'est pas un registre de paquets."
+                >
+                  <textarea
+                    value={extraHosts}
+                    onChange={(e) => setExtraHosts(e.target.value)}
+                    onBlur={() => updateSettings({
+                      networkAllowedHosts: extraHosts.split('\n').map((h) => h.trim()).filter(Boolean),
+                    })}
+                    rows={3}
+                    placeholder="api.monservice.com"
+                    className="w-full px-3 py-2 rounded-lg bg-input border border-input-border text-ui-base text-text-primary outline-none focus:border-input-border-hover resize-y"
+                  />
+                </Row>
+              )}
+            </>
           )}
           {isMac && sandbox && (
             <Row

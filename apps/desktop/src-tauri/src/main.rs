@@ -7,6 +7,7 @@ mod tool_runtime;
 mod programs;
 mod tool_runner;
 mod sandbox;
+mod netproxy;
 mod roots;
 #[cfg(windows)]
 mod winjob;
@@ -23,9 +24,9 @@ fn main() {
 
     let app = tauri::Builder::default()
         .setup(|app| {
-            node_runtime::apply_path_with(&app.handle());
+            node_runtime::apply_path_with(app.handle());
             // Dossiers de projet choisis par l'utilisateur : ré-autorisés pour la webview
-            roots::restore(&app.handle());
+            roots::restore(app.handle());
             Ok(())
         })
         // Fichiers glissés dans la fenêtre : lisibles comme pièces jointes
@@ -54,7 +55,7 @@ fn main() {
         .manage(mcp::McpState::default())
         .manage(tool_runner::ToolState::default())
         .manage(roots::RootsState::default())
-        .invoke_handler(tauri::generate_handler![vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
+        .invoke_handler(tauri::generate_handler![net_proxy_records, vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -95,6 +96,12 @@ fn harden_store_dir(dir: &std::path::Path) -> Result<(), String> {
 
 /// Canonicalise un chemin existant (résout les liens symboliques).
 /// Utilisé par les outils de fichiers pour empêcher une évasion via symlink.
+/// Journal récent du filtre réseau (diagnostic : « pourquoi cet hôte est-il bloqué ? »).
+#[tauri::command]
+fn net_proxy_records() -> Vec<netproxy::Record> {
+    netproxy::recent_records()
+}
+
 #[tauri::command]
 fn fs_realpath(path: String) -> Result<String, String> {
     let real = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;

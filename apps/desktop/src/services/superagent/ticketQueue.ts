@@ -87,6 +87,7 @@ export async function runTicket(ticket: Ticket): Promise<void> {
     model: t.model,
     permissionMode: 'auto',
     background: true,
+    budget: { fcfa: t.budgetFCFA, wallMs: t.maxMinutes * 60_000 },
     onProgress: ({ costFCFA }) => { progress.costFCFA = costFCFA; progress.lastActivity = Date.now(); },
   });
   if (current) current.runner = runner;
@@ -112,7 +113,9 @@ export async function runTicket(ticket: Ticket): Promise<void> {
   const cost = result?.costFCFA ?? (typeof last?.costFCFA === 'number' ? last.costFCFA : Math.round(progress.costFCFA));
   const report = (result?.content || last?.content || '').replace(/_\(interrompu\)_/g, '').trim().slice(0, 4_000);
   const agentFailed = result
-    ? result.isError || result.stopReason === 'max_steps' || result.stopReason === 'aborted' || result.stopReason === 'verify_failed'
+    ? result.isError || result.stopReason === 'max_steps' || result.stopReason === 'aborted'
+      || result.stopReason === 'budget_exhausted' || result.stopReason === 'loop_detected'
+      || result.stopReason === 'verify_failed'
     : !!last?.isError;
 
   // Le travail est toujours commité, même interrompu : rien n'est perdu

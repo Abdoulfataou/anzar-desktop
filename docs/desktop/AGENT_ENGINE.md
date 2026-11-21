@@ -14,7 +14,16 @@ src/services/agent/
 ├── context/     prompts système, carte du code + ANZAR.md, pièces jointes, dossier de travail
 ├── subagents/   explorateurs (lecture seule) et spawn_subagents
 ├── verify/      détection et exécution lint / build / tests
-├── runtime/     AgentRunner : une conversation avec l'agent, sans React
+├── runtime/     une conversation, sans React :
+│                agentRunner (session : état, accords, questions, reprise),
+│                turn (déroulé d'un tour : boucle, replis),
+│                turnStart (dossier, pièces jointes, messages, budget, skills, connecteurs),
+│                turnFinish (réponse finale, coût, chemins d'erreur),
+│                turnVerify (référence de vérification, contrôle ciblé),
+│                turnTypes (types publics), sessionSetup (prompt + historique),
+│                toolList (outils exposés selon le mode), toolHost (exécution d'un appel),
+│                turnFallbacks (sauvetage export, synthèse forcée), turnAccounting (coût),
+│                sessionStore (sessions durables)
 └── profiles/    un fichier Markdown par rôle d'agent (explorer, motion-designer, dev, redaction)
 src/services/skills/
 ├── index.ts     chargement des skills (projet, personnelles, intégrées)
@@ -30,12 +39,57 @@ Règles :
   les explorateurs et le sauvetage export en sont des adaptateurs.
 - **Pas de cycle d'imports** : les outils ne connaissent pas la boucle. Le lanceur de
   sous-agents leur est transmis par `ToolExecutionContext.runSubagent`.
+- **Budget** : `engine/budget.ts` (`BudgetLedger`) borne un tour en étapes, tokens, FCFA et
+  durée. Un sous-agent reçoit une **enveloppe dérivée** : `budget.child(share)` calcule une
+  fraction du budget restant (80 % répartis entre les sous-agents, le parent garde 20 %) ; les
+  tokens et FCFA consommés remontent au parent (comptabilité unique), les étapes restent
+  locales pour ne pas consommer la boucle du parent. Le moteur vérifie le budget **avant chaque étape** et s'arrête en `budget_exhausted`
+  sans lancer de synthèse payante ; le dépassement est coopératif (on refuse le pas suivant,
+  on ne coupe pas un flux en cours). Budget interactif : 1 200 FCFA / 45 min. Travail de fond :
+  200 FCFA / 15 min, surchargeable par automatisation (`budgetFCFA`, `maxMinutes`) et par
+  ticket (`budgetFCFA`, `maxMinutes`). Le compteur FCFA du tour s'affiche sous la zone de
+  saisie (`components/chat/BudgetBadge.tsx`).
+- **Politique de commandes unique** : `policy/commands.json` — programmes autorisés, plafonds
+  d'arguments et motifs de refus (avec leur message). TypeScript l'importe pour le pré-contrôle
+  et les messages ; Rust l'inclut à la compilation (`include_str!`) pour la liste des
+  programmes et les plafonds. La liste ne peut donc plus diverger entre les deux côtés :
+  `ffmpeg` et `rg` sont désormais utilisables par `run_command` comme le promet `install_tool`.
+  Les motifs restent une couche de pré-contrôle : l'application est structurelle côté Rust
+  (pas de shell, programme allowlisté, arguments contrôlés).
+- **Détection de boucle** : `engine/loopGuard.ts`. Avant chaque appel d'outil, la signature
+  `(outil, arguments normalisés)` est comparée à l'historique du tour : un appel identique déjà
+  vu 3 fois, ou déjà échoué 2 fois, est **bloqué** (le modèle reçoit un message qui lui demande
+  de changer d'approche) ; s'il insiste, la session s'arrête en `loop_detected`. Un compteur
+  d'échecs consécutifs (8) attrape les boucles à arguments différents — c'est le filet qui
+  remplace, dans le chat, le plafond d'erreurs désactivé pour le mode Auto. En cas d'arrêt,
+  une synthèse sans outil fait le bilan.
 - **Vérification** : au `task_done`, si l'agent a modifié le projet et que le réglage
   « vérifier après application » est actif, lint / build / tests sont lancés ; un échec refuse
   `task_done` (3 tentatives). Une commande qui exécute du code modifié par l'agent demande un accord.
-- **Le harnais ne dépend pas de React** : `runtime/agentRunner.ts` porte toute la logique d'une
-  conversation (approbations, questions, plan, reprise, coûts). `hooks/useAgentChat.ts` n'est
-  qu'un adaptateur (`useSyncExternalStore`). Les tickets (`services/superagent/ticketQueue.ts`)
+- **Vérification ciblée** : `verify/targeted.ts`. Les fichiers modifiés par l'agent (suivis par
+  les snapshots) restreignent le contrôle : lint et tests limités aux fichiers concernés quand
+  le script du projet utilise un outil reconnu (eslint/stylelint/ruff, vitest/jest/mocha),
+  tests et typecheck écartés si seuls des styles changent, tout écarté si seuls des documents
+  changent. Un fichier de configuration (package.json, tsconfig, lockfile…) force la
+  vérification complète ; sinon les commandes restent entières. La référence complète et le
+  contrôle ciblé sont comparés par **label** (`lint`, `test`, `build`), pas par ligne de
+  commande, pour que le ciblage n'invente pas de « nouvel échec ».
+- **Ligne de base de vérification** : `verify/baseline.ts`. Juste avant la **première écriture**
+  du tour, les commandes de vérification sont lancées une fois (`Référence · …` dans la
+  chronologie, plafond 2 min) et le résultat est mis en cache par projet. Au `task_done`, seuls
+  les **nouveaux** échecs bloquent : un projet déjà rouge peut enfin atteindre `task_done`, et
+  un échec identique déplacé de quelques lignes (chemin absolu, `ligne:colonne` et durées
+  normalisés) est reconnu comme préexistant. Le résumé réinjecté ne contient que les erreurs
+  imputables à l'agent.
+- **Le harnais ne dépend pas de React** : `runtime/agentRunner.ts` (174 lignes) ne garde que
+  la **session** — historique API, mode, accords et questions en attente, reprise — et expose
+  un `TurnHost` au tour. `runtime/turnStart.ts` ouvre le tour (dossier, pièces jointes,
+  messages, budget, route Auto, skills, connecteurs) et rend deux objets : `session` (ce qui
+  est figé) et `progress` (ce qui évolue). `runtime/turn.ts` ne garde que la boucle et les
+  replis ; `turnFinish` et `turnVerify` en sont les deux extrémités. Le reste est déjà
+  découpé (`sessionSetup`, `toolList`, `toolHost`, `turnFallbacks`, `turnAccounting`,
+  `sessionStore`, `turnTypes`). `hooks/useAgentChat.ts` n'est qu'un adaptateur
+  (`useSyncExternalStore`). Les tickets (`services/superagent/ticketQueue.ts`)
   et les automatisations (`services/background/automationQueue.ts`) créent leur propre
   `AgentRunner`, sans composant ; `startBackgroundQueues()` les démarre avec la session.
 - **Sessions durables** : `runtime/sessionStore.ts` écrit après chaque étape l'historique API
@@ -43,7 +97,19 @@ Règles :
   `.events.jsonl`). Au redémarrage, une conversation reprend avec tout son contexte ; une réponse
   coupée par la fermeture de l'app est marquée et « continue » repart du bon endroit.
 - **Carte du code** : `context/repoRank.ts` classe les fichiers par PageRank sur le graphe des
-  imports (comme la repo map d'Aider). La carte générale reste identique d'un message à l'autre
+  imports (comme la repo map d'Aider). Le graphe est construit par `filesystem/codeIndexer.ts`.
+  Les **symboles** (fonctions, classes, interfaces, types, énumérations, constantes,
+  composants, hooks) viennent de **tree-sitter en WASM** (`filesystem/treeSitter.ts`) pour
+  TypeScript, TSX, JavaScript et Python : grammaires chargées **paresseusement**, uniquement
+  pour les langages présents, depuis `public/wasm/` (5,8 Mo, non inclus dans le bundle JS).
+  Si une grammaire manque ou échoue, `indexProject` garde l'extraction regex : la carte ne
+  peut pas disparaître. Le graphe d'imports reste l'analyseur regex — testé — avec les
+  `export const` et les ré-exports (`export * from './x'`) corrigés en novembre 2026.
+  **Indexation incrémentale** : `indexProjectIncremental(root, files)` compare une empreinte du
+  contenu par fichier et ne re-parse que les fichiers modifiés (symboles repris du cache) ; le
+  graphe est recalculé, car la résolution d'un import dépend de l'ensemble des fichiers (un
+  fichier créé peut résoudre une arête inconnue). Tests : `codeIndexer.incremental.test.ts`.
+  La carte générale reste identique d'un message à l'autre
   (cache DeepSeek) ; les indices de la tâche utilisent un PageRank personnalisé par les fichiers
   trouvés, qui fait remonter leurs voisins importants (store, utilitaires, types).
 - **Condenser** : `engine/condenser.ts`. Au-delà du plafond, après la compaction habituelle, le
@@ -52,8 +118,17 @@ Règles :
   repli sur une compaction plus forte. Le coût du résumé est compté dans la réponse.
 - **Fermer la fenêtre pendant un travail de fond** propose de la réduire (le travail continue)
   ou de quitter (le ticket reprendra au prochain lancement) : `services/background/closeGuard.ts`.
-- **Ajouter un rôle d'agent** : créer `profiles/<nom>.md` (frontmatter `kind`, `tools`,
-  `max_steps`, `model`, `reasoning`, `skills`, puis les consignes).
+- **Ajouter un rôle d'agent** : créer `profiles/<nom>.md`, rien d'autre. Le frontmatter est
+  appliqué : `kind` (`subagent` ou `explorer`), `tools` (le rôle ne peut **que réduire** les
+  outils autorisés par le mode — `task_done` reste toujours disponible), `model` et
+  `reasoning` (transmis au moteur du sous-agent), `max_steps`, `budget_fcfa` (plafonne
+  l'enveloppe de budget dérivée du parent), `skills` (injectées dans son prompt), `keywords`
+  (servent à deviner le rôle quand l'agent ne le précise pas). **Validation** :
+  `profiles/validate.ts` vérifie nom, `kind`, description, outils connus, modèle et réflexion,
+  bornes de `max_steps` et budget — un manifeste incohérent est signalé au lieu d'être
+  silencieusement ignoré. La liste
+  `SUBAGENT_ROLES` et l'énumération de l'outil `spawn_subagents` sont **dérivées du dossier** :
+  un fichier `kind: subagent` crée un rôle sélectionnable.
 
 Les chemins de la section suivante sont ceux d'avant cette réorganisation.
 
@@ -137,10 +212,47 @@ build.
 
 ## 3. Ce qui reste
 
-Le moteur de boucle est unifié, mais `useAgentChat` reste un gros adaptateur
-(>1 000 lignes) à cause des décisions produit. Prochaines étapes :
+**Fait (21 novembre 2026).**
 
-1. Tester les pièces jointes de bout en bout dans le hook (copie + contenu).
-2. Tester `agentSession` avec un scénario multi-outils réel (build/lint) en
-   environnement Tauri de test, puis valider manuellement sur un projet.
-3. Réduire encore l'adaptateur (reprise, prompt de reprise, comptabilité).
+- L'adaptateur est découpé en trois temps : `agentRunner.ts` passe de 1 215 à 813 lignes (tour
+  réparti dans `sessionSetup`, `toolList`, `toolHost`, `turnFallbacks`, `turnAccounting`), puis
+  à **174 lignes** (session seule ; le tour dans `turn.ts`, ses extrémités dans `turnFinish.ts`
+  et `turnVerify.ts`, reliées par `TurnHost`), puis la préparation sort dans `turnStart.ts`
+  (`session` + `progress`) : `turn.ts` passe de 683 à 451 lignes de pure orchestration.
+  Aucun de ces modules n'importe React ni un store ; `turnTypes`, `toolList`, `sessionSetup`
+  et `turnAccounting` sont purs, seuls `toolHost` et `turnFallbacks` touchent encore les
+  adaptateurs (terminal, service IA) — c'est ce que les ports viendront remplacer.
+  Tests : `agentRunner.test.ts` (coût exact, vérification refusée puis acceptée, refus
+  d'accord, boucle, `isGenerating`), `toolList.test.ts`, `sessionSetup.test.ts`,
+  `turnAccounting.test.ts`.
+- Budget de première classe : `engine/budget.ts`, vérifié avant chaque étape, affiché en
+  FCFA, appliqué aux automatisations comme aux tickets, et **dérivé pour les sous-agents**.
+- Détection de boucle : `engine/loopGuard.ts`, appels identiques bloqués, séries d'échecs
+  arrêtées, synthèse de bilan, arrêt propagé aux tickets et automatisations.
+- Profils d'agents réellement déclaratifs : rôles dérivés des fichiers, `tools` / `model` /
+  `reasoning` / `keywords` appliqués, politique du mode intersectée avec le profil.
+- Politique de commandes unique (`policy/commands.json`) partagée TypeScript/Rust, avec un
+  test de parité dans chaque langage.
+- Ligne de base de vérification : `verify/baseline.ts`, référence prise avant la première
+  écriture et mise en cache par projet ; seuls les nouveaux échecs bloquent `task_done`.
+- Vérification ciblée : `verify/targeted.ts`, lint et tests restreints aux fichiers modifiés,
+  avec repli systématique sur la vérification complète en cas de doute.
+- Carte du code : symboles extraits par **tree-sitter WASM** (TS/TSX/JS/Python, chargement
+  paresseux, repli regex), `export const` indexés, ré-exports comptés comme dépendances.
+  Tests : `treeSitter.test.ts` (grammaires, composants/hooks, Python) et
+  `codeIndexer.test.ts` (résolution `./x`, `@/x`, index, `../`, PageRank).
+
+- Budgets dérivés des sous-agents : enveloppe calculée sur le budget restant, consommation
+  remontée au parent, étapes locales (`runtime/turn.ts` → `ToolRunContext.childBudget`).
+- Sauvetage d'export : ce n'est plus un chemin d'exécution parallèle. Il reçoit l'hôte
+  d'outils du tour (`executeTool`, `onToolCall`) et n'est qu'une variante à outils restreints
+  (`export_animation` uniquement) de la même boucle.
+- CI Rust : `cargo test --all-targets` et `clippy -D warnings` sur macOS.
+
+**Prochaines étapes, dans l'ordre :**
+
+1. **Registre à manifestes** : remplacer la lecture de fichiers Markdown par le manifeste
+   validé décrit dans `docs/audits/2026-11-21-audit-architecture.md` (§6), avec isolation
+   par agent.
+2. **`turn.ts` sous 400 lignes** : en sortir les constantes et l'état des conversations de
+   confiance (cosmétique, le fichier n'est plus qu'une boucle).

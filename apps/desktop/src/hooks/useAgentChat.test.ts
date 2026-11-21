@@ -284,8 +284,10 @@ describe('useAgentChat — parcours agent', () => {
     let call = 0;
     vi.mocked(aiService.chatStream).mockImplementation(() => {
       call += 1;
+      // Arguments différents à chaque échec : un appel strictement identique serait arrêté
+      // par la détection de boucle, pas escaladé (voir loopGuard.test.ts).
       return call <= 4
-        ? stream({ tool_calls: [toolCall('read_file', { path: 'a.ts' }, `c${call}`)] }) as any
+        ? stream({ tool_calls: [toolCall('read_file', { path: `a${call}.ts` }, `c${call}`)] }) as any
         : stream({ content: 'Après escalade' }) as any;
     });
     vi.mocked(executeToolCall).mockResolvedValue({ output: 'échec', isError: true } as any);
