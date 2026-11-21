@@ -141,6 +141,7 @@ skills personnelles.
 - [x] Carte du code : symboles extraits par tree-sitter WASM, grammaires chargées à la demande
 - [x] Registre à manifestes, première tranche : validation des profils et budget FCFA par rôle
 - [x] Indexation incrémentale de la carte du code (seuls les fichiers modifiés sont re-parsés)
+- [x] Jalon 0 sécurité : plafond de corps API, mode de permission à source unique, `tool_wait` non bloquant
 - [x] Isolation des commandes sur macOS
 - [x] Sessions durables (historique + journal) ; client MCP 2026-07-28
 

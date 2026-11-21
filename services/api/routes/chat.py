@@ -12,6 +12,7 @@ import httpx
 from config import settings
 from security import get_current_user, validate_messages, calculate_cost_fcfa, usage_tokens
 from services import billing
+from body_limit import MAX_REQUEST_BYTES
 from routes._state import (
     get_provider_config,
 )
@@ -211,8 +212,12 @@ async def proxy_chat(provider: str, request: Request, user: dict = Depends(get_c
     email = user["sub"]
     config = get_provider_config(provider)
 
+    raw = await request.body()
+    if len(raw) > MAX_REQUEST_BYTES:
+        # Filet de sécurité : le middleware refuse déjà d'après Content-Length.
+        raise HTTPException(413, "Requête trop volumineuse.")
     try:
-        body = await request.json()
+        body = json.loads(raw)
     except Exception:
         raise HTTPException(400, "Invalid JSON body")
     if not isinstance(body, dict):

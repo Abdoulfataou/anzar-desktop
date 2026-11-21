@@ -54,15 +54,10 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
     setSelectedModelState(m);
     useSettingsStore.getState().updateSettings({ model: m });
   }, []);
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>(() => {
-    try {
-      const saved = localStorage.getItem('anzar.permissionMode');
-      return saved === 'ask' || saved === 'auto' || saved === 'plan' || saved === 'full' ? saved : 'auto';
-    } catch { return 'auto'; }
-  });
+  // Source unique : le store de réglages (plus de localStorage parallèle).
+  const permissionMode = useSettingsStore((s) => s.settings.permissionMode ?? 'auto');
   const changePermission = useCallback((m: PermissionMode) => {
-    setPermissionMode(m);
-    try { localStorage.setItem('anzar.permissionMode', m); } catch { /* stockage indisponible */ }
+    useSettingsStore.getState().updateSettings({ permissionMode: m });
   }, []);
   const balance = useAccountStore((s) => s.credits.remaining);
   const [showRecharge, setShowRecharge] = useState(false);

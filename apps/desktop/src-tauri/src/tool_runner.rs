@@ -320,30 +320,45 @@ pub fn tool_spawn(
     Ok(pid)
 }
 
+/// Attend la fin d'un processus. L'attente bloquante tourne sur un thread dédié
+/// (`spawn_blocking`) : une commande longue ne gèle ni la fenêtre ni l'IPC.
 #[tauri::command]
-pub fn tool_wait(state: State<'_, ToolState>, id: String) -> Result<ToolWaitResult, String> {
-    let proc = state.procs.lock().unwrap().get(&id).cloned().ok_or("Processus inconnu.")?;
-    let (lock, cv) = &proc.status;
-    let mut guard = lock.lock().unwrap();
-    while guard.is_none() {
-        guard = cv.wait_timeout(guard, Duration::from_secs(3600)).map_err(|e| e.to_string())?.0;
-        if guard.is_none() && proc.killed.load(Ordering::SeqCst) {
-            break;
+pub async fn tool_wait(
+    state: State<'_, ToolState>,
+    id: String,
+) -> Result<ToolWaitResult, String> {
+    let proc = {
+        let procs = state.procs.lock().unwrap();
+        procs.get(&id).cloned().ok_or("Processus inconnu.")?
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let (lock, cv) = &proc.status;
+        let mut guard = lock.lock().unwrap();
+        while guard.is_none() {
+            guard = cv
+                .wait_timeout(guard, Duration::from_secs(3600))
+                .map_err(|e| e.to_string())?
+                .0;
+            if guard.is_none() && proc.killed.load(Ordering::SeqCst) {
+                break;
+            }
         }
-    }
-    let code = guard.unwrap_or(1);
-    let stdout = proc.stdout.lock().unwrap().clone();
-    let mut stderr = proc.stderr.lock().unwrap().clone();
-    // Hôtes refusés par le filtre réseau pendant cette commande : l'agent (et l'utilisateur)
-    // doivent savoir quoi autoriser, sinon l'échec est incompréhensible.
-    let blocked = crate::netproxy::blocked_hosts_since(proc.blocked_seq);
-    if !blocked.is_empty() {
-        stderr.push_str(&format!(
-            "\n[ANZAR] Hôtes bloqués par le filtre réseau : {}. Ajoute-les dans Paramètres → Réseau si c'est légitime.",
-            blocked.join(", ")
-        ));
-    }
-    Ok(ToolWaitResult { code, stdout, stderr })
+        let code = guard.unwrap_or(1);
+        let stdout = proc.stdout.lock().unwrap().clone();
+        let mut stderr = proc.stderr.lock().unwrap().clone();
+        // Hôtes refusés par le filtre réseau pendant cette commande : l'agent (et
+        // l'utilisateur) doivent savoir quoi autoriser, sinon l'échec est incompréhensible.
+        let blocked = crate::netproxy::blocked_hosts_since(proc.blocked_seq);
+        if !blocked.is_empty() {
+            stderr.push_str(&format!(
+                "\n[ANZAR] Hôtes bloqués par le filtre réseau : {}. Ajoute-les dans Paramètres → Réseau si c'est légitime.",
+                blocked.join(", ")
+            ));
+        }
+        Ok(ToolWaitResult { code, stdout, stderr })
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]

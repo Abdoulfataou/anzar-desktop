@@ -248,15 +248,9 @@ function GeneralSection() {
     (useSettingsStore.getState().settings.networkAllowedHosts || []).join('\n'));
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
   const [advanced, setAdvanced] = useState(false);
-  const [mode, setMode] = useState<PermissionMode>(() => {
-    try {
-      const v = localStorage.getItem('anzar.permissionMode');
-      return v === 'ask' || v === 'auto' || v === 'plan' || v === 'full' ? v : 'full';
-    } catch { return 'full'; }
-  });
+  const mode = useSettingsStore((s) => s.settings.permissionMode ?? 'auto');
   const changeMode = (m: PermissionMode) => {
-    setMode(m);
-    try { localStorage.setItem('anzar.permissionMode', m); } catch { /* ignore */ }
+    useSettingsStore.getState().updateSettings({ permissionMode: m });
   };
   return (
     <Card>

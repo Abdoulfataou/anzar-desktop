@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from config import settings
 from security import rate_limiter, get_client_ip, validate_config
+from body_limit import BodyLimitMiddleware
 from db import (
     init_db, create_default_admin,
     cleanup_rate_limits, cleanup_expired_otps, cleanup_revoked_tokens,
@@ -103,6 +104,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+# Plafond de taille des requêtes : avant tout parse de corps (voir body_limit.py).
+app.add_middleware(BodyLimitMiddleware)
 
 
 # ============================================================================

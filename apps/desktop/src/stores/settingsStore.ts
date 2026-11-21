@@ -11,6 +11,7 @@ import { safeStorage } from '@/lib/safeStorage';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AIModel, AIProvider } from '@/types';
+import type { PermissionMode } from '@/services/agent/policy/permissions';
 
 export interface Settings {
   // IA
@@ -27,6 +28,9 @@ export interface Settings {
    * uniquement pour lire les installations existantes.
    */
   deviceVaultKey: string;
+
+  /** Mode de permission de l'agent (ask / auto / plan / full), source unique. */
+  permissionMode?: PermissionMode;
 
   /** L'agent peut chercher sur le web et lire des pages (Search / Fetch DeepSeek) */
   webTools?: boolean;
@@ -94,6 +98,15 @@ interface SettingsStore {
   getExternalAllowlistHosts: () => string[];
 }
 
+/** Reprend l'ancien réglage (écrit en localStorage par deux composants), puis disparaît. */
+function initialPermissionMode(): PermissionMode {
+  try {
+    const saved = localStorage.getItem('anzar.permissionMode');
+    if (saved === 'ask' || saved === 'auto' || saved === 'plan' || saved === 'full') return saved;
+  } catch { /* stockage indisponible */ }
+  return 'auto';
+}
+
 const defaultSettings: Settings = {
   model: 'auto', // ANZAR choisit pour chaque demande (services/ai/autoRouter.ts)
   provider: 'deepseek',
@@ -113,6 +126,7 @@ const defaultSettings: Settings = {
     'anzar.ai',
     'www.anzar.ai',
   ],
+  permissionMode: initialPermissionMode(),
   commandExecutionMode: 'manual',
   // Le filtrage réseau est le seul contrôle qui protège aussi Windows et Linux.
   networkProxy: true,
