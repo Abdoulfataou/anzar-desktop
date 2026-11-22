@@ -66,6 +66,8 @@ Règles :
 - **Vérification** : au `task_done`, si l'agent a modifié le projet et que le réglage
   « vérifier après application » est actif, lint / build / tests sont lancés ; un échec refuse
   `task_done` (3 tentatives). Une commande qui exécute du code modifié par l'agent demande un accord.
+- **Référence persistée** : la ligne de base (2 h) est écrite dans `store/baselines/` et relue
+  au démarrage, au lieu d'être recapturée à chaque lancement (3 commandes par projet).
 - **Vérification ciblée** : `verify/targeted.ts`. Les fichiers modifiés par l'agent (suivis par
   les snapshots) restreignent le contrôle : lint et tests limités aux fichiers concernés quand
   le script du projet utilise un outil reconnu (eslint/stylelint/ruff, vitest/jest/mocha),
