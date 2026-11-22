@@ -84,9 +84,11 @@ Le fichier `src-tauri/capabilities/migrated.json` remplace l'allowlist v1 :
   l'application ; `terminal.ts` passe par `tool_spawn` / `tool_wait` / `tool_kill`
   dans Rust. La politique (programmes allowlistés, arguments interdits, cwd sous
   le projet et sous le home) est appliquée avant `Command::new`.
-- **Opener** : `opener:default` + `opener:allow-open-path`, avec un scope limité
-  à `$HOME`, `$APPDATA`, `$DOCUMENT`, `$DESKTOP`, `$DOWNLOAD` et une deny list
-  de fichiers sensibles.
+- **Opener** : `opener:default` seul (URL). Le renderer n'a **plus** de capacité
+  d'ouverture de chemin : `opener:allow-open-path` (scope `$HOME/**`) a été retiré, car un
+  script injecté pouvait lancer un `.command` ou une application par ce biais. Les chemins
+  passent par la commande Rust `reveal_path`, qui canonicalise puis vérifie les racines de
+  projet autorisées avant de révéler le fichier (ou d'ouvrir le dossier).
 - **Dialog / OS / Updater / Process / Stronghold** : permissions explicites ;
   `stronghold:allow-remove-store-record` est ajouté pour la déconnexion.
 - **Fenêtre** : les commandes utilisées par la barre de titre
