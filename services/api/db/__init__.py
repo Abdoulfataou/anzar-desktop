@@ -22,6 +22,7 @@ from db.models import (
     User,
     OtpCode,
     Credits,
+    CreditReservation,
     Transaction,
     UsageRecord,
     Admin,
@@ -51,6 +52,9 @@ from db.credits import (
     add_credits,
     deduct_credits,
     has_credits,
+    reserve_credits,
+    release_reservation,
+    purge_expired_reservations,
 )
 
 # Usage
@@ -137,7 +141,7 @@ __all__ = [
     # Base
     "Base", "get_engine", "get_sessionmaker", "get_db", "db_ping", "init_db",
     # Models
-    "User", "OtpCode", "Credits", "Transaction", "UsageRecord",
+    "User", "OtpCode", "Credits", "CreditReservation", "Transaction", "UsageRecord",
     "Admin", "PaymentIntent",
     "UserMemory", "CommunitySkill", "InstalledSkill", "RateLimit", "RevokedToken",
     # Password
@@ -147,6 +151,7 @@ __all__ = [
     "change_user_password", "deactivate_user", "update_user_profile",
     # Credits
     "get_credits", "add_credits", "deduct_credits", "has_credits",
+    "reserve_credits", "release_reservation", "purge_expired_reservations",
     # Usage
     "record_usage", "get_usage_history", "get_transactions", "get_usage_stats",
     # Rate Limits

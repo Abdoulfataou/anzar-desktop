@@ -19,6 +19,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -71,9 +72,47 @@ class Credits(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_email: Mapped[str] = mapped_column(String(255), ForeignKey("users.email", ondelete="CASCADE"), index=True)
     balance_fcfa: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    # Montant actuellement engagé par des réservations (admission atomique).
+    # Source de vérité partagée entre tous les workers : disponibilité = balance - reserved.
+    reserved_fcfa: Mapped[float] = mapped_column(
+        Float, default=0.0, server_default=text("0"), nullable=False
+    )
     total_recharged: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     total_used: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+# ============================================================================
+# CREDIT RESERVATIONS (identité et expiration de chaque réservation)
+# ============================================================================
+
+class CreditReservation(Base):
+    """Une ligne par réservation active.
+
+    La colonne agrégée `credits.reserved_fcfa` est la source de vérité de l'admission
+    (un seul UPDATE conditionnel atomique). Cette table porte l'identité et la date de
+    chaque réservation : sans elle, une colonne agrégée ne permettrait pas de purger
+    une réservation orpheline sans risquer de libérer aussi la réservation d'un autre
+    appel en cours. Les deux écritures sont faites dans la même transaction.
+    """
+
+    __tablename__ = "credit_reservations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_email: Mapped[str] = mapped_column(
+        String(255), ForeignKey("users.email", ondelete="CASCADE"), nullable=False
+    )
+    amount_fcfa: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_credit_reservations_email_created", "user_email", "created_at"),
+        # SQLite réutilise sinon le rowid supprimé : un vieux Reservation (annulation
+        # après purge TTL) pourrait libérer la réservation d'un appel plus récent.
+        # AUTOINCREMENT garantit des ids jamais réutilisés ; Postgres a déjà ses
+        # séquences monotones.
+        {"sqlite_autoincrement": True},
+    )
 
 
 # ============================================================================

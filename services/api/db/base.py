@@ -90,6 +90,28 @@ async def db_ping() -> None:
 # DATABASE INITIALIZATION
 # ============================================================================
 
+async def _migrate_sqlite_columns(conn) -> None:
+    """Ajoute les colonnes manquantes aux tables SQLite existantes.
+
+    `create_all` crée les tables absentes mais ne modifie jamais une table déjà
+    présente. Sans cette migration, une base créée avant l'ajout de
+    `credits.reserved_fcfa` lèverait « no such column » au premier UPDATE de
+    réservation, c'est-à-dire au démarrage en production. On reste volontairement
+    ciblé sur cette colonne : SQLite ne sait pas ajouter une colonne NOT NULL sans
+    valeur par défaut, et les nouvelles tables (credit_reservations) sont créées
+    par `create_all`. Le chemin Postgres dispose déjà de sa migration générique.
+    """
+    result = await conn.execute(text("PRAGMA table_info(credits)"))
+    columns = {row[1] for row in result}
+    if not columns:
+        return
+    if "reserved_fcfa" not in columns:
+        await conn.execute(text(
+            "ALTER TABLE credits ADD COLUMN reserved_fcfa REAL NOT NULL DEFAULT 0"
+        ))
+        logger.info("Migration SQLite : colonne credits.reserved_fcfa ajoutée")
+
+
 async def init_db():
     """Create all tables if they don't exist, then add any missing columns."""
     from sqlalchemy import CheckConstraint
@@ -155,7 +177,11 @@ async def init_db():
 
         logger.info("Auto-migration complete — all columns and constraints verified")
     else:
-        logger.info("SQLite mode — skipping auto-migration (create_all handles it)")
+        # SQLite : create_all crée les nouvelles tables, mais pas les nouvelles
+        # colonnes d'une table existante. Migration ciblée explicite.
+        async with engine.begin() as conn:
+            await _migrate_sqlite_columns(conn)
+        logger.info("SQLite migration complete — reservation columns verified")
 
 
 # ============================================================================
