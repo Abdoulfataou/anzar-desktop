@@ -1,5 +1,6 @@
 /** Politique des outils accessibles aux sous-agents. */
 import type { PermissionMode } from './permissions';
+import type { Capability } from '../profiles';
 
 /** Outils qui ne doivent jamais être exposés à un sous-agent :
  * spawn (récursion), commandes/processus et export vidéo (effets de bord lourds).
@@ -14,6 +15,13 @@ export const SUBAGENT_EXCLUDED_TOOLS = new Set([
 /** `task_done` termine le sous-agent : toujours autorisé, même hors profil. */
 const ALWAYS_ALLOWED = new Set(['task_done']);
 
+/** Outils retirés par capacité refusée. Une capacité inconnue ne retire rien (validation). */
+export const CAPABILITY_TOOLS: Record<Capability, readonly string[]> = {
+  'fs.write': ['write_file', 'edit_file', 'delete_file'],
+  'shell.exec': ['run_command', 'start_dev_server', 'stop_dev_server', 'install_tool', 'vendor_lib'],
+  'network': ['web_search', 'read_url', 'page_action', 'check_page', 'capture_page'],
+};
+
 export interface SubagentPolicyInput {
   allToolNames: Iterable<string>;
   mode?: PermissionMode;
@@ -23,6 +31,8 @@ export interface SubagentPolicyInput {
    * la politique du mode s'applique seule. Sinon, le profil restreint encore la liste.
    */
   profileTools?: string[];
+  /** Capacités refusées par le manifeste (`deny`). */
+  deny?: readonly string[];
 }
 
 /**
@@ -38,7 +48,11 @@ export function subagentAllowedTools(input: SubagentPolicyInput): Set<string> {
     ? new Set([...readOnlyTools, 'load_skill', ...ALWAYS_ALLOWED])
     : new Set([...allToolNames].filter((name) => !SUBAGENT_EXCLUDED_TOOLS.has(name)));
 
-  if (!profileTools?.length) return base;
+  const denied = new Set(
+    (input.deny ?? []).flatMap((c) => CAPABILITY_TOOLS[c as Capability] ?? []),
+  );
+  const afterDeny = [...base].filter((name) => !denied.has(name) || ALWAYS_ALLOWED.has(name));
+  if (!profileTools?.length) return new Set(afterDeny);
   const declared = new Set(profileTools);
-  return new Set([...base].filter((name) => declared.has(name) || ALWAYS_ALLOWED.has(name)));
+  return new Set(afterDeny.filter((name) => declared.has(name) || ALWAYS_ALLOWED.has(name)));
 }

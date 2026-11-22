@@ -91,4 +91,20 @@ describe('profils d’agents', () => {
     expect(p.model).toBe('max');
     expect(p.keywords).toEqual(['pub', 'video']);
   });
+
+  it('lit les capacités refusées et le plafond de sortie', () => {
+    const p = parseProfile('---\nname: z\ndeny: fs.write, network\noutput_max_chars: 900\n---\n', 'z');
+    expect(p.deny).toEqual(['fs.write', 'network']);
+    expect(p.outputMaxChars).toBe(900);
+    expect(getProfile('redaction').deny).toEqual(['shell.exec', 'network']);
+    expect(getProfile('redaction').outputMaxChars).toBe(800);
+  });
+
+  it('signale une capacité inconnue et un plafond hors bornes', () => {
+    const bad = { ...AGENT_PROFILES.explorer, deny: ['fs.destroy'], outputMaxChars: 50 };
+    const issues = validateProfile(bad, ['read_file']);
+    expect(issues.join(' | ')).toMatch(/capacité inconnue : fs.destroy/);
+    expect(issues.join(' | ')).toMatch(/output_max_chars hors bornes : 50/);
+  });
+
 });

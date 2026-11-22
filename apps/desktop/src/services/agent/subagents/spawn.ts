@@ -63,6 +63,7 @@ export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): 
       mode: ctx.permissionMode,
       readOnlyTools: READ_ONLY_TOOLS,
       profileTools: profile?.tools,
+      deny: profile?.deny,
     });
     // L'enveloppe dérivée du parent est plafonnée par le manifeste du rôle.
     const budget = ctx.childBudget?.(share, profile?.budgetFCFA);
@@ -100,6 +101,7 @@ export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): 
         role,
         stopReason: 'error' as const,
         summary: e?.message || String(e),
+        outputMaxChars: profile?.outputMaxChars ?? 500,
         steps: 0,
         messages: [],
         filesChanged: [] as string[],
@@ -125,7 +127,7 @@ export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): 
     .map(r =>
       `── Sous-agent ${r.index} [${r.stopReason}] — ${r.task.slice(0, 80)}\n` +
       `Fichiers: ${r.filesChanged.join(', ') || 'aucun'}\n` +
-      `Résumé: ${r.summary.slice(0, 500)}`
+      `Résumé: ${r.summary.slice(0, r.outputMaxChars)}`
     )
     .join('\n\n');
 

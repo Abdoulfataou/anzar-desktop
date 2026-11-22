@@ -5,7 +5,7 @@
  * rôle silencieusement plus pauvre (aucun outil ne correspond) ou invalide (modèle inconnu).
  * La validation est explicite et rend les problèmes lisibles, au lieu de les ignorer.
  */
-import { AGENT_PROFILES, type AgentProfile } from './index';
+import { AGENT_PROFILES, CAPABILITIES, type AgentProfile } from './index';
 
 const MODELS = new Set(['auto', 'fast', 'thinking', 'max', 'pro']);
 const REASONING = new Set(['none', 'low', 'medium', 'high']);
@@ -34,6 +34,12 @@ export function validateProfile(profile: AgentProfile, knownTools: Iterable<stri
   }
   if (!(profile.maxSteps >= 1 && profile.maxSteps <= 60)) issues.push(`max_steps hors bornes : ${profile.maxSteps}`);
   if (profile.budgetFCFA !== undefined && !(profile.budgetFCFA > 0)) issues.push('budget_fcfa doit être positif');
+  for (const capability of profile.deny) {
+    if (!CAPABILITIES.includes(capability as never)) issues.push(`capacité inconnue : ${capability}`);
+  }
+  if (profile.outputMaxChars !== undefined && !(profile.outputMaxChars >= 100 && profile.outputMaxChars <= 4000)) {
+    issues.push(`output_max_chars hors bornes : ${profile.outputMaxChars}`);
+  }
   return issues;
 }
 

@@ -10,6 +10,14 @@ import { parseFrontmatter } from '@/services/skills/format';
 import { BUILTIN_SKILLS } from '@/services/skills/pack';
 import type { AIModel, ReasoningEffort } from '@/types';
 
+/**
+ * Capacités qu'un manifeste peut refuser. Elles sont nommées par *effet* et non par outil :
+ * un rôle peut interdire l'écriture de fichiers sans connaître la liste exacte des outils.
+ */
+export type Capability = 'fs.write' | 'shell.exec' | 'network';
+
+export const CAPABILITIES: readonly Capability[] = ['fs.write', 'shell.exec', 'network'];
+
 export interface AgentProfile {
   name: string;
   description: string;
@@ -23,8 +31,12 @@ export interface AgentProfile {
   skills: string[];
   /** Mots-clés servant à deviner le rôle quand l'agent ne le précise pas. */
   keywords: string[];
-  /** Plafond de coût de ce rôle, en FCFA (plafonne l'enveloppe dérivée du parent). */
+  /** Capacités refusées au rôle (`fs.write`, `shell.exec`, `network`). */
+  deny: string[];
+  /** Plafond FCFA de ce rôle (plafonne l'enveloppe dérivée du parent). */
   budgetFCFA?: number;
+  /** Longueur maximale du résumé renvoyé au parent, en caractères. */
+  outputMaxChars?: number;
   /** Consignes (corps Markdown), {{max_steps}} remplacé. */
   prompt: string;
 }
@@ -46,7 +58,12 @@ export function parseProfile(markdown: string, fallbackName: string): AgentProfi
     ...(meta.reasoning ? { reasoningEffort: meta.reasoning as ReasoningEffort } : {}),
     skills: list(meta.skills),
     keywords: list(meta.keywords),
+    // Conservés bruts : `validateProfile` signale une capacité inconnue au lieu de l'ignorer.
+    deny: list(meta.deny),
     ...(Number(meta.budget_fcfa) > 0 ? { budgetFCFA: Math.round(Number(meta.budget_fcfa)) } : {}),
+    ...(Number(meta.output_max_chars) > 0
+      ? { outputMaxChars: Math.max(100, Math.min(4000, Math.round(Number(meta.output_max_chars)))) }
+      : {}),
     prompt: body.replace(/\{\{max_steps\}\}/g, String(maxSteps)),
   };
 }
