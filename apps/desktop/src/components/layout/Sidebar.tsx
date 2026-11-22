@@ -428,8 +428,16 @@ export default function Sidebar({ className }: { className?: string }) {
             {expanded && (
               <span className="min-w-0">
                 <span className="block text-ui-base text-text-primary truncate">{user?.name || 'Compte'}</span>
-                <span className={cn('block text-ui-sm font-mono tabular-nums', credits.remaining > 0 ? 'text-text-muted' : 'text-accent-error')}>
+                <span
+                  className={cn('block text-ui-sm font-mono tabular-nums', credits.remaining > 0 ? 'text-text-muted' : 'text-accent-error')}
+                  title={(credits.reserved ?? 0) > 0
+                    ? `Dont ${Math.round(credits.reserved ?? 0).toLocaleString('fr-FR')} FCFA réservés par des appels en cours`
+                    : undefined}
+                >
                   {Math.round(credits.remaining).toLocaleString('fr-FR')} FCFA
+                  {(credits.reserved ?? 0) > 0 && (
+                    <span className="text-text-muted/70"> · {Math.round(credits.reserved ?? 0).toLocaleString('fr-FR')} réservés</span>
+                  )}
                 </span>
               </span>
             )}

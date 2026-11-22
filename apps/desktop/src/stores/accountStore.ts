@@ -32,7 +32,12 @@ interface AccountStore {
   deductCredit: (amountFCFA: number, description: string) => void;
 
   /** Sync credits from server response (source of truth) */
-  syncCreditsFromServer: (serverCredits: { balance_fcfa: number; total_recharged: number; total_used: number }) => void;
+  syncCreditsFromServer: (serverCredits: {
+    balance_fcfa: number;
+    total_recharged: number;
+    total_used: number;
+    reserved_fcfa?: number;
+  }) => void;
 
   /** Mark onboarding as completed */
   completeOnboarding: () => void;
@@ -135,6 +140,7 @@ export const useAccountStore = create<AccountStore>()(
             totalRecharged: serverCredits.total_recharged,
             totalUsed: serverCredits.total_used,
             remaining: serverCredits.balance_fcfa,
+            reserved: Math.max(0, Number(serverCredits.reserved_fcfa) || 0),
           },
         }),
 

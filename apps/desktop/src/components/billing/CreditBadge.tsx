@@ -64,6 +64,7 @@ export default function CreditBadge() {
   const [showRecharge, setShowRecharge] = useState(false);
   const loggedIn = useAccountStore((s) => s.isLoggedIn);
   const remaining = useAccountStore((s) => s.credits.remaining);
+  const reserved = useAccountStore((s) => s.credits.reserved ?? 0);
 
   // ── Détection débit/crédit pour les animations du Blueprint ──
   const prevRef = useRef(remaining);
@@ -107,6 +108,7 @@ export default function CreditBadge() {
         title={
           state === 'normal'
             ? `Solde : ${remaining.toLocaleString('fr-FR')} FCFA`
+              + (reserved > 0 ? ` — dont ${Math.round(reserved).toLocaleString('fr-FR')} FCFA réservés par des appels en cours` : '')
             : state === 'low'
               ? `Il vous reste environ ${Math.max(1, Math.floor(remaining / AVG_GENERATION_COST_FCFA))} générations.`
               : 'Recharger vos crédits (FCFA)'

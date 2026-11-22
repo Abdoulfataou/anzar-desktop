@@ -113,6 +113,9 @@ class Settings(BaseSettings):
     # (un bonus > 0 permettrait de créer des comptes jetables pour consommer gratuitement).
     welcome_bonus_fcfa: float = 0.0
     # Requêtes IA simultanées max par utilisateur (chaque requête réserve son coût maximal).
+    # Plafond **par processus** : le compteur est local (les réservations, elles, sont en
+    # base). Avec N workers, la limite effective par utilisateur est N × cette valeur.
+    # À garder en tête en montant le nombre de workers.
     max_concurrent_ai_per_user: int = 4
     @property
     def is_production(self) -> bool:

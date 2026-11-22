@@ -599,6 +599,11 @@ export interface CreditBalance {
   totalUsed: number;
   /** Solde disponible en FCFA */
   remaining: number;
+  /**
+   * Part du solde engagée par des appels en cours (réservations serveur).
+   * Information seule : le solde affiché reste le solde réel, pas le disponible.
+   */
+  reserved?: number;
 }
 
 export interface Transaction {

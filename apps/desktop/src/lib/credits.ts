@@ -22,6 +22,7 @@ export async function refreshCredits(): Promise<number | null> {
       balance_fcfa: data.balance_fcfa,
       total_recharged: data.total_recharged ?? 0,
       total_used: data.total_used ?? 0,
+      reserved_fcfa: typeof data.reserved_fcfa === 'number' ? data.reserved_fcfa : 0,
     });
     return data.balance_fcfa;
   } catch {
