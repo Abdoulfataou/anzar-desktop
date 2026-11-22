@@ -44,6 +44,12 @@ vi.mock('@/services/filesystem/fileSystem', () => ({
   },
 }));
 
+// Le banc mesure le harnais : la carte des changements (git) est hors périmètre.
+vi.mock('@/services/workspace/gitChanges', () => ({
+  beginTurn: async () => undefined,
+  endTurn: async () => [],
+}));
+
 vi.mock('@/services/agent/tools/toolExecution', () => ({
   executeGenericTool: (call: any, args: any) => h.world.execute(call, args),
 }));

@@ -49,7 +49,26 @@ async function git(root: string, args: string[]): Promise<GitResult> {
  * Fige l'état de départ du tour. À appeler **avant** la première écriture.
  * Sans stockage local, la fonction échoue : l'appelant garde la carte par snapshots.
  */
+/** Trace l'échec dans le projet : sans ça, le repli est silencieux et invisible. */
+async function recordFailure(root: string, error: unknown): Promise<void> {
+  try {
+    await fileSystemService.writeFile(
+      `${root.replace(/[\\/]+$/, '')}/.anzar/last-error.txt`,
+      `${new Date().toISOString()} — ${error instanceof Error ? error.message : String(error)}\n`,
+    );
+  } catch { /* le diagnostic ne doit jamais masquer l'erreur d'origine */ }
+}
+
 export async function beginTurn(root: string): Promise<void> {
+  try {
+    await openTurn(root);
+  } catch (error) {
+    await recordFailure(root, error);
+    throw error;
+  }
+}
+
+async function openTurn(root: string): Promise<void> {
   const dir = shadowDir(root);
   if (!started.has(dir)) {
     // `.anzar/` doit exister avant `git init` (git ne crée pas les parents).
@@ -111,6 +130,15 @@ export function parseNumstat(output: string): Map<string, { added: number; remov
  * Les commandes sont comprises : c'est tout l'intérêt par rapport aux snapshots d'outils.
  */
 export async function endTurn(root: string): Promise<FileChange[]> {
+  try {
+    return await closeTurn(root);
+  } catch (error) {
+    await recordFailure(root, error);
+    throw error;
+  }
+}
+
+async function closeTurn(root: string): Promise<FileChange[]> {
   const status = await git(root, ['status', '--porcelain', '-z']);
   if (!status.success) throw new Error(status.stderr || 'git status impossible');
   if (!status.stdout) return [];
