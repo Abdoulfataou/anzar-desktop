@@ -186,8 +186,6 @@ export interface Message {
   plan?: { title: string; markdown: string; status: 'pending' | 'approved' | 'rejected' };
   /** Fichiers modifiés par l'agent pendant cette réponse */
   fileChanges?: import('@/services/agent/tools/fileChanges').FileChange[];
-  /** Les modifications de cette réponse ont été annulées */
-  changesUndone?: boolean;
   /** Coût réel de la réponse en FCFA (différence de solde serveur) */
   costFCFA?: number;
   isStreaming?: boolean;

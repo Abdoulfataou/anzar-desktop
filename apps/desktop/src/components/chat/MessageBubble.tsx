@@ -223,7 +223,7 @@ function MessageBubbleImpl({ message, onCopy, onRegenerate, selectedProjectId = 
 
         {/* Fichiers modifiés par l'agent + annulation */}
         {!message.isStreaming && message.fileChanges && message.fileChanges.length > 0 && (
-          <FileChangesCard messageId={message.id} changes={message.fileChanges} undone={message.changesUndone} />
+          <FileChangesCard changes={message.fileChanges} />
         )}
 
         {/* Actions bar */}

@@ -15,7 +15,6 @@ import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
-import { initUndoIndex } from '@/services/agent/tools/fileChanges';
 
 /** L'historique est lu sur le disque (asynchrone) : on attend qu'il soit chargé avant d'afficher l'app. */
 function storesHydrated(): Promise<void> {
@@ -27,7 +26,6 @@ function storesHydrated(): Promise<void> {
     // Indispensable avant l'auth : la clé de coffre historique et l'URL du
     // backend sont lues dans les réglages persistés.
     wait(useSettingsStore),
-    initUndoIndex(),
   ]).then(() => undefined);
   // Garde-fou : on n'attend jamais plus de 6 s
   return Promise.race([all, new Promise<void>((resolve) => setTimeout(resolve, 6000))]);

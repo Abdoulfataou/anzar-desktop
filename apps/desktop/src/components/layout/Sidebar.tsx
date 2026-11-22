@@ -152,7 +152,7 @@ export default function Sidebar({ className }: { className?: string }) {
     let added = 0;
     let removed = 0;
     for (const m of c.messages) {
-      if (m.changesUndone || !m.fileChanges) continue;
+      if (!m.fileChanges) continue;
       for (const f of m.fileChanges) { added += f.added; removed += f.removed; }
     }
 

@@ -279,7 +279,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
     const all = activeConversation?.messages || [];
     for (let i = all.length - 1; i >= 0; i--) {
       const m = all[i];
-      if (m.role === 'assistant' && m.fileChanges?.length && !m.changesUndone) return m.fileChanges.map((f) => f.path);
+      if (m.role === 'assistant' && m.fileChanges?.length) return m.fileChanges.map((f) => f.path);
     }
     return [];
   }, [activeConversation?.messages]);
