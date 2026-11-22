@@ -183,8 +183,11 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         onTrustConversation: () => trustConversation(convId),
         beforeFirstWrite: async () => {
           await verifier.ensureBaseline();
-          // Point de départ des changements du tour (shadow git). Ne bloque jamais l'écriture :
-          // en cas d'échec, la carte retombe sur les snapshots d'outils.
+        },
+        beforeFirstChange: async () => {
+          // Référence git AVANT toute commande ou écriture (npm install peut modifier
+          // package.json sans passer par un outil). En cas d'échec, la carte retombe sur
+          // les snapshots.
           if (agentRoot) await beginTurn(agentRoot).catch(() => undefined);
         },
         onToolCost: (c) => {

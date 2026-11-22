@@ -32,6 +32,8 @@ const MAX_TOOL_OUTPUT_DISPLAY = 600;
 
 /** Outils qui écrivent sur le disque (déclenchent la vérification au task_done). */
 const WRITE_TOOLS = ['write_file', 'edit_file', 'delete_file'];
+/** Outils susceptibles de modifier le projet : leurs commandes comptent dans la carte. */
+const MUTATING_TOOLS = new Set([...WRITE_TOOLS, 'run_command', 'start_dev_server']);
 
 /** Outils dont l'exécution passe par une commande (risque calculé par commandGuard). */
 const COMMAND_LIKE = ['run_command', 'spawn_subagents', 'start_dev_server'];
@@ -67,6 +69,8 @@ export interface TurnToolState {
   filesWritten: number;
   /** Un plan a été proposé (mode plan). */
   planProposed: boolean;
+  /** État de départ du tour déjà figé par git (avant la première commande ou écriture). */
+  gitBaseline?: boolean;
 }
 
 export interface ToolRunContext {
@@ -111,6 +115,8 @@ export interface ToolRunContext {
    * Un échec ici ne doit jamais empêcher l'écriture.
    */
   beforeFirstWrite?: () => Promise<void>;
+  /** Avant la première commande ou écriture du tour : point de départ des changements. */
+  beforeFirstChange?: () => Promise<void>;
 }
 
 /**
@@ -175,7 +181,14 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   // Installation acceptée : Rust ne la lance qu'avec cet accord (usage unique)
   if (allowed && risk && call.function.name === 'run_command') terminalService.grantInstall(riskCommand);
 
-  // Original mémorisé avant toute modification (carte « fichiers modifiés » + annulation)
+  // Point de départ des changements du tour : avant la première commande ou écriture, car
+  // `npm install` peut modifier package.json avant que l'agent n'écrive quoi que ce soit.
+  if (allowed && ctx.agentRoot && !ctx.turn.gitBaseline && MUTATING_TOOLS.has(call.function.name)) {
+    ctx.turn.gitBaseline = true;
+    await ctx.beforeFirstChange?.().catch(() => undefined);
+  }
+
+  // Original mémorisé avant toute modification (carte « fichiers modifiés »)
   if (allowed && ctx.agentRoot && WRITE_TOOLS.includes(call.function.name)) {
     // Référence de vérification : ce qui était déjà cassé avant que l'agent n'écrive.
     if (ctx.turn.filesWritten === 0) await ctx.beforeFirstWrite?.().catch(() => {});
