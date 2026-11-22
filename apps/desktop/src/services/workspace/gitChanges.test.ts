@@ -48,10 +48,11 @@ const gitState = vi.hoisted(() => ({
   calls: [] as string[][],
 }));
 
-vi.mock('@/lib/fileStore', () => ({
-  storeRoot: async () => '/store',
-  ensureDir: async () => undefined,
-  writeText: async () => undefined,
+vi.mock('@/services/filesystem/fileSystem', () => ({
+  fileSystemService: {
+    writeFile: async () => undefined,
+    readFile: async () => '[core]\n\trepositoryformatversion = 0\n',
+  },
 }));
 
 vi.mock('@/services/runtime/terminal', () => ({
