@@ -108,6 +108,10 @@ async def reserve(email: str, amount: float) -> Reservation:
     if amount <= 0:
         raise HTTPException(402, NO_CREDIT)
 
+    # Une réservation orpheline (process tué, redéploiement) ne doit pas bloquer le
+    # solde : on purge les holds du compte plus vieux que le TTL avant de décider.
+    await db.purge_expired_reservations(RESERVATION_TTL, email=email)
+
     async with _lock:
         _check_concurrency(_active_holds(email))
         reservation_id = await db.reserve_credits(email, amount)
@@ -235,6 +239,10 @@ async def reserve_for_chat(email: str, provider: str, model: str, body: Dict[str
         requested = MAX_OUTPUT_TOKENS
     requested = max(MIN_OUTPUT_TOKENS, min(requested, MAX_OUTPUT_TOKENS))
 
+    # Purge TTL avant de calculer le disponible : sans cela, une réservation orpheline
+    # d'un ancien process réduirait artificiellement le plafond de sortie pendant 15 min.
+    await db.purge_expired_reservations(RESERVATION_TTL, email=email)
+
     async with _lock:
         _check_concurrency(_active_holds(email))
         available = await _available(email)
@@ -266,15 +274,21 @@ async def _charge(res: Reservation, cost_fcfa: float, cost_usd: float, descripti
         await db.record_usage(res.email, provider, model, input_tokens, output_tokens,
                               cost_usd, cost_fcfa, duration_ms, task_type=task_type,
                               cached_input_tokens=cached_input_tokens)
-        if cost_fcfa > 0:
-            await db.deduct_credits(res.email, cost_fcfa, description, provider, model,
-                                    input_tokens, output_tokens, allow_negative=True)
+        # Débit réel et libération de la réservation dans la même transaction : même
+        # si le coût dépasse le solde (dette), ou si la purge TTL est déjà passée, la
+        # ligne credit_reservations ne reste pas engagée. deduct_credits gère aussi
+        # le coût nul (libération seule) et reste idempotent.
+        await db.deduct_credits(res.email, cost_fcfa, description, provider, model,
+                                input_tokens, output_tokens, allow_negative=True,
+                                reservation_id=res.reservation_id)
+        res.db_released = True
     except Exception as e:
-        logger.error("BILLING_FAILED user=%s cost_fcfa=%s task=%s error=%s",
-                     res.email, cost_fcfa, task_type, e)
+        logger.error("BILLING_FAILED user=%s cost_fcfa=%s task=%s reservation=%s error=%s",
+                     res.email, cost_fcfa, task_type, res.reservation_id, e)
     finally:
-        # Si le débit a réussi, libère la ligne ; sinon la tâche planifiée la libère et
-        # la purge TTL sert de dernier recours.
+        # Normalement db_released=True : release_now ne fait que rendre le slot local.
+        # En cas d'échec du débit, il planifie la libération DB ; la purge TTL est le
+        # dernier recours.
         release_now(res)
 
 
