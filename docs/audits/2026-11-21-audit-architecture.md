@@ -555,7 +555,7 @@ Le point 3 est le plus rentable : il transforme une skill d'un texte décoratif 
 | Action | Fichier | Critère d'acceptation |
 |---|---|---|
 | Plafond de corps HTTP avant `request.json()` | `main.py:112`, `routes/chat.py:215` | requête > 2 Mo → 413 ; test pytest |
-| Réservations persistées en base | `services/billing.py:39` | deux workers ne peuvent plus double-réserver ; test de concurrence |
+| Réservations persistées en base (**traité §13**) | `services/billing.py:39` | deux workers ne peuvent plus double-réserver ; test de concurrence |
 | `permissionMode` dans le settings store | `SettingsPage.tsx:248`, `WorkspaceView.tsx:57` | une seule source, un seul défaut (`auto`) |
 | `#[tauri::command(async)]` sur `tool_wait`/`tool_kill` | `tool_runner.rs:253,270` | UI fluide pendant une commande |
 | Job CI Rust (`cargo test`, `clippy -D warnings`) | `ci.yml` | 19 tests Rust visibles sur chaque PR |
@@ -617,7 +617,7 @@ Ces cinq chiffres valent mieux que n'importe quel argumentaire de roadmap.
 | Fichier | Ligne | Correction |
 |---|---|---|
 | `services/api/routes/chat.py` | 215 | Plafonner le corps (middleware + lecture bornée) avant `request.json()` |
-| `services/api/services/billing.py` | 39 | Remplacer `_holds` en RAM par `credits.reserved_fcfa` transactionnel |
+| `services/api/services/billing.py` | 39 | **Traité (§13)** : `_holds` en RAM remplacé par `credits.reserved_fcfa` transactionnel + `credit_reservations` pour le TTL |
 | `services/api/services/billing.py` | 176-187 | Ne pas avaler l'échec de débit : `task_type="billing_failed"` + retry |
 | `services/api/db/models.py` | 72-89 | `Numeric(12,2)` (ou entiers FCFA) + `UNIQUE(user_email)` sur `credits` |
 | `deploy/docker-compose.yml` | 45 | Transmettre `ADMIN_MFA_KEY`, `ADMIN_REQUIRE_MFA`, `ADMIN_ALLOWED_IPS` |
@@ -639,6 +639,7 @@ Ces cinq chiffres valent mieux que n'importe quel argumentaire de roadmap.
 
 | Constat de l'audit | État | Preuve |
 |---|---|---|
+| Réservations de facturation en RAM (§10, jalon 0) | **Traité** : `credits.reserved_fcfa` est la source de vérité de l'admission — un seul `UPDATE` conditionnel (`balance_fcfa - reserved_fcfa >= montant`), sans `SELECT` préalable, donc deux workers ne peuvent plus engager deux fois le même solde. `credit_reservations` porte l'identité et l'âge de chaque hold : purge TTL à 15 min à l'admission, libération idempotente (`DELETE ... RETURNING`) et ids non réutilisables. `_holds` ne garde plus que le compteur de concurrence **local au processus** ; `release_now` reste synchrone (routes inchangées) et planifie la libération DB, tandis que le règlement libère la réservation dans la même transaction que le débit réel (dette toujours autorisée). Migration SQLite ciblée (`ALTER TABLE credits ADD COLUMN reserved_fcfa REAL NOT NULL DEFAULT 0`) en plus du chemin Postgres. 8 tests dédiés | `services/api/services/billing.py`, `services/api/db/credits.py`, `services/api/db/models.py`, `services/api/db/base.py`, `services/api/tests/test_billing_reservations.py`, `services/api/tests/test_sqlite_migration.py` |
 | Adaptateur monolithique (§2.2) | **Traité — tranche 1** : `agentRunner.ts` 1 215 → 813 lignes. Le tour est réparti dans `sessionSetup` (prompt + historique), `toolList` (outils exposés), `toolHost` (exécution d'un appel), `turnFallbacks` (export, synthèse), `turnAccounting` (coût), `turnTypes`. 34 tests dédiés | `apps/desktop/src/services/agent/runtime/` |
 | Aucun budget dans le moteur (§2.5, P1) | **Traité** : `engine/budget.ts` (`BudgetLedger`) sur étapes / tokens / FCFA / durée, vérifié **avant chaque étape**, arrêt `budget_exhausted` sans synthèse payante. Interactif : 1 200 FCFA / 45 min ; fond : 200 FCFA / 15 min, surchargeable par automatisation et par ticket. Compteur FCFA sous la zone de saisie | `engine/budget.ts`, `runtime/agentRunner.ts`, `components/chat/BudgetBadge.tsx` |
 | Automatisations non plafonnées (§2.5) | **Traité** : champs `budgetFCFA` / `maxMinutes` dans le formulaire, défauts 200 FCFA / 15 min, budget transmis au runner | `stores/automationStore.ts`, `background/automationQueue.ts`, `pages/AutomationsPage.tsx` |
@@ -668,6 +669,10 @@ Ces cinq chiffres valent mieux que n'importe quel argumentaire de roadmap.
 Vérifications au moment de ce suivi : `tsc --noEmit`, `npm run lint` (sécurité + a11y), `vitest run`
 (327 tests, 53 fichiers dont le banc, 25 tests Rust) et `cargo clippy -D warnings` passent — sans modification de test après la tranche 2,
 ce qui était l'objectif : un déplacement de code, pas un changement de comportement.
+Côté API, `cd services/api && python3 -m pytest tests/ -q` passe **87 tests** (79 existants + 8 nouveaux
+sur les réservations et la migration SQLite). `test_credits.py` reste inchangé ; `test_stream_billing.py`
+passe aussi (seule la doublure de solde de son test de conversion de modèle a été remplacée, l'admission
+ne lisant plus `_balance`).
 
 ---
 
