@@ -48,6 +48,7 @@ import { runToolCall, toolEventFor, type ToolRunContext, type TurnToolState } fr
 import { runExportRescue, runForcedFinalAnswer, type TurnSink } from './turnFallbacks';
 import { failTurn, finishTurn } from './turnFinish';
 import { startTurn } from './turnStart';
+import { beginTurn } from '@/services/workspace/gitChanges';
 import { createTurnVerifier } from './turnVerify';
 import { estimateFcfa, newServerCost, type ServerCost } from './turnAccounting';
 import type {
@@ -180,7 +181,12 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         assistantId,
         onFileChanged,
         onTrustConversation: () => trustConversation(convId),
-        beforeFirstWrite: async () => { await verifier.ensureBaseline(); },
+        beforeFirstWrite: async () => {
+          await verifier.ensureBaseline();
+          // Point de départ des changements du tour (shadow git). Ne bloque jamais l'écriture :
+          // en cas d'échec, la carte retombe sur les snapshots d'outils.
+          if (agentRoot) await beginTurn(agentRoot).catch(() => undefined);
+        },
         onToolCost: (c) => {
           cost.sum += c;
           budget.charge({ fcfa: c });

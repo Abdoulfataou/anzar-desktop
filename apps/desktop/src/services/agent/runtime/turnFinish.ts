@@ -8,10 +8,26 @@ import type { AIModel, APIMessage, Message, TimelineItem, ToolEvent } from '@/ty
 import { closeDanglingToolCalls } from '@/services/agent/engine/history';
 import type { AgentStopReason } from '@/services/agent/engine/agentSession';
 import { snapshotTimeline } from '@/services/agent/engine/chatSession';
-import { collectChanges, type Snapshots } from '@/services/agent/tools/fileChanges';
+import { collectChanges, type FileChange, type Snapshots } from '@/services/agent/tools/fileChanges';
+import { endTurn } from '@/services/workspace/gitChanges';
 import type { Route } from '@/services/ai/autoRouter';
 import type { ServerCost, UsageRecord } from './turnAccounting';
 import { finalizeTurnCost, needsSettleDelay, settleDelay } from './turnAccounting';
+
+/**
+ * Changements du tour : git d'abord (il voit aussi ce que les commandes ont modifié),
+ * snapshots d'outils en repli (git indisponible, stockage absent, projet illisible).
+ */
+async function turnChanges(
+  assistantId: string, agentRoot: string | null, snapshots: Snapshots,
+): Promise<FileChange[] | undefined> {
+  if (!agentRoot) return undefined;
+  try {
+    return await endTurn(agentRoot);
+  } catch {
+    return collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined);
+  }
+}
 import { refreshCredits } from '@/lib/credits';
 import type { AgentChatResult } from './turnTypes';
 import type { SessionEvent } from './sessionStore';
@@ -78,7 +94,7 @@ export async function finishTurn(input: FinishTurnInput): Promise<AgentChatResul
   }
 
   // La réponse est terminée : on l'affiche tout de suite, sans attendre la comptabilité.
-  const changes = agentRoot ? await collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined) : undefined;
+  const changes = await turnChanges(assistantId, agentRoot, snapshots);
   updateMessage(assistantId, {
     content: finalContent,
     timeline: snapshotTimeline(timeline),
@@ -165,7 +181,7 @@ export async function failTurn(input: FailTurnInput): Promise<AgentChatResult> {
   const errorContent = aborted
     ? (content ? `${content}\n\n_(interrompu)_` : '_(génération interrompue)_')
     : `${content ? content + '\n\n' : ''}**Erreur** — ${message}. Le travail déjà fait est conservé : clique sur « Reprendre » quand la connexion est revenue.`;
-  const errorChanges = agentRoot ? await collectChanges(assistantId, agentRoot, snapshots).catch(() => undefined) : undefined;
+  const errorChanges = await turnChanges(assistantId, agentRoot, snapshots);
   updateMessage(assistantId, {
     notice: undefined,
     resumable: !aborted,

@@ -143,6 +143,7 @@ skills personnelles.
 - [x] Indexation incrémentale de la carte du code (seuls les fichiers modifiés sont re-parsés)
 - [x] Jalon 0 sécurité : plafond de corps API, mode de permission à source unique, `tool_wait` non bloquant
 - [x] Annulation maison supprimée : la restauration d'un projet est le rôle de git
+- [x] Carte des changements calculée par git (shadow git pour les projets non versionnés)
 - [x] Isolation des commandes sur macOS
 - [x] Sessions durables (historique + journal) ; client MCP 2026-07-28
 
