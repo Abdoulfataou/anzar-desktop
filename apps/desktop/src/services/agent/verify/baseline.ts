@@ -154,7 +154,8 @@ export function summarizeVerifyDiff(diff: VerifyDiff, maxChars = 4_000): string 
 // ============================================================================
 
 /** Au-delà, une référence trop vieille ne veut plus dire grand-chose. */
-const CACHE_TTL_MS = 2 * 60 * 60_000;
+export const BASELINE_TTL_MS = 2 * 60 * 60_000;
+const CACHE_TTL_MS = BASELINE_TTL_MS;
 const cache = new Map<string, VerifyBaseline>();
 
 /** Référence déjà capturée pour ce projet dans la session, si elle est encore fraîche. */
@@ -170,6 +171,29 @@ export function getCachedBaseline(root: string): VerifyBaseline | null {
 
 export function setCachedBaseline(baseline: VerifyBaseline): void {
   cache.set(baseline.root, baseline);
+}
+
+/**
+ * Relit une référence persistée (survit au redémarrage de l'app, contrairement au cache
+ * mémoire). Renvoie null si le JSON est illisible, s'il concerne un autre projet ou s'il a
+ * dépassé le TTL : dans ces cas, l'appelant recapture.
+ */
+export function parseStoredBaseline(raw: string, root: string, now = Date.now()): VerifyBaseline | null {
+  try {
+    const data = JSON.parse(raw) as Partial<VerifyBaseline>;
+    if (!data || data.root !== root) return null;
+    if (typeof data.at !== 'number' || now - data.at > BASELINE_TTL_MS || data.at > now + 60_000) return null;
+    if (!Array.isArray(data.commands)) return null;
+    const commands = data.commands.filter(
+      (c): c is BaselineCommand =>
+        !!c && typeof c.command === 'string' && typeof c.label === 'string'
+        && typeof c.passed === 'boolean' && Array.isArray(c.failures),
+    );
+    if (!commands.length) return null;
+    return { at: data.at, root, commands };
+  } catch {
+    return null;
+  }
 }
 
 /** Réservé aux tests : vide le cache pour isoler les scénarios. */

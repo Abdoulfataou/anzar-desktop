@@ -15,14 +15,32 @@ import type { SessionEvent } from './sessionStore';
 import { commandRisk } from '@/services/agent/policy/commandGuard';
 import { runVerification } from '@/services/agent/verify/agentVerifier';
 import {
-  diffAgainstBaseline, getCachedBaseline, setCachedBaseline, summarizeVerifyDiff, toBaseline,
+  diffAgainstBaseline, getCachedBaseline, parseStoredBaseline, setCachedBaseline,
+  summarizeVerifyDiff, toBaseline,
   type VerifyBaseline,
 } from '@/services/agent/verify/baseline';
+import { readText, writeText } from '@/lib/fileStore';
 
 /** Taille maximale d'une sortie d'outil conservée pour l'affichage. */
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
 /** La référence ne doit pas retarder indéfiniment la première écriture. */
 const BASELINE_TIMEOUT_MS = 120_000;
+
+/** Empreinte du projet : une référence par racine, dans les données de l'app. */
+function baselineKey(root: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < root.length; i++) h = Math.imul(h ^ root.charCodeAt(i), 16777619);
+  return `baselines/${(h >>> 0).toString(36)}.json`;
+}
+
+/**
+ * Relit la référence persistée : sans cela, chaque redémarrage relançait lint/build/tests
+ * pour rien (3 commandes par projet), alors que la référence vaut 2 h.
+ */
+async function loadStoredBaseline(root: string): Promise<VerifyBaseline | null> {
+  const raw = await readText(baselineKey(root));
+  return raw ? parseStoredBaseline(raw, root) : null;
+}
 
 export interface TurnVerifyHost {
   /** Vérification utile pour ce tour (projet ouvert + réglage « vérifier après application »). */
@@ -107,6 +125,11 @@ export function createTurnVerifier(host: TurnVerifyHost): TurnVerifier {
     if (!enabled || !host.agentRoot) return null;
     const cached = getCachedBaseline(host.agentRoot);
     if (cached) return cached;
+    const stored = await loadStoredBaseline(host.agentRoot);
+    if (stored) {
+      setCachedBaseline(stored);
+      return stored;
+    }
     baselinePromise ??= (async () => {
       const abort = new AbortController();
       const timer = setTimeout(() => abort.abort(), BASELINE_TIMEOUT_MS);
@@ -116,6 +139,7 @@ export function createTurnVerifier(host: TurnVerifyHost): TurnVerifier {
         if (abort.signal.aborted) return null;
         const snapshot = toBaseline(report, host.agentRoot as string);
         setCachedBaseline(snapshot);
+        void writeText(baselineKey(host.agentRoot as string), JSON.stringify(snapshot)).catch(() => undefined);
         host.recordSessionEvent(host.convId, { type: 'verify', passed: report.passed });
         return snapshot;
       } finally {

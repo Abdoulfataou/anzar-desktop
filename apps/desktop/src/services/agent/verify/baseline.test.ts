@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { VerifyReport } from './agentVerifier';
 import {
+  BASELINE_TTL_MS, parseStoredBaseline,
   diffAgainstBaseline, getCachedBaseline, NO_MESSAGE_FAILURE, normalizeFailureLines,
   resetBaselineCache, setCachedBaseline, summarizeVerifyDiff, toBaseline,
 } from './baseline';
@@ -177,4 +178,28 @@ describe('cache de référence', () => {
     spy.mockRestore();
     resetBaselineCache();
   });
+
+describe('parseStoredBaseline', () => {
+  const now = 1_700_000_000_000;
+  const stored = (extra: Record<string, unknown> = {}) => JSON.stringify({
+    at: now, root: '/p', commands: [{ command: 'npm test', label: 'test', passed: false, failures: ['x'] }], ...extra,
+  });
+
+  it('relit une référence persistée valide', () => {
+    const b = parseStoredBaseline(stored(), '/p', now);
+    expect(b?.commands).toHaveLength(1);
+    expect(b?.commands[0].failures).toEqual(['x']);
+  });
+
+  it('refuse un autre projet, une référence périmée ou un JSON illisible', () => {
+    expect(parseStoredBaseline(stored(), '/autre', now)).toBeNull();
+    expect(parseStoredBaseline(stored({ at: now - BASELINE_TTL_MS - 1 }), '/p', now)).toBeNull();
+    expect(parseStoredBaseline('{', '/p', now)).toBeNull();
+    expect(parseStoredBaseline(stored({ commands: [] }), '/p', now)).toBeNull();
+  });
+
+  it('refuse une date dans le futur (horloge modifiée)', () => {
+    expect(parseStoredBaseline(stored({ at: now + 5 * 60_000 }), '/p', now)).toBeNull();
+  });
+});
 });
