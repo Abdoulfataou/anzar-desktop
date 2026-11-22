@@ -45,3 +45,8 @@ Après succès :
 
 `apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg`
 
+## Notarisation (distribution hors App Store)
+
+La signature et la notarisation macOS demandent un compte Apple Developer et six secrets
+GitHub. Tout est décrit dans [NOTARIZATION.md](NOTARIZATION.md) ; la configuration est déjà
+dans le dépôt (entitlements, `hardenedRuntime`, contrôle bloquant dans la CI).

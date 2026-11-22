@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Entitlements du hardened runtime macOS (distribution hors App Store).
+
+  Le JIT est nécessaire à WebKit : sans `allow-jit`, la webview ne démarre pas ou
+  plante au premier script. On n'ajoute rien d'autre : ni sandbox applicative (l'app
+  n'est pas sandboxée, elle a sa propre isolation des commandes), ni réseau, ni
+  validation de bibliothèque — chaque entitlement élargit la surface.
+
+  Ce fichier est utilisé par Tauri au moment de la signature ; la notarisation est
+  faite ensuite par tauri-action (voir docs/desktop/NOTARIZATION.md).
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+</dict>
+</plist>

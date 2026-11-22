@@ -26,11 +26,13 @@
     },
     "longDescription": "ANZAR - Assistant IA de Vibecoding pour l'Afrique",
     "macOS": {
-      "entitlements": null,
+      "entitlements": "Entitlements.plist",
       "exceptionDomain": "",
       "frameworks": [],
       "providerShortName": null,
-      "signingIdentity": null
+      "signingIdentity": null,
+      "hardenedRuntime": true,
+      "minimumSystemVersion": "10.15"
     },
     "resources": [],
     "shortDescription": "Assistant IA de Vibecoding",

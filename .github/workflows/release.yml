@@ -52,6 +52,15 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_KEY_PASSWORD }}
 
+          # Signature + notarisation macOS (Developer ID). Sans ces secrets, le binaire
+          # macOS reste non notarié : Gatekeeper bloque l'app chez l'utilisateur.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
           # Sentry sourcemaps upload (optional)
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
@@ -63,4 +72,19 @@ jobs:
           releaseName: "ANZAR v__VERSION__"
           releaseDraft: true
           prerelease: false
+
+      # Refuse de publier un binaire macOS non signé/non notarié : c'est exactement
+      # l'erreur qui rend l'app inouvrable chez les utilisateurs.
+      - name: Vérifier signature et notarisation (macOS)
+        if: matrix.platform == 'macos-latest'
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -n 1)
+          test -n "$APP" || { echo "Aucun .app produit"; exit 1; }
+          echo "Application : $APP"
+          codesign -dv --verbose=4 "$APP" 2>&1 | tee /tmp/codesign.txt
+          grep -q "Developer ID Application" /tmp/codesign.txt
+          xcrun stapler validate "$APP"
+          spctl --assess --verbose=2 --type execute "$APP"
 
