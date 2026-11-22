@@ -78,28 +78,51 @@ def test_max_tokens_capped_to_balance(client, user_and_token, admin_headers, ups
     assert r.json()["anzar"]["cost_fcfa"] > 0
 
 
-def test_parallel_requests_cannot_spend_same_balance(user_and_token):
-    """Deux réservations simultanées ne peuvent pas couvrir plus que le solde."""
+def test_parallel_requests_cannot_spend_same_balance(client, user_and_token, admin_headers):
+    """Deux admissions simultanées ne peuvent pas couvrir plus que le solde.
+
+    L'ancienne version injectait le solde via `billing._balance` : c'était justement
+    le point d'injection qui disparaît avec la source de vérité en base. On crédite
+    donc un vrai compte, puis on passe par la couche publique.
+    """
     import asyncio
     from fastapi import HTTPException
     from services import billing
+    from db import get_credits
+
+    email, _, _ = user_and_token
+    _grant(client, admin_headers, email, 100)
 
     async def run():
-        async def bal(email): return 10.0
-        orig = billing._balance
-        billing._balance = bal
-        try:
-            first = await billing.reserve("p@x.y", 8.0)
-            with pytest.raises(HTTPException) as e:
-                await billing.reserve("p@x.y", 8.0)
-            assert e.value.status_code == 402
-            billing.release_now(first)
-            second = await billing.reserve("p@x.y", 8.0)  # libéré → de nouveau possible
-            billing.release_now(second)
-        finally:
-            billing._balance = orig
+        results = await asyncio.gather(
+            billing.reserve(email, 80.0),
+            billing.reserve(email, 80.0),
+            return_exceptions=True,
+        )
+        ok = [r for r in results if isinstance(r, billing.Reservation)]
+        ko = [r for r in results if isinstance(r, HTTPException)]
+        assert len(ok) == 1, results
+        assert len(ko) == 1 and ko[0].status_code == 402, results
 
-    asyncio.run(run())
+        creds = await get_credits(email)
+        assert creds["reserved_fcfa"] == 80.0
+        assert creds["balance_fcfa"] == 100.0
+
+        # Simule un redémarrage : le compteur local est vidé, la base reste la vérité.
+        billing._holds.clear()
+        with pytest.raises(HTTPException) as e:
+            await billing.reserve(email, 80.0)
+        assert e.value.status_code == 402
+
+        await billing.release(ok[0])
+        creds = await get_credits(email)
+        assert creds["reserved_fcfa"] == 0.0
+        assert creds["balance_fcfa"] == 100.0
+
+        second = await billing.reserve(email, 80.0)  # libéré → de nouveau possible
+        await billing.release(second)
+
+    client.portal.call(run)
 
 
 def test_provider_error_is_not_billed(client, user_and_token, admin_headers, monkeypatch):

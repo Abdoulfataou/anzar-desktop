@@ -64,9 +64,13 @@ def test_legacy_deepseek_models_are_converted(monkeypatch):
         from fastapi.responses import JSONResponse
         return JSONResponse({"ok": True})
 
-    async def balance(email): return 1000.0
+    async def fake_reserve(email, provider, model, body):
+        # Ce test porte sur la normalisation du modèle, pas sur l'admission : on isole
+        # la réservation de la base (l'ancien point d'injection _balance n'existe plus).
+        return chat.billing.Reservation(email, 0.0)
+
     monkeypatch.setattr(chat, "_proxy_request_with_billing", fake_proxy)
-    monkeypatch.setattr(chat.billing, "_balance", balance)
+    monkeypatch.setattr(chat.billing, "reserve_for_chat", fake_reserve)
     monkeypatch.setattr(chat, "get_provider_config", lambda p: {"api_key": "test", "base_url": "http://x"})
     app.dependency_overrides[get_current_user] = lambda: {"sub": "a@b.c"}
     try:
