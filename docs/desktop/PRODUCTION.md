@@ -62,5 +62,5 @@ cd src-tauri && cargo check
 cd .. && npx tauri build --debug --no-bundle
 ```
 
-Puis test manuel : login + redémarrage (Stronghold), ouverture de dossier,
+Puis test manuel : login + redémarrage (session restaurée depuis le trousseau), ouverture de dossier,
 terminal, connecteurs MCP, installation de la mise à jour sur macOS et Windows.

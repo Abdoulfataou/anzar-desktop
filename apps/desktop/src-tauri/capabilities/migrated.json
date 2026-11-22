@@ -73,7 +73,6 @@
     "dialog:allow-message",
     "dialog:allow-ask",
     "dialog:allow-confirm",
-    "stronghold:allow-remove-store-record",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
     "dialog:default",
@@ -81,7 +80,6 @@
     "updater:default",
     "process:default",
     "opener:default",
-    "stronghold:default",
     "core:window:allow-is-maximized",
     "core:window:allow-toggle-maximize"
   ]

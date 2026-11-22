@@ -12,14 +12,18 @@ migration Tauri 2 effectués. Périmètre : `apps/desktop/`.
 - **Aucune clé IA dans le client.** Toutes les requêtes passent par le proxy
   FastAPI, authentifié par JWT. Le bundle neutralise `VITE_DEEPSEEK_API_KEY`
   (`vite.config.ts`).
-- **Le JWT n'est jamais écrit dans `localStorage`.** Il est stocké dans le coffre
-  chiffré Stronghold (`anzar.vault.hold`). En cas d'indisponibilité du coffre,
-  il reste **en mémoire** pour la session en cours, et n'est pas persisté.
-- **La clé du coffre est uniquement dans le trousseau du système** (Keychain
-  macOS / Credential Manager Windows), plus dans `localStorage`. Aucun repli
-  fichier n'est écrit : si le trousseau est indisponible, la clé reste en mémoire
-  et la session n'est pas persistée (reconnexion au redémarrage). L'ancienne clé
-  `settings.deviceVaultKey` n'est plus utilisée.
+- **Le JWT n'est jamais écrit dans `localStorage`.** Il est stocké directement dans le
+  **trousseau du système** (Keychain macOS / Credential Manager Windows / Secret Service
+  Linux) par les commandes Rust `secret_get` / `secret_set` / `secret_delete`. La webview
+  ne reçoit que le jeton dont elle a besoin : elle n'a **aucune** clé de coffre à demander.
+  Si le trousseau est indisponible, le jeton reste **en mémoire** pour la session en cours
+  et n'est pas persisté (reconnexion au redémarrage) ; on ne retombe jamais sur
+  `localStorage`. L'ancienne clé `settings.deviceVaultKey` n'est plus utilisée.
+- **Stronghold supprimé.** Le montage précédent (snapshot `anzar.vault.hold` chiffré +
+  mot de passe remis au renderer par `vault_key_get`) ajoutait un secret exposé sans
+  protéger davantage : le jeton finissait de toute façon en JS pour appeler l'API. Les
+  snapshots existants ne sont pas migrés : une **reconnexion est nécessaire** après mise à
+  jour. Le fichier `anzar.vault.hold` restant est inerte (plus aucun lecteur).
 - **Nettoyage des anciennes installations** : l'ancien jeton base64
   `anzar_tkn_fb` est supprimé de `localStorage` à chaque démarrage et à la
   déconnexion (`secureTokenStore.purgeLegacyToken()`).
@@ -27,8 +31,8 @@ migration Tauri 2 effectués. Périmètre : `apps/desktop/`.
   **avant** la restauration de session.
 - **Délai d'authentification** : toutes les requêtes d'auth sont bornées à 10 s
   (AbortController), pour qu'un serveur muet ne bloque plus le splash.
-- **Coffre Tauri 2** : Stronghold utilise désormais le client JS v2
-  (`Stronghold.load`, `loadClient`, `getStore`), avec un repli mémoire explicite.
+- **Trousseau** : les appels au trousseau passent par `spawn_blocking` (une autorisation
+  macOS ne doit jamais bloquer le thread principal) et sont bornés à 5 s côté renderer.
 
 ### Limite connue
 
@@ -89,8 +93,8 @@ Le fichier `src-tauri/capabilities/migrated.json` remplace l'allowlist v1 :
   script injecté pouvait lancer un `.command` ou une application par ce biais. Les chemins
   passent par la commande Rust `reveal_path`, qui canonicalise puis vérifie les racines de
   projet autorisées avant de révéler le fichier (ou d'ouvrir le dossier).
-- **Dialog / OS / Updater / Process / Stronghold** : permissions explicites ;
-  `stronghold:allow-remove-store-record` est ajouté pour la déconnexion.
+- **Dialog / OS / Updater / Process** : permissions explicites. Le plugin Stronghold et
+  ses permissions ont été retirés avec le coffre.
 - **Fenêtre** : les commandes utilisées par la barre de titre
   (`is-maximized`, `toggle-maximize`, drag, close…) sont autorisées.
 
@@ -163,13 +167,12 @@ Effectuée sur macOS :
 - `npx tauri build --debug --no-bundle` ;
 - lancement du binaire : webview chargée, pas de crash ;
 - sondes runtime : `readDir` sur le dossier de données, `npm --version` via
-  `Command.create`/`spawn` (code 0), écriture de la clé de coffre et ouverture
-  Stronghold ;
-- trousseau : entrée Keychain créée au premier lancement, relue sans réécriture
-  au lancement suivant (`mdat` inchangé), aucun fichier de secours.
+  `Command.create`/`spawn` (code 0), écriture d'un secret dans le trousseau ;
+- trousseau : entrée `secret:auth_token` créée à la connexion, relue sans réécriture
+  au lancement suivant, supprimée à la déconnexion ; aucun fichier de secours.
 
 **Restent à tester manuellement sur macOS et Windows** : login OTP puis
-redémarrage (restauration Stronghold), ouverture de dossier, éditeur, terminal
+redémarrage (session restaurée depuis le trousseau), ouverture de dossier, éditeur, terminal
 et arrêt de processus, connecteurs MCP, mise à jour signée, installeur NSIS.
 Voir `MIGRATION_TAURI2.md`.
 

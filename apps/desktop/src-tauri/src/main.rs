@@ -35,15 +35,6 @@ fn main() {
                 roots::allow_dropped(tauri::Manager::app_handle(window), paths);
             }
         })
-        // Secure storage: Stronghold (encrypted vault)
-        .plugin(
-            tauri_plugin_stronghold::Builder::new(|password| {
-                // Derive a 32-bytes key from the provided password
-                // (see plugin docs: you must provide a password-hash function).
-                blake3::hash(password.as_bytes()).as_bytes().to_vec()
-            })
-            .build(),
-        )
         // Accès système et plugins Tauri 2
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -55,7 +46,7 @@ fn main() {
         .manage(mcp::McpState::default())
         .manage(tool_runner::ToolState::default())
         .manage(roots::RootsState::default())
-        .invoke_handler(tauri::generate_handler![reveal_path, net_proxy_records, vault_key_get, vault_key_set, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
+        .invoke_handler(tauri::generate_handler![reveal_path, net_proxy_records, secret_get, secret_set, secret_delete, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -196,17 +187,28 @@ fn open_personal_space(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 const KEYCHAIN_SERVICE: &str = "com.anzar.desktop";
-const KEYCHAIN_ACCOUNT: &str = "vault-key";
+/// Clé de trousseau d'un secret applicatif (préfixe pour ne pas heurter d'autres entrées).
+fn secret_account(key: &str) -> String {
+    format!("secret:{key}")
+}
 
-/// Clé du coffre Stronghold, conservée par le trousseau du système.
+/// Un secret ne doit jamais servir de chemin ou d'argument à autre chose.
+fn valid_secret_key(key: &str) -> bool {
+    !key.is_empty()
+        && key.len() <= 64
+        && key.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ':' | '.'))
+}
+
 #[tauri::command]
-async fn vault_key_get() -> Result<Option<String>, String> {
-    // Le trousseau peut afficher une autorisation macOS et bloquer l'appel :
-    // jamais sur le thread principal Tauri, sinon la fenêtre ne s'affiche pas.
-    tauri::async_runtime::spawn_blocking(|| {
-        match keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+async fn secret_get(key: String) -> Result<Option<String>, String> {
+    if !valid_secret_key(&key) {
+        return Err("Clé de secret invalide.".into());
+    }
+    // Le trousseau peut afficher une autorisation macOS : jamais sur le thread principal.
+    tauri::async_runtime::spawn_blocking(move || {
+        match keyring::Entry::new(KEYCHAIN_SERVICE, &secret_account(&key)) {
             Ok(entry) => match entry.get_password() {
-                Ok(key) => Ok(Some(key)),
+                Ok(value) => Ok(Some(value)),
                 Err(keyring::Error::NoEntry) => Ok(None),
                 Err(e) => Err(e.to_string()),
             },
@@ -217,14 +219,37 @@ async fn vault_key_get() -> Result<Option<String>, String> {
     .map_err(|e| e.to_string())?
 }
 
-/// Enregistre (ou remplace) la clé du coffre dans le trousseau du système.
 #[tauri::command]
-async fn vault_key_set(key: String) -> Result<(), String> {
+async fn secret_set(key: String, value: String) -> Result<(), String> {
+    if !valid_secret_key(&key) {
+        return Err("Clé de secret invalide.".into());
+    }
+    if value.is_empty() || value.len() > 16_384 {
+        return Err("Valeur de secret invalide.".into());
+    }
     tauri::async_runtime::spawn_blocking(move || {
-        keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+        keyring::Entry::new(KEYCHAIN_SERVICE, &secret_account(&key))
             .map_err(|e| e.to_string())?
-            .set_password(&key)
+            .set_password(&value)
             .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn secret_delete(key: String) -> Result<(), String> {
+    if !valid_secret_key(&key) {
+        return Err("Clé de secret invalide.".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        match keyring::Entry::new(KEYCHAIN_SERVICE, &secret_account(&key)) {
+            Ok(entry) => match entry.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+                Err(e) => Err(e.to_string()),
+            },
+            Err(e) => Err(e.to_string()),
+        }
     })
     .await
     .map_err(|e| e.to_string())?

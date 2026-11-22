@@ -19,7 +19,6 @@ serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2", features = [ "protocol-asset"] }
 dirs = "5.0"
-blake3 = "1.5"
 # Transport HTTP des serveurs MCP (déjà présent dans les dépendances via l'updater)
 reqwest = { version = "0.11", features = ["json"] }
 # PATH du shell de l'utilisateur (apps lancées depuis le Finder)
@@ -29,7 +28,6 @@ sha2 = "0.10"
 flate2 = "1"
 tar = "0.4"
 zip = { version = "0.6", default-features = false, features = ["deflate"] }
-tauri-plugin-stronghold = { version = "2" }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-os = "2"
@@ -42,10 +40,6 @@ keyring = "4.2.0"
 # l'arborescence de processus, presse-papiers et réglages système inaccessibles).
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading"] }
-
-# Stronghold : le hachage scrypt est lent en debug (recommandation du plugin).
-[profile.dev.package.scrypt]
-opt-level = 3
 
 [features]
 # this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.
