@@ -122,11 +122,15 @@ Règles :
   appliqué : `kind` (`subagent` ou `explorer`), `tools` (le rôle ne peut **que réduire** les
   outils autorisés par le mode — `task_done` reste toujours disponible), `model` et
   `reasoning` (transmis au moteur du sous-agent), `max_steps`, `budget_fcfa` (plafonne
-  l'enveloppe de budget dérivée du parent), `skills` (injectées dans son prompt), `keywords`
-  (servent à deviner le rôle quand l'agent ne le précise pas). **Validation** :
-  `profiles/validate.ts` vérifie nom, `kind`, description, outils connus, modèle et réflexion,
-  bornes de `max_steps` et budget — un manifeste incohérent est signalé au lieu d'être
-  silencieusement ignoré. La liste
+  l'enveloppe de budget dérivée du parent), `deny` (capacités refusées : `fs.write`,
+  `shell.exec`, `network`), `output_max_chars` (longueur du résumé renvoyé au parent),
+  `skills` (injectées dans son prompt), `keywords` (servent à deviner le rôle quand l'agent
+  ne le précise pas). **Validation** : `profiles/validate.ts` vérifie nom, `kind`,
+  description, outils connus, modèle et réflexion, bornes de `max_steps`, budget, capacités
+  de `deny` et `output_max_chars` — un manifeste incohérent est signalé au lieu d'être
+  silencieusement ignoré. `deny` est appliqué **par capacité** (`CAPABILITY_TOOLS` dans
+  `policy/subagentPolicy.ts`) : un rôle interdit l'écriture ou le réseau sans lister chaque
+  outil, et `task_done` reste toujours autorisé. La liste
   `SUBAGENT_ROLES` et l'énumération de l'outil `spawn_subagents` sont **dérivées du dossier** :
   un fichier `kind: subagent` crée un rôle sélectionnable.
 
