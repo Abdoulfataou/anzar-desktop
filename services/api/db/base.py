@@ -32,6 +32,29 @@ class Base(DeclarativeBase):
 _engine: Optional[AsyncEngine] = None
 _sessionmaker: Optional[async_sessionmaker[AsyncSession]] = None
 
+# `DELETE ... RETURNING` exige SQLite >= 3.35 (2021-03). Sur une base système plus
+# ancienne (Debian 11 = 3.34), chaque libération de réservation échouerait : on
+# détecte la version au démarrage et on bascule sur un repli SELECT + DELETE.
+_returning_ok = True
+
+
+def sqlite_supports_returning(version: Optional[tuple]) -> bool:
+    """Version SQLite -> support de `DELETE ... RETURNING`. None = non SQLite (OK)."""
+    if version is None:
+        return True
+    try:
+        parts = tuple(int(x) for x in list(version)[:3])
+    except (TypeError, ValueError):
+        return False
+    while len(parts) < 3:
+        parts += (0,)
+    return parts >= (3, 35, 0)
+
+
+def supports_returning() -> bool:
+    """Le moteur courant accepte-t-il `DELETE ... RETURNING` ?"""
+    return _returning_ok
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
@@ -179,8 +202,22 @@ async def init_db():
     else:
         # SQLite : create_all crée les nouvelles tables, mais pas les nouvelles
         # colonnes d'une table existante. Migration ciblée explicite.
+        global _returning_ok
         async with engine.begin() as conn:
             await _migrate_sqlite_columns(conn)
+            version_row = await conn.execute(text("SELECT sqlite_version()"))
+            version_text = str(version_row.scalar_one_or_none() or "")
+            try:
+                version = tuple(int(x) for x in version_text.split(".")[:3])
+            except ValueError:
+                version = None
+            _returning_ok = sqlite_supports_returning(version)
+            if not _returning_ok:
+                logger.warning(
+                    "SQLite %s < 3.35 : repli sans DELETE ... RETURNING pour les "
+                    "réservations (SELECT + DELETE dans la même transaction).",
+                    version_text or "inconnu",
+                )
         logger.info("SQLite migration complete — reservation columns verified")
 
 

@@ -94,3 +94,15 @@ def test_base_sqlite_sans_reserved_fcfa_est_migree_sans_perte(tmp_path):
         assert conn.execute("SELECT balance_fcfa FROM credits").fetchone()[0] == 1234.5
     finally:
         conn.close()
+
+
+def test_supports_returning_par_version():
+    """`DELETE ... RETURNING` exige SQLite 3.35 ; la détection décide du repli."""
+    from db.base import sqlite_supports_returning
+
+    assert sqlite_supports_returning(None) is True          # Postgres
+    assert sqlite_supports_returning((3, 34, 1)) is False   # Debian 11
+    assert sqlite_supports_returning((3, 35, 0)) is True
+    assert sqlite_supports_returning((3, 54, 1)) is True
+    assert sqlite_supports_returning(("3", "34", "0")) is False
+    assert sqlite_supports_returning(("oops",)) is False

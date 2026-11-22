@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 from sqlalchemy import case, delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 
-from db.base import get_sessionmaker, _utcnow, _model_to_dict
+from db.base import get_sessionmaker, _utcnow, _model_to_dict, supports_returning
 from db.models import Credits, CreditReservation, Transaction
 
 logger = logging.getLogger("anzar.credits")
@@ -111,12 +111,21 @@ async def _take_reservation(session, email: str, reservation_id: Optional[int]) 
     except (TypeError, ValueError):
         return 0.0
 
+    where = (CreditReservation.id == rid, CreditReservation.user_email == email)
+    if not supports_returning():
+        # SQLite < 3.35 : SELECT puis DELETE dans la même transaction. Sûr ici car
+        # l'écrivain SQLite est unique et la transaction sérialise les deux ordres.
+        row = await session.scalar(
+            select(CreditReservation).where(*where).execution_options(synchronize_session=False)
+        )
+        if row is None:
+            return 0.0
+        await session.execute(delete(CreditReservation).where(*where))
+        return float(row.amount_fcfa or 0)
+
     deleted = await session.execute(
         delete(CreditReservation)
-        .where(
-            CreditReservation.id == rid,
-            CreditReservation.user_email == email,
-        )
+        .where(*where)
         .returning(CreditReservation.amount_fcfa)
         .execution_options(synchronize_session=False)
     )
@@ -175,17 +184,42 @@ async def purge_expired_reservations(
     Session = get_sessionmaker()
     async with Session() as session:
         async with session.begin():
-            stmt = delete(CreditReservation).where(CreditReservation.created_at < cutoff)
+            conditions = [CreditReservation.created_at < cutoff]
             if email:
-                stmt = stmt.where(CreditReservation.user_email == email)
-            rows = (
-                await session.execute(
-                    stmt.returning(
-                        CreditReservation.user_email,
-                        CreditReservation.amount_fcfa,
-                    ).execution_options(synchronize_session=False)
-                )
-            ).all()
+                conditions.append(CreditReservation.user_email == email)
+
+            if supports_returning():
+                rows = (
+                    await session.execute(
+                        delete(CreditReservation)
+                        .where(*conditions)
+                        .returning(
+                            CreditReservation.user_email,
+                            CreditReservation.amount_fcfa,
+                        )
+                        .execution_options(synchronize_session=False)
+                    )
+                ).all()
+            else:
+                # Repli SQLite < 3.35 : lire les lignes expirées puis les supprimer.
+                found = (
+                    await session.execute(
+                        select(
+                            CreditReservation.id,
+                            CreditReservation.user_email,
+                            CreditReservation.amount_fcfa,
+                        )
+                        .where(*conditions)
+                        .execution_options(synchronize_session=False)
+                    )
+                ).all()
+                if found:
+                    await session.execute(
+                        delete(CreditReservation).where(
+                            CreditReservation.id.in_([r[0] for r in found])
+                        )
+                    )
+                rows = [(r[1], r[2]) for r in found]
 
             totals: Dict[str, float] = {}
             for user_email, amount in rows:

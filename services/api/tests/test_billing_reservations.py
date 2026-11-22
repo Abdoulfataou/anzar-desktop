@@ -200,3 +200,44 @@ def test_agregat_egal_somme_des_lignes_de_reservation(client):
         assert (await db.get_credits(email))["reserved_fcfa"] == 0.0
 
     _run(client, scenario)
+
+
+def test_repli_sans_delete_returning(client, monkeypatch):
+    """SQLite < 3.35 : libération et purge doivent fonctionner sans `DELETE ... RETURNING`.
+
+    Le repli lit puis supprime dans la même transaction (écrivain SQLite unique) : le
+    montant réservé doit revenir à zéro comme avec le chemin RETURNING.
+    """
+    import db.credits as credits
+
+    monkeypatch.setattr(credits, "supports_returning", lambda: False)
+
+    async def scenario():
+        email = await _seed(100.0)
+
+        # Libération ciblée.
+        rid = await credits.reserve_credits(email, 40.0)
+        assert rid is not None
+        assert (await db.get_credits(email))["reserved_fcfa"] == 40.0
+        assert await credits.release_reservation(email, rid) == 40.0
+        assert (await db.get_credits(email))["reserved_fcfa"] == 0.0
+        # Deuxième libération : idempotente.
+        assert await credits.release_reservation(email, rid) == 0.0
+
+        # Purge TTL : une réservation expirée est libérée.
+        rid2 = await credits.reserve_credits(email, 30.0)
+        assert rid2 is not None
+        Session = get_sessionmaker()
+        async with Session() as session:
+            async with session.begin():
+                await session.execute(
+                    update(CreditReservation)
+                    .where(CreditReservation.id == rid2)
+                    .values(created_at=_utcnow() - timedelta(minutes=20))
+                )
+        liberated = await credits.purge_expired_reservations(60, email=email)
+        assert liberated == 30.0
+        assert (await db.get_credits(email))["reserved_fcfa"] == 0.0
+        assert (await db.get_credits(email))["balance_fcfa"] == 100.0
+
+    _run(client, scenario)
