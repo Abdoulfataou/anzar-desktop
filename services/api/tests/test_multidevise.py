@@ -296,8 +296,9 @@ def test_preference_and_country_suggestion(client, user_and_token, multi):
     _, _, h = user_and_token
     d = client.get("/api/pricing", headers={**h, "CF-IPCountry": "NE"}).json()
     assert d["currency"] == "XOF" and d["country"] == "NE" and d["free_amount"] is True
+    assert d["bonus_tiers"] == [[5000, 15], [15000, 25], [50000, 35]] and d["min_fcfa"] == 500
     d = client.get("/api/pricing?country=FR", headers=h).json()           # indice de l'app
-    assert d["currency"] == "EUR"
+    assert d["currency"] == "EUR" and d["bonus_tiers"] == [] and d["manual"] is False
     assert client.put("/api/user/currency", headers=h, json={"currency": "jpy"}).json() == {"preferred_currency": "JPY"}
     d = client.get("/api/pricing", headers={**h, "CF-IPCountry": "NE"}).json()
     assert d["currency"] == "JPY" and d["preferred_currency"] == "JPY"   # le choix du compte l'emporte

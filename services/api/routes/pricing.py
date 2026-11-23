@@ -72,7 +72,25 @@ async def pricing(request: Request, currency: str = "", country: str = "",
         data["message"] += f" Paiement proposé en {offer.currency}."
     data["rates_attribution"] = {"label": "Taux par Exchange Rate API",
                                  "url": "https://www.exchangerate-api.com"}
+    # Montant libre (XOF) : bornes, paliers de bonus et paiement manuel, pour que l'app
+    # affiche exactement ce que le serveur appliquera (aucune règle en dur côté app).
+    from config import settings
+    from services.payments.service import MAX_FCFA, MIN_FCFA
+    data["min_fcfa"], data["max_fcfa"] = MIN_FCFA, MAX_FCFA
+    data["manual"] = bool(settings.manual_payments_enabled) and offer.free_amount
+    data["bonus_tiers"] = _bonus_tiers(settings.recharge_bonus_tiers) if offer.free_amount else []
     return data
+
+
+def _bonus_tiers(raw: str) -> list:
+    out = []
+    for part in (raw or "").split(","):
+        lo, _, pct = part.strip().partition(":")
+        try:
+            out.append([int(float(lo)), int(float(pct))])
+        except ValueError:
+            continue
+    return sorted(out)
 
 
 class CurrencyChoice(BaseModel):

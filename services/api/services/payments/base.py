@@ -249,10 +249,7 @@ def describe(providers: Dict[str, PaymentProvider]) -> List[dict]:
     for p in sorted(providers.values(), key=lambda x: x.info.priority):
         if not p.enabled():
             continue
-        # Compatibilité des versions de l'app antérieures au multidevise : elles affichent
-        # « currency » / « fcfa_per_unit » et envoient un montant libre, facturé en XOF.
-        d = p.describe("xof" if p.supports("XOF") else "")
-        d["fcfa_per_unit"] = 1.0
+        d = p.describe()
         d["currencies"] = list(p.info.currencies)
         out.append(d)
     return out
