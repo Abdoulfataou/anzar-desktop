@@ -1,8 +1,8 @@
 /**
- * Compteur du budget du tour : « 320 / 1 200 FCFA ».
+ * Compteur du budget du tour : « 320 / 1 200 crédits ».
  *
  * Affiché seulement quand un plafond de coût existe : c'est la dimension qui surprend
- * l'utilisateur (les étapes et les tokens sont abstraits, les FCFA non).
+ * l'utilisateur (les étapes et les tokens sont abstraits, les crédits non).
  */
 import type { BudgetView } from '@/services/agent/engine/budget';
 import { cn } from '@/lib/utils';
@@ -17,7 +17,7 @@ export function BudgetBadge({ view }: BudgetBadgeProps) {
 
   const used = Math.round(view.used.fcfa);
   const pct = Math.round(view.usedPct * 100);
-  const label = `Budget utilisé : ${used} FCFA sur ${limit}`;
+  const label = `Budget utilisé : ${used} crédits sur ${limit}`;
 
   return (
     <span
@@ -25,10 +25,10 @@ export function BudgetBadge({ view }: BudgetBadgeProps) {
         'px-1.5 py-0.5 rounded-md text-[11px] tabular-nums select-none',
         pct >= 85 ? 'text-credit' : pct >= 60 ? 'text-text-secondary' : 'text-text-muted',
       )}
-      title={`Budget de cette demande : ${used} FCFA sur ${limit} (${pct} %)`}
+      title={`Budget de cette demande : ${used} crédits sur ${limit} (${pct} %)`}
       aria-label={label}
     >
-      {used} / {limit} FCFA
+      {used} / {limit} crédits
     </span>
   );
 }

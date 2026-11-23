@@ -56,7 +56,7 @@ export async function runAutomation(automation: Automation): Promise<void> {
     }
     if (!ok) {
       error = result?.stopReason === 'budget_exhausted'
-        ? `Budget de ${fcfa} FCFA atteint. Ouvre la tâche pour reprendre, ou augmente le budget.`
+        ? `Budget de ${fcfa} crédits atteint. Ouvre la tâche pour reprendre, ou augmente le budget.`
         : "La réponse a échoué ou n'a pas abouti. Ouvre la tâche pour reprendre.";
     }
   } catch (e: any) {

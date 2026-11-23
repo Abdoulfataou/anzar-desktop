@@ -649,7 +649,7 @@ function CommitDialog({
           placeholder="Message du commit (laisse vide pour le générer)"
           className="w-full px-3 py-2 rounded-lg bg-input border border-input-border text-ui-base text-text-primary outline-none focus:border-input-border-hover resize-none"
         />
-        <p className="mt-1 text-ui-sm text-text-muted">La génération utilise l'IA (quelques FCFA).</p>
+        <p className="mt-1 text-ui-sm text-text-muted">La génération utilise l'IA (quelques crédits).</p>
       </div>
       {!forced && unstagedCount > 0 && (
         <label className="flex items-center gap-2 text-ui-base text-text-primary cursor-pointer">

@@ -4,6 +4,7 @@
  * puis Projets → tâches imbriquées, puis tâches hors projet, puis compte.
  */
 import { useMemo, useState } from 'react';
+import { formatCredits } from '@/lib/money';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   SquarePen, Search, CalendarClock, Wand2, Plug, Ticket, Folder, FolderOpen, FolderPlus,
@@ -418,7 +419,7 @@ export default function Sidebar({ className }: { className?: string }) {
         <div className={cn('flex items-center gap-2 p-2.5 flex-shrink-0', !expanded && 'flex-col')}>
           <button
             onClick={() => navigate('/settings')}
-            aria-label={`Compte et paramètres — ${Math.round(credits.remaining).toLocaleString('fr-FR')} FCFA`}
+            aria-label={`Compte et paramètres — ${formatCredits(credits.remaining)}`}
             className="flex items-center gap-2.5 flex-1 min-w-0 text-left"
             title="Compte et paramètres"
           >
@@ -431,10 +432,10 @@ export default function Sidebar({ className }: { className?: string }) {
                 <span
                   className={cn('block text-ui-sm font-mono tabular-nums', credits.remaining > 0 ? 'text-text-muted' : 'text-accent-error')}
                   title={(credits.reserved ?? 0) > 0
-                    ? `Dont ${Math.round(credits.reserved ?? 0).toLocaleString('fr-FR')} FCFA réservés par des appels en cours`
+                    ? `Dont ${formatCredits(credits.reserved ?? 0)} réservés par des appels en cours`
                     : undefined}
                 >
-                  {Math.round(credits.remaining).toLocaleString('fr-FR')} FCFA
+                  {formatCredits(credits.remaining)}
                   {(credits.reserved ?? 0) > 0 && (
                     <span className="text-text-muted/70"> · {Math.round(credits.reserved ?? 0).toLocaleString('fr-FR')} réservés</span>
                   )}

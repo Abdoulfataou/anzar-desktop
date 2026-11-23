@@ -132,7 +132,7 @@ export async function runTicket(ticket: Ticket): Promise<void> {
   const base = { costFCFA: totalCost, report, finishedAt: Date.now(), stopRequested: false, diffStat: diffStat ?? t.diffStat };
   if (stopReason) {
     const why = {
-      budget: `budget de ${t.budgetFCFA} FCFA atteint`,
+      budget: `budget de ${t.budgetFCFA} crédits atteint`,
       time: `durée de ${t.maxMinutes} min dépassée`,
       stalled: 'aucune activité depuis 8 minutes (réseau ?)',
       user: 'arrêté à ta demande',

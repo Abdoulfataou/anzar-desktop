@@ -23,6 +23,9 @@ import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUp
 import { loadPersonalInstructions, savePersonalInstructions, MAX_INSTRUCTIONS_CHARS } from '@/services/workspace/personalInstructions';
 import { storeRoot } from '@/lib/fileStore';
 import RechargeModal from '@/components/billing/RechargeModal';
+import { useCurrencyStore } from '@/stores/currencyStore';
+import { creditsInLocal, currencyName, formatCredits } from '@/lib/money';
+import { fetchRechargeHistory, type RechargeEntry } from '@/lib/rechargeHistory';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import type { Conversation, Project } from '@/types';
 import type { PermissionMode } from '@/hooks/useAgentChat';
@@ -108,7 +111,7 @@ const btn = 'flex items-center gap-1.5 h-8 px-3 rounded-lg text-ui-base border b
 const btnPrimary = 'flex items-center gap-1.5 h-8 px-3 rounded-lg text-ui-base font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity disabled:opacity-50';
 const btnDanger = 'flex items-center gap-1.5 h-8 px-3 rounded-lg text-ui-base border border-accent-error/40 text-accent-error hover:bg-accent-error/10 transition-colors';
 
-const fcfa = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} FCFA`;
+const fcfa = (n: number) => formatCredits(n);
 
 /* ── Sauvegarde des tâches (export / import) ── */
 
@@ -263,7 +266,7 @@ function GeneralSection() {
       </Row>
       <Row
         label="Recherche web"
-        description="L'agent peut chercher sur le web et lire des pages (documentation récente, erreurs inconnues). Environ 1 FCFA par recherche ou page lue, ajouté au coût de la réponse."
+        description="L'agent peut chercher sur le web et lire des pages (documentation récente, erreurs inconnues). Environ 1 crédit par recherche ou page lue, ajouté au coût de la réponse."
       >
         <Segmented
           value={webTools ? 'on' : 'off'}
@@ -445,14 +448,83 @@ function PersonalizationSection() {
   );
 }
 
+/** Monnaie d'affichage et de paiement, enregistrée sur le compte (Automatique = d'après le pays). */
+function CurrencyRow() {
+  const offer = useCurrencyStore((s) => s.offer);
+  const currencies = useCurrencyStore((s) => s.currencies);
+  const [saving, setSaving] = useState(false);
+  const selectId = useId();
+
+  useEffect(() => {
+    const st = useCurrencyStore.getState();
+    void st.loadCurrencies();
+    if (!st.offer) void st.load();
+  }, []);
+
+  const preferred = offer?.preferred_currency ?? '';
+  const change = async (code: string) => {
+    setSaving(true);
+    try {
+      await useCurrencyStore.getState().setPreferred(code || null);
+      toast.success(code ? `Monnaie : ${currencyName(code)}` : 'Monnaie automatique');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Impossible d'enregistrer la monnaie.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  let info = '';
+  if (offer) {
+    if (offer.currency === 'XOF') info = '1 crédit = 1 F CFA.';
+    else if (offer.fcfa_per_unit) {
+      const v = offer.fcfa_per_unit >= 10 ? Math.round(offer.fcfa_per_unit).toLocaleString('fr-FR')
+        : offer.fcfa_per_unit.toLocaleString('fr-FR', { maximumFractionDigits: 3 });
+      info = offer.rate_fixed
+        ? `1 ${offer.currency} = ${v} crédits (parité fixe).`
+        : `1 ${offer.currency} ≈ ${v} crédits${offer.rate_as_of ? `, taux du ${new Date(offer.rate_as_of).toLocaleDateString('fr-FR')}` : ''}.`;
+    }
+    if (offer.message) info = `${offer.message} ${info}`.trim();
+  }
+
+  return (
+    <Row label="Monnaie" description={info || 'Prix des recharges et équivalent de ton solde.'}>
+      <select
+        id={selectId}
+        aria-label="Monnaie"
+        value={preferred}
+        disabled={saving}
+        onChange={(e) => void change(e.target.value)}
+        className="h-8 px-2 rounded-lg text-ui-base bg-bg-tertiary border border-border-medium text-text-primary max-w-[220px]"
+      >
+        <option value="">Automatique{!preferred && offer ? ` (${offer.currency})` : ''}</option>
+        {currencies.map((c) => (
+          <option key={c.code} value={c.code}>{c.code} — {currencyName(c.code)}</option>
+        ))}
+      </select>
+    </Row>
+  );
+}
+
 function AccountSection({ confirm }: { confirm: Confirm }) {
   const navigate = useNavigate();
   const user = useAccountStore((s) => s.user);
   const credits = useAccountStore((s) => s.credits);
-  const transactions = useAccountStore((s) => s.transactions);
   const [showRecharge, setShowRecharge] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const recharges = transactions.filter((t) => t.type === 'recharge' || t.type === 'bonus');
+  const [recharges, setRecharges] = useState<RechargeEntry[]>([]);
+  const [historyError, setHistoryError] = useState('');
+  const offer = useCurrencyStore((s) => s.offer);
+  const local = creditsInLocal(credits.remaining, offer
+    ? { currency: offer.currency, decimals: offer.decimals, fcfaPerUnit: offer.fcfa_per_unit } : null);
+
+  useEffect(() => {
+    let alive = true;
+    fetchRechargeHistory()
+      .then((list) => { if (alive) setRecharges(list); })
+      .catch((e) => { if (alive) setHistoryError(e instanceof Error ? e.message : 'Historique indisponible.'); });
+    return () => { alive = false; };
+  }, [credits.totalRecharged]);
 
   const logout = async () => {
     const ok = await confirm({ title: 'Déconnexion', message: 'Tu veux vraiment te déconnecter ?', confirmLabel: 'Se déconnecter', variant: 'warning' });
@@ -467,24 +539,30 @@ function AccountSection({ confirm }: { confirm: Confirm }) {
         <Row label={user?.name || 'Compte'} description={user?.email}>
           <button onClick={() => void logout()} className={btn}><LogOut size={14} /> Se déconnecter</button>
         </Row>
-        <Row label="Solde" description={<span className="font-mono tabular-nums text-ui-lg text-text-primary">{fcfa(credits.remaining)}</span>}>
+        <Row label="Solde" description={
+          <span>
+            <span className="font-mono tabular-nums text-ui-lg text-text-primary">{fcfa(credits.remaining)}</span>
+            {local && <span className="ml-2 text-ui-sm text-text-muted tabular-nums">{local}</span>}
+          </span>
+        }>
           <button onClick={() => setShowRecharge(true)} className={btnPrimary}>Recharger</button>
         </Row>
+        <CurrencyRow />
       </Card>
 
       <div>
         <h3 className="mb-2 text-ui-base font-semibold text-text-primary">Recharges</h3>
         <Card>
           {recharges.length === 0 ? (
-            <Row label="Aucune recharge pour le moment" />
+            <Row label={historyError || 'Aucune recharge pour le moment'} />
           ) : (
             (showAll ? recharges : recharges.slice(0, 5)).map((t) => (
               <Row
                 key={t.id}
-                label={t.description}
+                label={t.paid ? `Payé ${t.paid}` : t.description}
                 description={new Date(t.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })}
               >
-                <span className="font-mono tabular-nums text-ui-base text-diff-added">+{Math.round(t.amount).toLocaleString('fr-FR')} F</span>
+                <span className="font-mono tabular-nums text-ui-base text-diff-added">+{formatCredits(t.credits)}</span>
               </Row>
             ))
           )}

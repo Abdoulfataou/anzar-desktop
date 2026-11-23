@@ -19,9 +19,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Wallet } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAccountStore } from '@/stores/accountStore';
+import { useCurrencyStore } from '@/stores/currencyStore';
+import { creditsInLocal, formatCredits } from '@/lib/money';
 import RechargeModal from './RechargeModal';
 
-/** Coût moyen d'une génération (FCFA) — calibré sur le pricing de vente
+/** Coût moyen d'une génération (en crédits ; 1 crédit = 1 FCFA) — calibré sur le pricing de vente
  * ANZAR (~250 F/1M in, 500 F/1M out ; génération moyenne ≈ 20k in + 4k out). */
 export const AVG_GENERATION_COST_FCFA = 300;
 
@@ -91,6 +93,14 @@ export default function CreditBadge() {
     }
   }, [remaining]);
 
+  // Taux d'affichage (monnaie du compte ou du pays) pour l'équivalent « ≈ » au survol
+  const offer = useCurrencyStore((st) => st.offer);
+  useEffect(() => {
+    if (loggedIn && !offer) void useCurrencyStore.getState().load();
+  }, [loggedIn, offer]);
+  const local = creditsInLocal(remaining, offer
+    ? { currency: offer.currency, decimals: offer.decimals, fcfaPerUnit: offer.fcfa_per_unit } : null);
+
   const state = getBadgeState(loggedIn, remaining);
   const display = useAnimatedCounter(remaining, creditGlow ? 800 : 300);
 
@@ -107,11 +117,11 @@ export default function CreditBadge() {
         onClick={() => setShowRecharge(true)}
         title={
           state === 'normal'
-            ? `Solde : ${remaining.toLocaleString('fr-FR')} FCFA`
-              + (reserved > 0 ? ` — dont ${Math.round(reserved).toLocaleString('fr-FR')} FCFA réservés par des appels en cours` : '')
+            ? `Solde : ${formatCredits(remaining)}${local ? ` (${local})` : ''}`
+              + (reserved > 0 ? ` — dont ${formatCredits(reserved)} réservés par des appels en cours` : '')
             : state === 'low'
               ? `Il vous reste environ ${Math.max(1, Math.floor(remaining / AVG_GENERATION_COST_FCFA))} générations.`
-              : 'Recharger vos crédits (FCFA)'
+              : 'Recharger vos crédits'
         }
         className={cn(
           'relative flex items-center gap-1.5 h-7 px-2.5 rounded-full border text-[11px] font-medium transition-all duration-200 select-none',
@@ -135,7 +145,7 @@ export default function CreditBadge() {
         >
           {display.toLocaleString('fr-FR')}
         </span>
-        <span className="opacity-60 font-sans text-[10px]">FCFA</span>
+        <span className="opacity-60 font-sans text-[10px]">crédits</span>
 
         {/* Puce « −n » : monte et s'efface (600 ms) */}
         {debitFlash !== null && (

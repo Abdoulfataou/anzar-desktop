@@ -3,6 +3,7 @@
  * chacun dans une copie isolée du projet, avec un budget. Le résultat attend ta validation.
  */
 import { useEffect, useMemo, useState } from 'react';
+import { formatCredits } from '@/lib/money';
 import { useNavigate } from 'react-router-dom';
 import {
   Ticket as TicketIcon, Plus, X, Play, Pause, Square, Trash2, GitMerge, RotateCw, Loader2, CheckCircle2, AlertCircle,
@@ -43,7 +44,7 @@ const MODELS: { id: AIModel; label: string }[] = [
   { id: 'auto', label: 'Auto' }, { id: 'fast', label: 'Rapide' }, { id: 'thinking', label: 'Réflexion' }, { id: 'max', label: 'Max' }, { id: 'pro', label: 'Pro' },
 ];
 
-const fcfa = (n?: number) => `${Math.round(n || 0).toLocaleString('fr-FR')} FCFA`;
+const fcfa = (n?: number) => formatCredits(n || 0);
 const duration = (t: Ticket) => {
   if (!t.startedAt) return '';
   const ms = (t.finishedAt || Date.now()) - t.startedAt;
@@ -159,7 +160,7 @@ function Limits({ budget, setBudget, minutes, setMinutes, model, setModel }: {
   return (
     <div className="grid grid-cols-3 gap-3">
       <label className="block">
-        <span className="text-ui-sm text-text-secondary">Budget max (FCFA)</span>
+        <span className="text-ui-sm text-text-secondary">Budget max (crédits)</span>
         <input type="number" min={50} step={50} value={budget} onChange={(e) => setBudget(Number(e.target.value))} className={input} />
       </label>
       <label className="block">
@@ -254,7 +255,7 @@ function SplitForm({ projects, defaultProject, onClose }: { projects: { id: stri
       const ctx = path ? await buildAgentContext(path, goal).catch(() => null) : null;
       const { tickets, costFCFA } = await splitIntoTickets(goal, { name: project.name, codeMap: ctx?.codeMap, memory: ctx?.memory });
       setProposals(tickets.map((t) => ({ ...t, keep: true })));
-      if (costFCFA) toast(`Découpage : ${tickets.length} ticket(s), ${costFCFA < 1 ? '< 1' : Math.round(costFCFA)} FCFA`);
+      if (costFCFA) toast(`Découpage : ${tickets.length} ticket(s), ${formatCredits(costFCFA)}`);
     } catch (e: any) {
       toast.error(e?.message || 'Découpage impossible');
     } finally {

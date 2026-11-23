@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, Check, ChevronRight, Brain, RefreshCw } from 'lucide-react';
+import { formatCredits } from '@/lib/money';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ToolEventList } from './ToolCallBlock';
@@ -255,7 +256,7 @@ function MessageBubbleImpl({ message, onCopy, onRegenerate, selectedProjectId = 
               </span>
             ) : message.model === 'thinking' ? 'Réflexion · ' : message.model === 'max' ? 'Max · ' : message.model === 'pro' ? 'Pro · ' : ''}{formatTime(message.timestamp)}
             {typeof message.costFCFA === 'number' && !message.isStreaming && (
-              <> · {message.costFCFA < 1 ? '< 1' : Math.round(message.costFCFA).toLocaleString('fr-FR')} FCFA</>
+              <> · {formatCredits(message.costFCFA)}</>
             )}
           </span>
         </div>

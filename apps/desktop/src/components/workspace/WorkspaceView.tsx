@@ -21,6 +21,7 @@ import { useAgentChat, type PermissionMode } from '@/hooks/useAgentChat';
 import { useAccountStore } from '@/stores/accountStore';
 import RechargeModal from '@/components/billing/RechargeModal';
 import { LOW_BALANCE_FCFA } from '@/lib/credits';
+import { formatCredits } from '@/lib/money';
 import { useChatStore, useActiveConversation } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import type { AIModel, Message } from '@/types';
@@ -464,7 +465,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
               <div className="mx-4 mb-1 flex items-center gap-3 px-3 py-2 rounded-xl bg-credit-soft flex-shrink-0">
                 <p className="flex-1 text-ui-caption text-text-primary">
                   {balance <= 0 ? 'Solde épuisé' : 'Solde bas'} — il te reste{' '}
-                  <span className="font-mono tabular-nums">{Math.max(0, Math.round(balance)).toLocaleString('fr-FR')} FCFA</span>
+                  <span className="font-mono tabular-nums">{formatCredits(Math.max(0, balance))}</span>
                 </p>
                 <button
                   onClick={() => setShowRecharge(true)}

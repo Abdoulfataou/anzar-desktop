@@ -208,7 +208,7 @@ export default function AutomationsPage() {
             <div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="text-ui-sm text-text-secondary">Budget par exécution (FCFA)</span>
+                  <span className="text-ui-sm text-text-secondary">Budget par exécution (crédits)</span>
                   <input
                     type="number" min={0} step={50}
                     value={draft.budgetFCFA ?? 200}

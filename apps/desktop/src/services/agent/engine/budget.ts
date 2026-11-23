@@ -196,7 +196,7 @@ export function budgetStopMessage(limit: BudgetLimit, ledger: BudgetLedger): str
   const u = ledger.usage();
   const what = {
     steps: `nombre d'étapes atteint (${u.steps})`,
-    fcfa: `coût maximal atteint (${Math.round(u.fcfa).toLocaleString('fr-FR')} FCFA)`,
+    fcfa: `coût maximal atteint (${Math.round(u.fcfa).toLocaleString('fr-FR')} crédits)`,
     tokensIn: `volume de contexte atteint (${Math.round(u.tokensIn).toLocaleString('fr-FR')} jetons lus)`,
     tokensOut: `volume de réponse atteint (${Math.round(u.tokensOut).toLocaleString('fr-FR')} jetons écrits)`,
     wallMs: `durée maximale atteinte (${Math.max(1, Math.round(u.wallMs / 60_000))} min)`,

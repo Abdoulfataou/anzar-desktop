@@ -86,7 +86,7 @@ describe('BudgetLedger', () => {
     const budget = new BudgetLedger({ fcfa: 100 }, { now: clock().now });
     budget.charge({ fcfa: 120 });
     expect(budgetStopMessage('fcfa', budget)).toContain('coût maximal atteint');
-    expect(budgetStopMessage('fcfa', budget)).toContain('FCFA');
+    expect(budgetStopMessage('fcfa', budget)).toContain('crédits');
     expect(budgetStopMessage('fcfa', budget)).toContain('travail déjà fait est conservé');
   });
 

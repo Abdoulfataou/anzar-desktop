@@ -90,7 +90,7 @@ export default function WelcomePage() {
 
           <p className="mt-8 text-[11px] text-text-muted flex items-center gap-1.5">
             <Wallet size={12} />
-            Payez à l'usage en FCFA, sans abonnement : rechargez par Mobile Money.
+            Payez à l'usage avec des crédits, sans abonnement : rechargez dans votre monnaie, par Mobile Money ou par carte.
           </p>
           <p className="mt-3 text-[13px] text-text-secondary">
             Déjà un compte ?{' '}
