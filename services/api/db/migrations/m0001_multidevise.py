@@ -14,7 +14,7 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-from sqlalchemy import inspect, text
+from sqlalchemy import Boolean, Numeric, bindparam, inspect, text
 from sqlalchemy.engine import Connection
 
 DATA = Path(__file__).resolve().parents[2] / "services" / "currency" / "reference"
@@ -82,7 +82,9 @@ def up(conn: Connection) -> None:
             continue
         conn.execute(text(
             "INSERT INTO currencies (code, name, symbol, decimals, active, updated_at)"
-            " VALUES (:code, :name, :symbol, :decimals, :active, CURRENT_TIMESTAMP)"), c)
+            " VALUES (:code, :name, :symbol, :decimals, :active, CURRENT_TIMESTAMP)").bindparams(
+                bindparam("active", type_=Boolean())),
+            {k: c[k] for k in ("code", "name", "symbol", "decimals", "active")})
 
     # 4) Parités fixes (toujours réimposées : ce sont des valeurs légales exactes)
     fixed = _load("fixed_parities.json")
@@ -90,9 +92,12 @@ def up(conn: Connection) -> None:
     for code, per_eur in fixed["per_eur"].items():
         rate = (anchor / Decimal(per_eur)).quantize(Decimal("1e-10"))
         conn.execute(text("DELETE FROM fx_rates WHERE currency = :c"), {"c": code})
+        # Paramètres typés : Decimal pour asyncpg (Postgres), conversion automatique pour SQLite
         conn.execute(text(
             "INSERT INTO fx_rates (currency, fcfa_per_unit, source, fetched_at, is_fixed)"
-            " VALUES (:c, :r, 'parite_fixe', CURRENT_TIMESTAMP, :t)"), {"c": code, "r": str(rate), "t": True})
+            " VALUES (:c, :r, 'parite_fixe', CURRENT_TIMESTAMP, :t)").bindparams(
+                bindparam("r", type_=Numeric(24, 10)), bindparam("t", type_=Boolean())),
+            {"c": code, "r": rate, "t": True})
 
     # 5) Réglages par défaut
     have = {r[0] for r in conn.execute(text("SELECT key FROM pricing_settings"))}
@@ -108,7 +113,8 @@ def up(conn: Connection) -> None:
             credit = price + round(price * pct / 100)
             conn.execute(text(
                 "INSERT INTO topup_packs (currency, price_minor, credit_fcfa, label, sort, active,"
-                " created_at, updated_at) VALUES ('XOF', :p, :c, :l, :s, :a, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"),
+                " created_at, updated_at) VALUES ('XOF', :p, :c, :l, :s, :a, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)")
+                .bindparams(bindparam("a", type_=Boolean())),
                 {"p": price, "c": credit, "l": label, "s": i, "a": True})
 
 
