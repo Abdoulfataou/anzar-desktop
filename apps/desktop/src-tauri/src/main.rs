@@ -134,7 +134,7 @@ fn net_proxy_records() -> Vec<netproxy::Record> {
 #[tauri::command]
 fn fs_realpath(path: String) -> Result<String, String> {
     let real = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
-    let home = dirs::home_dir().ok_or("Répertoire utilisateur introuvable")?;
+    let home = roots::home()?;
     if !real.starts_with(&home) {
         return Err("Chemin hors du répertoire utilisateur.".into());
     }
@@ -162,6 +162,8 @@ fn secure_app_secrets(app: tauri::AppHandle) -> Result<(), String> {
             }
         }
     }
+    #[cfg(not(unix))]
+    let _ = app; // Windows : les droits sont hérités du profil utilisateur
     Ok(())
 }
 

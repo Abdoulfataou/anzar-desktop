@@ -495,7 +495,7 @@ pub fn mcp_spawn(
     // Le dossier de travail doit rester sous le répertoire utilisateur.
     let canonical_cwd = if let Some(dir) = cwd.filter(|d| !d.is_empty()) {
         let p = std::fs::canonicalize(&dir).map_err(|_| "Dossier de travail MCP introuvable.".to_string())?;
-        let home = dirs::home_dir().ok_or("Répertoire utilisateur introuvable.")?;
+        let home = crate::roots::home()?;
         if !p.starts_with(&home) {
             return Err("Dossier de travail MCP hors du répertoire utilisateur.".into());
         }

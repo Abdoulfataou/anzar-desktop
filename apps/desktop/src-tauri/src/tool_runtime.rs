@@ -159,6 +159,8 @@ fn set_executable(path: &std::path::Path) -> Result<(), String> {
         p.set_mode(0o755);
         std::fs::set_permissions(path, p).map_err(|e| e.to_string())?;
     }
+    #[cfg(not(unix))]
+    let _ = path; // Windows : pas de bit exécutable, rien à faire
     Ok(())
 }
 

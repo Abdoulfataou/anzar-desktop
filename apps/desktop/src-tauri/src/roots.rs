@@ -47,7 +47,10 @@ pub fn within_any(path: &Path, roots: &[PathBuf]) -> bool {
     roots.iter().any(|r| path.starts_with(r))
 }
 
-fn home() -> Result<PathBuf, String> {
+/// Répertoire utilisateur canonique. À utiliser pour toute comparaison avec un chemin passé par
+/// `canonicalize` : sous Windows celui-ci renvoie la forme étendue `\\?\C:\…`, que `home_dir()`
+/// brut ne préfixe jamais (le test `starts_with` échouerait toujours).
+pub(crate) fn home() -> Result<PathBuf, String> {
     dirs::home_dir()
         .and_then(|h| std::fs::canonicalize(h).ok())
         .ok_or_else(|| "Répertoire utilisateur introuvable.".to_string())

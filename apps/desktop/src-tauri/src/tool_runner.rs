@@ -151,7 +151,7 @@ fn validate_args(program: &str, args: &[String], approved: bool) -> Result<(), S
 }
 
 fn validate_dir(root: &str, cwd: &str) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
-    let home = dirs::home_dir().ok_or("Répertoire utilisateur introuvable.")?;
+    let home = crate::roots::home()?;
     let root_p = std::fs::canonicalize(root).map_err(|_| "Dossier projet introuvable.".to_string())?;
     let cwd_p = std::fs::canonicalize(cwd).map_err(|_| "Dossier de travail introuvable.".to_string())?;
     if !root_p.starts_with(&home) || !cwd_p.starts_with(&home) {
