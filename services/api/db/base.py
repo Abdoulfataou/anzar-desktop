@@ -220,6 +220,13 @@ async def init_db():
                 )
         logger.info("SQLite migration complete — reservation columns verified")
 
+    # -- Migrations versionnées (db/migrations), réversibles --
+    from db import migrations as _versioned
+    async with engine.begin() as conn:
+        ran = await conn.run_sync(_versioned.upgrade)
+    if ran:
+        logger.info("Migrations appliquées : %s", ", ".join(ran))
+
 
 # ============================================================================
 # HELPER

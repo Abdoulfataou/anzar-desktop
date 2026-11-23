@@ -7,7 +7,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
+from decimal import Decimal
+
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -15,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     UniqueConstraint,
@@ -44,6 +48,9 @@ class User(Base):
     # Incrémenté à chaque changement de mot de passe / déconnexion globale :
     # les jetons qui portent une ancienne valeur sont refusés immédiatement.
     token_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Monnaie d'affichage et de paiement choisie dans les Réglages (ISO 4217).
+    # NULL = automatique (suggestion d'après le pays).
+    preferred_currency: Mapped[Optional[str]] = mapped_column(String(3), nullable=True)
 
 
 # ============================================================================
@@ -234,12 +241,108 @@ class PaymentIntent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 
+    # ── Multidevise ── montant exact facturé, en unités mineures ISO de charged_currency
+    # (ex. 500 pour 5,00 €, 5000 pour 5 000 F, 750 pour 0,750 KWD). Le webhook est
+    # comparé à cette valeur entière, jamais à un flottant.
+    charged_amount_minor: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    fx_rate_used: Mapped[Optional[Decimal]] = mapped_column(Numeric(24, 10), nullable=True)  # FCFA pour 1 unité
+    pack_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    pricing_source: Mapped[str] = mapped_column(String(16), default="", nullable=False)  # grid|computed|amount
+    customer_country: Mapped[str] = mapped_column(String(2), default="", nullable=False)
+
     __table_args__ = (
         CheckConstraint(
             "status IN ('pending', 'paid', 'cancelled', 'failed', 'refunded', 'disputed')",
             name="ck_payment_intents_status",
         ),
     )
+
+
+# ============================================================================
+# MULTIDEVISE — devises, taux d'affichage, grille de packs, réglages de prix
+# Le FCFA (XOF) reste l'unité du grand livre : ces tables ne servent qu'à
+# l'affichage des prix et à l'encaissement.
+# ============================================================================
+
+class Currency(Base):
+    __tablename__ = "currencies"
+
+    code: Mapped[str] = mapped_column(String(3), primary_key=True)          # ISO 4217
+    name: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    symbol: Mapped[str] = mapped_column(String(8), default="", nullable=False)
+    decimals: Mapped[int] = mapped_column(Integer, nullable=False)          # 0, 2 ou 3 (ISO)
+    active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    margin_pct: Mapped[Optional[Decimal]] = mapped_column(Numeric(6, 3), nullable=True)  # NULL = marge globale
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("decimals >= 0 AND decimals <= 4", name="ck_currencies_decimals"),
+    )
+
+
+class FxRate(Base):
+    """Dernier taux connu : combien de FCFA vaut 1 unité de la devise."""
+    __tablename__ = "fx_rates"
+
+    currency: Mapped[str] = mapped_column(String(3), ForeignKey("currencies.code", ondelete="CASCADE"), primary_key=True)
+    fcfa_per_unit: Mapped[Decimal] = mapped_column(Numeric(24, 10), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    is_fixed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # parité légale, jamais téléchargée
+
+    __table_args__ = (
+        CheckConstraint("fcfa_per_unit > 0", name="ck_fx_rates_positive"),
+    )
+
+
+class FxFetchLog(Base):
+    """Journal des mises à jour de taux (succès, panne, variations rejetées)."""
+    __tablename__ = "fx_fetch_log"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
+    source: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    ok: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    updated: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    message: Mapped[str] = mapped_column(Text, default="", nullable=False)
+
+
+class TopupPack(Base):
+    """Pack de recharge à prix rond dans une devise ; crédite un montant fixe en FCFA (bonus inclus)."""
+    __tablename__ = "topup_packs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    currency: Mapped[str] = mapped_column(String(3), ForeignKey("currencies.code", ondelete="CASCADE"), index=True, nullable=False)
+    price_minor: Mapped[int] = mapped_column(BigInteger, nullable=False)    # unités mineures ISO
+    credit_fcfa: Mapped[int] = mapped_column(Integer, nullable=False)
+    label: Mapped[str] = mapped_column(String(64), default="", nullable=False)
+    sort: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("currency", "price_minor", name="uq_topup_packs_currency_price"),
+        CheckConstraint("price_minor > 0", name="ck_topup_packs_price"),
+        CheckConstraint("credit_fcfa > 0", name="ck_topup_packs_credit"),
+    )
+
+
+class PricingSetting(Base):
+    """Réglages de prix modifiables dans l'admin (marge, seuils…), en clé/valeur texte."""
+    __tablename__ = "pricing_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(String(255), default="", nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class SchemaMigration(Base):
+    """Migrations versionnées appliquées (db/migrations)."""
+    __tablename__ = "schema_migrations"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
 # ============================================================================

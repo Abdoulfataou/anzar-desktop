@@ -1,0 +1,13 @@
+{
+  "_doc": "Parités légales fixes à l'euro : unités de la devise pour 1 EUR. Jamais téléchargées. L'ancre du grand livre est XOF.",
+  "anchor": "XOF",
+  "per_eur": {
+    "EUR": "1",
+    "XOF": "655.957",
+    "XAF": "655.957",
+    "KMF": "491.96775",
+    "CVE": "110.265",
+    "BAM": "1.95583",
+    "XPF": "119.3317422434"
+  }
+}

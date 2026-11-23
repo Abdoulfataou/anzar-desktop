@@ -1,0 +1,1097 @@
+{
+"_doc": "ISO 4217 (devises en circulation) : code, unités mineures, nom. 'active' = état initial seulement ; l'admin décide ensuite.",
+"currencies": [
+{
+"code": "AED",
+"decimals": 2,
+"name": "UAE Dirham",
+"symbol": "",
+"active": false
+},
+{
+"code": "AFN",
+"decimals": 2,
+"name": "Afghani",
+"symbol": "",
+"active": false
+},
+{
+"code": "ALL",
+"decimals": 2,
+"name": "Lek",
+"symbol": "",
+"active": false
+},
+{
+"code": "AMD",
+"decimals": 2,
+"name": "Armenian Dram",
+"symbol": "",
+"active": false
+},
+{
+"code": "ANG",
+"decimals": 2,
+"name": "Netherlands Antillean Guilder",
+"symbol": "",
+"active": false
+},
+{
+"code": "AOA",
+"decimals": 2,
+"name": "Kwanza",
+"symbol": "",
+"active": false
+},
+{
+"code": "ARS",
+"decimals": 2,
+"name": "Argentine Peso",
+"symbol": "",
+"active": false
+},
+{
+"code": "AUD",
+"decimals": 2,
+"name": "Australian Dollar",
+"symbol": "$",
+"active": false
+},
+{
+"code": "AWG",
+"decimals": 2,
+"name": "Aruban Florin",
+"symbol": "",
+"active": false
+},
+{
+"code": "AZN",
+"decimals": 2,
+"name": "Azerbaijan Manat",
+"symbol": "",
+"active": false
+},
+{
+"code": "BAM",
+"decimals": 2,
+"name": "Convertible Mark",
+"symbol": "",
+"active": false
+},
+{
+"code": "BBD",
+"decimals": 2,
+"name": "Barbados Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "BDT",
+"decimals": 2,
+"name": "Taka",
+"symbol": "",
+"active": false
+},
+{
+"code": "BGN",
+"decimals": 2,
+"name": "Bulgarian Lev",
+"symbol": "",
+"active": false
+},
+{
+"code": "BHD",
+"decimals": 3,
+"name": "Bahraini Dinar",
+"symbol": "",
+"active": false
+},
+{
+"code": "BIF",
+"decimals": 0,
+"name": "Burundi Franc",
+"symbol": "",
+"active": false
+},
+{
+"code": "BMD",
+"decimals": 2,
+"name": "Bermudian Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "BND",
+"decimals": 2,
+"name": "Brunei Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "BOB",
+"decimals": 2,
+"name": "Boliviano",
+"symbol": "",
+"active": false
+},
+{
+"code": "BRL",
+"decimals": 2,
+"name": "Brazilian Real",
+"symbol": "R$",
+"active": false
+},
+{
+"code": "BSD",
+"decimals": 2,
+"name": "Bahamian Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "BTN",
+"decimals": 2,
+"name": "Ngultrum",
+"symbol": "",
+"active": false
+},
+{
+"code": "BWP",
+"decimals": 2,
+"name": "Pula",
+"symbol": "",
+"active": false
+},
+{
+"code": "BYN",
+"decimals": 2,
+"name": "Belarusian Ruble",
+"symbol": "",
+"active": false
+},
+{
+"code": "BZD",
+"decimals": 2,
+"name": "Belize Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "CAD",
+"decimals": 2,
+"name": "Canadian Dollar",
+"symbol": "$",
+"active": true
+},
+{
+"code": "CDF",
+"decimals": 2,
+"name": "Congolese Franc",
+"symbol": "",
+"active": false
+},
+{
+"code": "CHF",
+"decimals": 2,
+"name": "Swiss Franc",
+"symbol": "CHF",
+"active": false
+},
+{
+"code": "CLP",
+"decimals": 0,
+"name": "Chilean Peso",
+"symbol": "",
+"active": false
+},
+{
+"code": "CNY",
+"decimals": 2,
+"name": "Yuan Renminbi",
+"symbol": "¥",
+"active": false
+},
+{
+"code": "COP",
+"decimals": 2,
+"name": "Colombian Peso",
+"symbol": "",
+"active": false
+},
+{
+"code": "CRC",
+"decimals": 2,
+"name": "Costa Rican Colon",
+"symbol": "",
+"active": false
+},
+{
+"code": "CUP",
+"decimals": 2,
+"name": "Cuban Peso",
+"symbol": "",
+"active": false
+},
+{
+"code": "CVE",
+"decimals": 2,
+"name": "Cabo Verde Escudo",
+"symbol": "",
+"active": false
+},
+{
+"code": "CZK",
+"decimals": 2,
+"name": "Czech Koruna",
+"symbol": "",
+"active": false
+},
+{
+"code": "DJF",
+"decimals": 0,
+"name": "Djibouti Franc",
+"symbol": "",
+"active": false
+},
+{
+"code": "DKK",
+"decimals": 2,
+"name": "Danish Krone",
+"symbol": "",
+"active": false
+},
+{
+"code": "DOP",
+"decimals": 2,
+"name": "Dominican Peso",
+"symbol": "",
+"active": false
+},
+{
+"code": "DZD",
+"decimals": 2,
+"name": "Algerian Dinar",
+"symbol": "",
+"active": false
+},
+{
+"code": "EGP",
+"decimals": 2,
+"name": "Egyptian Pound",
+"symbol": "E£",
+"active": false
+},
+{
+"code": "ERN",
+"decimals": 2,
+"name": "Nakfa",
+"symbol": "",
+"active": false
+},
+{
+"code": "ETB",
+"decimals": 2,
+"name": "Ethiopian Birr",
+"symbol": "",
+"active": false
+},
+{
+"code": "EUR",
+"decimals": 2,
+"name": "Euro",
+"symbol": "€",
+"active": true
+},
+{
+"code": "FJD",
+"decimals": 2,
+"name": "Fiji Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "FKP",
+"decimals": 2,
+"name": "Falkland Islands Pound",
+"symbol": "",
+"active": false
+},
+{
+"code": "GBP",
+"decimals": 2,
+"name": "Pound Sterling",
+"symbol": "£",
+"active": true
+},
+{
+"code": "GEL",
+"decimals": 2,
+"name": "Lari",
+"symbol": "",
+"active": false
+},
+{
+"code": "GHS",
+"decimals": 2,
+"name": "Ghana Cedi",
+"symbol": "₵",
+"active": true
+},
+{
+"code": "GIP",
+"decimals": 2,
+"name": "Gibraltar Pound",
+"symbol": "",
+"active": false
+},
+{
+"code": "GMD",
+"decimals": 2,
+"name": "Dalasi",
+"symbol": "",
+"active": false
+},
+{
+"code": "GNF",
+"decimals": 0,
+"name": "Guinean Franc",
+"symbol": "",
+"active": false
+},
+{
+"code": "GTQ",
+"decimals": 2,
+"name": "Quetzal",
+"symbol": "",
+"active": false
+},
+{
+"code": "GYD",
+"decimals": 2,
+"name": "Guyana Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "HKD",
+"decimals": 2,
+"name": "Hong Kong Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "HNL",
+"decimals": 2,
+"name": "Lempira",
+"symbol": "",
+"active": false
+},
+{
+"code": "HTG",
+"decimals": 2,
+"name": "Gourde",
+"symbol": "",
+"active": false
+},
+{
+"code": "HUF",
+"decimals": 2,
+"name": "Forint",
+"symbol": "",
+"active": false
+},
+{
+"code": "IDR",
+"decimals": 2,
+"name": "Rupiah",
+"symbol": "",
+"active": false
+},
+{
+"code": "ILS",
+"decimals": 2,
+"name": "New Israeli Sheqel",
+"symbol": "₪",
+"active": false
+},
+{
+"code": "INR",
+"decimals": 2,
+"name": "Indian Rupee",
+"symbol": "₹",
+"active": false
+},
+{
+"code": "IQD",
+"decimals": 3,
+"name": "Iraqi Dinar",
+"symbol": "",
+"active": false
+},
+{
+"code": "IRR",
+"decimals": 2,
+"name": "Iranian Rial",
+"symbol": "",
+"active": false
+},
+{
+"code": "ISK",
+"decimals": 0,
+"name": "Iceland Krona",
+"symbol": "",
+"active": false
+},
+{
+"code": "JMD",
+"decimals": 2,
+"name": "Jamaican Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "JOD",
+"decimals": 3,
+"name": "Jordanian Dinar",
+"symbol": "",
+"active": false
+},
+{
+"code": "JPY",
+"decimals": 0,
+"name": "Yen",
+"symbol": "¥",
+"active": false
+},
+{
+"code": "KES",
+"decimals": 2,
+"name": "Kenyan Shilling",
+"symbol": "KSh",
+"active": true
+},
+{
+"code": "KGS",
+"decimals": 2,
+"name": "Som",
+"symbol": "",
+"active": false
+},
+{
+"code": "KHR",
+"decimals": 2,
+"name": "Riel",
+"symbol": "",
+"active": false
+},
+{
+"code": "KMF",
+"decimals": 0,
+"name": "Comorian Franc",
+"symbol": "",
+"active": false
+},
+{
+"code": "KPW",
+"decimals": 2,
+"name": "North Korean Won",
+"symbol": "",
+"active": false
+},
+{
+"code": "KRW",
+"decimals": 0,
+"name": "Won",
+"symbol": "₩",
+"active": false
+},
+{
+"code": "KWD",
+"decimals": 3,
+"name": "Kuwaiti Dinar",
+"symbol": "",
+"active": false
+},
+{
+"code": "KYD",
+"decimals": 2,
+"name": "Cayman Islands Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "KZT",
+"decimals": 2,
+"name": "Tenge",
+"symbol": "",
+"active": false
+},
+{
+"code": "LAK",
+"decimals": 2,
+"name": "Lao Kip",
+"symbol": "",
+"active": false
+},
+{
+"code": "LBP",
+"decimals": 2,
+"name": "Lebanese Pound",
+"symbol": "",
+"active": false
+},
+{
+"code": "LKR",
+"decimals": 2,
+"name": "Sri Lanka Rupee",
+"symbol": "",
+"active": false
+},
+{
+"code": "LRD",
+"decimals": 2,
+"name": "Liberian Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "LSL",
+"decimals": 2,
+"name": "Loti",
+"symbol": "",
+"active": false
+},
+{
+"code": "LYD",
+"decimals": 3,
+"name": "Libyan Dinar",
+"symbol": "",
+"active": false
+},
+{
+"code": "MAD",
+"decimals": 2,
+"name": "Moroccan Dirham",
+"symbol": "DH",
+"active": true
+},
+{
+"code": "MDL",
+"decimals": 2,
+"name": "Moldovan Leu",
+"symbol": "",
+"active": false
+},
+{
+"code": "MGA",
+"decimals": 2,
+"name": "Malagasy Ariary",
+"symbol": "",
+"active": false
+},
+{
+"code": "MKD",
+"decimals": 2,
+"name": "Denar",
+"symbol": "",
+"active": false
+},
+{
+"code": "MMK",
+"decimals": 2,
+"name": "Kyat",
+"symbol": "",
+"active": false
+},
+{
+"code": "MNT",
+"decimals": 2,
+"name": "Tugrik",
+"symbol": "",
+"active": false
+},
+{
+"code": "MOP",
+"decimals": 2,
+"name": "Pataca",
+"symbol": "",
+"active": false
+},
+{
+"code": "MRU",
+"decimals": 2,
+"name": "Ouguiya",
+"symbol": "",
+"active": false
+},
+{
+"code": "MUR",
+"decimals": 2,
+"name": "Mauritius Rupee",
+"symbol": "",
+"active": false
+},
+{
+"code": "MVR",
+"decimals": 2,
+"name": "Rufiyaa",
+"symbol": "",
+"active": false
+},
+{
+"code": "MWK",
+"decimals": 2,
+"name": "Malawi Kwacha",
+"symbol": "",
+"active": false
+},
+{
+"code": "MXN",
+"decimals": 2,
+"name": "Mexican Peso",
+"symbol": "",
+"active": false
+},
+{
+"code": "MYR",
+"decimals": 2,
+"name": "Malaysian Ringgit",
+"symbol": "",
+"active": false
+},
+{
+"code": "MZN",
+"decimals": 2,
+"name": "Mozambique Metical",
+"symbol": "",
+"active": false
+},
+{
+"code": "NAD",
+"decimals": 2,
+"name": "Namibia Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "NGN",
+"decimals": 2,
+"name": "Naira",
+"symbol": "₦",
+"active": true
+},
+{
+"code": "NIO",
+"decimals": 2,
+"name": "Cordoba Oro",
+"symbol": "",
+"active": false
+},
+{
+"code": "NOK",
+"decimals": 2,
+"name": "Norwegian Krone",
+"symbol": "",
+"active": false
+},
+{
+"code": "NPR",
+"decimals": 2,
+"name": "Nepalese Rupee",
+"symbol": "",
+"active": false
+},
+{
+"code": "NZD",
+"decimals": 2,
+"name": "New Zealand Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "OMR",
+"decimals": 3,
+"name": "Rial Omani",
+"symbol": "",
+"active": false
+},
+{
+"code": "PAB",
+"decimals": 2,
+"name": "Balboa",
+"symbol": "",
+"active": false
+},
+{
+"code": "PEN",
+"decimals": 2,
+"name": "Sol",
+"symbol": "",
+"active": false
+},
+{
+"code": "PGK",
+"decimals": 2,
+"name": "Kina",
+"symbol": "",
+"active": false
+},
+{
+"code": "PHP",
+"decimals": 2,
+"name": "Philippine Peso",
+"symbol": "₱",
+"active": false
+},
+{
+"code": "PKR",
+"decimals": 2,
+"name": "Pakistan Rupee",
+"symbol": "",
+"active": false
+},
+{
+"code": "PLN",
+"decimals": 2,
+"name": "Zloty",
+"symbol": "zł",
+"active": false
+},
+{
+"code": "PYG",
+"decimals": 0,
+"name": "Guarani",
+"symbol": "",
+"active": false
+},
+{
+"code": "QAR",
+"decimals": 2,
+"name": "Qatari Rial",
+"symbol": "",
+"active": false
+},
+{
+"code": "RON",
+"decimals": 2,
+"name": "Romanian Leu",
+"symbol": "",
+"active": false
+},
+{
+"code": "RSD",
+"decimals": 2,
+"name": "Serbian Dinar",
+"symbol": "",
+"active": false
+},
+{
+"code": "RUB",
+"decimals": 2,
+"name": "Russian Ruble",
+"symbol": "₽",
+"active": false
+},
+{
+"code": "RWF",
+"decimals": 0,
+"name": "Rwanda Franc",
+"symbol": "RF",
+"active": true
+},
+{
+"code": "SAR",
+"decimals": 2,
+"name": "Saudi Riyal",
+"symbol": "",
+"active": false
+},
+{
+"code": "SBD",
+"decimals": 2,
+"name": "Solomon Islands Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "SCR",
+"decimals": 2,
+"name": "Seychelles Rupee",
+"symbol": "",
+"active": false
+},
+{
+"code": "SDG",
+"decimals": 2,
+"name": "Sudanese Pound",
+"symbol": "",
+"active": false
+},
+{
+"code": "SEK",
+"decimals": 2,
+"name": "Swedish Krona",
+"symbol": "",
+"active": false
+},
+{
+"code": "SGD",
+"decimals": 2,
+"name": "Singapore Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "SHP",
+"decimals": 2,
+"name": "Saint Helena Pound",
+"symbol": "",
+"active": false
+},
+{
+"code": "SLE",
+"decimals": 2,
+"name": "Leone",
+"symbol": "",
+"active": false
+},
+{
+"code": "SOS",
+"decimals": 2,
+"name": "Somali Shilling",
+"symbol": "",
+"active": false
+},
+{
+"code": "SRD",
+"decimals": 2,
+"name": "Surinam Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "SSP",
+"decimals": 2,
+"name": "South Sudanese Pound",
+"symbol": "",
+"active": false
+},
+{
+"code": "STN",
+"decimals": 2,
+"name": "Dobra",
+"symbol": "",
+"active": false
+},
+{
+"code": "SVC",
+"decimals": 2,
+"name": "El Salvador Colon",
+"symbol": "",
+"active": false
+},
+{
+"code": "SYP",
+"decimals": 2,
+"name": "Syrian Pound",
+"symbol": "",
+"active": false
+},
+{
+"code": "SZL",
+"decimals": 2,
+"name": "Lilangeni",
+"symbol": "",
+"active": false
+},
+{
+"code": "THB",
+"decimals": 2,
+"name": "Baht",
+"symbol": "฿",
+"active": false
+},
+{
+"code": "TJS",
+"decimals": 2,
+"name": "Somoni",
+"symbol": "",
+"active": false
+},
+{
+"code": "TMT",
+"decimals": 2,
+"name": "Turkmenistan New Manat",
+"symbol": "",
+"active": false
+},
+{
+"code": "TND",
+"decimals": 3,
+"name": "Tunisian Dinar",
+"symbol": "",
+"active": false
+},
+{
+"code": "TOP",
+"decimals": 2,
+"name": "Pa'anga",
+"symbol": "",
+"active": false
+},
+{
+"code": "TRY",
+"decimals": 2,
+"name": "Turkish Lira",
+"symbol": "₺",
+"active": false
+},
+{
+"code": "TTD",
+"decimals": 2,
+"name": "Trinidad and Tobago Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "TWD",
+"decimals": 2,
+"name": "New Taiwan Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "TZS",
+"decimals": 2,
+"name": "Tanzanian Shilling",
+"symbol": "TSh",
+"active": true
+},
+{
+"code": "UAH",
+"decimals": 2,
+"name": "Hryvnia",
+"symbol": "₴",
+"active": false
+},
+{
+"code": "UGX",
+"decimals": 0,
+"name": "Uganda Shilling",
+"symbol": "USh",
+"active": true
+},
+{
+"code": "USD",
+"decimals": 2,
+"name": "US Dollar",
+"symbol": "$",
+"active": true
+},
+{
+"code": "UYU",
+"decimals": 2,
+"name": "Peso Uruguayo",
+"symbol": "",
+"active": false
+},
+{
+"code": "UZS",
+"decimals": 2,
+"name": "Uzbekistan Sum",
+"symbol": "",
+"active": false
+},
+{
+"code": "VES",
+"decimals": 2,
+"name": "Bolivar Soberano",
+"symbol": "",
+"active": false
+},
+{
+"code": "VND",
+"decimals": 0,
+"name": "Dong",
+"symbol": "₫",
+"active": false
+},
+{
+"code": "VUV",
+"decimals": 0,
+"name": "Vatu",
+"symbol": "",
+"active": false
+},
+{
+"code": "WST",
+"decimals": 2,
+"name": "Tala",
+"symbol": "",
+"active": false
+},
+{
+"code": "XAF",
+"decimals": 0,
+"name": "CFA Franc BEAC",
+"symbol": "FCFA",
+"active": true
+},
+{
+"code": "XCD",
+"decimals": 2,
+"name": "East Caribbean Dollar",
+"symbol": "",
+"active": false
+},
+{
+"code": "XCG",
+"decimals": 2,
+"name": "Caribbean Guilder",
+"symbol": "",
+"active": false
+},
+{
+"code": "XOF",
+"decimals": 0,
+"name": "CFA Franc BCEAO",
+"symbol": "F CFA",
+"active": true
+},
+{
+"code": "XPF",
+"decimals": 0,
+"name": "CFP Franc",
+"symbol": "",
+"active": false
+},
+{
+"code": "YER",
+"decimals": 2,
+"name": "Yemeni Rial",
+"symbol": "",
+"active": false
+},
+{
+"code": "ZAR",
+"decimals": 2,
+"name": "Rand",
+"symbol": "R",
+"active": true
+},
+{
+"code": "ZMW",
+"decimals": 2,
+"name": "Zambian Kwacha",
+"symbol": "",
+"active": false
+},
+{
+"code": "ZWG",
+"decimals": 2,
+"name": "Zimbabwe Gold",
+"symbol": "",
+"active": false
+}
+]
+}
