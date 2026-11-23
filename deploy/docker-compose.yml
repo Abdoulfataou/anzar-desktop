@@ -58,11 +58,14 @@ services:
       FEDAPAY_WEBHOOK_SECRET: ${FEDAPAY_WEBHOOK_SECRET:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
-      STRIPE_CURRENCY: ${STRIPE_CURRENCY:-usd}
-      STRIPE_FCFA_PER_UNIT: ${STRIPE_FCFA_PER_UNIT:-0}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      FLUTTERWAVE_SECRET_KEY: ${FLUTTERWAVE_SECRET_KEY:-}
+      FLUTTERWAVE_WEBHOOK_HASH: ${FLUTTERWAVE_WEBHOOK_HASH:-}
+      # Taux d'affichage téléchargés une fois par jour (ExchangeRate-API, puis Frankfurter)
+      FX_AUTO_REFRESH: ${FX_AUTO_REFRESH:-true}
     networks:
       donnees: {}
-      sortie: {}          # Internet : DeepSeek, Brevo
+      sortie: {}          # Internet : DeepSeek, Brevo, fournisseurs de paiement, taux de change
       passerelle:
         aliases: [anzar-api]
     security_opt: ["no-new-privileges:true"]

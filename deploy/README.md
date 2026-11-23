@@ -140,14 +140,25 @@ Après chaque `git push` depuis le Mac :
 | `FATAL: JWT_SECRET…` au démarrage | `.env` absent ou vide | relancer `./initialiser.sh` (seulement si la base est vide) |
 
 
-## Paiements automatiques (FedaPay, Stripe)
+## Paiements automatiques et multidevise
 
-Sans clé, rien ne change : seule la recharge manuelle (validée dans l'admin) est proposée.
-Chaque fournisseur s'active dès que sa clé secrète est dans `/root/anzar/deploy/.env`,
-puis `./mettre-a-jour.sh`.
+Le solde reste en FCFA côté serveur (1 crédit = 1 F, grand livre inchangé). L'utilisateur
+voit son solde en crédits et paie dans **sa** monnaie : la devise est choisie selon sa
+préférence (Réglages de l'app), sinon son pays (en-tête Cloudflare `CF-IPCountry`).
+Le prix est toujours recalculé par le serveur.
 
-**FedaPay** (mobile money, compte de l'entreprise au Niger) — tableau de bord FedaPay :
-1. *Développeurs → Clés API* : copie la clé secrète (`sk_sandbox_…` pour tester, `sk_live_…` ensuite).
+Sans clé, un fournisseur reste invisible. Chaque fournisseur s'active dès que sa clé
+secrète est dans `/root/anzar/deploy/.env`, puis `./mettre-a-jour.sh`.
+
+| Fournisseur | Devises (voir `services/api/services/payments/capabilities.json`) |
+|---|---|
+| FedaPay | XOF (mobile money, Afrique de l'Ouest) |
+| Paystack | NGN, GHS, ZAR, KES, XOF |
+| Flutterwave | NGN, GHS, KES, UGX, TZS, RWF, ZAR, XAF, XOF, ZMW, MWK |
+| Stripe | ~135 devises (cartes) ; sert aussi de **repli en USD** quand aucun autre n'accepte la devise |
+
+**FedaPay** — tableau de bord FedaPay :
+1. *Développeurs → Clés API* : clé secrète (`sk_sandbox_…` pour tester, `sk_live_…` ensuite).
 2. *Développeurs → Webhooks → Ajouter* : URL `https://anzar-api.issalanhub.com/api/payments/webhook/fedapay`,
    événements `transaction.*`. Copie la clé secrète du webhook.
 3. Dans `.env` :
@@ -157,24 +168,67 @@ puis `./mettre-a-jour.sh`.
    FEDAPAY_ENVIRONMENT=sandbox        # live quand le compte est validé
    ```
 
-**Stripe** (cartes, compte de la LLC américaine) — dashboard Stripe :
+**Stripe** — dashboard Stripe :
 1. *Développeurs → Clés API* : clé secrète (`sk_test_…`, puis `sk_live_…`).
 2. *Développeurs → Webhooks → Ajouter une destination* : URL
    `https://anzar-api.issalanhub.com/api/payments/webhook/stripe`, événements
    `checkout.session.completed`, `checkout.session.async_payment_succeeded`,
-   `checkout.session.async_payment_failed`, `checkout.session.expired`. Copie le `whsec_…`.
+   `checkout.session.async_payment_failed`, `checkout.session.expired`,
+   `charge.refunded`, `charge.dispute.created`. Copie le `whsec_…`.
 3. Dans `.env` :
    ```
    STRIPE_SECRET_KEY=sk_test_...
    STRIPE_WEBHOOK_SECRET=whsec_...
-   STRIPE_CURRENCY=usd
-   STRIPE_FCFA_PER_UNIT=600           # FCFA pour 1 $ ; ajuste selon le cours
+   ```
+   `STRIPE_CURRENCY` et `STRIPE_FCFA_PER_UNIT` ne servent plus (devise et taux viennent des
+   tables de devises) : tu peux les retirer de `.env`.
+
+**Paystack** — dashboard Paystack :
+1. *Settings → API Keys & Webhooks* : clé secrète (`sk_test_…`, puis `sk_live_…`).
+2. Même page, *Webhook URL* : `https://anzar-api.issalanhub.com/api/payments/webhook/paystack`.
+   Paystack signe ses webhooks avec la clé secrète elle-même : aucune autre variable.
+3. Dans `.env` : `PAYSTACK_SECRET_KEY=sk_test_...`
+
+**Flutterwave** — dashboard Flutterwave :
+1. *Settings → API Keys* : clé secrète (`FLWSECK_TEST-…`, puis `FLWSECK-…`).
+2. *Settings → Webhooks* : URL `https://anzar-api.issalanhub.com/api/payments/webhook/flutterwave`,
+   et choisis un **Secret hash** (longue chaîne aléatoire, par ex. `openssl rand -hex 32`).
+3. Dans `.env` :
+   ```
+   FLUTTERWAVE_SECRET_KEY=FLWSECK_TEST-...
+   FLUTTERWAVE_WEBHOOK_HASH=<le même secret hash>
    ```
 
+Paystack et Flutterwave ont été testés contre des réponses simulées : fais un premier paiement
+en mode test (clés `…TEST…`) avant de passer aux clés de production.
+
 Sécurité : le serveur ne crédite jamais sur la seule foi du webhook. Il vérifie sa signature,
-relit le statut chez le fournisseur, contrôle montant et devise, puis crédite une seule fois.
-Si un webhook se perd, l'app (pendant l'attente) et un rattrapage toutes les 5 minutes relisent
-le statut ; dans l'admin, « Vérifier » fait la même chose à la demande.
+relit le statut chez le fournisseur, compare le montant **en unités mineures entières** et la
+devise à ce qu'il a lui-même facturé, puis crédite une seule fois. Si un webhook se perd, l'app
+(pendant l'attente) et un rattrapage toutes les 5 minutes relisent le statut ; dans l'admin,
+« Vérifier » fait la même chose à la demande.
+
+### Taux de change et prix
+
+- Taux d'affichage téléchargés **une fois par jour** (ExchangeRate-API en accès libre, puis
+  Frankfurter en secours), sans clé. `FX_AUTO_REFRESH=false` désactive la mise à jour automatique.
+- L'euro et les francs CFA (XOF, XAF), ainsi que KMF, CVE, BAM et XPF, ont une **parité fixe**
+  (1 € = 655,957 F) jamais téléchargée.
+- Panne des sources : le dernier taux connu reste utilisé, avec sa date. Une variation de plus
+  de 25 % en un jour n'est pas appliquée seule ; l'admin la voit et peut forcer le taux.
+- Admin → **Devises et prix** : devises proposées, grille de packs à prix ronds par devise,
+  marge de change des prix calculés (3 % par défaut), journal des taux, totaux par devise.
+  Sans grille, une devise affiche la grille XOF convertie (marge comprise, arrondie vers le haut).
+
+### Migrations de base de données
+
+Les migrations versionnées s'appliquent seules au démarrage de l'API. Pour les consulter ou
+revenir en arrière (avant de redéployer une version précédente du code) :
+```
+docker compose exec api python -m db.migrations status
+docker compose exec api python -m db.migrations down 0001_multidevise
+```
+Le retour arrière ne retire que les tables et colonnes multidevise ; soldes et historique sont intacts.
 
 
 ## Sécuriser `/api/admin`
