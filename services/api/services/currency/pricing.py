@@ -149,13 +149,16 @@ async def _load(currency: str):
 
 async def _try(currency: str, country: str, settings: Dict[str, str], requested: str) -> Offer | str:
     """Construit l'offre pour `currency`, ou renvoie la raison de l'échec."""
+    from config import settings as app_settings
     from services.payments.routing import providers_for
 
     cur, rate, packs, base = await _load(currency)
     if cur is None or not cur.active:
         return "inactive"
     providers = providers_for(currency, country)
-    if not providers:
+    # Sans fournisseur automatique, le paiement manuel (validé par un admin) reste possible en XOF
+    manual_ok = currency == LEDGER and bool(app_settings.manual_payments_enabled)
+    if not providers and not manual_ok:
         return "no_provider"
     now = _utcnow()
     fresh = _rate_fresh(rate, settings, now)
@@ -176,7 +179,7 @@ async def _try(currency: str, country: str, settings: Dict[str, str], requested:
     if not fresh or not base:
         return "rate_unavailable"
     offer.pricing_source = "computed"
-    gran = max(p.granularity(currency) for p in providers)
+    gran = max([p.granularity(currency) for p in providers] or [1])
     factor = 1 + _margin(cur, settings)
     for b in base:
         value = D(b.price_minor) / D(rate.fcfa_per_unit) * factor     # XOF (0 décimale) → devise
@@ -199,6 +202,12 @@ async def build_offer(requested: Optional[str] = None, *, preferred: Optional[st
         if isinstance(second, Offer):
             second.fallback_reason = first
             return second
+    # Dernier recours : XOF, où le paiement manuel reste possible même sans aucune clé
+    if LEDGER not in (target, fallback):
+        last = await _try(LEDGER, country, settings, target)
+        if isinstance(last, Offer):
+            last.fallback_reason = first
+            return last
     return Offer(currency=target, decimals=0, symbol="", requested_currency=target,
                  fallback_reason="unavailable", pricing_source="", fcfa_per_unit=None,
                  rate_as_of=None, rate_source="", rate_fixed=False)

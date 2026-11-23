@@ -70,6 +70,8 @@ async def pricing(request: Request, currency: str = "", country: str = "",
     data["message"] = FALLBACK_MESSAGES.get(offer.fallback_reason, "")
     if offer.fallback_reason and offer.fallback_reason != "unavailable":
         data["message"] += f" Paiement proposé en {offer.currency}."
+        if not offer.providers:
+            data["message"] += " Pour l'instant, par paiement manuel uniquement."
     data["rates_attribution"] = {"label": "Taux par Exchange Rate API",
                                  "url": "https://www.exchangerate-api.com"}
     # Montant libre (XOF) : bornes, paliers de bonus et paiement manuel, pour que l'app

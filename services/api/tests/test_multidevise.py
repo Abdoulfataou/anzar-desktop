@@ -562,3 +562,18 @@ def test_flutterwave_adapter(monkeypatch):
         p.webhook_tx_id(body, {"verif-hash": "faux"})
     with pytest.raises(PaymentError):
         p.quote(15000, "EUR")                                                 # non déclaré
+
+
+def test_without_any_key_manual_xof_still_offered(client, user_and_token, monkeypatch):
+    """Aucune clé de fournisseur : la recharge manuelle en XOF reste proposée, y compris depuis Paris."""
+    _, _, h = user_and_token
+    for k in ("stripe_secret_key", "fedapay_secret_key", "paystack_secret_key", "flutterwave_secret_key"):
+        monkeypatch.setattr(settings, k, "")
+    d = client.get("/api/pricing", headers={**h, "CF-IPCountry": "NE"}).json()
+    assert d["currency"] == "XOF" and d["providers"] == [] and d["manual"] is True and len(d["packs"]) == 5
+    d = client.get("/api/pricing", headers={**h, "CF-IPCountry": "FR"}).json()
+    assert d["currency"] == "XOF" and d["fallback_reason"] == "no_provider" and d["manual"] is True
+    assert "manuel" in d["message"]
+    monkeypatch.setattr(settings, "manual_payments_enabled", False)
+    d = client.get("/api/pricing", headers={**h, "CF-IPCountry": "FR"}).json()
+    assert d["fallback_reason"] == "unavailable" and d["packs"] == []
