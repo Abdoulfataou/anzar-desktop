@@ -1,7 +1,9 @@
 """
 CREDITS + PAYMENTS + USAGE routes — /api/credits/*, /api/payments/*, /api/usage/*
 """
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel, Field
 
 from security import get_current_user
@@ -17,8 +19,13 @@ router = APIRouter(tags=["credits"])
 # ── Models ──
 
 class PaymentInitiateRequest(BaseModel):
-    amount: float = Field(..., gt=0, le=1_000_000)
+    # Montant libre en FCFA (XOF uniquement). Ignoré si pack_id est fourni.
+    amount: Optional[float] = Field(default=None, gt=0, le=1_000_000)
+    # Devise de paiement choisie (ISO 4217). Le PRIX n'est jamais accepté depuis l'app :
+    # le serveur le recalcule à partir de (currency, pack_id).
     currency: str = Field(default="XOF", max_length=8)
+    pack_id: Optional[int] = Field(default=None, ge=1)
+    country: str = Field(default="", max_length=2)   # indice de l'app (langue/fuseau), si pas d'en-tête pays
     method: str = Field(default="wave", max_length=32)
     # Fournisseur automatique (fedapay, stripe…). Vide = demande manuelle validée par un admin.
     provider: str = Field(default="", max_length=32)
@@ -67,7 +74,7 @@ async def get_credit_transactions(
 # ── Payments ──
 
 @router.post("/api/payments/initiate")
-async def initiate_payment(body: PaymentInitiateRequest, user: dict = Depends(get_current_user)):
+async def initiate_payment(body: PaymentInitiateRequest, request: Request, user: dict = Depends(get_current_user)):
     """
     Démarre une recharge.
       - provider renseigné : paiement automatique, renvoie paymentUrl ; le compte est crédité
@@ -78,9 +85,13 @@ async def initiate_payment(body: PaymentInitiateRequest, user: dict = Depends(ge
     from services.payments import start_payment
     from services.payments.base import PaymentError
 
+    from routes.pricing import request_country
+
     if body.provider:
         try:
-            return await start_payment(user["sub"], body.amount, body.provider)
+            return await start_payment(user["sub"], body.provider, currency=body.currency,
+                                       pack_id=body.pack_id, amount_fcfa=body.amount,
+                                       country=request_country(request, body.country))
         except ValueError as e:
             raise HTTPException(400, str(e))
         except PaymentError as e:
@@ -88,6 +99,8 @@ async def initiate_payment(body: PaymentInitiateRequest, user: dict = Depends(ge
 
     if not settings.manual_payments_enabled:
         raise HTTPException(400, "Choisis un moyen de paiement")
+    if not body.amount:
+        raise HTTPException(400, "Montant requis pour une demande manuelle")
     intent = await create_payment_intent(user["sub"], body.amount, currency=body.currency, method=body.method)
     return {
         "status": "pending",

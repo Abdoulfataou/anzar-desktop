@@ -16,7 +16,7 @@ import httpx
 from config import settings
 from services.payments.base import (
     Checkout, PaymentError, PaymentProvider, ProviderInfo, Quote, RefundEvent, RemoteStatus,
-    SignatureError, header_get, verify_timestamped_signature,
+    SignatureError, declared, header_get, verify_timestamped_signature,
 )
 
 logger = logging.getLogger("anzar.payments.fedapay")
@@ -42,7 +42,9 @@ class FedaPayProvider(PaymentProvider):
         label="Mobile money",
         kind="mobile_money",
         description="Airtel, Moov, MTN, Orange, Wave… via FedaPay",
-        countries=["NE", "BJ", "CI", "SN", "TG", "ML", "GN"],
+        countries=list(declared("fedapay").get("countries", [])),
+        currencies=list(declared("fedapay").get("currencies", [])),
+        priority=int(declared("fedapay").get("priority", 10)),
     )
 
     def __init__(self, client: Optional[httpx.AsyncClient] = None):
@@ -58,9 +60,6 @@ class FedaPayProvider(PaymentProvider):
 
     def webhooks_enabled(self) -> bool:
         return bool(settings.fedapay_webhook_secret.strip())
-
-    def quote(self, amount_fcfa: float) -> Quote:
-        return Quote(amount=float(int(round(amount_fcfa))), currency="xof")
 
     async def _request(self, method: str, path: str, body: Optional[dict] = None) -> Any:
         headers = {"Authorization": f"Bearer {settings.fedapay_secret_key.strip()}",
@@ -87,10 +86,12 @@ class FedaPayProvider(PaymentProvider):
 
     async def create_checkout(self, *, intent_id, amount_fcfa, quote, customer_email,
                               return_url, cancel_url) -> Checkout:
+        if quote.amount_minor is None or quote.currency.upper() not in self.info.currencies:
+            raise PaymentError("Montant ou devise non accepté par FedaPay")
         tx = _unwrap(await self._request("POST", "/transactions", {
-            "description": f"Crédits ANZAR — {int(quote.amount)} FCFA",
-            "amount": int(quote.amount),
-            "currency": {"iso": "XOF"},
+            "description": f"ANZAR — {int(amount_fcfa):,} crédits".replace(",", " "),
+            "amount": self.to_provider_amount(quote.amount_minor, quote.currency),
+            "currency": {"iso": quote.currency.upper()},
             "callback_url": return_url,
             "customer": {"email": customer_email},
             "custom_metadata": {"intent_id": intent_id},
@@ -109,7 +110,10 @@ class FedaPayProvider(PaymentProvider):
         raw = str(tx.get("status") or "").lower()
         state = ("paid" if raw in PAID else "refunded" if raw in REFUNDED
                  else "failed" if raw in FAILED else "cancelled" if raw in CANCELLED else "pending")
-        return RemoteStatus(state=state, amount=float(tx.get("amount") or 0), currency="", raw_status=raw)
+        cur = str(((tx.get("currency") or {}) if isinstance(tx.get("currency"), dict) else {}).get("iso") or "").lower()
+        amount = float(tx.get("amount") or 0)
+        return RemoteStatus(state=state, amount=amount, currency=cur, raw_status=raw,
+                            amount_minor=int(round(amount)))
 
     def webhook_refund_event(self, raw: bytes, headers: Mapping[str, str]) -> Optional[RefundEvent]:
         verify_timestamped_signature(header_get(headers, "x-fedapay-signature"), raw,

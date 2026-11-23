@@ -8,45 +8,36 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from typing import Any, Mapping, Optional
 
 import httpx
 
 from config import settings
+from services.currency.money import from_minor
 from services.payments.base import (
     Checkout, PaymentError, PaymentProvider, ProviderInfo, Quote, RefundEvent, RemoteStatus,
-    SignatureError, header_get, verify_timestamped_signature,
+    SignatureError, declared, header_get, iso_decimals, verify_timestamped_signature,
 )
 
 logger = logging.getLogger("anzar.payments.stripe")
 
 API = "https://api.stripe.com/v1"
-ZERO_DECIMAL = {"xof", "xaf", "jpy", "krw", "gnf", "rwf", "ugx", "vnd", "clp", "djf", "kmf", "mga", "pyg", "vuv"}
 EVENTS = {"checkout.session.completed", "checkout.session.async_payment_succeeded",
           "checkout.session.async_payment_failed", "checkout.session.expired"}
 REFUND_EVENTS = {"charge.refunded", "charge.dispute.created", "charge.dispute.updated"}
-
-
-def _currency() -> str:
-    return (settings.stripe_currency or "usd").strip().lower()
-
-
-def to_minor(amount: float, currency: str) -> int:
-    return int(round(amount)) if currency in ZERO_DECIMAL else int(round(amount * 100))
-
-
-def from_minor(minor: int, currency: str) -> float:
-    return float(minor) if currency in ZERO_DECIMAL else minor / 100.0
+_CAP = declared("stripe")
 
 
 class StripeProvider(PaymentProvider):
+    """Devises et unités mineures (zéro décimale, ISK/UGX, 3 décimales) : capabilities.json."""
     info = ProviderInfo(
         id="stripe",
         label="Carte bancaire",
         kind="card",
         description="Visa, Mastercard, Apple Pay… partout dans le monde, via Stripe",
-        countries=["*"],
+        countries=list(_CAP.get("countries", ["*"])),
+        currencies=list(_CAP.get("currencies", [])),
+        priority=int(_CAP.get("priority", 50)),
     )
 
     def __init__(self, client: Optional[httpx.AsyncClient] = None):
@@ -58,17 +49,12 @@ class StripeProvider(PaymentProvider):
     def webhooks_enabled(self) -> bool:
         return bool(settings.stripe_webhook_secret.strip())
 
-    def fcfa_per_unit(self) -> float:
-        return settings.effective_stripe_rate
-
-    def quote(self, amount_fcfa: float) -> Quote:
-        cur = _currency()
-        value = float(amount_fcfa) / settings.effective_stripe_rate
-        if cur in ZERO_DECIMAL:
-            value = float(math.ceil(value))
-        else:
-            value = math.ceil(value * 100) / 100.0   # arrondi au centime supérieur
-        return Quote(amount=value, currency=cur)
+    def _iso_amount(self, stripe_amount, currency: str) -> tuple[int, float]:
+        cur = (currency or "").upper()
+        if not cur:
+            return 0, 0.0
+        minor = self.from_provider_amount(int(stripe_amount or 0), cur)
+        return minor, float(from_minor(minor, iso_decimals(cur)))
 
     async def _request(self, method: str, path: str, form: Optional[dict] = None,
                        idempotency_key: str = "") -> Any:
@@ -96,8 +82,9 @@ class StripeProvider(PaymentProvider):
 
     async def create_checkout(self, *, intent_id, amount_fcfa, quote, customer_email,
                               return_url, cancel_url) -> Checkout:
-        if quote.currency not in ZERO_DECIMAL and quote.amount < 0.5:
-            raise PaymentError("Montant trop faible pour un paiement par carte")
+        if quote.amount_minor is None:
+            raise PaymentError("Montant non calculé par le serveur")
+        unit_amount = self.to_provider_amount(quote.amount_minor, quote.currency)
         form = {
             "mode": "payment",
             "success_url": return_url,
@@ -106,8 +93,8 @@ class StripeProvider(PaymentProvider):
             "customer_email": customer_email,
             "line_items[0][quantity]": "1",
             "line_items[0][price_data][currency]": quote.currency,
-            "line_items[0][price_data][unit_amount]": str(to_minor(quote.amount, quote.currency)),
-            "line_items[0][price_data][product_data][name]": f"Crédits ANZAR — {int(amount_fcfa)} FCFA",
+            "line_items[0][price_data][unit_amount]": str(unit_amount),
+            "line_items[0][price_data][product_data][name]": f"ANZAR — {int(amount_fcfa):,} crédits".replace(",", " "),
             "metadata[intent_id]": intent_id,
             "payment_intent_data[metadata][intent_id]": intent_id,
         }
@@ -127,9 +114,9 @@ class StripeProvider(PaymentProvider):
             state = "cancelled"
         else:
             state = "pending"
-        return RemoteStatus(state=state, amount=from_minor(int(s.get("amount_total") or 0), cur),
-                            currency=cur, raw_status=f"{status}/{pay}",
-                            provider_payment_id=str(s.get("payment_intent") or ""))
+        minor, amount = self._iso_amount(s.get("amount_total"), cur)
+        return RemoteStatus(state=state, amount=amount, currency=cur, raw_status=f"{status}/{pay}",
+                            provider_payment_id=str(s.get("payment_intent") or ""), amount_minor=minor)
 
     def webhook_refund_event(self, raw: bytes, headers: Mapping[str, str]) -> Optional[RefundEvent]:
         verify_timestamped_signature(header_get(headers, "stripe-signature"), raw,
@@ -147,10 +134,10 @@ class StripeProvider(PaymentProvider):
         cur = str(obj.get("currency") or "").lower()
         metadata = obj.get("metadata") or {}
         if etype == "charge.refunded":
-            amount = from_minor(int(obj.get("amount_refunded") or obj.get("amount") or 0), cur)
+            _, amount = self._iso_amount(obj.get("amount_refunded") or obj.get("amount"), cur)
             state = "refunded"
         else:
-            amount = from_minor(int(obj.get("amount") or 0), cur)
+            _, amount = self._iso_amount(obj.get("amount"), cur)
             state = "disputed"
         return RefundEvent(
             intent_id=str(metadata.get("intent_id") or ""),

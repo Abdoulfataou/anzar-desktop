@@ -10,6 +10,10 @@ Cycle d'une recharge :
        - le rattrapage périodique (reconcile_pending), si les deux autres ont échoué.
   4. refresh_intent relit le statut CHEZ le fournisseur, vérifie montant et devise,
      puis crédite une seule fois (external_ref payment:<id>).
+
+Multidevise : le prix (devise + montant en unités mineures) est TOUJOURS recalculé
+ici par services.currency.pricing, jamais repris de l'app. Le montant attendu est
+stocké en entier (charged_amount_minor) et comparé exactement à celui du fournisseur.
 """
 from __future__ import annotations
 
@@ -30,12 +34,16 @@ from services.payments.base import (
     PaymentError, PaymentProvider, RefundEvent, RemoteStatus, amounts_match, describe,
 )
 from services.payments.fedapay import FedaPayProvider
+from services.payments.flutterwave import FlutterwaveProvider
+from services.payments.paystack import PaystackProvider
 from services.payments.stripe_provider import StripeProvider
 
 logger = logging.getLogger("anzar.payments")
 
 PROVIDERS: Dict[str, PaymentProvider] = {
     "fedapay": FedaPayProvider(),
+    "paystack": PaystackProvider(),
+    "flutterwave": FlutterwaveProvider(),
     "stripe": StripeProvider(),
 }
 
@@ -58,6 +66,7 @@ def _public(intent: PaymentIntent) -> Dict[str, Any]:
     """Vue utilisateur d'une demande (pas d'identifiants internes du fournisseur)."""
     return {"intent_id": intent.id, "status": intent.status, "provider": intent.provider,
             "amount_fcfa": float(intent.amount_fcfa), "charged_amount": float(intent.charged_amount or 0),
+            "charged_amount_minor": intent.charged_amount_minor,
             "charged_currency": intent.charged_currency, "paymentUrl": intent.payment_url or None,
             "failure_reason": intent.failure_reason}
 
@@ -68,15 +77,22 @@ def _return_urls(intent_id: str) -> tuple[str, str]:
             f"{base}/api/payments/return?i={intent_id}&r=cancel")
 
 
-async def start_payment(user_email: str, amount_fcfa: float, provider_id: str) -> Dict[str, Any]:
+async def start_payment(user_email: str, provider_id: str, *, currency: Optional[str] = None,
+                        pack_id: Optional[int] = None, amount_fcfa: Optional[float] = None,
+                        country: str = "") -> Dict[str, Any]:
+    """Démarre un paiement. Le prix est recalculé ici ; rien de ce que l'app envoie n'est un prix."""
+    from services.currency.pricing import PricingError, quote_for_payment
+
     provider = get_provider(provider_id)
     if not provider:
         raise ValueError("Ce moyen de paiement n'est pas disponible")
-    amount_fcfa = float(int(round(float(amount_fcfa or 0))))
-    if amount_fcfa < MIN_FCFA or amount_fcfa > MAX_FCFA:
-        raise ValueError(f"Montant entre {MIN_FCFA} et {MAX_FCFA:,} FCFA".replace(",", " "))
+    try:
+        price = await quote_for_payment(currency=currency, pack_id=pack_id, amount_fcfa=amount_fcfa,
+                                        provider_id=provider.info.id, country=country)
+        quote = provider.quote(price.amount_minor, price.currency)
+    except (PricingError, PaymentError) as e:
+        raise ValueError(str(e))
     user_email = (user_email or "").strip().lower()
-    quote = provider.quote(amount_fcfa)
 
     Session = get_sessionmaker()
     async with Session() as session:
@@ -88,17 +104,19 @@ async def start_payment(user_email: str, amount_fcfa: float, provider_id: str) -
             if recent >= MAX_PENDING_PER_HOUR:
                 raise ValueError("Trop de paiements en attente. Termine ou annule les précédents, puis réessaie.")
             intent = PaymentIntent(
-                id=_uuid.uuid4().hex, user_email=user_email, amount_fcfa=amount_fcfa,
+                id=_uuid.uuid4().hex, user_email=user_email, amount_fcfa=float(price.credit_fcfa),
                 currency="XOF", method=provider.info.kind, status="pending",
                 provider=provider.info.id, charged_amount=quote.amount,
-                charged_currency=quote.currency, provider_ref="", payment_url="",
+                charged_currency=quote.currency, charged_amount_minor=quote.amount_minor,
+                fx_rate_used=price.fx_rate, pack_id=price.pack_id, pricing_source=price.pricing_source,
+                customer_country=(country or "")[:2].upper(), provider_ref="", payment_url="",
             )
             session.add(intent)
             intent_id = intent.id
 
     ok_url, cancel_url = _return_urls(intent_id)
     try:
-        co = await provider.create_checkout(intent_id=intent_id, amount_fcfa=amount_fcfa, quote=quote,
+        co = await provider.create_checkout(intent_id=intent_id, amount_fcfa=price.credit_fcfa, quote=quote,
                                             customer_email=user_email, return_url=ok_url, cancel_url=cancel_url)
     except PaymentError as e:
         await _update(intent_id, status="failed", failure_reason=str(e)[:255])
@@ -227,15 +245,21 @@ async def apply_remote(intent: PaymentIntent, remote: RemoteStatus) -> PaymentIn
     if intent.status == "paid":
         return intent
     if remote.state == "paid":
-        cur_ok = not remote.currency or remote.currency == (intent.charged_currency or "").lower()
-        if not (cur_ok and amounts_match(remote.amount, intent.charged_amount)):
+        cur_ok = not remote.currency or remote.currency.lower() == (intent.charged_currency or "").lower()
+        if intent.charged_amount_minor is not None and remote.amount_minor is not None:
+            amount_ok = int(remote.amount_minor) == int(intent.charged_amount_minor)   # entiers exacts
+        else:   # demandes créées avant le multidevise
+            amount_ok = amounts_match(remote.amount, intent.charged_amount)
+        if not (cur_ok and amount_ok):
             # Jamais de crédit sur un montant différent : un admin tranche
             logger.error("Paiement %s : montant %s %s ≠ attendu %s %s", intent.id, remote.amount,
                          remote.currency, intent.charged_amount, intent.charged_currency)
             return await _update(intent.id, remote_status=remote.raw_status,
                                  failure_reason="Montant reçu différent du montant facturé : à vérifier")
+        # Pack : amount_fcfa est le crédit final (bonus déjà inclus) ; montant libre : paliers de bonus.
         await credit_intent(intent.id, intent.user_email, float(intent.amount_fcfa),
-                            f"Paiement {intent.provider} confirmé", provider_ref=intent.provider_tx_id)
+                            f"Paiement {intent.provider} confirmé", provider_ref=intent.provider_tx_id,
+                            apply_bonus=not intent.pack_id)
         return await _update(intent.id, remote_status=remote.raw_status,
                              provider_payment_id=remote.provider_payment_id or intent.provider_payment_id)
     if remote.state in ("failed", "cancelled") and intent.status == "pending":

@@ -14,7 +14,7 @@ import pytest
 from config import settings
 from services.payments import service as svc
 from services.payments.base import (
-    Checkout, PaymentProvider, ProviderInfo, Quote, RefundEvent, RemoteStatus, SignatureError,
+    Checkout, PaymentError, PaymentProvider, ProviderInfo, Quote, RefundEvent, RemoteStatus, SignatureError,
     header_get, verify_timestamped_signature,
 )
 from services.payments.fedapay import FedaPayProvider
@@ -51,12 +51,14 @@ def test_signature_ok_and_rejections():
 # ── Fournisseur factice branché dans le registre ──
 
 class FakeProvider(PaymentProvider):
-    info = ProviderInfo(id="fake", label="Test", kind="card", description="", countries=["*"])
+    info = ProviderInfo(id="fake", label="Test", kind="card", description="", countries=["*"],
+                        currencies=["XOF", "USD", "EUR", "KWD"], priority=1)
 
     def __init__(self):
-        self.remote = RemoteStatus("pending", 0, "usd", "open")
+        self.remote = RemoteStatus("pending", 0, "xof", "open")
         self.created = 0
         self.fail_create = False
+        self.last_quote = None
 
     def enabled(self):
         return True
@@ -64,13 +66,8 @@ class FakeProvider(PaymentProvider):
     def webhooks_enabled(self):
         return True
 
-    def fcfa_per_unit(self):
-        return 600.0
-
-    def quote(self, amount_fcfa):
-        return Quote(amount=round(amount_fcfa / 600, 2), currency="usd")
-
     async def create_checkout(self, **kw):
+        self.last_quote = kw["quote"]
         if self.fail_create:
             from services.payments.base import PaymentError
             raise PaymentError("refusé")
@@ -117,13 +114,19 @@ def test_methods_lists_enabled_providers(client, user_and_token, fake):
     assert data["min_fcfa"] == 500
 
 
+def paid(amount_minor, currency="xof", decimals=0):
+    return RemoteStatus("paid", amount_minor / (10 ** decimals), currency, "complete/paid",
+                        amount_minor=amount_minor)
+
+
 def test_full_flow_webhook_credits_once(client, user_and_token, fake):
     _, _, h = user_and_token
+    # Ancien format de l'app (montant libre, sans devise) : traité comme XOF
     r = client.post("/api/payments/initiate", headers=h, json={"amount": 6000, "provider": "fake"})
     assert r.status_code == 200, r.text
     d = r.json()
     assert d["paymentUrl"] == "https://pay.example/x" and d["status"] == "pending"
-    assert d["charged_currency"] == "usd" and d["charged_amount"] == 10.0
+    assert d["charged_currency"] == "xof" and d["charged_amount_minor"] == 6000
     iid = d["intent_id"]
     assert balance(client, h) == 0
 
@@ -131,7 +134,7 @@ def test_full_flow_webhook_credits_once(client, user_and_token, fake):
     assert client.get(f"/api/payments/{iid}", headers=h).json()["status"] == "pending"
 
     # Payé chez le fournisseur → webhook signé
-    fake.remote = RemoteStatus("paid", 10.0, "usd", "complete/paid")
+    fake.remote = paid(6000)
     body = json.dumps({"tx": f"tx_{iid[:8]}"}).encode()
     bad = client.post("/api/payments/webhook/fake", content=body, headers={"x-sig": sign(body, "faux")})
     assert bad.status_code == 400
@@ -151,13 +154,13 @@ def test_full_flow_webhook_credits_once(client, user_and_token, fake):
 def test_refund_debits_and_blocks_account(client, user_and_token, fake):
     email, _, h = user_and_token
     iid = client.post("/api/payments/initiate", headers=h, json={"amount": 6000, "provider": "fake"}).json()["intent_id"]
-    fake.remote = RemoteStatus("paid", 10.0, "usd", "complete/paid")
+    fake.remote = paid(6000)
     body = json.dumps({"tx": f"tx_{iid[:8]}"}).encode()
     assert client.post("/api/payments/webhook/fake", content=body, headers={"x-sig": sign(body)}).status_code == 200
     assert balance(client, h) == 6900
 
     refund_body = json.dumps({"refund": {
-        "intent_id": iid, "amount": 10.0, "state": "refunded"}}).encode()
+        "intent_id": iid, "amount": 6000, "state": "refunded"}}).encode()
     headers = {"x-sig": sign(refund_body)}
     assert client.post("/api/payments/webhook/fake", content=refund_body, headers=headers).status_code == 200
 
@@ -175,7 +178,7 @@ def test_refund_debits_and_blocks_account(client, user_and_token, fake):
 def test_concurrent_settlement_credits_once(client, user_and_token, fake):
     email, _, h = user_and_token
     iid = client.post("/api/payments/initiate", headers=h, json={"amount": 1200, "provider": "fake"}).json()["intent_id"]
-    fake.remote = RemoteStatus("paid", 2.0, "usd", "complete/paid")
+    fake.remote = paid(1200)
 
     async def race():
         await asyncio.gather(*[svc.refresh_intent(iid) for _ in range(5)])
@@ -188,10 +191,10 @@ def test_concurrent_settlement_credits_once(client, user_and_token, fake):
 def test_amount_mismatch_is_never_credited(client, user_and_token, fake):
     _, _, h = user_and_token
     iid = client.post("/api/payments/initiate", headers=h, json={"amount": 3000, "provider": "fake"}).json()["intent_id"]
-    fake.remote = RemoteStatus("paid", 0.5, "usd", "complete/paid")
+    fake.remote = paid(2999)                                             # 1 F de moins
     d = client.get(f"/api/payments/{iid}", headers=h).json()
     assert d["status"] == "pending" and "différent" in d["failure_reason"]
-    fake.remote = RemoteStatus("paid", 5.0, "eur", "complete/paid")   # bonne valeur, mauvaise devise
+    fake.remote = paid(3000, "eur")                                      # bon montant, mauvaise devise
     client.get(f"/api/payments/{iid}", headers=h)
     assert balance(client, h) == 0
 
@@ -249,8 +252,10 @@ def test_fedapay_adapter(monkeypatch):
         return httpx.Response(404, json={"message": "x"})
 
     p = FedaPayProvider(client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-    q = p.quote(5000)
-    assert (q.amount, q.currency) == (5000, "xof")
+    q = p.quote(5000, "XOF")
+    assert (q.amount, q.currency, q.amount_minor) == (5000, "xof", 5000)
+    with pytest.raises(PaymentError):
+        p.quote(500, "EUR")                    # FedaPay ne déclare que XOF
     co = run(p.create_checkout(intent_id="abc", amount_fcfa=5000, quote=q, customer_email="a@b.c",
                                return_url="https://r/ok", cancel_url="https://r/no"))
     assert co.tx_id == "4242" and co.payment_url.startswith("https://sandbox-process")
@@ -258,7 +263,7 @@ def test_fedapay_adapter(monkeypatch):
     assert seen[0][3]["amount"] == 5000 and seen[0][3]["currency"] == {"iso": "XOF"}
     assert seen[0][3]["callback_url"] == "https://r/ok"
     st = run(p.fetch_status("4242"))
-    assert (st.state, st.amount) == ("paid", 5000)
+    assert (st.state, st.amount, st.amount_minor) == ("paid", 5000, 5000)
 
     body = json.dumps({"name": "transaction.approved", "entity": {"id": 4242}}).encode()
     assert p.webhook_tx_id(body, {"X-FEDAPAY-SIGNATURE": sign(body, scheme="s")}) == "4242"
@@ -271,8 +276,6 @@ def test_fedapay_adapter(monkeypatch):
 def test_stripe_adapter(monkeypatch):
     monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_x")
     monkeypatch.setattr(settings, "stripe_webhook_secret", SECRET)
-    monkeypatch.setattr(settings, "stripe_currency", "usd")
-    monkeypatch.setattr(settings, "stripe_fcfa_per_unit", 600.0)
     seen = {}
 
     def handler(req: httpx.Request):
@@ -284,8 +287,8 @@ def test_stripe_adapter(monkeypatch):
                                          "amount_total": 834, "currency": "usd"})
 
     p = StripeProvider(client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
-    q = p.quote(5000)
-    assert (q.amount, q.currency) == (8.34, "usd")       # 8,333… arrondi au centime supérieur
+    q = p.quote(834, "USD")
+    assert (q.amount, q.currency, q.amount_minor) == (8.34, "usd", 834)
     co = run(p.create_checkout(intent_id="iid1", amount_fcfa=5000, quote=q, customer_email="a@b.c",
                                return_url="https://r/ok", cancel_url="https://r/no"))
     assert co.tx_id == "cs_test_1"
@@ -293,7 +296,7 @@ def test_stripe_adapter(monkeypatch):
     assert f["line_items[0][price_data][unit_amount]"] == "834" and f["mode"] == "payment"
     assert f["client_reference_id"] == "iid1" and seen["idem"] == "anzar-iid1"
     st = run(p.fetch_status("cs_test_1"))
-    assert (st.state, st.amount, st.currency) == ("paid", 8.34, "usd")
+    assert (st.state, st.amount, st.currency, st.amount_minor) == ("paid", 8.34, "usd", 834)
 
     body = json.dumps({"type": "checkout.session.completed", "data": {"object": {"id": "cs_test_1"}}}).encode()
     assert p.webhook_tx_id(body, {"Stripe-Signature": sign(body)}) == "cs_test_1"
@@ -305,6 +308,13 @@ def test_stripe_adapter(monkeypatch):
     re = p.webhook_refund_event(refund_body, {"stripe-signature": sign(refund_body)})
     assert (re.intent_id, re.payment_id, re.state, re.amount) == ("iid1", "pi_1", "refunded", 8.34)
 
-    monkeypatch.setattr(settings, "stripe_currency", "xof")
-    monkeypatch.setattr(settings, "stripe_fcfa_per_unit", 0.0)
-    assert p.quote(5000).amount == 5000
+    # Unités Stripe ≠ ISO : XOF tel quel, ISK/UGX ×100, MGA ÷100, KWD par pas de 10
+    assert p.to_provider_amount(5000, "XOF") == 5000
+    assert p.to_provider_amount(5, "ISK") == 500 and p.from_provider_amount(500, "ISK") == 5
+    assert p.to_provider_amount(500000, "UGX") == 50000000
+    assert p.to_provider_amount(1250000, "MGA") == 12500 and p.granularity("MGA") == 100
+    assert p.to_provider_amount(750, "KWD") == 750 and p.granularity("KWD") == 10
+    with pytest.raises(PaymentError):
+        p.quote(735, "KWD")                    # 0,735 KWD : dernier chiffre ≠ 0 refusé par Stripe
+    with pytest.raises(PaymentError):
+        p.to_provider_amount(1250050, "MGA")   # fraction d'ariary impossible

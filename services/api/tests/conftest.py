@@ -23,6 +23,9 @@ os.environ["RATE_LIMIT_PER_MINUTE"] = "500"
 os.environ["RATE_LIMIT_PER_DAY"] = "5000"
 os.environ["BREVO_API_KEY"] = ""  # pas d'envoi d'email en test
 os.environ["DEEPSEEK_API_KEY"] = ""
+os.environ["FX_AUTO_REFRESH"] = "false"  # jamais d'appel réseau aux sources de taux en test
+for _k in ("STRIPE_SECRET_KEY", "FEDAPAY_SECRET_KEY", "PAYSTACK_SECRET_KEY", "FLUTTERWAVE_SECRET_KEY"):
+    os.environ[_k] = ""
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

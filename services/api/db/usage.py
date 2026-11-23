@@ -10,7 +10,7 @@ from typing import Any, Dict, List
 from sqlalchemy import func, select
 
 from db.base import get_sessionmaker, _utcnow, _model_to_dict
-from db.models import UsageRecord, Transaction
+from db.models import PaymentIntent, UsageRecord, Transaction
 
 
 async def record_usage(
@@ -77,7 +77,23 @@ async def get_transactions(email: str, limit: int = 50, offset: int = 0) -> List
                 .offset(offset)
             )
         ).all()
-        return [_model_to_dict(r) for r in rows]
+        out = [_model_to_dict(r) for r in rows]
+        # Recharges : montant réellement payé, dans la devise d'origine
+        ids = [r.external_ref.split(":", 1)[1] for r in rows
+               if r.external_ref and r.external_ref.startswith("payment:")]
+        if ids:
+            intents = {i.id: i for i in (await session.scalars(
+                select(PaymentIntent).where(PaymentIntent.id.in_(ids)))).all()}
+            for d in out:
+                ref = d.get("external_ref") or ""
+                it = intents.get(ref.split(":", 1)[1]) if ref.startswith("payment:") else None
+                if it is not None:
+                    paid = float(it.charged_amount) if it.charged_amount else float(it.amount_fcfa)
+                    d["paid_amount"] = paid
+                    d["paid_amount_minor"] = it.charged_amount_minor
+                    d["paid_currency"] = (it.charged_currency or it.currency or "XOF").upper()
+                    d["payment_provider"] = it.provider
+        return out
 
 
 async def get_usage_stats(email: str, days: int = 30) -> Dict[str, Any]:

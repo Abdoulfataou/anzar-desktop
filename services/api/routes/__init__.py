@@ -8,6 +8,7 @@ from routes.auth import router as auth_router
 from routes.user import router as user_router
 from routes.credits import router as credits_router
 from routes.payments import router as payments_router
+from routes.pricing import router as pricing_router
 from routes.agent_skills import router as agent_skills_router
 from routes.chat import router as chat_router
 from routes.admin import router as admin_router
@@ -22,6 +23,7 @@ def include_routers(app: FastAPI) -> None:
     app.include_router(user_router)
     app.include_router(credits_router)
     app.include_router(payments_router)
+    app.include_router(pricing_router)
     app.include_router(agent_skills_router)
     app.include_router(chat_router)
     app.include_router(admin_router)

@@ -1,0 +1,31 @@
+{
+  "_doc": "Capacités déclarées par chaque fournisseur : devises (ISO 4217), pays où il est proposé en priorité ('*' = partout), priorité (plus petit = d'abord). Les pays servent à ORDONNER, pas à exclure : un utilisateur à l'étranger garde son mobile money. 'minor' décrit l'unité attendue par l'API du fournisseur quand elle diffère de l'ISO.",
+  "fedapay": {
+    "currencies": ["XOF"],
+    "countries": ["NE", "BJ", "CI", "SN", "TG", "ML", "GN", "BF"],
+    "priority": 10
+  },
+  "paystack": {
+    "currencies": ["NGN", "GHS", "ZAR", "KES", "XOF"],
+    "countries": ["NG", "GH", "ZA", "KE", "CI"],
+    "priority": 20,
+    "minor": {"default": {"exponent": 2}}
+  },
+  "flutterwave": {
+    "currencies": ["NGN", "GHS", "KES", "UGX", "TZS", "RWF", "ZAR", "XAF", "XOF", "ZMW", "MWK"],
+    "countries": ["NG", "GH", "KE", "UG", "TZ", "RW", "ZA", "CM", "GA", "CG", "CI", "SN", "ZM", "MW"],
+    "priority": 30,
+    "minor": {"default": {"exponent": "major"}}
+  },
+  "stripe": {
+    "currencies": ["USD", "AED", "AFN", "ALL", "AMD", "ANG", "AOA", "ARS", "AUD", "AWG", "AZN", "BAM", "BBD", "BDT", "BGN", "BHD", "BIF", "BMD", "BND", "BOB", "BRL", "BSD", "BWP", "BYN", "BZD", "CAD", "CDF", "CHF", "CLP", "CNY", "COP", "CRC", "CVE", "CZK", "DJF", "DKK", "DOP", "DZD", "EGP", "ETB", "EUR", "FJD", "FKP", "GBP", "GEL", "GIP", "GMD", "GNF", "GTQ", "GYD", "HKD", "HNL", "HTG", "HUF", "IDR", "ILS", "INR", "ISK", "JMD", "JOD", "JPY", "KES", "KGS", "KHR", "KMF", "KRW", "KWD", "KYD", "KZT", "LAK", "LBP", "LKR", "LRD", "LSL", "MAD", "MDL", "MGA", "MKD", "MMK", "MNT", "MOP", "MUR", "MVR", "MWK", "MXN", "MYR", "MZN", "NAD", "NGN", "NIO", "NOK", "NPR", "NZD", "OMR", "PAB", "PEN", "PGK", "PHP", "PKR", "PLN", "PYG", "QAR", "RON", "RSD", "RUB", "RWF", "SAR", "SBD", "SCR", "SEK", "SGD", "SHP", "SLE", "SOS", "SRD", "STN", "SZL", "THB", "TJS", "TND", "TOP", "TRY", "TTD", "TWD", "TZS", "UAH", "UGX", "UYU", "UZS", "VND", "VUV", "WST", "XAF", "XCD", "XCG", "XOF", "XPF", "YER", "ZAR", "ZMW"],
+    "countries": ["*"],
+    "priority": 50,
+    "minor": {
+      "default": {"exponent": 2},
+      "zero_decimal": {"exponent": 0, "codes": ["BIF", "CLP", "DJF", "GNF", "JPY", "KMF", "KRW", "MGA", "PYG", "RWF", "VND", "VUV", "XAF", "XOF", "XPF"]},
+      "two_decimal_whole": {"exponent": 2, "whole_units": true, "codes": ["ISK", "UGX"]},
+      "three_decimal": {"exponent": 3, "granularity": 10, "codes": ["BHD", "JOD", "KWD", "OMR", "TND"]}
+    }
+  }
+}

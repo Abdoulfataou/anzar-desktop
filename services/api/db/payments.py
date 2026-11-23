@@ -94,9 +94,11 @@ async def admin_mark_payment_intent_paid(
             if dup:
                 raise ValueError("Cette référence de paiement a déjà servi pour une autre demande")
         user_email, amount = intent.user_email, float(intent.amount_fcfa)
+        is_pack = bool(intent.pack_id)
 
     await credit_intent(intent_id, user_email, amount,
-                        f"Paiement validé ({admin_email}): {description}", provider_ref=provider_ref)
+                        f"Paiement validé ({admin_email}): {description}", provider_ref=provider_ref,
+                        apply_bonus=not is_pack)
 
     # Reload latest
     Session = get_sessionmaker()
@@ -106,14 +108,15 @@ async def admin_mark_payment_intent_paid(
 
 
 async def credit_intent(intent_id: str, user_email: str, amount: float, description: str,
-                        provider_ref: str = "") -> None:
+                        provider_ref: str = "", apply_bonus: bool = True) -> None:
     """Crédite une demande et la passe à « payée ». Partagé par la validation admin et les webhooks.
 
     1) Crédit d'abord, idempotent (external_ref) : un double clic, un webhook rejoué ou une
        reprise après panne ne crédite jamais deux fois. 2) Puis la demande passe à « payée ».
+    apply_bonus=False pour un pack : son montant inclut déjà le bonus.
     """
     from config import settings as _cfg
-    bonus_pct = _cfg.get_recharge_bonus_percent(amount)
+    bonus_pct = _cfg.get_recharge_bonus_percent(amount) if apply_bonus else 0
     bonus_amount = round(amount * bonus_pct / 100) if bonus_pct > 0 else 0
     total_credited = amount + bonus_amount
     bonus_label = f" (+{bonus_pct}% bonus = {total_credited} F)" if bonus_pct > 0 else ""

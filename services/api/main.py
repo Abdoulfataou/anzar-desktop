@@ -68,16 +68,35 @@ async def lifespan(app: FastAPI):
             except asyncio.TimeoutError:
                 pass
 
+    async def _fx_loop():
+        # Taux d'affichage : vérifié toutes les heures, téléchargé si le dernier succès date de > 23 h.
+        # En cas de panne, on garde le dernier taux connu et on réessaie l'heure suivante.
+        from services.currency.fx import refresh_if_due
+        while not stop_event.is_set():
+            try:
+                await refresh_if_due()
+            except Exception as e:
+                logger.warning(f"FX refresh error: {e}")
+            try:
+                await asyncio.wait_for(stop_event.wait(), timeout=60 * 60)
+            except asyncio.TimeoutError:
+                pass
+
     housekeeping_task = asyncio.create_task(_housekeeping_loop())
     payments_task = asyncio.create_task(_payments_loop())
+    fx_task = asyncio.create_task(_fx_loop()) if settings.fx_auto_refresh else None
     logger.info(f"ANZAR Backend v{settings.app_version} started on port {settings.effective_port}")
     yield
     stop_event.set()
     housekeeping_task.cancel()
     payments_task.cancel()
+    if fx_task:
+        fx_task.cancel()
     try:
         await housekeeping_task
         await payments_task
+        if fx_task:
+            await fx_task
     except (asyncio.CancelledError, Exception):
         # CancelledError hérite de BaseException (py>=3.8) : il faut l'attraper
         # explicitement, sinon il remonte dans le shutdown de l'app.

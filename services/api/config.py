@@ -158,16 +158,17 @@ class Settings(BaseSettings):
     # Stripe — cartes du monde entier (compte de la LLC américaine)
     stripe_secret_key: str = ""           # sk_test_… ou sk_live_…
     stripe_webhook_secret: str = ""       # whsec_…
-    stripe_currency: str = "usd"          # usd | eur | xof
-    # FCFA pour 1 unité de la devise Stripe. 0 = valeur par défaut (usd 600, eur 655.957 fixe, xof 1)
+    # Obsolètes depuis le multidevise (la devise et le taux viennent des tables
+    # currencies / fx_rates) ; gardés pour ne pas casser un .env existant.
+    stripe_currency: str = "usd"
     stripe_fcfa_per_unit: float = 0.0
 
-    @property
-    def effective_stripe_rate(self) -> float:
-        if self.stripe_fcfa_per_unit and self.stripe_fcfa_per_unit > 0:
-            return float(self.stripe_fcfa_per_unit)
-        cur = (self.stripe_currency or "usd").lower()
-        return {"eur": 655.957, "xof": 1.0}.get(cur, 600.0)
+    paystack_secret_key: str = ""         # sk_test_… ou sk_live_… (signe aussi les webhooks)
+    flutterwave_secret_key: str = ""      # FLWSECK_TEST-… ou FLWSECK-…
+    flutterwave_webhook_hash: str = ""    # « Secret hash » saisi dans le tableau de bord Flutterwave
+
+    # Taux d'affichage : mise à jour quotidienne automatique (désactivable, ex. en test)
+    fx_auto_refresh: bool = True
 
     # ─── Admin Panel ───
     admin_default_email: str = "admin@anzar.app"

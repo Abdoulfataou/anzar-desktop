@@ -8,14 +8,23 @@ Chaque fournisseur (FedaPay, Stripe, puis iPay Money, Flutterwave…) implément
   - webhook_tx_id()    : vérifie la signature d'un webhook et renvoie l'id de transaction concerné.
 
 Le crédit n'est accordé qu'après fetch_status() = payé ET montant identique à celui facturé.
+
+Multidevise : chaque fournisseur déclare ses devises et pays (capabilities.json)
+et sait convertir un montant ISO (unités mineures entières) dans l'unité de son API.
 """
 from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import time
-from dataclasses import dataclass
-from typing import Dict, List, Mapping, Optional
+from dataclasses import dataclass, field
+from decimal import Decimal
+from functools import lru_cache
+from pathlib import Path
+from typing import Dict, List, Mapping, Optional, Union
+
+from services.currency.money import from_minor, iso_table
 
 
 class PaymentError(Exception):
@@ -30,6 +39,8 @@ class SignatureError(Exception):
 class Quote:
     amount: float      # montant facturé, dans l'unité affichée (ex. 8.34 USD, 5000 XOF)
     currency: str      # iso minuscule : xof, usd, eur…
+    amount_minor: Optional[int] = None   # montant exact en unités mineures ISO (source de vérité)
+    decimals: int = 0
 
 
 @dataclass
@@ -45,6 +56,7 @@ class RemoteStatus:
     currency: str       # iso minuscule, "" si le fournisseur ne la renvoie pas
     raw_status: str     # statut brut du fournisseur (affiché dans l'admin)
     provider_payment_id: str = ""  # Stripe PaymentIntent (utile pour les litiges)
+    amount_minor: Optional[int] = None  # montant payé en unités mineures ISO, si le fournisseur le permet
 
 
 @dataclass
@@ -66,6 +78,28 @@ class ProviderInfo:
     kind: str                 # mobile_money | card
     description: str
     countries: List[str]
+    currencies: List[str] = field(default_factory=list)   # ISO majuscules
+    priority: int = 100
+
+
+CAPABILITIES = Path(__file__).resolve().parent / "capabilities.json"
+
+
+@lru_cache(maxsize=1)
+def capabilities() -> Dict[str, dict]:
+    data = json.loads(CAPABILITIES.read_text(encoding="utf-8"))
+    return {k: v for k, v in data.items() if not k.startswith("_")}
+
+
+def declared(provider_id: str) -> dict:
+    return capabilities().get(provider_id, {})
+
+
+def iso_decimals(currency: str) -> int:
+    row = iso_table().get((currency or "").upper())
+    if row is None:
+        raise PaymentError(f"Devise inconnue : {currency}")
+    return int(row["decimals"])
 
 
 class PaymentProvider:
@@ -77,12 +111,74 @@ class PaymentProvider:
     def webhooks_enabled(self) -> bool:
         raise NotImplementedError
 
-    def quote(self, amount_fcfa: float) -> Quote:
-        raise NotImplementedError
+    # ── Capacités ──
 
-    def fcfa_per_unit(self) -> float:
-        """FCFA pour 1 unité de la devise facturée (affichage de l'équivalent dans l'app)."""
-        return 1.0
+    def supports(self, currency: str) -> bool:
+        return (currency or "").upper() in self.info.currencies
+
+    def country_rank(self, country: str) -> int:
+        """0 = proposé en priorité dans ce pays, 1 = partout, 2 = hors de ses pays déclarés."""
+        if country and country in self.info.countries:
+            return 0
+        return 1 if "*" in self.info.countries else 2
+
+    def _minor_rule(self, currency: str) -> dict:
+        rules = declared(self.info.id).get("minor") or {}
+        cur = (currency or "").upper()
+        for name, rule in rules.items():
+            if name != "default" and cur in rule.get("codes", []):
+                return rule
+        return rules.get("default") or {"exponent": "iso"}
+
+    def granularity(self, currency: str) -> int:
+        """Pas minimal du montant, en unités mineures ISO (ex. 10 pour 0,010 KWD chez Stripe)."""
+        rule, dec = self._minor_rule(currency), iso_decimals(currency)
+        g = int(rule.get("granularity", 1))
+        exp = rule.get("exponent", "iso")
+        if rule.get("whole_units") or exp == 0:
+            g = max(g, 10 ** dec)          # pas de fraction d'unité possible
+        return g
+
+    def to_provider_amount(self, amount_minor: int, currency: str) -> Union[int, str]:
+        """Unités mineures ISO → valeur attendue par l'API du fournisseur."""
+        rule, dec = self._minor_rule(currency), iso_decimals(currency)
+        exp = rule.get("exponent", "iso")
+        if exp == "major":
+            return str(from_minor(amount_minor, dec))
+        if exp == "iso":
+            return int(amount_minor)
+        if amount_minor % self.granularity(currency):
+            raise PaymentError(f"Montant non accepté par {self.info.label} dans cette devise")
+        shift = int(exp) - dec
+        return int(amount_minor) * (10 ** shift) if shift >= 0 else int(amount_minor) // (10 ** -shift)
+
+    def from_provider_amount(self, value, currency: str) -> int:
+        """Valeur renvoyée par l'API du fournisseur → unités mineures ISO (exactes)."""
+        rule, dec = self._minor_rule(currency), iso_decimals(currency)
+        exp = rule.get("exponent", "iso")
+        if exp == "major":
+            return int((Decimal(str(value)) * (Decimal(10) ** dec)).to_integral_value())
+        if exp == "iso":
+            return int(value)
+        shift = int(exp) - dec
+        v = int(value)
+        return v // (10 ** shift) if shift >= 0 else v * (10 ** -shift)
+
+    def quote(self, amount_minor: int, currency: str) -> Quote:
+        """Valide qu'on peut facturer ce montant ISO dans cette devise et renvoie le Quote."""
+        cur = (currency or "").upper()
+        if not self.supports(cur):
+            raise PaymentError(f"{self.info.label} n'accepte pas {cur}")
+        dec = iso_decimals(cur)
+        if int(amount_minor) <= 0 or int(amount_minor) % self.granularity(cur):
+            raise PaymentError(f"Montant non accepté par {self.info.label} dans cette devise")
+        return Quote(amount=float(from_minor(amount_minor, dec)), currency=cur.lower(),
+                     amount_minor=int(amount_minor), decimals=dec)
+
+    def describe(self, currency: str = "") -> dict:
+        return {"id": self.info.id, "label": self.info.label, "kind": self.info.kind,
+                "description": self.info.description, "countries": self.info.countries,
+                "currency": (currency or "").lower()}
 
     async def create_checkout(self, *, intent_id: str, amount_fcfa: float, quote: Quote,
                               customer_email: str, return_url: str, cancel_url: str) -> Checkout:
@@ -148,15 +244,15 @@ def amounts_match(a: float, b: float) -> bool:
 
 
 def describe(providers: Dict[str, PaymentProvider]) -> List[dict]:
+    """Moyens de paiement actifs et devises acceptées (GET /api/payments/methods)."""
     out = []
-    for p in providers.values():
+    for p in sorted(providers.values(), key=lambda x: x.info.priority):
         if not p.enabled():
             continue
-        q = p.quote(1000)
-        out.append({
-            "id": p.info.id, "label": p.info.label, "kind": p.info.kind,
-            "description": p.info.description, "countries": p.info.countries,
-            "currency": q.currency,
-            "fcfa_per_unit": p.fcfa_per_unit(),
-        })
+        # Compatibilité des versions de l'app antérieures au multidevise : elles affichent
+        # « currency » / « fcfa_per_unit » et envoient un montant libre, facturé en XOF.
+        d = p.describe("xof" if p.supports("XOF") else "")
+        d["fcfa_per_unit"] = 1.0
+        d["currencies"] = list(p.info.currencies)
+        out.append(d)
     return out
