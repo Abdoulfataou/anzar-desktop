@@ -82,8 +82,13 @@ def test_migration_up_down_up(tmp_path):
         c.execute(text("INSERT INTO users (email, password_hash, salt, name, is_active, token_version)"
                        " VALUES ('a@b.c', '', '', '', 1, 0)"))
     with eng.begin() as c:
-        assert M.upgrade(c) == ["0001_multidevise"]
+        assert M.upgrade(c) == ["0001_multidevise", "0002_packs_prix_ronds"]
         assert M.upgrade(c) == []                                             # idempotent
+        eur = c.execute(text("SELECT price_minor, credit_fcfa FROM topup_packs WHERE currency='EUR'"
+                             " ORDER BY price_minor")).all()
+        assert [p[0] for p in eur] == [100, 300, 800, 2500, 8000]            # 1 €, 3 €, 8 €, 25 €, 80 €
+        xaf = c.execute(text("SELECT price_minor FROM topup_packs WHERE currency='XAF' ORDER BY price_minor")).all()
+        assert [p[0] for p in xaf] == [500, 2000, 5000, 15000, 50000]       # 0 décimale
         assert c.execute(text("SELECT decimals FROM currencies WHERE code='KWD'")).scalar() == 3
         assert c.execute(text("SELECT decimals FROM currencies WHERE code='XAF'")).scalar() == 0
         eur = c.execute(text("SELECT fcfa_per_unit, is_fixed FROM fx_rates WHERE currency='EUR'")).one()
@@ -93,6 +98,14 @@ def test_migration_up_down_up(tmp_path):
         assert (5000, 5750) in [tuple(p) for p in packs]                     # bonus 15 % inclus
         assert "preferred_currency" in {x["name"] for x in inspect(c).get_columns("users")}
     with eng.begin() as c:
+        try:
+            M.downgrade(c, "0001_multidevise")                               # refusé : 0002 d'abord
+            raise AssertionError("ordre de retour arrière non vérifié")
+        except ValueError:
+            pass
+        M.downgrade(c, "0002_packs_prix_ronds")
+        assert c.execute(text("SELECT count(*) FROM topup_packs WHERE currency='EUR'")).scalar() == 0
+        assert c.execute(text("SELECT count(*) FROM topup_packs WHERE currency='XOF'")).scalar() == 5
         M.downgrade(c, "0001_multidevise")
         tables = set(inspect(c).get_table_names())
         assert not tables & {"currencies", "fx_rates", "topup_packs", "pricing_settings", "fx_fetch_log"}
@@ -100,7 +113,7 @@ def test_migration_up_down_up(tmp_path):
         assert "charged_amount_minor" not in {x["name"] for x in inspect(c).get_columns("payment_intents")}
         assert c.execute(text("SELECT count(*) FROM users")).scalar() == 1  # données existantes intactes
     with eng.begin() as c:
-        assert M.upgrade(c) == ["0001_multidevise"]
+        assert M.upgrade(c) == ["0001_multidevise", "0002_packs_prix_ronds"]
 
 
 # ═══════════════════════ Aides base de test ═══════════════════════
@@ -164,7 +177,7 @@ async def _xof_base():
 
 class MultiFake(PaymentProvider):
     info = ProviderInfo(id="multi", label="Multi", kind="card", description="", countries=["*"],
-                        currencies=["XOF", "USD", "EUR", "KWD", "JPY"], priority=5)
+                        currencies=["XOF", "USD", "EUR", "CHF", "KWD", "JPY"], priority=5)
 
     def __init__(self):
         self.remote = RemoteStatus("pending", 0, "", "open")
@@ -193,26 +206,27 @@ class MultiFake(PaymentProvider):
 def multi(client):
     p = MultiFake()
     svc.PROVIDERS["multi"] = p
-    for code in ("EUR", "USD", "KWD", "JPY", "GHS"):
+    for code in ("EUR", "USD", "CHF", "KWD", "JPY", "GHS"):
         call(client, _set_currency, code, True)
     call(client, _set_rate, "USD", "600")
+    call(client, _set_rate, "CHF", "700")
     call(client, _set_rate, "KWD", "1950")
     call(client, _set_rate, "JPY", "4.1")
     yield p
     svc.PROVIDERS.pop("multi", None)
-    for code in ("EUR", "KWD", "JPY"):
+    for code in ("CHF", "KWD", "JPY"):
         call(client, _delete_packs, code)
 
 
 # ═══════════════════════ Tarification ═══════════════════════
 
 def test_offer_computed_from_xof_grid_with_margin(client, multi):
-    offer = call(client, pricing.build_offer, "EUR")
-    assert offer.currency == "EUR" and offer.pricing_source == "computed" and not offer.fallback_reason
-    assert offer.rate_fixed and float(offer.fcfa_per_unit) == 655.957
+    offer = call(client, pricing.build_offer, "CHF")                      # pas de grille de départ
+    assert offer.currency == "CHF" and offer.pricing_source == "computed" and not offer.fallback_reason
+    assert float(offer.fcfa_per_unit) == 700
     base = {b.id: b for b in call(client, _xof_base)}
     for p in offer.packs:
-        exact = Decimal(base[p.id].price_minor) / Decimal("655.957") * Decimal("1.03")
+        exact = Decimal(base[p.id].price_minor) / Decimal("700") * Decimal("1.03")
         assert p.price_minor == nice_round_up_minor(exact, 2)
         assert p.credit_fcfa == base[p.id].credit_fcfa                      # crédit fixe en FCFA
 
@@ -224,22 +238,28 @@ def test_offer_zero_and_three_decimals(client, multi):
     assert kwd.decimals == 3 and all(p.price_minor % 10 == 0 for p in kwd.packs)
 
 
+def test_seeded_round_grids(client, multi):
+    eur = call(client, pricing.build_offer, "EUR")
+    assert eur.pricing_source == "grid" and [p.price_minor for p in eur.packs] == [100, 300, 800, 2500, 8000]
+    assert all(p.credit_fcfa > 0 for p in eur.packs)
+
+
 def test_grid_beats_computation(client, multi):
-    pid = call(client, _add_pack, "EUR", 500, 3500)
-    offer = call(client, pricing.build_offer, "EUR")
+    pid = call(client, _add_pack, "CHF", 500, 3500)
+    offer = call(client, pricing.build_offer, "CHF")
     assert offer.pricing_source == "grid"
     assert [(p.id, p.price_minor, p.credit_fcfa) for p in offer.packs] == [(pid, 500, 3500)]
 
 
 def test_currency_margin_override(client, multi):
-    call(client, _set_currency, "USD", True, Decimal("10"))
+    call(client, _set_currency, "CHF", True, Decimal("10"))
     try:
-        offer = call(client, pricing.build_offer, "USD")
+        offer = call(client, pricing.build_offer, "CHF")
         p = offer.packs[0]
-        exact = Decimal(500) / Decimal(600) * Decimal("1.10")
+        exact = Decimal(500) / Decimal(700) * Decimal("1.10")
         assert p.price_minor == nice_round_up_minor(exact, 2)
     finally:
-        call(client, _set_currency, "USD", True, None)
+        call(client, _set_currency, "CHF", True, None)
 
 
 def test_fallback_usd_when_no_provider(client, multi):
@@ -324,15 +344,15 @@ def balance(client, h):
 def test_pack_payment_recomputed_and_credited_once(client, user_and_token, multi):
     _, _, h = user_and_token
     offer = client.get("/api/pricing?currency=EUR", headers=h).json()
-    pack = next(p for p in offer["packs"] if p["credit_fcfa"] == 5750)
+    pack = next(p for p in offer["packs"] if p["price_minor"] == 800)       # 8 € (grille ronde)
     # L'app tente d'imposer un prix : ignoré, le serveur recalcule
     r = client.post("/api/payments/initiate", headers=h, json={
         "provider": "multi", "currency": "EUR", "pack_id": pack["id"], "amount": 1,
         "charged_amount": 0.01})
     assert r.status_code == 200, r.text
     d = r.json()
-    assert d["charged_currency"] == "eur" and d["charged_amount_minor"] == pack["price_minor"]
-    assert d["amount_fcfa"] == 5750
+    assert d["charged_currency"] == "eur" and d["charged_amount_minor"] == 800
+    assert d["amount_fcfa"] == pack["credit_fcfa"]
     iid = d["intent_id"]
     body = json.dumps({"tx": f"m_{iid[:10]}"}).encode()
 
@@ -349,7 +369,7 @@ def test_pack_payment_recomputed_and_credited_once(client, user_and_token, multi
     multi.remote = RemoteStatus("paid", 0, "eur", "paid", amount_minor=pack["price_minor"])
     for _ in range(3):
         client.post("/api/payments/webhook/multi", content=body, headers={"x-sig": sign(body)})
-    assert balance(client, h) == 5750
+    assert balance(client, h) == pack["credit_fcfa"]
 
     tx = client.get("/api/credits/transactions", headers=h).json()["transactions"]
     rec = next(t for t in tx if t["type"] == "recharge")
@@ -371,7 +391,7 @@ def test_three_decimal_payment_exact(client, user_and_token, multi):
 
 def test_initiate_rejects_tampering(client, user_and_token, multi):
     _, _, h = user_and_token
-    eur_pack = call(client, _add_pack, "EUR", 900, 6000)
+    eur_pack = call(client, _add_pack, "CHF", 900, 6000)
     jpy = client.get("/api/pricing?currency=JPY", headers=h).json()
     # pack d'une autre devise
     assert client.post("/api/payments/initiate", headers=h, json={

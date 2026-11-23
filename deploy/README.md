@@ -219,6 +219,10 @@ devise à ce qu'il a lui-même facturé, puis crédite une seule fois. Si un web
 - Admin → **Devises et prix** : devises proposées, grille de packs à prix ronds par devise,
   marge de change des prix calculés (3 % par défaut), journal des taux, totaux par devise.
   Sans grille, une devise affiche la grille XOF convertie (marge comprise, arrondie vers le haut).
+- Grilles de départ à **prix ronds** (migration 0002) pour EUR, USD, GBP, CAD, NGN, GHS, KES,
+  ZAR, MAD, UGX, TZS, RWF et XAF, par ex. 1 €, 3 €, 8 €, 25 €, 80 €. Les crédits ont été calculés
+  au cours du 23/11/2026, moins 3 % de marge, plus le bonus du palier. Si une devise bouge
+  beaucoup, la colonne « Écart au marché » de la grille le montre : ajuste alors ses crédits.
 
 ### Migrations de base de données
 

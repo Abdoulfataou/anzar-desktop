@@ -24,6 +24,7 @@ logger = logging.getLogger("anzar.migrations")
 # Ordre d'application. Chaque module expose up(conn) et down(conn) (connexion synchrone).
 MIGRATIONS: List[str] = [
     "0001_multidevise",
+    "0002_packs_prix_ronds",
 ]
 
 
