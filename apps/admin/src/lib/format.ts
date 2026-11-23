@@ -76,6 +76,35 @@ export const METHOD_LABELS: Record<string, string> = {
 export const PROVIDER_LABELS: Record<string, string> = {
   fedapay: 'FedaPay',
   stripe: 'Stripe',
+  paystack: 'Paystack',
+  flutterwave: 'Flutterwave',
+}
+
+/** Montant au format local, avec les décimales ISO de la devise (0 pour XOF, 3 pour KWD…). */
+export function money(amount: number | string, currency: string, decimals?: number): string {
+  const n = Number(amount || 0)
+  const code = (currency || 'XOF').toUpperCase()
+  try {
+    const o: Intl.NumberFormatOptions = { style: 'currency', currency: code }
+    if (typeof decimals === 'number') { o.minimumFractionDigits = decimals; o.maximumFractionDigits = decimals }
+    return new Intl.NumberFormat('fr-FR', o).format(n)
+  } catch {
+    return `${n.toLocaleString('fr-FR')} ${code}`
+  }
+}
+
+/** Unités mineures ISO → montant formaté (840, EUR, 2 → « 8,40 € »). */
+export function minor(m: number, currency: string, decimals: number): string {
+  return money(m / 10 ** decimals, currency, decimals)
+}
+
+/** Décimales ISO connues du navigateur pour une devise (repli 2). */
+export function isoDecimals(currency: string): number {
+  try {
+    return new Intl.NumberFormat('fr-FR', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2
+  } catch {
+    return 2
+  }
 }
 
 export const ROLE_LABELS: Record<string, string> = {
@@ -110,6 +139,13 @@ export const ACTION_LABELS: Record<string, string> = {
   reset_admin_password: 'Mot de passe admin réinitialisé',
   change_password: 'Mot de passe changé',
   update_profile: 'Profil modifié',
+  currency_update: 'Devise modifiée',
+  fx_refresh: 'Taux mis à jour',
+  fx_force_rate: 'Taux forcé',
+  pricing_settings: 'Réglages de prix modifiés',
+  pack_create: 'Pack créé',
+  pack_update: 'Pack modifié',
+  pack_delete: 'Pack supprimé',
 }
 
 export function label(map: Record<string, string>, key: string | null | undefined): string {

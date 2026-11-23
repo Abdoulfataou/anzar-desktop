@@ -12,6 +12,7 @@ from routes.pricing import router as pricing_router
 from routes.agent_skills import router as agent_skills_router
 from routes.chat import router as chat_router
 from routes.admin import router as admin_router
+from routes.admin_currency import router as admin_currency_router
 from routes.memory import router as memory_router
 from routes.skills import router as skills_router
 from routes.web_tools import router as web_tools_router
@@ -27,6 +28,7 @@ def include_routers(app: FastAPI) -> None:
     app.include_router(agent_skills_router)
     app.include_router(chat_router)
     app.include_router(admin_router)
+    app.include_router(admin_currency_router)
     app.include_router(memory_router)
     from config import settings
     if settings.enable_community_skills:

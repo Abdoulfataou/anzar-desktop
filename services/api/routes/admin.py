@@ -471,9 +471,10 @@ async def admin_usage(limit: int = 100, offset: int = 0, email: str = "", model:
 # ── Paiements ──
 
 @router.get("/payments")
-async def admin_payments_list(status: str = "pending", email: str = "", limit: int = 50, offset: int = 0,
-                              admin: dict = Depends(get_current_admin)):
-    return await extra.list_payments(status=status, email=email, limit=_clamp(limit), offset=max(0, offset))
+async def admin_payments_list(status: str = "pending", email: str = "", currency: str = "", limit: int = 50,
+                              offset: int = 0, admin: dict = Depends(get_current_admin)):
+    return await extra.list_payments(status=status, email=email, limit=_clamp(limit), offset=max(0, offset),
+                                     currency=currency)
 
 
 @router.post("/payments/{intent_id}/mark-paid")

@@ -7,6 +7,7 @@ const TITLES: [string, string][] = [
   ['/users', 'Utilisateurs'],
   ['/credits', 'Crédits'],
   ['/payments', 'Paiements'],
+  ['/currencies', 'Devises et prix'],
   ['/usage', 'Consommation'],
   ['/audit', "Journal d'audit"],
   ['/admins', 'Administrateurs'],

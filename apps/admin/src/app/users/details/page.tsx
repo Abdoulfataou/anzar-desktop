@@ -11,6 +11,7 @@ import { CancelPaymentModal, CreditModal, MarkPaidModal, bonusFromTiers } from '
 import { api, AuditEntry, PaymentIntent, Transaction, UsageRecord } from '@/api/backend'
 import {
   ACTION_LABELS, METHOD_LABELS, PAYMENT_LABELS, PROVIDER_LABELS, TASK_LABELS, TX_LABELS, ago, dateTime, fcfa, label, num,
+  money, minor, isoDecimals,
 } from '@/lib/format'
 
 const LIMIT = 50
@@ -311,8 +312,13 @@ export function PaymentsTable({ rows, loading, error, canAct, onPay, onCancel, o
         { key: 'ref', header: 'Référence', render: (r) => (
           <span className="font-mono text-xs text-foreground-secondary">
             {r.provider_ref || r.provider_tx_id || '—'}
-            {r.charged_currency && r.charged_currency !== 'xof' && r.charged_amount
-              ? <span className="block font-sans">{r.charged_amount} {r.charged_currency.toUpperCase()}</span> : null}
+            {r.charged_currency && (r.charged_amount_minor != null || r.charged_amount)
+              ? <span className="block font-sans text-foreground-primary">
+                  Payé {r.charged_amount_minor != null
+                    ? minor(r.charged_amount_minor, r.charged_currency, isoDecimals(r.charged_currency.toUpperCase()))
+                    : money(r.charged_amount ?? 0, r.charged_currency)}
+                  {r.pack_id ? ' · pack' : ''}{r.customer_country ? ` · ${r.customer_country}` : ''}
+                </span> : null}
             {r.failure_reason ? <span className="block font-sans text-amber-600">{r.failure_reason}</span> : null}
           </span>
         ) },

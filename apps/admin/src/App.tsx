@@ -15,6 +15,7 @@ const UsagePage = lazy(() => import('./app/usage/page'))
 const AuditPage = lazy(() => import('./app/audit/page'))
 const AdminsPage = lazy(() => import('./app/admins/page'))
 const SettingsPage = lazy(() => import('./app/settings/page'))
+const CurrenciesPage = lazy(() => import('./app/currencies/page'))
 
 function LoadingFallback() {
   return (
@@ -55,6 +56,7 @@ export default function App() {
               <Route path="users/:userId" element={<UserDetailsPage />} />
               <Route path="credits" element={<CreditsPage />} />
               <Route path="payments" element={<PaymentsPage />} />
+              <Route path="currencies" element={<CurrenciesPage />} />
               <Route path="usage" element={<UsagePage />} />
               <Route element={<RequireRole roles={['owner', 'admin']} />}>
                 <Route path="audit" element={<AuditPage />} />

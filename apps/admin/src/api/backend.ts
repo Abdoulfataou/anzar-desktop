@@ -58,6 +58,10 @@ export type PaymentIntent = {
   provider_tx_id?: string
   charged_amount?: number
   charged_currency?: string
+  charged_amount_minor?: number | null
+  pack_id?: number | null
+  pricing_source?: string
+  customer_country?: string
   remote_status?: string
   failure_reason?: string
   created_at?: string
@@ -151,6 +155,32 @@ export type PlatformSettings = {
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
+// ── Multidevise ──
+
+export type ProviderCap = { id: string; label: string; enabled: boolean; granularity: number }
+export type AdminCurrency = {
+  code: string; name: string; symbol: string; decimals: number; active: boolean; margin_pct: number | null
+  fcfa_per_unit: number | null; rate_source: string; rate_at: string | null; rate_fixed: boolean; rate_stale: boolean
+  packs: number; providers: ProviderCap[]; payable: boolean
+}
+export type PricingSettings = { margin_pct: string; max_daily_change_pct: string; max_rate_age_days: string; fallback_currency: string }
+export type FxLog = { id: number; at: string; source: string; ok: boolean; updated: number; message: string }
+export type AdminPack = {
+  id: number; currency: string; label: string; sort: number; active: boolean; price_minor: number; price: string
+  credit_fcfa: number; implied_fcfa_per_unit: number | null; market_fcfa_per_unit: number | null
+  deviation_pct: number | null; issues: string[]
+}
+export type OfferPreview = {
+  currency: string; decimals: number; fallback_reason: string; pricing_source: string; fcfa_per_unit: number | null
+  rate_as_of: string | null; rate_fixed: boolean
+  packs: { id: number; label: string; price_minor: number; credit_fcfa: number; bonus_pct: number }[]
+  providers: { id: string; label: string }[]
+}
+export type CurrencyTotals = {
+  currency: string; decimals: number; paid_count: number; paid_amount: string; paid_credits_fcfa: number
+  pending_count: number; other_count: number
+}
+
 export class ApiError extends Error {
   constructor(message: string, public status: number) {
     super(message)
@@ -242,7 +272,7 @@ export const api = {
       `/api/admin/usage${qs(p)}`),
 
   // Paiements
-  payments: (p: { status?: string; email?: string; limit?: number; offset?: number }) =>
+  payments: (p: { status?: string; email?: string; currency?: string; limit?: number; offset?: number }) =>
     apiFetch<{ payment_intents: PaymentIntent[]; total: number; sum_amount_fcfa: number; counts: Record<string, number> }>(
       `/api/admin/payments${qs(p)}`),
   markPaid: (id: string, data: { description: string; provider_ref?: string }) =>
@@ -268,4 +298,26 @@ export const api = {
 
   // Paramètres
   settings: () => apiFetch<PlatformSettings>('/api/admin/settings'),
+
+  // Multidevise
+  currencies: () => apiFetch<{ currencies: AdminCurrency[]; settings: PricingSettings }>('/api/admin/currencies'),
+  updateCurrency: (code: string, data: { active?: boolean; margin_pct?: number; clear_margin?: boolean; symbol?: string }) =>
+    apiFetch<{ status: string }>(`/api/admin/currencies/${encodeURIComponent(code)}`, patch(data)),
+  fx: () => apiFetch<{ last_success_at: string | null; sources: string[]; log: FxLog[] }>('/api/admin/fx'),
+  refreshFx: () => apiFetch<{ ok: boolean; source: string; updated: number; rejected: Record<string, string>; message: string }>(
+    '/api/admin/fx/refresh', post({})),
+  forceRate: (code: string, fcfa_per_unit: number) =>
+    apiFetch<{ status: string }>(`/api/admin/fx/rates/${encodeURIComponent(code)}`, { method: 'PUT', body: JSON.stringify({ fcfa_per_unit }) }),
+  pricingSettings: () => apiFetch<PricingSettings>('/api/admin/pricing/settings'),
+  updatePricingSettings: (data: Partial<PricingSettings>) =>
+    apiFetch<PricingSettings>('/api/admin/pricing/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  pricingPreview: (currency: string) => apiFetch<OfferPreview>(`/api/admin/pricing/preview${qs({ currency })}`),
+  packs: (currency: string) => apiFetch<{ currency: string; decimals: number; packs: AdminPack[] }>(`/api/admin/packs${qs({ currency })}`),
+  createPack: (data: { currency: string; price: string; credit_fcfa: number; label?: string; sort?: number }) =>
+    apiFetch<{ status: string; id: number }>('/api/admin/packs', post(data)),
+  updatePack: (id: number, data: { price?: string; credit_fcfa?: number; label?: string; sort?: number; active?: boolean }) =>
+    apiFetch<{ status: string }>(`/api/admin/packs/${id}`, patch(data)),
+  deletePack: (id: number) => apiFetch<{ status: string }>(`/api/admin/packs/${id}`, { method: 'DELETE' }),
+  paymentsByCurrency: (days = 30) =>
+    apiFetch<{ days: number; currencies: CurrencyTotals[] }>(`/api/admin/payments/by-currency${qs({ days })}`),
 }

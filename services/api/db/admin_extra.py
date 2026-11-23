@@ -122,12 +122,19 @@ async def list_usage(limit: int = 100, offset: int = 0, email: str = "", model: 
         }
 
 
-async def list_payments(status: str = "all", email: str = "", limit: int = 50, offset: int = 0) -> Dict[str, Any]:
+async def list_payments(status: str = "all", email: str = "", limit: int = 50, offset: int = 0,
+                        currency: str = "") -> Dict[str, Any]:
     Session = get_sessionmaker()
     async with Session() as session:
         where = []
         if status and status != "all":
             where.append(PaymentIntent.status == status)
+        if currency:
+            # Demandes manuelles : pas de devise facturée, on prend celle de la demande (XOF).
+            from sqlalchemy import and_, or_
+            code = currency.strip().upper()[:3]
+            where.append(or_(func.upper(PaymentIntent.charged_currency) == code,
+                             and_(PaymentIntent.charged_currency == "", func.upper(PaymentIntent.currency) == code)))
         if email:
             where.append(PaymentIntent.user_email.ilike(f"%{email.strip().lower()}%"))
         total = int((await session.execute(select(func.count(PaymentIntent.id)).where(*where))).scalar() or 0)
