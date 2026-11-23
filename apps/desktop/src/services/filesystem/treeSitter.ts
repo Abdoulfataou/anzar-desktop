@@ -86,7 +86,11 @@ export async function prepareTreeSitter(
     }
     const needed = neededLanguages(files);
     if (!needed.length) return true;
-    await Promise.all(needed.map((id) => loadLanguage(id).catch(() => undefined)));
+    // Une grammaire à la fois : des chargements WASM simultanés se mélangent dans l'éditeur de
+    // liens de web-tree-sitter (« bad export type for 'tree_sitter_python_…' », vu sous Node 20).
+    for (const id of needed) {
+      await loadLanguage(id).catch(() => undefined);
+    }
     return needed.every((id) => parsers.has(id));
   } catch {
     return false;
