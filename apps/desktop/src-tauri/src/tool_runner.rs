@@ -242,10 +242,10 @@ pub fn tool_spawn(
     proxy_hosts: Option<Vec<String>>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
-    // Liste d'hôtes autorisés fournie par les réglages (s'applique aussi sans redémarrage).
-    if let Some(hosts) = proxy_hosts {
-        crate::netproxy::set_extra_hosts(hosts);
-    }
+    // Les hôtes autorisés viennent des réglages gardés par Rust (command_policy), plus de
+    // l'interface : une liste envoyée par la webview n'ouvre plus rien.
+    let _ = proxy_hosts;
+    let policy = crate::command_policy::current(&app);
     let program = program.trim().to_lowercase();
     if program.contains('/') || program.contains('\\') || !is_allowed_program(&program) {
         return Err("Programme non autorisé.".into());
@@ -256,18 +256,32 @@ pub fn tool_spawn(
         return Err("Dossier non autorisé : ouvre-le d'abord comme projet dans ANZAR.".into());
     }
 
+    // Protection effective : l'interface peut en demander plus, jamais moins que les réglages.
+    let eff = crate::command_policy::effective(
+        &policy,
+        sandbox,
+        network,
+        proxy,
+        crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false)),
+    );
     // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
-    let isolated = sandbox.unwrap_or(true) && crate::sandbox::available();
+    let isolated = eff.sandbox && crate::sandbox::available();
     if isolated && find_in_path(&program).is_none() {
         return Err(format!("« {program} » est introuvable sur cet ordinateur."));
     }
     // Réseau : réglage « Réseau des commandes » ouvert, ou commande qui télécharge.
-    let net = network.unwrap_or(false)
-        || crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false));
+    let net = eff.network;
     // Filtrage : quand il est actif, la commande ne sort que par le proxy (localhost) et le
     // proxy n'ouvre que les hôtes autorisés. S'il ne démarre pas, on garde le comportement
     // précédent plutôt que de bloquer l'utilisateur.
-    let proxy_port = if proxy.unwrap_or(false) && net { crate::netproxy::ensure() } else { None };
+    let proxy_port = if eff.proxy && net {
+        let port = crate::netproxy::ensure();
+        // Après ensure() : avant le premier démarrage du proxy, la liste était perdue.
+        crate::netproxy::set_extra_hosts(policy.extra_hosts.clone());
+        port
+    } else {
+        None
+    };
     let allow_network = net && proxy_port.is_none();
     let wrapped = if isolated {
         crate::sandbox::wrap(&program, &args, &root_p, allow_network)

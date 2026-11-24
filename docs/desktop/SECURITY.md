@@ -73,7 +73,7 @@ frame-ancestors 'none'
 ```
 
 `connect-src` n'autorise que le backend ANZAR, GitHub (updater/liens), Sentry,
-le dev server local et l'IPC Tauri. L'ancien domaine `*.railway.app` a été retiré.
+l'IPC Tauri ; `localhost` (serveur Vite, API locale) n'est autorisé qu'en développement, via `app.security.devCsp`. L'ancien domaine `*.railway.app` a été retiré.
 
 ---
 

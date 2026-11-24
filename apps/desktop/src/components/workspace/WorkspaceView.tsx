@@ -44,6 +44,7 @@ import { fileSystemService } from '@/services/filesystem/fileSystem';
 import type { ChatAttachment } from '@/types';
 
 import { useOffline } from '@/hooks/useOffline';
+import { platform } from '@/services/runtime/programs';
 
 export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
   // U1 : le statut réseau arrive directement ici — avant, la prop par défaut
@@ -426,6 +427,11 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                   )}
                   {approval.detail && (
                     <pre className="mt-1 max-h-24 overflow-auto rounded-md bg-hover-fill px-2 py-1 font-mono text-ui-sm text-text-primary whitespace-pre-wrap break-all">{approval.detail}</pre>
+                  )}
+                  {(approval.name === 'run_command' || approval.name === 'start_dev_server') && platform() === 'windows' && (
+                    <p className="mt-0.5 text-ui-sm text-text-muted">
+                      Sur Windows, les commandes ne sont pas isolées : celle-ci pourra modifier tous les fichiers de ton compte. Autorise seulement si tu sais ce qu'elle fait.
+                    </p>
                   )}
                 </div>
                 <button

@@ -78,7 +78,8 @@
         ],
         "enable": true
       },
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src ipc: http://ipc.localhost 'self' http://localhost:* ws://localhost:* wss://localhost:* https://anzar-api.issalanhub.com https://github.com https://api.github.com https://*.ingest.sentry.io https://*.sentry.io; frame-src asset: https://asset.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src ipc: http://ipc.localhost 'self' https://anzar-api.issalanhub.com https://github.com https://api.github.com https://*.ingest.sentry.io https://*.sentry.io; frame-src asset: https://asset.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';",
+      "devCsp": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; script-src 'self' 'wasm-unsafe-eval'; worker-src 'self' blob:; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; media-src 'self' blob:; connect-src ipc: http://ipc.localhost 'self' http://localhost:* ws://localhost:* wss://localhost:* https://anzar-api.issalanhub.com https://github.com https://api.github.com https://*.ingest.sentry.io https://*.sentry.io; frame-src asset: https://asset.localhost; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none';"
     }
   }
 }

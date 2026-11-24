@@ -208,6 +208,13 @@ class BrowserToolsService {
   private listeners: Array<(entries: ConsoleEntry[]) => void> = [];
   private messageHandler: ((e: MessageEvent) => void) | null = null;
   private maxEntries = 500;
+  /** Iframe d'aperçu suivie : seuls ses messages sont acceptés (audit 23/11/2026 #11). */
+  private previewFrame: HTMLIFrameElement | null = null;
+
+  /** Déclare l'iframe d'aperçu dont on accepte les messages de console. */
+  setPreviewFrame(iframe: HTMLIFrameElement | null): void {
+    this.previewFrame = iframe;
+  }
 
   /**
    * Start listening for console messages from the preview iframe.
@@ -217,11 +224,16 @@ class BrowserToolsService {
 
     this.messageHandler = (e: MessageEvent) => {
       if (e.data?.type === 'anzar-console') {
+        // N'importe quelle fenêtre peut poster un message : on n'accepte que l'iframe d'aperçu.
+        const preview = this.previewFrame?.contentWindow;
+        if (!preview || e.source !== preview) return;
+        const level: ConsoleLevel = (['log', 'warn', 'error', 'info'] as const).includes(e.data.level)
+          ? e.data.level : 'log';
         const entry: ConsoleEntry = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          level: e.data.level,
-          message: e.data.message,
-          timestamp: e.data.timestamp || Date.now(),
+          level,
+          message: String(e.data.message ?? '').slice(0, 10_000),
+          timestamp: typeof e.data.timestamp === 'number' ? e.data.timestamp : Date.now(),
           source: 'preview',
         };
         this.consoleEntries.push(entry);
@@ -249,6 +261,7 @@ class BrowserToolsService {
    * Inject the console capture script into the iframe.
    */
   injectConsoleCapture(iframe: HTMLIFrameElement): void {
+    this.previewFrame = iframe;
     try {
       iframe.contentWindow?.postMessage({ type: 'anzar-exec', script: CONSOLE_CAPTURE_SCRIPT }, '*');
       // Also try direct injection (same-origin only)

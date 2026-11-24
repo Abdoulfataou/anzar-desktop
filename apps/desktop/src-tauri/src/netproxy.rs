@@ -119,7 +119,7 @@ pub fn recent_records() -> Vec<Record> {
         .unwrap_or_default()
 }
 
-fn normalize(host: &str) -> String {
+pub(crate) fn normalize(host: &str) -> String {
     host.trim()
         .trim_end_matches('.')
         .to_ascii_lowercase()

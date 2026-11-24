@@ -89,6 +89,8 @@ class RateLimiter:
     nombre de workers Railway). Purge des entrées > 24 h par le housekeeping.
     """
 
+    FAIL_CLOSED_ENDPOINTS = frozenset({"auth", "otp"})
+
     async def check(
         self,
         key: str,
@@ -114,7 +116,16 @@ class RateLimiter:
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail="Trop de requêtes. Réessaie dans quelques secondes.",
             )
-        except Exception as e:  # fail-open : une panne DB ne doit pas 500 toute l'API
+        except Exception as e:
+            # Connexion et codes OTP : fail-closed. Sans compteur, le brute-force serait libre ;
+            # et sans base, la connexion échouerait de toute façon.
+            if endpoint in self.FAIL_CLOSED_ENDPOINTS:
+                logger.error(f"Rate limiter DB error (fail-closed, {endpoint}): {type(e).__name__}: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail="Service momentanément indisponible. Réessaie dans un instant.",
+                )
+            # Autres routes : fail-open, une panne DB ne doit pas 500 toute l'API.
             logger.warning(f"Rate limiter DB error (fail-open): {type(e).__name__}: {e}")
             return True
 

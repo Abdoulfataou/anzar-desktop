@@ -23,6 +23,25 @@ logger = logging.getLogger("anzar.database")
 # ADMIN CRUD
 # ============================================================================
 
+INITIAL_ADMIN_PASSWORD_FILE = "ADMIN_MOT_DE_PASSE_INITIAL.txt"
+
+
+def _write_initial_admin_password(password: str) -> Optional[str]:
+    """Écrit le mot de passe initial dans data/ (droits 0600). Retourne le chemin, ou None."""
+    import os
+    try:
+        os.makedirs("data", exist_ok=True)
+        path = os.path.abspath(os.path.join("data", INITIAL_ADMIN_PASSWORD_FILE))
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(f"{settings.admin_default_email}\n{password}\n")
+        os.chmod(path, 0o600)
+        return path
+    except OSError as e:
+        logger.error("Écriture du mot de passe admin initial impossible : %s", type(e).__name__)
+        return None
+
+
 async def create_default_admin():
     Session = get_sessionmaker()
     async with Session() as session:
@@ -30,14 +49,21 @@ async def create_default_admin():
             cnt = await session.scalar(select(func.count(Admin.id)))
             if int(cnt or 0) == 0:
                 # Aucun mot de passe par défaut en dur : si ADMIN_DEFAULT_PASSWORD
-                # n'est pas fourni via l'env, on génère un secret aléatoire
-                # affiché UNE fois au démarrage.
+                # n'est pas fourni via l'env, on génère un secret aléatoire écrit dans
+                # un fichier lisible par le seul propriétaire — jamais dans les logs.
                 import secrets as _secrets
                 pw = settings.admin_default_password or _secrets.token_urlsafe(16)
                 if not settings.admin_default_password:
+                    saved_to = _write_initial_admin_password(pw)
+                    if not saved_to:
+                        logging.getLogger("anzar").error(
+                            "ADMIN_DEFAULT_PASSWORD non défini et mot de passe initial impossible à "
+                            "enregistrer : compte admin NON créé. Définis ADMIN_DEFAULT_PASSWORD puis redémarre."
+                        )
+                        return
                     logging.getLogger("anzar").warning(
-                        "ADMIN_DEFAULT_PASSWORD non défini — mot de passe admin initial : %s "
-                        "(changez-le immédiatement)", pw
+                        "ADMIN_DEFAULT_PASSWORD non défini — mot de passe admin initial enregistré dans %s "
+                        "(lis-le, change-le à la première connexion, puis supprime ce fichier)", saved_to
                     )
                 pw_hash, salt = hash_password(pw)
                 session.add(

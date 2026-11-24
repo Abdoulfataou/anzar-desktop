@@ -31,6 +31,7 @@ import type { Conversation, Project } from '@/types';
 import type { PermissionMode } from '@/hooks/useAgentChat';
 import { installAppleDevTools, installCommand, installGitNow, platform, programsStatus, type ProgramInfo } from '@/services/runtime/programs';
 import { installNodeNow } from '@/services/runtime/nodeRuntime';
+import { applyCommandPolicy, type PolicySettings } from '@/services/runtime/commandPolicy';
 
 type SectionId = 'general' | 'appearance' | 'personalization' | 'programs' | 'account' | 'usage' | 'data' | 'about';
 
@@ -255,6 +256,13 @@ function GeneralSection() {
   const changeMode = (m: PermissionMode) => {
     useSettingsStore.getState().updateSettings({ permissionMode: m });
   };
+  // Réglages de sécurité des commandes : enregistrés par le cœur Rust, qui demande une
+  // confirmation système avant tout affaiblissement.
+  const changeSecurity = async (patch: Partial<PolicySettings>) => {
+    const r = await applyCommandPolicy(patch);
+    if (!r.ok) toast.error(r.error || 'Changement annulé');
+    setExtraHosts((useSettingsStore.getState().settings.networkAllowedHosts || []).join('\n'));
+  };
   return (
     <Card>
       <Row label="Modèle par défaut" description="Auto : ANZAR choisit pour chaque demande (recommandé). Rapide : réflexion courte, le moins cher. Réflexion : la plupart des tâches. Max : tâches difficiles. Pro : le modèle le plus puissant, 3 à 4 fois plus cher.">
@@ -310,7 +318,7 @@ function GeneralSection() {
             >
               <Segmented
                 value={sandbox ? 'on' : 'off'}
-                onChange={(v) => updateSettings({ sandboxCommands: v === 'on' })}
+                onChange={(v) => void changeSecurity({ sandboxCommands: v === 'on' })}
                 options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
               />
             </Row>
@@ -323,7 +331,7 @@ function GeneralSection() {
               >
                 <Segmented
                   value={networkProxy ? 'on' : 'off'}
-                  onChange={(v) => updateSettings({ networkProxy: v === 'on' })}
+                  onChange={(v) => void changeSecurity({ networkProxy: v === 'on' })}
                   options={[{ id: 'on', label: 'Activé' }, { id: 'off', label: 'Désactivé' }]}
                 />
               </Row>
@@ -335,7 +343,7 @@ function GeneralSection() {
                   <textarea
                     value={extraHosts}
                     onChange={(e) => setExtraHosts(e.target.value)}
-                    onBlur={() => updateSettings({
+                    onBlur={() => void changeSecurity({
                       networkAllowedHosts: extraHosts.split('\n').map((h) => h.trim()).filter(Boolean),
                     })}
                     rows={3}
@@ -353,7 +361,7 @@ function GeneralSection() {
             >
               <Segmented
                 value={commandNetwork ? 'on' : 'off'}
-                onChange={(v) => updateSettings({ commandNetwork: v === 'on' })}
+                onChange={(v) => void changeSecurity({ commandNetwork: v === 'on' })}
                 options={[{ id: 'on', label: 'Ouvert' }, { id: 'off', label: 'Coupé' }]}
               />
             </Row>

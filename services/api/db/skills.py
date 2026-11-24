@@ -186,7 +186,7 @@ async def delete_skill(skill_id: str, author_email: str) -> bool:
 def _skill_to_dict(skill: CommunitySkill) -> dict:
     return {
         "id": skill.id,
-        "author_email": skill.author_email,
+        # Pas d'e-mail d'auteur dans les réponses : le hub est lisible par tout utilisateur connecté.
         "name": skill.name,
         "description": skill.description,
         "prompt": skill.prompt,

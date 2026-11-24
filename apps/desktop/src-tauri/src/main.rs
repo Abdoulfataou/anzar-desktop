@@ -8,6 +8,7 @@ mod programs;
 mod tool_runner;
 mod sandbox;
 mod netproxy;
+mod command_policy;
 mod roots;
 #[cfg(windows)]
 mod winjob;
@@ -27,6 +28,8 @@ fn main() {
             node_runtime::apply_path_with(app.handle());
             // Dossiers de projet choisis par l'utilisateur : ré-autorisés pour la webview
             roots::restore(app.handle());
+            // Réglages de sécurité des commandes (source de vérité côté Rust)
+            command_policy::load(app.handle());
             Ok(())
         })
         // Fichiers glissés dans la fenêtre : lisibles comme pièces jointes
@@ -46,7 +49,8 @@ fn main() {
         .manage(mcp::McpState::default())
         .manage(tool_runner::ToolState::default())
         .manage(roots::RootsState::default())
-        .invoke_handler(tauri::generate_handler![reveal_path, net_proxy_records, secret_get, secret_set, secret_delete, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
+        .manage(command_policy::PolicyState::default())
+        .invoke_handler(tauri::generate_handler![reveal_path, net_proxy_records, secret_get, secret_set, secret_delete, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, command_policy::command_policy_get, command_policy::command_policy_set, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 

@@ -11,3 +11,8 @@ sqlalchemy[asyncio]==2.0.41
 asyncpg==0.29.0
 python-multipart==0.0.34
 pyjwt==2.15.1
+
+# Sécurité (audit 23/11/2026) : versions minimales des dépendances indirectes
+certifi>=2026.10.18   # retire les autorités emSign compromises
+anyio>=4.14.2         # PYSEC-2026-4024 / PYSEC-2026-4025
+idna>=3.15            # PYSEC-2026-215

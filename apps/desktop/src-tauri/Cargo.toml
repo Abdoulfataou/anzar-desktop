@@ -20,14 +20,14 @@ serde = { version = "1.0", features = ["derive"] }
 tauri = { version = "2", features = [ "protocol-asset"] }
 dirs = "5.0"
 # Transport HTTP des serveurs MCP (déjà présent dans les dépendances via l'updater)
-reqwest = { version = "0.11", features = ["json"] }
+reqwest = { version = "0.12", features = ["json"] }
 # PATH du shell de l'utilisateur (apps lancées depuis le Finder)
 fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 # Node.js géré par ANZAR (téléchargé une fois si absent) : vérification et décompression
 sha2 = "0.10"
 flate2 = "1"
 tar = "0.4"
-zip = { version = "0.6", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-os = "2"

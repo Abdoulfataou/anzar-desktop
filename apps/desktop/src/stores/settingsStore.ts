@@ -104,7 +104,10 @@ function initialPermissionMode(): PermissionMode {
     const saved = localStorage.getItem('anzar.permissionMode');
     if (saved === 'ask' || saved === 'auto' || saved === 'plan' || saved === 'full') return saved;
   } catch { /* stockage indisponible */ }
-  return 'auto';
+  // Windows : les commandes de l'agent ne sont pas isolées (pas d'équivalent Seatbelt) ;
+  // par défaut, l'agent demande avant de modifier un fichier ou de lancer une commande.
+  const isWindows = typeof navigator !== 'undefined' && /win/i.test(navigator.platform || '');
+  return isWindows ? 'ask' : 'auto';
 }
 
 const defaultSettings: Settings = {

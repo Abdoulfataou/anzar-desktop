@@ -15,6 +15,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { useThemeStore } from '@/stores/themeStore';
+import { pullCommandPolicy } from '@/services/runtime/commandPolicy';
 
 /** L'historique est lu sur le disque (asynchrone) : on attend qu'il soit chargé avant d'afficher l'app. */
 function storesHydrated(): Promise<void> {
@@ -82,6 +83,8 @@ export default function App() {
         await storesHydrated();
         // Les réglages sont hydratés : on réapplique le thème persisté au DOM.
         useThemeStore.getState().initializeTheme();
+        // Réglages de sécurité des commandes : la référence est côté Rust.
+        await pullCommandPolicy();
         await authService.bootstrapSession();
       } finally {
         if (alive) setBooting(false);

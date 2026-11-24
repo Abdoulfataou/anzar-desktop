@@ -89,7 +89,8 @@ services:
         aliases: [anzar-admin]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]   # écouter sur le port 80
+    # Port 80 sans root ni capacité système (les images tournent sous l'utilisateur « web »)
+    sysctls: { net.ipv4.ip_unprivileged_port_start: 80 }
     mem_limit: 128m
     pids_limit: 64
     logging:
@@ -105,7 +106,8 @@ services:
         aliases: [anzar-site]
     security_opt: ["no-new-privileges:true"]
     cap_drop: [ALL]
-    cap_add: [NET_BIND_SERVICE]   # écouter sur le port 80
+    # Port 80 sans root ni capacité système (les images tournent sous l'utilisateur « web »)
+    sysctls: { net.ipv4.ip_unprivileged_port_start: 80 }
     mem_limit: 64m
     pids_limit: 32
     logging:
