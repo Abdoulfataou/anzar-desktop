@@ -53,6 +53,8 @@ export interface TurnVerifyHost {
   addEvent: (event: ToolEvent) => void;
   flush: () => void;
   requestApproval: (request: ApprovalRequest) => Promise<boolean>;
+  /** « Accès complet » accepté : les commandes de vérification passent sans demande. */
+  fullAccess?: () => boolean;
   recordSessionEvent: (conversationId: string, event: SessionEvent) => void;
   /** Fichiers modifiés par le tour (pour le ciblage). */
   changedFiles: () => string[];
@@ -94,6 +96,7 @@ export function createTurnVerifier(host: TurnVerifyHost): TurnVerifier {
         const risk = await commandRisk(host.convId, host.agentRoot as string, cmd.command).catch(() => null);
         if (!risk) return true;
         if (host.background) return false;
+        if (host.fullAccess?.()) return true;
         return host.requestApproval({
           id: `verify-${Date.now()}-${++seq}`,
           name: 'run_command',

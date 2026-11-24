@@ -314,6 +314,7 @@ export async function startTurn(host: TurnHost, input: TurnInput): Promise<TurnS
       addEvent: (ev) => sink.addToolEvent(ev),
       flush,
       requestApproval: host.requestApproval,
+      fullAccess: () => host.mode === 'full',
       recordSessionEvent,
       changedFiles: () => [...snapshots.keys()],
     });

@@ -7,7 +7,8 @@
  *    pas « fermer » le bloc et se faire passer pour une consigne ;
  * 2. les tournures d'injection connues sont repérées et signalées au modèle ;
  * 3. tant qu'un contenu externe a été lu dans la tâche, les commandes et les actions
- *    de connecteur demandent l'accord de l'utilisateur, même en « Accès complet »
+ *    de connecteur demandent l'accord de l'utilisateur ; en « Accès complet », seulement
+ *    si une tournure d'injection a été repérée
  *    (voir toolPolicy.approvalDecision).
  * Module pur : ni React ni Tauri.
  */

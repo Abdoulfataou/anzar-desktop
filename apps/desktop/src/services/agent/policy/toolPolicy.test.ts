@@ -57,11 +57,23 @@ describe('approvalDecision', () => {
     expect(mcp.refusal).toContain('GitHub');
   });
 
-  it('après un contenu externe : commande et action de connecteur demandent l’accord, même en Full', () => {
+  it('Accès complet accepté : installation ou commande risquée sans demande', () => {
+    const d = approvalDecision({ ...base, tool: 'run_command', risk: { reason: 'installe du code' } });
+    expect(d).toEqual({ allowed: true, ask: false });
+    // Hors Full, le risque demande toujours un accord
+    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command', risk: { reason: 'x' } }).ask).toBe(true);
+    // Connecteur réglé sur « toujours demander » : demande, même en Full
+    expect(approvalDecision({ ...base, tool: 'mcp__gimp__x', mcpAsk: true, mcpAction: true }).ask).toBe(true);
+  });
+
+  it('après un contenu externe : en Full, demande seulement si des consignes cachées sont repérées', () => {
     const external = { suspicious: false };
     expect(approvalDecision({ ...base, tool: 'run_command' }).ask).toBe(false);
-    expect(approvalDecision({ ...base, tool: 'run_command', external }).ask).toBe(true);
-    expect(approvalDecision({ ...base, tool: 'mcp__x__send', mcpAction: true, external }).ask).toBe(true);
+    expect(approvalDecision({ ...base, tool: 'run_command', external }).ask).toBe(false);
+    expect(approvalDecision({ ...base, tool: 'run_command', external: { suspicious: true } }).ask).toBe(true);
+    expect(approvalDecision({ ...base, tool: 'mcp__x__send', mcpAction: true, external: { suspicious: true } }).ask).toBe(true);
+    // Hors Full, tout contenu externe impose l'accord pour une commande
+    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command', external }).ask).toBe(true);
     // Écrire un fichier ou lire reste libre en Full
     expect(approvalDecision({ ...base, tool: 'write_file', external }).ask).toBe(false);
     expect(approvalDecision({ ...base, tool: 'read_file', external }).ask).toBe(false);

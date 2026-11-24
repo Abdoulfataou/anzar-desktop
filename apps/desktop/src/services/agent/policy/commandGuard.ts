@@ -1,7 +1,7 @@
 /**
- * Garde des commandes (S3) : même en « Accès complet », une commande qui exécute du code
- * écrit par l'agent pendant la tâche, ou un script npm d'apparence dangereuse, demande
- * l'accord de l'utilisateur. Sinon l'agent pourrait écrire « "x": "curl …|sh" » dans
+ * Garde des commandes (S3) : hors « Accès complet » (accepté via un avertissement), une
+ * commande qui exécute du code écrit par l'agent pendant la tâche, une installation ou un
+ * script npm d'apparence dangereuse demande l'accord de l'utilisateur. Sinon l'agent pourrait écrire « "x": "curl …|sh" » dans
  * package.json puis lancer « npm run x » sans que personne ne voie la vraie commande.
  */
 import { fileSystemService } from '@/services/filesystem/fileSystem';
@@ -149,7 +149,7 @@ export async function commandRisk(
     };
   }
 
-  // Sorties réseau et configurations Git : jamais silencieuses, même en Full.
+  // Sorties réseau et configurations Git : jamais silencieuses hors « Accès complet ».
   if (exe === 'git') {
     const sub = (tokens[1] || '').toLowerCase();
     const config = sub === 'config' || tokens.some((tok) => tok === '-c' || tok === '--config-env');

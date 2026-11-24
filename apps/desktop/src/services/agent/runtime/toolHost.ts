@@ -131,8 +131,8 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   let args: Record<string, any> = {};
   try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
 
-  // Commande qui exécute du code écrit par l'agent, ou script npm sensible :
-  // accord demandé même en « Accès complet » (garde S3)
+  // Commande qui exécute du code écrit par l'agent, installation, script npm sensible :
+  // accord demandé hors « Accès complet » (garde S3, voir approvalDecision)
   const riskCommand = call.function.name === 'run_command'
     ? String(args.command || '')
     : call.function.name === 'start_dev_server' && ctx.workspacePath
@@ -265,7 +265,8 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   if (allowed && !ctx.background && call.function.name === 'run_command' && result.isError
     && (result.output || '').includes(NETWORK_BLOCKED_TAG) && !ctx.signal.aborted) {
     const command = String(args.command || '');
-    const ok = await ctx.requestApproval({
+    // « Accès complet » accepté : internet accordé sans demander.
+    const ok = ctx.mode === 'full' || await ctx.requestApproval({
       id: call.id,
       name: call.function.name,
       summary: ev.argsSummary,

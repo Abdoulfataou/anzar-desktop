@@ -33,6 +33,7 @@ import { installAppleDevTools, installCommand, installGitNow, platform, programs
 import { installNodeNow } from '@/services/runtime/nodeRuntime';
 import { applyCommandPolicy, type PolicySettings } from '@/services/runtime/commandPolicy';
 import { SUPPORT_EMAIL, siteUrl } from '@/lib/siteLinks';
+import { FULL_ACCESS_WARNING } from '@/lib/fullAccess';
 
 type SectionId = 'general' | 'appearance' | 'personalization' | 'programs' | 'account' | 'usage' | 'data' | 'about';
 
@@ -224,7 +225,7 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-8 py-8">
           <h2 className="mb-5 text-ui-xl font-semibold text-text-primary">{current.label}</h2>
-          {section === 'general' && <GeneralSection />}
+          {section === 'general' && <GeneralSection confirm={confirm} />}
           {section === 'appearance' && <AppearanceSection />}
           {section === 'personalization' && <PersonalizationSection />}
           {section === 'programs' && <ProgramsSection />}
@@ -240,7 +241,7 @@ export default function SettingsPage() {
 
 type Confirm = ReturnType<typeof useConfirmModal>['confirm'];
 
-function GeneralSection() {
+function GeneralSection({ confirm }: { confirm: Confirm }) {
   const model = useSettingsStore((s) => s.settings.model);
   const updateSettings = useSettingsStore((s) => s.updateSettings);
   const webTools = useSettingsStore((s) => s.settings.webTools !== false);
@@ -255,7 +256,8 @@ function GeneralSection() {
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
   const [advanced, setAdvanced] = useState(false);
   const mode = useSettingsStore((s) => s.settings.permissionMode ?? 'auto');
-  const changeMode = (m: PermissionMode) => {
+  const changeMode = async (m: PermissionMode) => {
+    if (m === 'full' && mode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
     useSettingsStore.getState().updateSettings({ permissionMode: m });
   };
   // Réglages de sécurité des commandes : enregistrés par le cœur Rust, qui demande une

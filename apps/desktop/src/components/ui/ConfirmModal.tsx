@@ -160,7 +160,7 @@ function ConfirmModal({
             <h3 id="confirm-modal-title" className="text-sm font-semibold text-text-primary">
               {title || 'Confirmation'}
             </h3>
-            <p className="text-xs text-text-secondary mt-1 leading-relaxed">
+            <p className="text-xs text-text-secondary mt-1 leading-relaxed whitespace-pre-line">
               {message}
             </p>
           </div>

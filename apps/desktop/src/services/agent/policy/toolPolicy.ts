@@ -36,7 +36,8 @@ const PLAN_ALWAYS_ALLOWED = new Set(['task_done', 'propose_plan', 'load_skill', 
 export function approvalDecision(input: ApprovalDecisionInput): ApprovalDecision {
   const { mode, tool, mcpReadOnly, mcpAsk, mcpName, background, risk, personalSpace, trusted, mcpAction, external } = input;
   // Après lecture d'un contenu externe, une commande ou une action de connecteur
-  // peut venir d'une consigne cachée dans ce contenu : accord demandé, même en Full.
+  // peut venir d'une consigne cachée dans ce contenu : accord demandé (en Full, seulement
+  // si une tournure d'injection est repérée).
   const afterExternal = !!external && (COMMAND_TOOLS.has(tool) || !!mcpAction);
 
   if (mode === 'plan' && !READ_ONLY_TOOLS.has(tool) && !mcpReadOnly && !PLAN_ALWAYS_ALLOWED.has(tool)) {
@@ -65,10 +66,17 @@ export function approvalDecision(input: ApprovalDecisionInput): ApprovalDecision
     };
   }
 
-  const ask = (!personalSpace && needsApproval(mode, tool))
-    || !!risk
-    || mcpAsk
-    || (afterExternal && !background);
+  // « Accès complet » accepté par l'utilisateur (avertissement à l'activation) : plus aucune
+  // demande, installations et accès internet compris. Restent seulement les connecteurs
+  // réglés sur « toujours demander » et une action après un contenu externe qui
+  // ressemble à des consignes cachées (injection repérée).
+  const fullConsent = mode === 'full' && !background;
+  const ask = fullConsent
+    ? mcpAsk || (afterExternal && !!external?.suspicious)
+    : (!personalSpace && needsApproval(mode, tool))
+      || !!risk
+      || mcpAsk
+      || (afterExternal && !background);
   // `trusted` ne couvre plus les risques réseau/installation : un accord de code
   // dans l'espace ANZAR ne doit pas autoriser un push ou un npm install silencieux.
   if (ask && background) {

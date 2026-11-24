@@ -21,6 +21,8 @@ import {
 import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedProjectRoots';
 import { imageToDataUrl, imageMimeFromName } from '@/lib/imageAttach';
 import { readTextFile, readBinaryFile } from '@/lib/tauri/fs';
+import { useConfirmModal } from '@/components/ui/ConfirmModal';
+import { FULL_ACCESS_WARNING } from '@/lib/fullAccess';
 
 interface ChatInputProps {
   /** Texte placé dans le champ (ex. idée saisie avant la connexion, non envoyée faute de crédit) */
@@ -421,7 +423,7 @@ const PERMISSIONS: { id: PermissionMode; label: string; hint: string }[] = [
   { id: 'ask',  label: 'Demander avant de modifier', hint: "Chaque modification et chaque commande attend ton accord" },
   { id: 'auto', label: 'Modifier automatiquement',   hint: "Les fichiers sont modifiés sans demander ; les commandes attendent ton accord" },
   { id: 'plan', label: 'Mode plan',                  hint: "L'agent lit et propose un plan, sans rien modifier" },
-  { id: 'full', label: 'Accès complet',              hint: "L'agent modifie et exécute sans demander" },
+  { id: 'full', label: 'Accès complet',              hint: "L'agent modifie, installe et exécute sans rien demander" },
 ];
 
 const MODELS: { id: AIModel; label: string; hint: string }[] = [
@@ -520,6 +522,12 @@ export default function ChatInput({
 }: ChatInputProps) {
   const [message, setMessage] = useState(draft ?? '');
   useEffect(() => { if (draft) setMessage(draft); }, [draft]);
+  // « Accès complet » : avertissement à accepter avant de l'activer.
+  const { confirm, ConfirmDialog } = useConfirmModal();
+  const changePermission = async (mode: PermissionMode) => {
+    if (mode === 'full' && permissionMode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
+    onPermissionChange?.(mode);
+  };
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -718,6 +726,7 @@ export default function ChatInput({
 
   return (
     <div className="relative z-40 bg-bg-primary">
+      {ConfirmDialog}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 pb-4 pt-2">
         {/* Overlay drag & drop */}
         {isDropHover && (
@@ -970,7 +979,7 @@ export default function ChatInput({
                 <ToolbarMenu
                   value={permissionMode}
                   options={PERMISSIONS}
-                  onChange={onPermissionChange}
+                  onChange={changePermission}
                   icon={<Shield size={14} />}
                   tone={permissionMode === 'full' ? 'text-credit' : undefined}
                 />
