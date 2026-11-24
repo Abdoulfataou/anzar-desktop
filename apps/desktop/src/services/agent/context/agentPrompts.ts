@@ -140,6 +140,10 @@ export function runtimeFactsSection(facts: RuntimeFacts): string {
       ? "Réseau : ouvert pour les commandes, filtré par ANZAR (liste d'hôtes autorisés)."
       : "Réseau : coupé pour les commandes, sauf localhost et les installations acceptées.",
     facts.permissionMode ? `Permissions : ${PERMISSION_FACT[facts.permissionMode]}` : '',
+    // Invariant 7 : ne jamais laisser croire que Windows est confiné.
+    facts.platform === 'windows'
+      ? "Isolation : non garantie sous Windows ; les écritures hors projet ne sont pas confinées par le système. Reste dans le projet et signale-le si une action l'exige."
+      : '',
   ].filter(Boolean);
   return `\n\n---\n# État de l'environnement (à cet instant)\n${lines.map((l) => `- ${l}`).join('\n')}`;
 }
