@@ -57,7 +57,7 @@ export class LspClient {
     const rootUri = pathToUri(this.rootPath);
     const res = await this.request('initialize', {
       processId: null,
-      clientInfo: { name: 'anzar', version: '2.1.4' },
+      clientInfo: { name: 'anzar', version: '2.1.5' },
       rootUri,
       rootPath: this.rootPath,
       workspaceFolders: [{ uri: rootUri, name: this.rootPath.split(/[\\/]/).pop() || 'projet' }],
