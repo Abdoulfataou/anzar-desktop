@@ -624,7 +624,7 @@ pub fn tool_spawn(
     if use_shell && !isolated {
         return Err("Le shell confiné exige l'isolation des commandes : active-la dans les réglages ou utilise run_command.".into());
     }
-    if isolated && gradlew_path.is_none() && find_in_path(&program).is_none() {
+    if isolated && !use_shell && gradlew_path.is_none() && find_in_path(&program).is_none() {
         return Err(format!("« {program} » est introuvable sur cet ordinateur."));
     }
     // Programme réellement lancé : chemin du script gradlew, ou nom cherché dans le PATH.
