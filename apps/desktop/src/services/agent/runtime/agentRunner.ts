@@ -15,11 +15,11 @@ import type { PermissionMode } from '@/services/agent/policy/permissions';
 import type { APIMessage, ChatAttachment } from '@/types';
 import { runTurn, type TurnHost } from './turn';
 import type {
-  AgentChatResult, AgentRunnerOptions, AgentRunnerState, ApprovalRequest, ResumeState,
+  AgentChatResult, AgentRunnerOptions, AgentRunnerState, ApprovalOutcome, ApprovalRequest, ResumeState,
 } from './turnTypes';
 
 export type {
-  AgentChatResult, AgentRunnerOptions, AgentRunnerState, ApprovalRequest, ResumeState,
+  AgentChatResult, AgentRunnerOptions, AgentRunnerState, ApprovalOutcome, ApprovalRequest, ResumeState,
 } from './turnTypes';
 export type { PermissionMode } from '@/services/agent/policy/permissions';
 export type { TimelineItem, ToolEvent } from '@/types';
@@ -30,7 +30,7 @@ export class AgentRunner {
   private mode: PermissionMode;
   private state: AgentRunnerState = { isGenerating: false, approval: null, question: null, budget: null };
   private listeners = new Set<() => void>();
-  private approvalResolver: ((ok: boolean) => void) | null = null;
+  private approvalResolver: ((outcome: ApprovalOutcome) => void) | null = null;
   /** Questions de l'agent (ask_user) : null = l'utilisateur passe, l'agent décide */
   private questionResolver: ((answers: QuestionAnswer[] | null) => void) | null = null;
   private abort: AbortController | null = null;
@@ -98,8 +98,13 @@ export class AgentRunner {
     this.listeners.forEach((l) => l());
   }
 
-  resolveApproval = (ok: boolean): void => {
-    this.approvalResolver?.(ok);
+  resolveApproval = (outcome: ApprovalOutcome | boolean): void => {
+    // Les anciens appels booléens restent valides (tests, boutons) ; l'interface
+    // utilise désormais le vocabulaire fermé de Harness.
+    const closed: ApprovalOutcome = typeof outcome === 'boolean'
+      ? (outcome ? 'allowed-once' : 'rejected')
+      : outcome;
+    this.approvalResolver?.(closed);
     this.approvalResolver = null;
     this.setState({ approval: null });
   };
@@ -111,8 +116,8 @@ export class AgentRunner {
   };
 
   /** Pose une demande d'accord et attend la réponse de l'utilisateur (ou l'arrêt). */
-  private requestApproval = (request: ApprovalRequest): Promise<boolean> =>
-    new Promise<boolean>((resolve) => {
+  private requestApproval = (request: ApprovalRequest): Promise<ApprovalOutcome> =>
+    new Promise<ApprovalOutcome>((resolve) => {
       this.approvalResolver = resolve;
       this.setState({ approval: request });
     });
@@ -126,6 +131,8 @@ export class AgentRunner {
 
   /** Fin de tour : plus rien n'attend de réponse. */
   private clearPending(): void {
+    // Un accord encore en attente est annulé, pas laissé sans réponse.
+    this.approvalResolver?.('cancelled');
     this.approvalResolver = null;
     this.questionResolver = null;
     this.setState({ approval: null, question: null });
@@ -141,7 +148,7 @@ export class AgentRunner {
 
   stop = (): void => {
     this.abort?.abort();
-    this.resolveApproval(false);
+    this.resolveApproval('cancelled');
     this.resolveQuestion(null);
   };
 

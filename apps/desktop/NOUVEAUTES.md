@@ -13,3 +13,5 @@
 - Paramètres : un seul sélecteur « Permissions » règle à la fois ce que l'agent peut faire sans demander et l'isolation des commandes. « Accès complet » est le seul choix qui retire la protection système, avec un avertissement unique (comme le danger-full-access de Harness).
 - Sous-agents : en Accès complet, ils peuvent aussi lancer des commandes (shell sans isolation, comme le parent), en séquence, pour vérifier leur travail ; hors Accès complet, ils restent en lecture seule.
 - Si tu étais déjà en « Accès complet » avant cette version, resélectionne-le une fois : l'isolation n'est retirée qu'après le nouvel avertissement.
+- Agent : il lit plusieurs fichiers et lance plusieurs recherches en parallèle (10 appels sûrs au plus) ; les écritures et commandes restent seules, dans l'ordre.
+- Agent : un refus, une annulation et l'absence de canal d'accord sont maintenant trois faits distincts ; il ne réessaie plus quand personne ne peut répondre.

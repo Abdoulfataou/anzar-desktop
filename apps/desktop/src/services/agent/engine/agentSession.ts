@@ -10,6 +10,7 @@ import type { APIMessage, StreamDelta, ToolCall, ToolDefinition } from '@/types'
 import { ToolCallAssembler } from './toolCallAssembler';
 import { budgetStopMessage, type BudgetLedger } from './budget';
 import { LoopGuard } from './loopGuard';
+import { isConcurrencySafe, MAX_PARALLEL_TOOL_CALLS } from '../policy/toolConcurrency';
 
 export type AgentStopReason =
   | 'task_done'
@@ -281,24 +282,23 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     /** Rappels de boucle à ajouter après le lot d'outils (jamais entre deux résultats). */
     const reminders: string[] = [];
 
-    for (const call of toolCalls) {
-      if (signal?.aborted) return finish('aborted', 'Session annulée.', step);
-      onToolCall?.(call, step);
-
-      let outcome: AgentToolOutcome;
+    /** Exécute un appel, sans toucher à l'historique : l'ordre est géré après le lot. */
+    const executeOne = async (call: ToolCall): Promise<AgentToolOutcome> => {
       if (allowedTools && !allowedTools.has(call.function.name)) {
-        outcome = {
+        return {
           output: `Outil non autorisé pour cette session : ${call.function.name}.`,
           isError: true,
         };
-      } else {
-        try {
-          outcome = await options.executeTool(call, step);
-        } catch (e) {
-          outcome = { output: `Erreur outil : ${errorMessage(e)}`, isError: true };
-        }
       }
-      // Le compteur ne bloque pas : il renvoie, aux seuils, un rappel ajouté après le lot.
+      try {
+        return await options.executeTool(call, step);
+      } catch (e) {
+        return { output: `Erreur outil : ${errorMessage(e)}`, isError: true };
+      }
+    };
+
+    /** Ajoute le résultat à l'historique. Renvoie une fin anticipée s'il y en a une. */
+    const applyOutcome = (call: ToolCall, outcome: AgentToolOutcome): AgentEngineResult | null => {
       const reminder = loop.after(call, outcome);
       if (reminder) reminders.push(reminder);
       onToolResult?.(call, outcome, step);
@@ -307,12 +307,10 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
       if (outcome.images?.length) onImages?.(outcome.images, step);
       if (outcome.costFCFA) onCostDelta?.(outcome.costFCFA);
 
-      if (outcome.stop === 'plan') {
-        return finish('plan', outcome.output, step);
-      }
+      if (outcome.stop === 'plan') return finish('plan', outcome.output, step);
       if (outcome.isDone) {
         doneSummary = outcome.output;
-        continue;
+        return null;
       }
 
       consecutiveErrors = outcome.isError ? consecutiveErrors + 1 : 0;
@@ -324,6 +322,42 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
           step,
         );
       }
+      return null;
+    };
+
+    // Groupes : les outils sûrs consécutifs partent ensemble (10 au plus) ; tout
+    // outil à effet de bord forme une barrière et s'exécute seul, dans l'ordre.
+    const groups: ToolCall[][] = [];
+    for (const call of toolCalls) {
+      if (!isConcurrencySafe(call.function.name)) {
+        groups.push([call]);
+        continue;
+      }
+      const last = groups[groups.length - 1];
+      if (last && last.length < MAX_PARALLEL_TOOL_CALLS && isConcurrencySafe(last[0].function.name)) {
+        last.push(call);
+      } else {
+        groups.push([call]);
+      }
+    }
+
+    for (const group of groups) {
+      if (signal?.aborted) return finish('aborted', 'Session annulée.', step);
+      for (const call of group) onToolCall?.(call, step);
+
+      const outcomes = group.length > 1
+        ? await Promise.all(group.map(executeOne))
+        : [await executeOne(group[0])];
+
+      let early: AgentEngineResult | null = null;
+      for (let i = 0; i < group.length; i++) {
+        // Tous les résultats du groupe sont ajoutés avant une éventuelle fin : sinon
+        // l'API verrait un tool_call sans réponse.
+        const stop = applyOutcome(group[i], outcomes[i]);
+        if (stop && !early) early = stop;
+      }
+      if (early) return early;
+      if (signal?.aborted) return finish('aborted', 'Session annulée.', step);
     }
 
     // Le rappel arrive après tous les résultats du lot : l'historique reste valide pour l'API

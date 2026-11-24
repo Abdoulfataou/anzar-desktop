@@ -15,6 +15,9 @@ const call = (name: string, id = 'c1') => ({
   function: { name, arguments: '{}' },
 });
 
+/** Plusieurs appels dans le même lot : chaque index doit être distinct pour l'assembleur. */
+const callAt = (index: number, name: string, id: string) => ({ ...call(name, id), index });
+
 describe('runAgentEngine', () => {
   it('termine une réponse texte et ajoute le message assistant', async () => {
     const messages = [userMessage()];
@@ -218,6 +221,60 @@ describe('runAgentEngine — budget', () => {
     expect(result.stopReason).toBe('budget_exhausted');
     expect(result.steps).toBe(0);
     expect(streamSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe('runAgentEngine — parallélisme des outils', () => {
+  it('lance deux lectures ensemble et garde l’ordre des résultats', async () => {
+    const messages = [userMessage()];
+    let started = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const executeTool = vi.fn(async (call: any) => {
+      started++;
+      await gate;
+      return { output: `résultat-${call.id}` };
+    });
+    let callIndex = 0;
+
+    const pending = runAgentEngine({
+      messages,
+      stream: () => (callIndex++ === 0
+        ? stream({ tool_calls: [callAt(0, 'read_file', 'a'), callAt(1, 'read_file', 'b')] })
+        : stream({ content: 'Fini' })),
+      executeTool,
+    });
+
+    await vi.waitFor(() => expect(started).toBe(2));
+    release();
+    const result = await pending;
+
+    expect(result.stopReason).toBe('final_answer');
+    const toolMessages = messages.filter((m) => m.role === 'tool');
+    expect(toolMessages.map((m) => m.tool_call_id)).toEqual(['a', 'b']);
+    expect(toolMessages.map((m) => m.content)).toEqual(['résultat-a', 'résultat-b']);
+  });
+
+  it('ne parallélise pas une commande avec une lecture', async () => {
+    const order: string[] = [];
+    const executeTool = vi.fn(async (call: any) => {
+      order.push(`${call.function.name}:start`);
+      await new Promise((r) => setTimeout(r, 5));
+      order.push(`${call.function.name}:end`);
+      return { output: 'ok' };
+    });
+    let callIndex = 0;
+
+    await runAgentEngine({
+      messages: [userMessage()],
+      stream: () => (callIndex++ === 0
+        ? stream({ tool_calls: [callAt(0, 'read_file', 'a'), callAt(1, 'bash', 'b'), callAt(2, 'read_file', 'c')] })
+        : stream({ content: 'Fini' })),
+      executeTool,
+    });
+
+    // La barrière bash ne démarre qu'après la première lecture et se termine avant la seconde.
+    expect(order).toEqual(['read_file:start', 'read_file:end', 'bash:start', 'bash:end', 'read_file:start', 'read_file:end']);
   });
 });
 

@@ -30,7 +30,7 @@ import { commandTitle, isEnvironmentFailure, reportError } from '@/services/infr
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { Skill } from '@/services/skills';
 import { recordSessionEvent } from './sessionStore';
-import type { ApprovalRequest } from './turnTypes';
+import type { ApprovalRequest, ApprovalOutcome } from './turnTypes';
 
 /** Taille maximale d'une sortie d'outil conservée pour l'affichage. */
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
@@ -99,7 +99,7 @@ export interface ToolRunContext {
   turn: TurnToolState;
   flush: (liveText?: string) => void;
   /** Pose une demande d'accord et attend la réponse de l'utilisateur. */
-  requestApproval: (request: ApprovalRequest) => Promise<boolean>;
+  requestApproval: (request: ApprovalRequest) => Promise<ApprovalOutcome>;
   /** Pose des questions et attend les réponses (null = l'utilisateur passe). */
   requestAnswers: (callId: string, questions: AgentQuestion[]) => Promise<QuestionAnswer[] | null>;
   updateMessage: (id: string, patch: Partial<Message>) => void;
@@ -118,6 +118,32 @@ export interface ToolRunContext {
   beforeFirstWrite?: () => Promise<void>;
   /** Avant la première commande ou écriture du tour : point de départ des changements. */
   beforeFirstChange?: () => Promise<void>;
+}
+
+/** Texte de refus adapté à l'issue fermée de l'accord. */
+function approvalRefusal(outcome: ApprovalOutcome, subject = "l'action"): string {
+  switch (outcome) {
+    case 'rejected':
+      return `L'utilisateur a refusé ${subject}. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.`;
+    case 'cancelled':
+      return `La demande d'accord pour ${subject} a été annulée avant la décision. Ne la relance pas à l'identique ; demande à l'utilisateur.`;
+    case 'unavailable':
+      return `Aucun canal d'accord n'est disponible pour ${subject} (personne ne peut répondre). Signale-le dans ta réponse au lieu de réessayer.`;
+    case 'allowed-once':
+      return '';
+  }
+}
+
+/** Demande un accord et normalise un éventuel échec de canal en `unavailable`. */
+async function askApproval(
+  ctx: Pick<ToolRunContext, 'requestApproval'>,
+  request: ApprovalRequest,
+): Promise<ApprovalOutcome> {
+  try {
+    return await ctx.requestApproval(request);
+  } catch {
+    return 'unavailable';
+  }
 }
 
 /**
@@ -179,16 +205,16 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
       };
     }
     if (ctx.mode !== 'full') {
-      const ok = await ctx.requestApproval({
+      const outcome = await askApproval(ctx, {
         id: call.id,
         name: call.function.name,
         summary: ev.argsSummary,
         reason: `Élévation demandée pour cette commande : ${justification}. Elle peut aussi installer ou exécuter du code ; vérifie ce qu'elle fait avant d'autoriser.`,
         detail: String(args.command || ''),
       });
-      if (!ok) {
+      if (outcome !== 'allowed-once') {
         return {
-          output: "L'utilisateur a refusé l'élévation. La commande reste bloquée : ne la contourne pas, explique ce qui manque.",
+          output: approvalRefusal(outcome, "l'élévation de cette commande"),
           isError: true,
         };
       }
@@ -234,7 +260,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   if (decision.ask && !escalated) {
     const reason = [risk?.reason, afterExternal ? externalReason(ctx.externalSources) : '']
       .filter(Boolean).join(' ; ') || undefined;
-    allowed = await ctx.requestApproval({
+    const outcome = await askApproval(ctx, {
       id: call.id,
       name: call.function.name,
       summary: ev.argsSummary,
@@ -242,6 +268,14 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
       detail: risk?.detail,
       trustProgram: risk?.unknownProgram,
     });
+    allowed = outcome === 'allowed-once';
+    if (!allowed) {
+      const output = approvalRefusal(outcome);
+      ev.status = 'error';
+      ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+      ctx.flush();
+      return { output, isError: true };
+    }
   }
   // Installation acceptée : Rust ne la lance qu'avec cet accord (usage unique)
   if (allowed && risk && call.function.name === 'run_command') terminalService.grantInstall(riskCommand);
@@ -338,20 +372,22 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     && (result.output || '').includes(NETWORK_BLOCKED_TAG) && !ctx.signal.aborted) {
     const command = String(args.command || '');
     // « Accès complet » accepté : internet accordé sans demander.
-    const ok = ctx.mode === 'full' || await ctx.requestApproval({
-      id: call.id,
-      name: call.function.name,
-      summary: ev.argsSummary,
-      reason: "cette commande a besoin d'internet. Autoriser son accès réseau (cette commande uniquement, jusqu'à la fermeture d'ANZAR) ?",
-      detail: command,
-    });
-    if (ok) {
+    const outcome: ApprovalOutcome = ctx.mode === 'full'
+      ? 'allowed-once'
+      : await askApproval(ctx, {
+        id: call.id,
+        name: call.function.name,
+        summary: ev.argsSummary,
+        reason: "cette commande a besoin d'internet. Autoriser son accès réseau (cette commande uniquement, jusqu'à la fermeture d'ANZAR) ?",
+        detail: command,
+      });
+    if (outcome === 'allowed-once') {
       terminalService.grantNetwork(command);
       // L'accord d'installation est à usage unique : la relance en a encore besoin.
       if (risk) terminalService.grantInstall(riskCommand);
       result = await runTool();
     } else {
-      result = { ...result, output: `${result.output}\nL'utilisateur a refusé l'accès internet pour cette commande. Ne contourne pas : fais sans, ou explique-lui ce qui manque.` };
+      result = { ...result, output: `${result.output}\n${approvalRefusal(outcome, "l'accès internet de cette commande")} Ne contourne pas : fais sans, ou explique-lui ce qui manque.` };
     }
   }
 

@@ -436,7 +436,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                   )}
                 </div>
                 <button
-                  onClick={() => resolveApproval(false)}
+                  onClick={() => resolveApproval('rejected')}
                   className="h-7 px-3 rounded-lg text-ui-caption text-text-secondary hover:bg-surface-hover transition-colors"
                 >
                   Refuser
@@ -447,7 +447,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                       const name = approval.trustProgram!;
                       // Rust affiche une confirmation système avant d'enregistrer l'autorisation.
                       void trustProgram(name).then((r) => {
-                        if (r.ok) resolveApproval(true);
+                        if (r.ok) resolveApproval('allowed-once');
                         else toast.error(r.error || 'Autorisation définitive annulée');
                       });
                     }}
@@ -458,7 +458,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                   </button>
                 )}
                 <button
-                  onClick={() => resolveApproval(true)}
+                  onClick={() => resolveApproval('allowed-once')}
                   className="h-7 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"
                 >
                   {approval.trustProgram ? 'Autoriser une fois' : 'Autoriser'}

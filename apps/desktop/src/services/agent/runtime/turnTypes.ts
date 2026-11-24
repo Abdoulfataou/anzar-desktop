@@ -16,6 +16,9 @@ import type { BudgetSpec, BudgetView } from '../engine/budget';
 import type { AgentQuestion, QuestionAnswer } from '../tools/questions';
 
 /** Demande d'accord en attente (modes « ask » et « auto »). */
+/** Issue fermée d'une demande d'accord, comme dans DeepSeek Harness. */
+export type ApprovalOutcome = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable';
+
 export interface ApprovalRequest {
   id: string;
   name: string;
@@ -102,7 +105,7 @@ export interface TurnHost {
   /** Remet à zéro les accords et questions en attente (fin de tour). */
   clearPending(): void;
   ensureConversation(): string;
-  requestApproval(request: ApprovalRequest): Promise<boolean>;
+  requestApproval(request: ApprovalRequest): Promise<ApprovalOutcome>;
   requestAnswers(callId: string, questions: AgentQuestion[]): Promise<QuestionAnswer[] | null>;
 }
 

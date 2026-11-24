@@ -10,7 +10,7 @@
  * Module sans React ni store : l'affichage et les accords passent par l'hôte.
  */
 import type { ToolEvent } from '@/types';
-import type { ApprovalRequest } from './turnTypes';
+import type { ApprovalOutcome, ApprovalRequest } from './turnTypes';
 import type { SessionEvent } from './sessionStore';
 import { commandRisk } from '@/services/agent/policy/commandGuard';
 import { runVerification } from '@/services/agent/verify/agentVerifier';
@@ -52,7 +52,7 @@ export interface TurnVerifyHost {
   /** Déclare un événement d'affichage (commandes de vérification). */
   addEvent: (event: ToolEvent) => void;
   flush: () => void;
-  requestApproval: (request: ApprovalRequest) => Promise<boolean>;
+  requestApproval: (request: ApprovalRequest) => Promise<ApprovalOutcome>;
   /** « Accès complet » accepté : les commandes de vérification passent sans demande. */
   fullAccess?: () => boolean;
   recordSessionEvent: (conversationId: string, event: SessionEvent) => void;
@@ -97,13 +97,13 @@ export function createTurnVerifier(host: TurnVerifyHost): TurnVerifier {
         if (!risk) return true;
         if (host.background) return false;
         if (host.fullAccess?.()) return true;
-        return host.requestApproval({
+        return (await host.requestApproval({
           id: `verify-${Date.now()}-${++seq}`,
           name: 'run_command',
           summary: cmd.command,
           reason: risk.reason,
           detail: risk.detail,
-        });
+        })) === 'allowed-once';
       },
       onCommandStart: (cmd) => {
         current = {

@@ -37,7 +37,10 @@ src/services/skills/
 Règles :
 
 - **Une seule boucle** : `engine/agentSession.ts` (`runAgentEngine`). Le chat, les sous-agents,
-  les explorateurs et le sauvetage export en sont des adaptateurs.
+  les explorateurs et le sauvetage export en sont des adaptateurs. Les outils sans effet de
+  bord (lecture, recherche, diagnostic, web en lecture) d'un même lot partent ensemble, 10 au
+  plus ; tout outil qui écrit ou exécute forme une barrière et s'exécute seul, dans l'ordre.
+  C'est le `isConcurrencySafe` de Harness, adapté aux outils d'ANZAR.
 - **Pas de cycle d'imports** : les outils ne connaissent pas la boucle. Le lanceur de
   sous-agents leur est transmis par `ToolExecutionContext.runSubagent`.
 - **Budget** : `engine/budget.ts` (`BudgetLedger`) borne un tour en étapes, tokens, FCFA et
@@ -71,6 +74,9 @@ Règles :
   n'arrête jamais la session : le modèle relit le résultat et décide. Le budget du tour reste
   le seul plafond ; une répétition légitime (relancer le même test après une correction) est
   donc permise.
+- **Accords à quatre issues** : `requestApproval` renvoie `allowed-once`, `rejected`,
+  `cancelled` ou `unavailable` (vocabulaire de Harness). Le refus affiché au modèle distingue
+  « l'utilisateur a refusé », « la demande a été annulée » et « aucun canal n'est disponible ».
 - **Vérification** : à la fin du tour (réponse texte naturelle ou `task_done`), si l'agent a
   modifié le projet et que le réglage « vérifier après application » est actif, lint / build /
   tests sont lancés ; un échec renvoie les erreurs à l'agent (3 tentatives). `task_done` est
