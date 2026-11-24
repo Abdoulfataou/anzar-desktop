@@ -291,7 +291,7 @@
     "fallback_currency": "Your currency isn't available yet, so prices are shown in {devise}."
   },
   "legal": {
-    "updated": "Last updated: November 23, 2026",
+    "updated": "Last updated: November 24, 2026",
     "terms": {
       "title": "Terms of use",
       "sections": [
@@ -359,7 +359,7 @@
         {
           "h": "1. In short",
           "p": [
-            "Your projects and files stay on your computer. We only collect what we need to run your account, your payments and the AI's answers. We do not sell your data."
+            "Your projects and files stay on your computer. We only collect what we need to run your account, your payments and the AI's answers, plus cleaned error reports to fix problems. We do not sell your data."
           ]
         },
         {
@@ -375,19 +375,26 @@
           ]
         },
         {
-          "h": "4. Payments",
+          "h": "4. Error reports",
+          "p": [
+            "When a command is blocked by your computer's environment, an update fails or the app crashes, ANZAR sends a short technical report so we can fix the problem: the type of error, the command involved (without its arguments), the last lines of the error message, the ANZAR version and the system (macOS or Windows).",
+            "Before it is sent, the report is cleaned: personal paths, keys, tokens and email addresses are removed. It contains neither your files nor the content of your conversations. Reports are grouped by problem and analyzed, including by an AI tool, only to improve ANZAR. You can turn this off in Settings → General → “Envoyer les rapports d'erreurs” (send error reports)."
+          ]
+        },
+        {
+          "h": "5. Payments",
           "p": [
             "Payments are processed by our payment providers (mobile money and bank card). We never see or store your card number."
           ]
         },
         {
-          "h": "5. This website",
+          "h": "6. This website",
           "p": [
             "This website uses no advertising and no tracking tools. It only stores your language choice in a cookie, if you switch languages."
           ]
         },
         {
-          "h": "6. Your rights",
+          "h": "7. Your rights",
           "p": [
             "You can ask to access, correct or delete your data by writing to support@getanzar.com."
           ]

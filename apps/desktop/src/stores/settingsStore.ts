@@ -77,6 +77,9 @@ export interface Settings {
   // Après application de changements (Preview/Apply), lancer automatiquement "Vérifier le projet"
   autoVerifyAfterApply: boolean;
 
+  // Envoi des rapports d'erreurs (nettoyés) au serveur ANZAR pour le suivi automatique
+  errorReports: boolean;
+
   // Nettoyer automatiquement les commandes terminées (Command Cards)
   autoCleanFinishedCommands: boolean;
 }
@@ -137,6 +140,7 @@ const defaultSettings: Settings = {
   networkProxy: true,
   networkAllowedHosts: [],
   autoVerifyAfterApply: true,
+  errorReports: true,
   autoCleanFinishedCommands: true,
 };
 
@@ -221,6 +225,7 @@ export const useSettingsStore = create<SettingsStore>()(
           externalAllowlistHosts: state.settings.externalAllowlistHosts,
           commandExecutionMode: state.settings.commandExecutionMode,
           autoVerifyAfterApply: state.settings.autoVerifyAfterApply,
+          errorReports: state.settings.errorReports,
           autoCleanFinishedCommands: state.settings.autoCleanFinishedCommands,
         },
       }),

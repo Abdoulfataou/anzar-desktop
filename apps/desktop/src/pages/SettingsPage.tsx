@@ -256,6 +256,7 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
   const [advanced, setAdvanced] = useState(false);
   const mode = useSettingsStore((s) => s.settings.permissionMode ?? 'auto');
+  const errorReports = useSettingsStore((s) => s.settings.errorReports !== false);
   const changeMode = async (m: PermissionMode) => {
     if (m === 'full' && mode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
     useSettingsStore.getState().updateSettings({ permissionMode: m });
@@ -407,6 +408,16 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
           <option value="plan">Mode plan</option>
           <option value="full">Accès complet</option>
         </select>
+      </Row>
+      <Row
+        label="Envoyer les rapports d'erreurs"
+        description="Quand une commande est bloquée par l'environnement, qu'une mise à jour échoue ou que l'app plante, ANZAR envoie un court rapport nettoyé (sans tes fichiers, tes chemins personnels ni tes clés) pour que le problème soit corrigé."
+      >
+        <Segmented
+          value={errorReports ? 'on' : 'off'}
+          onChange={(v) => useSettingsStore.getState().updateSettings({ errorReports: v === 'on' })}
+          options={[{ id: 'on', label: 'Activé' }, { id: 'off', label: 'Désactivé' }]}
+        />
       </Row>
     </Card>
   );

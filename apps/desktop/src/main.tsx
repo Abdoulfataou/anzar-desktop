@@ -8,6 +8,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import * as Sentry from '@sentry/react';
 import App from './App';
+import { installCrashReporting, reportError } from '@/services/infra/errorReports';
 import './index.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ class ErrorBoundary extends React.Component<
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     console.error('ANZAR Error Boundary caught:', error, errorInfo);
+    reportError({ kind: 'crash', title: `Interface : ${error.name} : ${error.message}`.slice(0, 200), detail: `${error.stack || ''}\n${errorInfo.componentStack || ''}` });
     try {
       Sentry.captureException(error, {
         contexts: {
@@ -159,6 +161,7 @@ try {
 // Monter React
 const rootElement = document.getElementById('root');
 if (rootElement) {
+  installCrashReporting();
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
       <ErrorBoundary>

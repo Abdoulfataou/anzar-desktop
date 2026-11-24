@@ -23,6 +23,7 @@ import { detectDevCommand } from '../tools/devServer';
 import { snapshotBeforeChange, type Snapshots } from '../tools/fileChanges';
 import { isMcpTool, mcpNeedsApproval, mcpToolRef } from '@/services/mcp/manager';
 import { NETWORK_BLOCKED_TAG, NETWORK_BYPASS_TAG, NETWORK_UNREACHABLE_TAG, terminalService } from '@/services/runtime/terminal';
+import { commandTitle, isEnvironmentFailure, reportError } from '@/services/infra/errorReports';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { Skill } from '@/services/skills';
 import { recordSessionEvent } from './sessionStore';
@@ -301,6 +302,17 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
           ? { ...retry, output: `${retry.output}\n[ANZAR] Nouvel essai automatique déjà fait. Si c'est encore le réseau, dis-le simplement à l'utilisateur (connexion internet) au lieu de chercher un contournement.` }
           : retry;
       }
+    }
+  }
+
+  // Suivi des erreurs : échec qui peut venir d'ANZAR (environnement, réseau, isolation),
+  // pas une erreur du code du projet. Envoi nettoyé, par lots, coupable dans les Paramètres.
+  if (allowed && call.function.name === 'run_command' && result.isError && !ctx.signal.aborted) {
+    const out = result.output || '';
+    const code = Number(/exit_code:\s*(-?\d+)/.exec(out)?.[1]);
+    const exit = Number.isFinite(code) ? code : undefined;
+    if (isEnvironmentFailure(out, exit)) {
+      reportError({ kind: 'command', title: commandTitle(String(args.command || ''), exit), detail: out.split('\n').slice(-40).join('\n') });
     }
   }
 

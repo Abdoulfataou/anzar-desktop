@@ -1,3 +1,4 @@
+import { reportError } from './errorReports'
 import type { Update } from '@tauri-apps/plugin-updater'
 import { create } from 'zustand'
 import { isTauri } from '@/lib/utils'
@@ -131,6 +132,11 @@ export async function installUpdateAndRelaunch(): Promise<void> {
     })
   } catch (e) {
     useUpdateStore.setState({ phase: 'error', progress: null, error: updateErrorMessage(e) })
+    reportError({
+      kind: 'update',
+      title: `Mise à jour vers ${pendingUpdate?.version || '?'} → échec`,
+      detail: e instanceof Error ? `${e.message}\n${e.stack || ''}` : String(e),
+    })
     throw e
   } finally {
     await pendingUpdate?.close().catch(() => {})

@@ -1,5 +1,6 @@
 import React from 'react';
 import { AlertCircle, RotateCcw } from 'lucide-react';
+import { reportError } from '@/services/infra/errorReports';
 
 interface Props {
   children: React.ReactNode;
@@ -22,6 +23,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary]', error, info.componentStack);
+    reportError({ kind: 'crash', title: `Interface : ${error.name} : ${error.message}`.slice(0, 200), detail: `${error.stack || ''}\n${info.componentStack || ''}` });
   }
 
   handleReset = () => {

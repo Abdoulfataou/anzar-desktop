@@ -291,7 +291,7 @@
     "fallback_currency": "Ta monnaie n'est pas encore proposée : les prix sont affichés en {devise}."
   },
   "legal": {
-    "updated": "Dernière mise à jour : 23 novembre 2026",
+    "updated": "Dernière mise à jour : 24 novembre 2026",
     "terms": {
       "title": "Conditions d'utilisation",
       "sections": [
@@ -359,7 +359,7 @@
         {
           "h": "1. En bref",
           "p": [
-            "Tes projets et tes fichiers restent sur ton ordinateur. Nous ne collectons que ce qui est nécessaire pour faire fonctionner ton compte, tes paiements et les réponses de l'intelligence artificielle. Nous ne vendons pas tes données."
+            "Tes projets et tes fichiers restent sur ton ordinateur. Nous ne collectons que ce qui est nécessaire pour faire fonctionner ton compte, tes paiements et les réponses de l'intelligence artificielle, ainsi que des rapports d'erreurs nettoyés pour corriger les problèmes. Nous ne vendons pas tes données."
           ]
         },
         {
@@ -375,19 +375,26 @@
           ]
         },
         {
-          "h": "4. Paiements",
+          "h": "4. Rapports d'erreurs",
+          "p": [
+            "Quand une commande est bloquée par l'environnement de ton ordinateur, qu'une mise à jour échoue ou que l'application plante, ANZAR envoie un court rapport technique pour que nous puissions corriger le problème : le type d'erreur, la commande en cause (sans ses arguments), les dernières lignes du message d'erreur, la version d'ANZAR et le système (macOS ou Windows).",
+            "Avant l'envoi, ce rapport est nettoyé : chemins personnels, clés, jetons et adresses e-mail sont retirés. Il ne contient ni tes fichiers ni le contenu de tes conversations. Les rapports sont regroupés par problème et analysés, notamment par un outil d'intelligence artificielle, uniquement pour améliorer ANZAR. Tu peux couper cet envoi dans Paramètres → Général → « Envoyer les rapports d'erreurs »."
+          ]
+        },
+        {
+          "h": "5. Paiements",
           "p": [
             "Les paiements sont traités par nos prestataires de paiement (mobile money et carte bancaire). Nous ne voyons ni ne conservons ton numéro de carte."
           ]
         },
         {
-          "h": "5. Ce site",
+          "h": "6. Ce site",
           "p": [
             "Ce site n'utilise ni publicité ni outil de suivi. Il enregistre seulement ton choix de langue dans un cookie, si tu changes de langue."
           ]
         },
         {
-          "h": "6. Tes droits",
+          "h": "7. Tes droits",
           "p": [
             "Tu peux demander à consulter, corriger ou supprimer tes données en écrivant à support@getanzar.com."
           ]
