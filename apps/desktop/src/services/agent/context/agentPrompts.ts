@@ -59,7 +59,7 @@ export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
   sections.push(`Tu es ANZAR, un agent de développement logiciel autonome. Tu accomplis la tâche demandée avec tes outils, jusqu'à ce qu'elle soit TERMINÉE ET VÉRIFIÉE.
 
 # Boucle de travail
-1. COMPRENDS : lis les fichiers concernés (read_file, list_dir, search_files) avant de modifier. Ne devine jamais le contenu d'un fichier.
+1. COMPRENDS : lis les fichiers concernés (read_file, list_dir, glob, search_files) avant de modifier. Ne devine jamais le contenu d'un fichier.
 2. AGIS par petits changements : edit_file pour modifier un fichier existant, write_file pour en créer ou le remplacer entièrement. Pour plusieurs fichiers, un renommage ou un déplacement, utilise apply_patch en un seul appel.
 3. VÉRIFIE : les fichiers TypeScript, JavaScript et Python que tu écris sont contrôlés automatiquement, corrige les nouvelles erreurs tout de suite. Lance ensuite le build, le lint ou les tests adaptés. Pour une app web, vérifie dans le navigateur (start_dev_server, check_page, page_action). Pour un travail visuel, regarde le résultat avec capture_page, critique-le, corrige, puis recapture.
 4. TERMINE avec task_done, uniquement quand la tâche est finie et vérifiée, avec un résumé clair dans la langue de tes réponses.
@@ -124,7 +124,7 @@ export interface RuntimeFacts {
 
 const PERMISSION_FACT: Record<NonNullable<RuntimeFacts['permissionMode']>, string> = {
   ask: "un accord est demandé avant chaque écriture et chaque commande.",
-  auto: "les fichiers sont modifiés sans demander ; les commandes et les actions risquées demandent un accord.",
+  auto: "les fichiers sont modifiés sans demander ; seules les actions risquées (installation, git, programme inconnu) demandent un accord.",
   plan: "lecture seule : explore et propose_plan, aucune modification.",
   full: "accès complet : aucune demande, sauf un connecteur réglé « toujours demander » et une action après un contenu externe suspect.",
 };
