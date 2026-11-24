@@ -82,6 +82,7 @@ export function summarizeArgs(name: string, args: Record<string, any>): string {
       return String(args.name || args.task || '').slice(0, 100);
     case 'send_message':
     case 'wait_agent':
+    case 'stop_agent':
       return args.agent || args.name || '';
     case 'list_agents':
       return '';

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
 import {
-  clearLiveAgents, listLiveAgents, resolveLiveAgent, sendToLiveAgent, spawnLiveAgent, waitForLiveAgent,
+  clearLiveAgents, listLiveAgents, resetLiveRegistryForTests, resolveLiveAgent,
+  sendToLiveAgent, spawnLiveAgent, stopLiveAgent, takeLiveNotifications, waitForLiveAgent,
 } from './live';
 
 const result = (opts: AgentLoopOptions, summary: string): AgentSessionResult => ({
@@ -27,7 +28,7 @@ const context = (runSubagent: any, convId = 'conv-live') => ({
   onFileChanged: vi.fn(),
 }) as any;
 
-afterEach(() => clearLiveAgents());
+afterEach(() => { clearLiveAgents(); resetLiveRegistryForTests(); });
 
 describe('sous-agents vivants', () => {
   it('lance, attend, reprend avec l’historique et liste', async () => {
@@ -75,6 +76,63 @@ describe('sous-agents vivants', () => {
     expect(ninth.error).toContain('8');
     release();
     await Promise.all(agents.map((a) => waitForLiveAgent(a, 1_000)));
+  });
+
+  it('restaure un enfant au repos après un redémarrage simulé', async () => {
+    const runSubagent = vi.fn(async (opts: AgentLoopOptions) => result(opts, 'résumé persistant'));
+    const ctx = context(runSubagent, 'conv-persist');
+    const spawned = spawnLiveAgent(ctx, 'tâche persistante');
+    await waitForLiveAgent(spawned.agent!, 1_000);
+
+    resetLiveRegistryForTests(); // garde localStorage, vide la mémoire
+    const restored = listLiveAgents('conv-persist');
+    expect(restored).toHaveLength(1);
+    expect(restored[0].name).toBe(spawned.agent!.name);
+    expect(restored[0].status).toBe('idle');
+    expect(restored[0].history.some((m) => m.role === 'assistant')).toBe(true);
+  });
+
+  it('valide une sortie structurée et la garde', async () => {
+    const runSubagent = vi.fn(async (opts: AgentLoopOptions) => ({
+      ...result(opts, '```json\n{"ok":true,"n":2}\n```'),
+    }));
+    const ctx = context(runSubagent, 'conv-struct');
+    const schema = { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' }, n: { type: 'number' } } };
+    const spawned = spawnLiveAgent(ctx, 'analyse', undefined, undefined, schema);
+    await waitForLiveAgent(spawned.agent!, 1_000);
+    expect(spawned.agent!.structured).toEqual({ ok: true, n: 2 });
+    expect(spawned.agent!.structuredError).toBeUndefined();
+  });
+
+  it('signale une sortie structurée invalide', async () => {
+    const runSubagent = vi.fn(async (opts: AgentLoopOptions) => result(opts, '```json\n{"n":"deux"}\n```'));
+    const ctx = context(runSubagent, 'conv-bad');
+    const schema = { type: 'object', required: ['ok'], properties: { ok: { type: 'boolean' } } };
+    const spawned = spawnLiveAgent(ctx, 'analyse', undefined, undefined, schema);
+    await waitForLiveAgent(spawned.agent!, 1_000);
+    expect(spawned.agent!.structured).toBeUndefined();
+    expect(spawned.agent!.structuredError).toContain('ok');
+  });
+
+  it('met une notification de fin à disposition du parent et peut l’arrêter', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const runSubagent = vi.fn(async (opts: AgentLoopOptions) => {
+      await gate;
+      return result(opts, 'notification');
+    });
+    const ctx = context(runSubagent, 'conv-notif');
+    const spawned = spawnLiveAgent(ctx, 'long');
+    release();
+    await waitForLiveAgent(spawned.agent!, 1_000);
+    const notes = takeLiveNotifications('conv-notif');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain('notification');
+    expect(takeLiveNotifications('conv-notif')).toEqual([]);
+
+    const stopped = stopLiveAgent('conv-notif', spawned.agent!.name);
+    expect(stopped).toBe(true);
+    expect(resolveLiveAgent('conv-notif', spawned.agent!.name)?.status).toBe('stopped');
   });
 
   it('refuse la récursion et les noms invalides', () => {

@@ -15,7 +15,7 @@ import { execExplore, execRemember, execTaskDone } from './metaTools';
 import { execInstallTool, execRunCommand } from './shellTools';
 import { execBash, execJobKill, execJobOutput } from './bashTool';
 import { execSpawnSubagents } from '../subagents/spawn';
-import { execListAgents, execSendMessage, execSpawnAgent, execWaitAgent } from '../subagents/liveTools';
+import { execListAgents, execSendMessage, execSpawnAgent, execStopAgent, execWaitAgent } from '../subagents/liveTools';
 
 export type { SubagentProgress, ToolExecutionContext, ToolResult } from './types';
 export { AGENT_TOOLS, BASH_TOOLS } from './definitions';
@@ -55,6 +55,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   spawn_agent: execSpawnAgent,
   send_message: execSendMessage,
   wait_agent: execWaitAgent,
+  stop_agent: execStopAgent,
   list_agents: execListAgents,
   remember: execRemember,
   task_done: execTaskDone,

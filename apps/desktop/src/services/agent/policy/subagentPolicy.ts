@@ -9,6 +9,7 @@ export const SUBAGENT_EXCLUDED_TOOLS = new Set([
   'spawn_subagents',
   'spawn_agent',
   'send_message',
+  'stop_agent',
   'wait_agent',
   'list_agents',
   'run_command',

@@ -3,8 +3,8 @@
  */
 import type { ToolExecutionContext, ToolResult } from '../tools/types';
 import {
-  DEFAULT_WAIT_MS, listLiveAgents, resolveLiveAgent, sendToLiveAgent, spawnLiveAgent, waitForLiveAgent,
-  type LiveAgent,
+  consumeLiveNotification, DEFAULT_WAIT_MS, listLiveAgents, resolveLiveAgent, sendToLiveAgent,
+  spawnLiveAgent, stopLiveAgent, waitForLiveAgent, type LiveAgent,
 } from './live';
 
 function statusLabel(agent: LiveAgent): string {
@@ -27,7 +27,7 @@ function describe(agent: LiveAgent): string {
 }
 
 export async function execSpawnAgent(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const spawned = spawnLiveAgent(ctx, args.task, args.role, args.name);
+  const spawned = spawnLiveAgent(ctx, args.task, args.role, args.name, args.output_schema);
   if (spawned.error) return { output: spawned.error, isError: true };
   const agent = spawned.agent!;
   return {
@@ -63,13 +63,28 @@ export async function execWaitAgent(args: Record<string, any>, ctx: ToolExecutio
   const before = agent.status;
   await waitForLiveAgent(agent, timeout, ctx.signal);
   const timedOut = before === 'running' && agent.status === 'running';
+  consumeLiveNotification(ctx.convId, agent.name);
+  const structured = agent.structured !== undefined
+    ? `\n\nRésultat structuré :\n${JSON.stringify(agent.structured, null, 2)}`
+    : agent.structuredError
+    ? `\n\nSortie structurée invalide : ${agent.structuredError}`
+    : '';
   return {
     output:
       `${agent.name} — ${statusLabel(agent)}${timedOut ? ` (toujours en cours après ${Math.round(timeout / 1000)} s)` : ''}\n` +
-      `étape(s) : ${agent.steps}\n\nRésumé :\n${summaryOf(agent)}` +
+      `étape(s) : ${agent.steps}\n\nRésumé :\n${summaryOf(agent)}${structured}` +
       (agent.status === 'idle' ? '\n\nTu peux lui envoyer un autre message avec send_message si besoin.' : ''),
     isError: agent.status === 'error',
   };
+}
+
+export async function execStopAgent(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const ref = String(args.agent || args.name || args.id || '').trim();
+  if (!ref) return { output: 'Erreur: indique le nom du sous-agent (agent).', isError: true };
+  if (!stopLiveAgent(ctx.convId, ref)) {
+    return { output: `Sous-agent inconnu « ${ref} ». Utilise list_agents.`, isError: true };
+  }
+  return { output: `Sous-agent ${ref} arrêté. Son historique est conservé ; send_message peut le relancer.` };
 }
 
 export async function execListAgents(_args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {

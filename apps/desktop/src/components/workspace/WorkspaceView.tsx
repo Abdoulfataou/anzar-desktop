@@ -28,6 +28,7 @@ import { useProjectStore } from '@/stores/projectStore';
 import type { AIModel, Message } from '@/types';
 import MessageList from '@/components/chat/MessageList';
 import ChatInput from '@/components/chat/ChatInput';
+import LiveAgentsPanel from './LiveAgentsPanel';
 import ResizableSplit from '@/components/ui/ResizableSplit';
 import WorkspacePanel from './WorkspacePanel';
 import QuestionPanel from '@/components/chat/QuestionPanel';
@@ -59,6 +60,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
   }, []);
   // Source unique : le store de réglages (plus de localStorage parallèle).
   const permissionMode = useSettingsStore((s) => s.settings.permissionMode ?? 'auto');
+  const activeConvId = useChatStore((s) => s.activeConversationId);
   const changePermission = useCallback((m: PermissionMode) => {
     useSettingsStore.getState().updateSettings({ permissionMode: m });
   }, []);
@@ -511,6 +513,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                   onNewWorktree={setWorktreeRepo}
                 />
               )}
+              <LiveAgentsPanel convId={activeConvId} />
               <ChatInput
                 draft={draft}
                 onSendMessage={async (msg, attachments) => { await sendMessage(msg, await withMentionedFiles(msg, attachments || [])); }}

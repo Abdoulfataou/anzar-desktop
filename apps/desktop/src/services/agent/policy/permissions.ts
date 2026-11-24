@@ -8,7 +8,7 @@ export type PermissionMode = 'ask' | 'auto' | 'plan' | 'full';
 /** Outils qui écrivent sur le disque. */
 export const EDIT_TOOLS = new Set(['write_file', 'edit_file', 'apply_patch', 'delete_file', 'remember', 'export_animation']);
 /** Outils qui exécutent du code ou lancent des processus. */
-export const COMMAND_TOOLS = new Set(['run_command', 'bash', 'spawn_subagents', 'spawn_agent', 'send_message', 'start_dev_server']);
+export const COMMAND_TOOLS = new Set(['run_command', 'bash', 'spawn_subagents', 'spawn_agent', 'send_message', 'stop_agent', 'start_dev_server']);
 /** Outils sûrs, seuls autorisés en mode plan. */
 export const READ_ONLY_TOOLS = new Set([
   'read_file', 'list_dir', 'glob', 'search_files', 'get_diagnostics', 'explore',

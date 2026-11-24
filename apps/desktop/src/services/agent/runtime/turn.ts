@@ -25,6 +25,7 @@ import { listSkills, skillsPromptSection, type Skill } from '@/services/skills';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildSessionSystemPrompt } from '@/services/agent/context/systemPrompt';
 import { commandNetworkOpen, sandboxEnabled } from '@/services/runtime/terminal';
+import { takeLiveNotifications } from '@/services/agent/subagents/live';
 import { withAttachments } from '@/services/agent/context/attachments';
 import { resolveAgentRoot } from '@/services/agent/context/agentRoot';
 import { buildAgentContext } from '@/services/agent/context/agentContext';
@@ -218,6 +219,12 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         maxConsecutiveErrors: 0,
         signal: controller.signal,
         beforeStep: async () => {
+          // Les sous-agents vivants qui viennent de finir parlent au parent au début du
+          // pas suivant, comme une notification de Harness.
+          const childNotes = takeLiveNotifications(convId);
+          if (childNotes.length > 0) {
+            host.apiHistory.push({ role: 'user', content: childNotes.join('\n\n') });
+          }
           // Compaction en une fois, seulement au-delà du plafond, pour garder le cache.
           if (estimateHistoryTokens(host.apiHistory) > SOFT_LIMIT_TOKENS) {
             // 1. Élaguer les vieux résultats en gardant début et fin.

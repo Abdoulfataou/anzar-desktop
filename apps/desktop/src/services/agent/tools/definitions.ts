@@ -364,6 +364,10 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           task: { type: 'string', description: 'La tâche complète et autonome du sous-agent (fichiers et critère de réussite inclus).' },
           role: { type: 'string', enum: SUBAGENT_ROLES, description: 'Rôle du profil (dev par défaut, explorer, motion-designer, redaction).' },
           name: { type: 'string', description: 'Nom court optionnel (minuscules, chiffres, tirets) pour le retrouver.' },
+          output_schema: {
+            type: 'object',
+            description: 'Schéma JSON optionnel de la sortie. L’enfant termine par un bloc ```json``` conforme ; wait_agent valide les champs requis et les types de base.',
+          },
         },
         required: ['task'],
       },
@@ -398,6 +402,20 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         properties: {
           agent: { type: 'string', description: 'Nom (ou id) du sous-agent.' },
           timeout_ms: { type: 'number', description: 'Délai maximal en millisecondes (défaut 120 000, plafond 300 000).' },
+        },
+        required: ['agent'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'stop_agent',
+      description: "Arrête le travail en cours d'un sous-agent sans effacer son historique. send_message peut le relancer ensuite.",
+      parameters: {
+        type: 'object',
+        properties: {
+          agent: { type: 'string', description: 'Nom (ou id) du sous-agent.' },
         },
         required: ['agent'],
       },

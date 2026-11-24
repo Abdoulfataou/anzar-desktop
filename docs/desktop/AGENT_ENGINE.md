@@ -76,9 +76,12 @@ Règles :
   donc permise.
 - **Sous-agents vivants** : `subagents/live.ts` tient un registre par conversation
   (8 actifs au plus, profondeur 1). Un enfant garde son historique, reçoit des messages
-  (`send_message`), peut être attendu (`wait_agent`) et listé (`list_agents`) ; il reprend
-  après un message au lieu de repartir de zéro. Le registre est en mémoire : il survit aux
-  tours, pas au redémarrage de l'app.
+  (`send_message`), peut être attendu (`wait_agent`), listé (`list_agents`) et arrêté
+  (`stop_agent`) ; il reprend après un message au lieu de repartir de zéro. Une fin de
+  travail pousse une notification consommée au début du pas suivant par le parent
+  (`beforeStep`). Le registre est persisté dans `localStorage` par conversation : les enfants
+  au repos sont restaurés au redémarrage, ceux qui tournaient passent à `stopped`. Un
+  `output_schema` optionnel fait valider un bloc ```json``` par `wait_agent`.
 - **Accords à quatre issues** : `requestApproval` renvoie `allowed-once`, `rejected`,
   `cancelled` ou `unavailable` (vocabulaire de Harness). Le refus affiché au modèle distingue
   « l'utilisateur a refusé », « la demande a été annulée » et « aucun canal n'est disponible ».
