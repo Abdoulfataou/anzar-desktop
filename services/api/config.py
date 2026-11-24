@@ -177,6 +177,9 @@ class Settings(BaseSettings):
     admin_require_mfa: bool = False  # Passer à true après enrôlement des admins
     admin_mfa_key: str = ""          # Clé indépendante de JWT_SECRET pour chiffrer les secrets TOTP
     admin_allowed_ips: str = ""     # Ex. "203.0.113.0/24,10.0.0.0/8" ; vide = pas de restriction
+    # Jeton du suivi automatique des erreurs (tâche planifiée DeepSeek Harness) : lecture
+    # des problèmes nouveaux et dépôt des diagnostics. Vide = accès désactivé.
+    error_analysis_token: str = ""
     enable_community_skills: bool = False  # Hub communautaire inutilisé par le desktop
 
     # ─── App ───

@@ -447,3 +447,47 @@ class RevokedToken(Base):
 
 Index("idx_rate_limits_key", RateLimit.client_key, RateLimit.timestamp)
 Index("idx_otp_email", OtpCode.email, OtpCode.created_at)
+
+
+# ============================================================================
+# RAPPORTS D'ERREURS (envoyés par l'app, regroupés par empreinte)
+# ============================================================================
+
+class ErrorGroup(Base):
+    """Une erreur distincte vue chez les utilisateurs (même empreinte = même problème)."""
+    __tablename__ = "error_groups"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    fingerprint: Mapped[str] = mapped_column(String(32), unique=True, nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Dernier exemple reçu, nettoyé (chemins, clés) côté app ET côté serveur.
+    sample: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    users: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_version: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    last_os: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    # new → analysed (diagnostic de l'agent) → fixed / ignored. Revient à new si l'erreur
+    # réapparaît dans une version plus récente que celle marquée corrigée.
+    status: Mapped[str] = mapped_column(String(16), default="new", nullable=False, index=True)
+    analysis: Mapped[str] = mapped_column(Text, default="", nullable=False)
+    issue_url: Mapped[str] = mapped_column(String(500), default="", nullable=False)
+    fixed_in: Mapped[str] = mapped_column(String(32), default="", nullable=False)
+    first_seen: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    last_seen: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('command', 'update', 'tool', 'crash')", name="ck_error_groups_kind"),
+        CheckConstraint("status IN ('new', 'analysed', 'fixed', 'ignored')", name="ck_error_groups_status"),
+    )
+
+
+class ErrorGroupUser(Base):
+    """Utilisateurs touchés par un problème (empreinte du compte, jamais l'e-mail)."""
+    __tablename__ = "error_group_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    group_id: Mapped[int] = mapped_column(Integer, ForeignKey("error_groups.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_hash: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    __table_args__ = (UniqueConstraint("group_id", "user_hash", name="uq_error_group_users"),)

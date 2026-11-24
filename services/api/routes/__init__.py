@@ -16,6 +16,7 @@ from routes.admin_currency import router as admin_currency_router
 from routes.memory import router as memory_router
 from routes.skills import router as skills_router
 from routes.web_tools import router as web_tools_router
+from routes.error_reports import router as error_reports_router
 
 
 def include_routers(app: FastAPI) -> None:
@@ -34,3 +35,4 @@ def include_routers(app: FastAPI) -> None:
     if settings.enable_community_skills:
         app.include_router(skills_router)
     app.include_router(web_tools_router)
+    app.include_router(error_reports_router)
