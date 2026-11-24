@@ -8,7 +8,7 @@ import type { ToolDefinition } from '@/types';
 import { wrapUntrusted, type ExternalSource } from '@/services/agent/policy/untrusted';
 import { McpClient, resultToText, type McpServerInfo, type McpTool } from './client';
 import { HttpTransport, StdioTransport } from './transports';
-import { loadServers, saveServers, type McpServerConfig } from './config';
+import { deniedMcpTools, loadServers, saveServers, type McpServerConfig } from './config';
 
 export type McpStatus = 'off' | 'starting' | 'ready' | 'error';
 
@@ -183,7 +183,9 @@ export async function mcpAgentTools(opts: { waitMs?: number; readOnlyOnly?: bool
   for (const s of [...servers].sort((a, b) => a.id.localeCompare(b.id))) {
     const rt = runtime[s.id];
     if (rt?.status !== 'ready') continue;
+    const refuses = deniedMcpTools(s);
     for (const tool of [...rt.tools].sort((a, b) => a.name.localeCompare(b.name))) {
+      if (refuses.includes(tool.name)) continue;
       if (opts.readOnlyOnly && !tool.annotations?.readOnlyHint) continue;
       const name = agentToolName(s.id, tool.name);
       toolIndex.set(name, { serverId: s.id, serverName: s.name, tool, alwaysAsk: !!s.alwaysAsk });

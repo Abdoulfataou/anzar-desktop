@@ -76,6 +76,15 @@ pub const NETWORK_RULES: &str = r#"
 (allow network-outbound (remote ip "localhost:*"))
 "#;
 
+/// Toujours ajouté en dernier (la dernière règle gagne) : ports locaux de logiciels qui
+/// exécutent du code sur demande, sans authentification. 9877 : serveur MCP de GIMP
+/// (gimp3-mcp), qui lance du Python avec les droits de l'utilisateur. Seul le connecteur
+/// GIMP d'ANZAR, filtré par Rust, doit pouvoir lui parler, jamais une commande de l'agent.
+pub const BLOCKED_LOCAL_PORTS: &str = r#"
+(deny network-outbound (remote ip "*:9877"))
+(deny network-outbound (remote ip "localhost:9877"))
+"#;
+
 /// La commande a-t-elle besoin d'internet ? Seules les commandes qui téléchargent des
 /// dépendances ou synchronisent un dépôt l'obtiennent ; les installations, seulement
 /// après l'accord de l'utilisateur (`approved`).
@@ -197,7 +206,11 @@ pub fn wrap(program: &str, args: &[String], root: &Path, allow_network: bool) ->
         .and_then(|h| std::fs::canonicalize(h).ok())
         .unwrap_or_else(|| PathBuf::from("/var/empty"));
     let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| PathBuf::from("/private/tmp"));
-    let profile = if allow_network { PROFILE.to_string() } else { format!("{PROFILE}{NETWORK_RULES}") };
+    let profile = if allow_network {
+        format!("{PROFILE}{BLOCKED_LOCAL_PORTS}")
+    } else {
+        format!("{PROFILE}{NETWORK_RULES}{BLOCKED_LOCAL_PORTS}")
+    };
     let mut out = vec!["-p".to_string(), profile];
     for (k, v) in profile_params(root, &home, &tmp) {
         out.push("-D".to_string());
@@ -248,6 +261,28 @@ mod tests {
         assert!(!network_allowed("go", &a(&["get", "x"]), false));
         assert!(network_allowed("go", &a(&["get", "x"]), true));
         assert!(!network_allowed("jq", &a(&["."]), true));
+    }
+
+    /// Vrai test Seatbelt (macOS, donc en CI) : le profil se charge, un port local ordinaire
+    /// reste joignable, le port de GIMP non, avec ou sans réseau.
+    #[test]
+    fn gimp_port_unreachable_from_agent_commands() {
+        use std::net::TcpListener;
+        use std::process::Command;
+        if !available() || !Path::new("/usr/bin/nc").exists() { return; }
+        let Ok(_gimp) = TcpListener::bind("127.0.0.1:9877") else { return }; // port déjà pris : test ignoré
+        let autre = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port_ok = autre.local_addr().unwrap().port().to_string();
+        let root = std::fs::canonicalize(std::env::temp_dir()).unwrap();
+        for reseau in [false, true] {
+            let essai = |port: &str| {
+                let args: Vec<String> = ["-z", "-w", "2", "127.0.0.1", port].iter().map(|x| x.to_string()).collect();
+                let w = wrap("/usr/bin/nc", &args, &root, reseau);
+                Command::new(&w.program).args(&w.args).status().unwrap().success()
+            };
+            assert!(essai(&port_ok), "un port local ordinaire doit rester joignable (réseau : {reseau})");
+            assert!(!essai("9877"), "le port de GIMP doit être bloqué (réseau : {reseau})");
+        }
     }
 
     #[test]

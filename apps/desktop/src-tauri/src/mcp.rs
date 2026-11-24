@@ -23,6 +23,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 /// Lanceurs autorisés pour un serveur local. Le nom seul est accepté, jamais un chemin.
 const LAUNCHERS: &[&str] = &[
     "npx",
+    "uvx",
 ];
 const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
 
@@ -105,9 +106,52 @@ fn validate_npx_args(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
+/// Serveurs Python (uvx) autorisés : paquet ET version exacts, aucun autre argument.
+/// Une nouvelle version ne s'utilise qu'après relecture de son code.
+const ALLOWED_UVX: &[&str] = &[
+    "gimp3-mcp@0.2.0",
+];
+
+fn validate_uvx_args(args: &[String]) -> Result<(), String> {
+    match args {
+        [pkg] if ALLOWED_UVX.contains(&pkg.as_str()) => Ok(()),
+        _ => Err(format!("Serveur uvx non autorisé. Seuls ces paquets le sont : {}.", ALLOWED_UVX.join(", "))),
+    }
+}
+
+/// Outils d'un connecteur qu'ANZAR refuse d'appeler, quoi qu'en dise l'agent.
+/// gimp3-mcp : `call_api` exécute n'importe quel code Python dans GIMP, hors de
+/// l'isolation des commandes. Les autres outils (retouche, calques, export) restent.
+fn denied_tools(launcher: &str, args: &[String]) -> &'static [&'static str] {
+    if launcher == "uvx" && args.first().is_some_and(|a| a.starts_with("gimp3-mcp@")) {
+        &["call_api"]
+    } else {
+        &[]
+    }
+}
+
+/// La ligne JSON-RPC appelle-t-elle un outil refusé ? (message seul ou lot)
+fn calls_denied_tool(line: &str, denied: &[&str]) -> bool {
+    if denied.is_empty() { return false; }
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+        // Illisible : on ne laisse passer que si aucun nom refusé n'y figure.
+        return denied.iter().any(|d| line.contains(d));
+    };
+    let est_refuse = |m: &serde_json::Value| {
+        m.get("method").and_then(|x| x.as_str()) == Some("tools/call")
+            && m.get("params").and_then(|p| p.get("name")).and_then(|n| n.as_str())
+                .is_some_and(|n| denied.contains(&n))
+    };
+    match &v {
+        serde_json::Value::Array(lot) => lot.iter().any(est_refuse),
+        m => est_refuse(m),
+    }
+}
+
 /// Options qui transforment un lanceur en shell ou en évaluateur de code.
 fn validate_args(launcher: &str, args: &[String]) -> Result<(), String> {
     if launcher == "npx" { validate_npx_args(args)?; }
+    if launcher == "uvx" { validate_uvx_args(args)?; }
     if args.len() > 32 { return Err("Trop d'arguments pour un serveur MCP.".into()); }
     for arg in args {
         if arg.contains('\n') || arg.contains('\r') || arg.len() > 4000 {
@@ -181,6 +225,8 @@ struct Proc {
     child: Child,
     stdin: Option<ChildStdin>,
     lsp: bool,
+    /// Outils que ce serveur ne doit jamais exécuter (voir `denied_tools`)
+    denied: &'static [&'static str],
 }
 
 #[derive(Default)]
@@ -515,6 +561,7 @@ pub fn mcp_spawn(
     }
 
     stop_proc(&state.procs, &id);
+    let denied = denied_tools(&launcher_name(&command), &args);
 
     let mut cmd = build_command(&command, &args);
     cmd.env_clear();
@@ -557,7 +604,7 @@ pub fn mcp_spawn(
         let _ = app_err.emit("mcp://log", LogEvent { id: id_err.clone(), line });
     });
     // Enregistré AVANT de surveiller la fin du processus
-    procs.lock().unwrap().insert(id, Proc { child, stdin, lsp });
+    procs.lock().unwrap().insert(id, Proc { child, stdin, lsp, denied });
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_millis(500));
         let mut map = procs_exit.lock().unwrap();
@@ -580,6 +627,9 @@ pub fn mcp_spawn(
 pub fn mcp_send(state: State<'_, McpState>, id: String, line: String) -> Result<(), String> {
     let mut map = state.procs.lock().unwrap();
     let p = map.get_mut(&id).ok_or("Serveur arrêté")?;
+    if calls_denied_tool(&line, p.denied) {
+        return Err("Outil bloqué par ANZAR : il exécuterait du code arbitraire sur l'ordinateur.".into());
+    }
     let stdin = p.stdin.as_mut().ok_or("Entrée du serveur fermée")?;
     let result = if p.lsp {
         let body = line.as_bytes();
@@ -718,6 +768,34 @@ mod security_tests {
         assert!(validate_launcher("bash").is_err());
         assert!(validate_launcher("node").is_err());
         assert!(validate_launcher("npx").is_ok());
+        assert!(validate_launcher("uvx").is_ok());
+        assert!(validate_launcher("uv").is_err());
+    }
+
+    #[test]
+    fn uvx_only_runs_the_pinned_gimp_server() {
+        assert!(validate_args("uvx", &["gimp3-mcp@0.2.0".into()]).is_ok());
+        assert!(validate_args("uvx", &["gimp3-mcp".into()]).is_err());          // version non épinglée
+        assert!(validate_args("uvx", &["gimp3-mcp@latest".into()]).is_err());
+        assert!(validate_args("uvx", &["evil-package".into()]).is_err());
+        assert!(validate_args("uvx", &["--from".into(), "evil".into(), "gimp3-mcp@0.2.0".into()]).is_err());
+        assert!(validate_args("uvx", &["gimp3-mcp@0.2.0".into(), "install-plugin".into()]).is_err());
+        assert!(validate_args("uvx", &[]).is_err());
+    }
+
+    #[test]
+    fn gimp_code_execution_tool_is_blocked() {
+        let denied = denied_tools("uvx", &["gimp3-mcp@0.2.0".into()]);
+        assert_eq!(denied, &["call_api"]);
+        let appel = |nom: &str| format!(r#"{{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{{"name":"{nom}","arguments":{{}}}}}}"#);
+        assert!(calls_denied_tool(&appel("call_api"), denied));
+        assert!(!calls_denied_tool(&appel("crop_to_rect"), denied));
+        assert!(calls_denied_tool(&format!("[{},{}]", appel("add_text"), appel("call_api")), denied));
+        assert!(!calls_denied_tool(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, denied));
+        assert!(calls_denied_tool("{pas du json call_api", denied));
+        // Les autres connecteurs ne sont pas concernés
+        assert!(denied_tools("npx", &["-y".into(), "@playwright/mcp@0.0.85".into()]).is_empty());
+        assert!(!calls_denied_tool(&appel("call_api"), denied_tools("npx", &[])));
     }
 
     #[test]

@@ -84,7 +84,30 @@ export const MCP_PRESETS: McpPreset[] = [
       alwaysAsk: true, preset: 'github',
     }),
   },
+  {
+    id: 'gimp',
+    name: 'GIMP',
+    description: "L'agent retouche tes images dans GIMP ouvert : détourage par sélection, calques, texte, filtres, couleurs, export pour le web et les réseaux.",
+    requirement: "GIMP 3.2 et uv installés. Une seule fois, dans le Terminal : « uvx gimp3-mcp@0.2.0 install-plugin », puis redémarre GIMP. À chaque utilisation : dans GIMP, Outils → MCP → Start MCP Server (arrête-le quand tu as fini).",
+    link: 'https://github.com/tifyr/gimp3-mcp',
+    fields: [],
+    build: () => ({
+      // Version épinglée et autorisée par Rust (mcp.rs, ALLOWED_UVX). L'outil call_api
+      // (code Python arbitraire) est bloqué par Rust ; chaque action demande ton accord.
+      id: 'gimp', name: 'GIMP', transport: 'stdio', command: 'uvx', args: ['gimp3-mcp@0.2.0'], env: {},
+      alwaysAsk: true, preset: 'gimp',
+    }),
+  },
 ];
+
+/**
+ * Outils qu'ANZAR ne propose jamais à l'agent (le blocage effectif est fait par Rust,
+ * mcp.rs `denied_tools`) : on ne les montre pas, pour qu'il ne tente même pas de les appeler.
+ */
+export function deniedMcpTools(server: Pick<McpServerConfig, 'command' | 'args'>): string[] {
+  if (server.command === 'uvx' && server.args?.[0]?.startsWith('gimp3-mcp@')) return ['call_api'];
+  return [];
+}
 
 export function slugifyServerId(raw: string): string {
   return raw.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()

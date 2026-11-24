@@ -2,3 +2,4 @@
 - L'agent te répond dans la langue dans laquelle tu lui écris.
 - Paramètres → À propos : lien vers le site, les conditions et la confidentialité ; e-mail de support support@getanzar.com.
 - Retouche de photos : formats réseaux sociaux, logo ou texte sur l'image, compression, montage, icônes, tout un dossier d'un coup.
+- Nouveau connecteur GIMP : l'agent retouche tes images directement dans GIMP (Connecteurs → GIMP).

@@ -255,3 +255,19 @@ des consignes cachées. Défenses (`src/services/agent/policy/untrusted.ts`) :
 
 Limites : le suivi vaut pour la demande en cours (il repart à zéro au message suivant) ;
 un fichier du projet qui contient des consignes (README cloné, par exemple) n'est pas marqué.
+
+## Connecteur GIMP (gimp3-mcp)
+
+Le plugin GIMP écoute sur `localhost:9877` sans authentification et son outil `call_api`
+exécute du Python arbitraire avec les droits de l'utilisateur. Protections d'ANZAR :
+
+- **Lancement** : seul `uvx gimp3-mcp@0.2.0` est accepté (`mcp.rs`, `ALLOWED_UVX`), version
+  épinglée, aucun autre argument. Toute nouvelle version passe par une relecture du code.
+- **Outil bloqué** : `call_api` est refusé par Rust dans `mcp_send` (`denied_tools`), y compris
+  dans un lot JSON-RPC ; il n'est pas non plus présenté au modèle (`deniedMcpTools`).
+- **Accord** : connecteur en `alwaysAsk` : chaque action de l'agent dans GIMP est confirmée.
+- **Commandes de l'agent** : le profil Seatbelt interdit toute connexion au port 9877
+  (`BLOCKED_LOCAL_PORTS`, testé en vrai sur macOS en CI). Sous Windows, sans isolation, les
+  commandes de l'agent passent par la carte d'accord (mode par défaut « Demander »).
+- **Limite connue** : tant que le serveur MCP est démarré dans GIMP, un autre programme de
+  l'ordinateur peut piloter GIMP. La fiche du connecteur demande de l'arrêter après usage.
