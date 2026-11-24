@@ -1,6 +1,5 @@
-- Mises à jour réparées : l'installation en un clic fonctionne de nouveau, et en cas de souci l'app t'explique pourquoi.
-- Mises à jour plus simples : un bandeau te prévient dès qu'une nouvelle version est prête, et tu l'installes en un clic.
-- L'agent te répond dans la langue dans laquelle tu lui écris.
-- Paramètres → À propos : lien vers le site, les conditions et la confidentialité ; e-mail de support support@getanzar.com.
-- Retouche de photos : formats réseaux sociaux, logo ou texte sur l'image, compression, montage, icônes, tout un dossier d'un coup.
-- Nouveaux connecteurs GIMP, Blender, Inkscape, Audacity et OBS Studio : l'agent travaille directement dans ces logiciels (Connecteurs).
+- Mac : après une mise à jour, macOS ne te redemande plus ton mot de passe pour le trousseau (une dernière fois pour cette version).
+- Accès complet : après un avertissement à accepter, l'agent installe, utilise internet et lance ses commandes sans plus rien te demander.
+- Réseau : ANZAR diagnostique seul une connexion qui échoue (flutter pub get, téléchargements…) et relance la commande, sans réglage à toucher.
+- Mac : « python » et « pip » fonctionnent même si seul python3 est installé.
+- Rapports d'erreurs : quand une commande est bloquée, qu'une mise à jour échoue ou que l'app plante, ANZAR envoie un rapport nettoyé pour que le problème soit corrigé vite (désactivable dans Paramètres).
