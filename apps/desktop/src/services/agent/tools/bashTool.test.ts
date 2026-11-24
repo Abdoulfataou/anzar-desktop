@@ -100,6 +100,19 @@ describe('execBash', () => {
     expect(result.output).toContain('job_output');
   });
 
+  it('arrête le travail en arrière-plan quand le tour est annulé', async () => {
+    shell.runShell.mockResolvedValue('job-stop');
+    shell.getJob.mockReturnValue({ status: 'running', output: '', command: 'npm run dev' });
+    const controller = new AbortController();
+    const jobCtx = { ...ctx, signal: controller.signal };
+
+    await execBash({ command: 'npm run dev', run_in_background: true }, jobCtx);
+    controller.abort();
+    await Promise.resolve();
+
+    expect(shell.killProcess).toHaveBeenCalledWith('job-stop');
+  });
+
   it('refuse un workdir qui sort du projet', async () => {
     const result = await execBash({ command: 'ls', workdir: '../..' }, ctx);
     expect(result.isError).toBe(true);

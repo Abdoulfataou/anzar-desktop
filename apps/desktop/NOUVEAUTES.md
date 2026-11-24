@@ -8,3 +8,4 @@
 - Réseau : corrige les erreurs « socket error » quand le proxy local était bloqué par l'isolation. `flutter pub get` et les installations passent à nouveau.
 - Accès complet : l'avertissement ne promet plus `git push` ; il rappelle que les écritures restent limitées au projet et que les dossiers de secrets restent illisibles.
 - Git : « git init » fonctionne dans un nouveau projet, et les hooks Git restent protégés quoi que tente l'agent.
+- Bouton Stop : il arrête aussi les travaux lancés en arrière-plan par l'agent (serveur de développement, build long).

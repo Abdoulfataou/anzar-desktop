@@ -196,7 +196,7 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   l'utilisateur (`git push`, `git remote add`, `git reset --hard`, `git clean -f`, `sudo`) et
   les mentions évidentes de secrets (`.env`, clés, `~/.ssh`), avec un message qui dit quoi
   faire à la place. Les travaux d'arrière-plan se lisent avec `job_output` et s'arrêtent avec
-  `job_kill` ; le bouton Stop arrête la commande au premier plan.
+  `job_kill` ; le bouton Stop arrête aussi ceux lancés pendant le tour courant.
 - Élévation à usage unique : après un refus d'écriture, le modèle peut relancer **la même
   commande** avec `sandbox_permissions: "danger-full-access"` et une justification. Hors
   Accès complet, une carte demande l'accord ; en Accès complet, l'accord est déjà donné.

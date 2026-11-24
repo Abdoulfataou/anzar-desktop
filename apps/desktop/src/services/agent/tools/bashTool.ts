@@ -136,6 +136,10 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
 
   if (args.run_in_background === true) {
     const jobId = await terminalService.runShell(command, { cwd, escalated, escalationReason });
+    // Bouton Stop : un travail lancé par ce tour ne doit pas survivre à l'annulation.
+    const onAbort = () => { void terminalService.killProcess(jobId); };
+    if (ctx.signal?.aborted) onAbort();
+    else ctx.signal?.addEventListener('abort', onAbort, { once: true });
     // Laisse au processus le temps de produire ses premières lignes (ou d'échouer au lancement).
     await new Promise<void>((r) => setTimeout(r, 250));
     const job = terminalService.getJob(jobId);

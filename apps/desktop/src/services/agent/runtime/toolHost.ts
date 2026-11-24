@@ -382,7 +382,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
 
   // Suivi des erreurs : échec qui peut venir d'ANZAR (environnement, réseau, isolation),
   // pas une erreur du code du projet. Envoi nettoyé, par lots, coupable dans les Paramètres.
-  if (allowed && call.function.name === 'run_command' && result.isError && !ctx.signal.aborted) {
+  if (allowed && (call.function.name === 'run_command' || call.function.name === 'bash') && result.isError && !ctx.signal.aborted) {
     const out = result.output || '';
     const code = Number(/exit_code:\s*(-?\d+)/.exec(out)?.[1]);
     const exit = Number.isFinite(code) ? code : undefined;
