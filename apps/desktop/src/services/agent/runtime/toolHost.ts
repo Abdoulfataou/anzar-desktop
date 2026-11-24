@@ -179,7 +179,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   let allowed = decision.allowed;
   const refusal = decision.refusal ?? "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
   if (decision.ask) {
-    const scope = ctx.personalSpace && risk ? "Autoriser vaut pour toute cette conversation dans l'espace ANZAR." : undefined;
     const reason = [risk?.reason, afterExternal ? externalReason(ctx.externalSources) : '']
       .filter(Boolean).join(' ; ') || undefined;
     allowed = await ctx.requestApproval({
@@ -188,7 +187,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
       summary: ev.argsSummary,
       reason,
       detail: risk?.detail,
-      scope,
       trustProgram: risk?.unknownProgram,
     });
   }
