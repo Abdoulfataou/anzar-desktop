@@ -1,18 +1,58 @@
-# Sert la vitrine getanzar.com (fichiers statiques) derrière le Caddy du VPS.
+# Sert la vitrine getanzar.com (fichiers générés par build.py) derrière le Caddy du VPS.
+# Pages : /fr/… et /en/… ; la racine et les anciennes adresses redirigent vers la bonne langue.
 :80 {
 	root * /srv
 	encode zstd gzip
-	try_files {path} {path}/index.html =404
-	file_server
+
+	# ── Langue du visiteur ──
+	# 1) son choix (cookie « lang », posé par le sélecteur FR / EN) ; 2) la première langue
+	# de son navigateur (Accept-Language) ; 3) le français.
+	map {header.Cookie} {lang_choisie} {
+		~(?:^|;\s*)lang=(fr|en)(?:;|$) "${1}"
+		default ""
+	}
+	map {header.Accept-Language} {lang_navigateur} {
+		~^\s*en "en"
+		default "fr"
+	}
+	map {lang_choisie} {lang} {
+		fr "fr"
+		en "en"
+		default {lang_navigateur}
+	}
+	map {lang} {page_telecharger} {
+		en "/en/download/"
+		default "/fr/telecharger/"
+	}
+
+	@racine path / /index.html
+	@ancien_telecharger path /telecharger /telecharger/ /telecharger/index.html
+	header @racine Vary "Accept-Language, Cookie"
+	header @ancien_telecharger Vary "Accept-Language, Cookie"
+	header @racine Cache-Control "no-store"
+	header @ancien_telecharger Cache-Control "no-store"
+	redir @racine /{lang}/ 302
+	redir @ancien_telecharger {page_telecharger} 302
+	redir /fr /fr/ 308
+	redir /en /en/ 308
+
 	header {
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
-		Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self' https://api.github.com; img-src 'self' data:; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
+		Content-Security-Policy "default-src 'self'; script-src 'self'; connect-src 'self' https://api.github.com https://anzar-api.issalanhub.com; img-src 'self' data:; style-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'"
 		-Server
 	}
-	@pages path / /index.html /telecharger /telecharger/ /telecharger/index.html
+	@pages path /fr/* /en/* /sitemap.xml /robots.txt
 	header @pages Cache-Control "public, max-age=300"
-	@assets path *.css *.js *.png
+	@assets path /assets/*
 	header @assets Cache-Control "public, max-age=86400"
+
+	try_files {path} {path}/index.html
+	file_server
+
+	handle_errors {
+		rewrite * /404.html
+		file_server
+	}
 }

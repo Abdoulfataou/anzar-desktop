@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="{{ lang }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ p.title }}</title>
+  <meta name="description" content="{{ p.description }}">
+  <link rel="canonical" href="{{ canonical }}">
+{% for a in alternates %}  <link rel="alternate" hreflang="{{ a.lang }}" href="{{ a.href }}">
+{% endfor %}  <link rel="alternate" hreflang="x-default" href="{{ x_default }}">
+  <meta name="theme-color" content="#15153a">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="ANZAR">
+  <meta property="og:locale" content="{{ t.meta.locale }}">
+  <meta property="og:title" content="{{ p.title }}">
+  <meta property="og:description" content="{{ p.description }}">
+  <meta property="og:url" content="{{ canonical }}">
+  <meta property="og:image" content="{{ og_image }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ p.title }}">
+  <meta name="twitter:description" content="{{ p.description }}">
+  <meta name="twitter:image" content="{{ og_image }}">
+  <link rel="icon" href="/assets/icone.png" type="image/png">
+  <link rel="apple-touch-icon" href="/assets/icone.png">
+  <link rel="preload" href="/assets/fonts/hanken-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/assets/fonts/unbounded-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/styles.css?v={{ v }}">
+  <script src="/assets/site.js?v={{ v }}" defer></script>
+</head>
+<body class="page-{{ page }}">
+  <a class="saut" href="#contenu">{{ t.a11y.skip }}</a>
+  <header class="entete">
+    <div class="cadre entete-in">
+      <a class="marque" href="{{ u.home }}" aria-label="{{ t.a11y.home }}">
+        <img src="/assets/icone.png" alt="" width="32" height="32">
+        <span>ANZAR</span>
+      </a>
+      <nav class="nav" aria-label="{{ t.a11y.nav }}">
+        <a class="nav-lien" href="{{ u.home }}#fonctions">{{ t.nav.features }}</a>
+        <a class="nav-lien" href="{{ u.pricing }}">{{ t.nav.pricing }}</a>
+        <div class="langues" role="group" aria-label="{{ t.a11y.lang }}">
+{% for l in langues %}{% if l.actuelle %}          <a class="langue actuelle" href="{{ l.href }}" hreflang="{{ l.lang }}" lang="{{ l.lang }}" aria-current="true" title="{{ l.nom }}" data-langue="{{ l.lang }}">{{ l.code }}</a>
+{% else %}          <a class="langue" href="{{ l.href }}" hreflang="{{ l.lang }}" lang="{{ l.lang }}" title="{{ l.nom }}" data-langue="{{ l.lang }}">{{ l.code }}</a>
+{% endif %}{% endfor %}        </div>
+        <a class="bouton petit" href="{{ u.download }}">{{ t.nav.download }}</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="contenu" tabindex="-1">
+{{{ contenu }}}
+  </main>
+
+  <footer class="pied">
+    <div class="cadre pied-in">
+      <div class="pied-marque">
+        <img src="/assets/icone.png" alt="" width="28" height="28">
+        <p>{{ t.footer.tagline }}<br><span class="discret">© {{ annee }}</span></p>
+      </div>
+      <nav class="pied-liens" aria-label="{{ t.a11y.footer }}">
+        <a href="{{ u.download }}">{{ t.nav.download }}</a>
+        <a href="{{ u.pricing }}">{{ t.nav.pricing }}</a>
+        <a href="{{ u.terms }}">{{ t.footer.terms }}</a>
+        <a href="{{ u.privacy }}">{{ t.footer.privacy }}</a>
+        <a href="mailto:{{ t.footer.email }}">{{ t.footer.contact }}</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

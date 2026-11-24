@@ -1,0 +1,407 @@
+{
+  "meta": {
+    "name": "Français",
+    "locale": "fr_FR",
+    "intl": "fr-FR"
+  },
+  "a11y": {
+    "skip": "Aller au contenu",
+    "nav": "Navigation principale",
+    "lang": "Choisir la langue",
+    "footer": "Liens du site",
+    "home": "ANZAR, accueil"
+  },
+  "nav": {
+    "features": "Ce qu'il fait",
+    "pricing": "Tarifs",
+    "download": "Télécharger"
+  },
+  "pages": {
+    "home": {
+      "slug": "",
+      "title": "ANZAR — Décris ton idée. ANZAR la réalise.",
+      "description": "Des applications, des sites, des documents, des visuels et des vidéos, en une simple conversation. Sur Mac et Windows, sans abonnement, payé dans ta monnaie."
+    },
+    "download": {
+      "slug": "telecharger/",
+      "title": "Télécharger ANZAR pour Mac et Windows",
+      "description": "Télécharge ANZAR gratuitement pour Mac (puce Apple) ou Windows 10 et 11. Prêt en trois étapes."
+    },
+    "pricing": {
+      "slug": "tarifs/",
+      "title": "Tarifs ANZAR — paie dans ta monnaie, sans abonnement",
+      "description": "Recharge quand tu veux, dans ta monnaie, par mobile money ou carte bancaire. Pas d'abonnement, et tes crédits n'expirent pas."
+    },
+    "terms": {
+      "slug": "conditions/",
+      "title": "Conditions d'utilisation — ANZAR",
+      "description": "Les conditions d'utilisation d'ANZAR."
+    },
+    "privacy": {
+      "slug": "confidentialite/",
+      "title": "Confidentialité — ANZAR",
+      "description": "Comment ANZAR traite tes données."
+    }
+  },
+  "home": {
+    "hero": {
+      "title": "Décris ton idée.",
+      "title2": "ANZAR la réalise.",
+      "lead": "Des applications, des sites, des documents, des visuels et des vidéos, en une simple conversation.",
+      "cta": "Télécharger ANZAR",
+      "cta_mac": "Télécharger pour Mac",
+      "cta_windows": "Télécharger pour Windows",
+      "cta_pricing": "Voir les tarifs",
+      "note": "Sans abonnement · Mobile money ou carte · Mac et Windows"
+    },
+    "demo": {
+      "label": "Exemple de conversation avec ANZAR",
+      "prompt": "Crée un site pour ma pâtisserie : la liste des gâteaux avec les prix, et un bouton pour commander sur WhatsApp.",
+      "reply": "C'est prêt. Je l'ai testé, tout fonctionne. L'aperçu est ouvert à droite.",
+      "step1": "Page d'accueil et catalogue",
+      "step2": "Bouton de commande WhatsApp",
+      "step3": "Vérifié dans le navigateur",
+      "preview_title": "Ma Pâtisserie",
+      "preview_item1": "Gâteau au chocolat",
+      "preview_item2": "Tarte aux fruits",
+      "preview_button": "Commander",
+      "input": "Ajoute une photo pour chaque gâteau…"
+    },
+    "features": {
+      "title": "Ce que tu peux créer",
+      "lead": "Tu écris comme tu parlerais à quelqu'un. ANZAR s'occupe du reste.",
+      "items": [
+        {
+          "icon": "code",
+          "title": "Tes applications et tes sites",
+          "text": "Explique ton projet. ANZAR écrit le code, le teste et te montre le résultat. Tu l'améliores en lui parlant.",
+          "example": "« Fais-moi une boutique en ligne pour mes pagnes, avec les commandes sur WhatsApp. »"
+        },
+        {
+          "icon": "doc",
+          "title": "Tes documents",
+          "text": "Découpe un PDF, transforme un fichier en Word ou en Excel, mets de l'ordre dans un tableau. Ton original reste intact.",
+          "example": "« Coupe ce PDF en deux et transforme la deuxième partie en document Word. »"
+        },
+        {
+          "icon": "video",
+          "title": "Tes visuels et tes vidéos",
+          "text": "Des affiches, des publications pour les réseaux et des vidéos animées avec musique, prêtes à partager.",
+          "example": "« Fais une vidéo de 20 secondes pour annoncer l'ouverture de ma boutique. »"
+        },
+        {
+          "icon": "tasks",
+          "title": "Ton travail, même quand tu n'es pas là",
+          "text": "Confie une tâche ou programme-la pour plus tard. ANZAR avance seul et attend ta validation.",
+          "example": "« Chaque lundi matin, vérifie mon site et corrige ce qui ne marche plus. »"
+        }
+      ]
+    },
+    "reasons": {
+      "title": "Pourquoi ANZAR",
+      "items": [
+        {
+          "icon": "wallet",
+          "title": "Tu paies seulement ce que tu utilises",
+          "text": "Pas d'abonnement. Tu recharges dans ta monnaie, par mobile money ou carte, et chaque demande affiche son coût."
+        },
+        {
+          "icon": "shield",
+          "title": "Tu gardes le contrôle",
+          "text": "Tu choisis ce qu'ANZAR peut faire seul et ce qu'il doit te demander. Après chaque tâche, tu vois exactement ce qui a changé."
+        },
+        {
+          "icon": "lock",
+          "title": "Tes fichiers restent chez toi",
+          "text": "ANZAR travaille sur ton ordinateur. Seuls les passages utiles à ta demande sont envoyés à l'intelligence artificielle."
+        }
+      ]
+    },
+    "pricing": {
+      "title": "Paie dans ta monnaie.",
+      "text": "Recharge quand tu veux, à partir d'un petit montant. Tes crédits n'expirent pas.",
+      "from": "À partir de",
+      "fallback_from": "1 $",
+      "currencies": "Franc CFA, naira, cedi, shilling, rand, dirham, euro, dollar…",
+      "cta": "Voir tous les tarifs"
+    },
+    "faq": {
+      "title": "Questions fréquentes",
+      "items": [
+        {
+          "q": "Faut-il savoir coder ?",
+          "a": "Non. Tu décris ce que tu veux avec tes mots, ANZAR fait le travail et te montre le résultat. Si tu codes déjà, il travaille directement dans tes projets."
+        },
+        {
+          "q": "Sur quel ordinateur fonctionne ANZAR ?",
+          "a": "Sur Mac avec puce Apple (M1 et plus récents) et sur Windows 10 et 11. Il faut une connexion internet."
+        },
+        {
+          "q": "Comment je paie ?",
+          "a": "Depuis l'application, par mobile money ou par carte bancaire, dans ta monnaie. Tes crédits s'ajoutent dès que le paiement est confirmé."
+        },
+        {
+          "q": "Mes fichiers restent-ils privés ?",
+          "a": "Oui. Tes fichiers restent sur ton ordinateur. Pour répondre à une demande, seuls les passages utiles sont envoyés à l'intelligence artificielle."
+        },
+        {
+          "q": "Dans quelle langue parle ANZAR ?",
+          "a": "Dans la tienne : il te répond dans la langue dans laquelle tu lui écris."
+        }
+      ]
+    },
+    "cta": {
+      "title": "Ton prochain projet commence par une phrase.",
+      "button": "Télécharger ANZAR"
+    }
+  },
+  "download": {
+    "title": "Télécharge ANZAR",
+    "lead": "Gratuit à télécharger. Tu ne paies que ce que tu utilises.",
+    "recommended": "Pour ton ordinateur",
+    "mac_name": "Mac",
+    "mac_detail": "Mac avec puce Apple (M1 et plus récents)",
+    "mac_button": "Télécharger pour Mac",
+    "mac_intel": "Mac avec processeur Intel : pas encore disponible.",
+    "windows_name": "Windows",
+    "windows_detail": "Windows 10 et 11",
+    "windows_button": "Télécharger pour Windows",
+    "windows_msi": "Installateur .msi (entreprises)",
+    "loading": "Recherche de la dernière version…",
+    "version": "Version {version} · {date}",
+    "size": "{taille} Mo",
+    "unavailable": "Téléchargement bientôt disponible ici.",
+    "all_versions": "Toutes les versions",
+    "steps_title": "Prêt en trois étapes",
+    "steps": [
+      {
+        "title": "Télécharge",
+        "text": "Choisis ton ordinateur et lance le téléchargement."
+      },
+      {
+        "title": "Installe",
+        "text": "Sur Mac, glisse ANZAR dans Applications. Sur Windows, ouvre le fichier et suis les étapes."
+      },
+      {
+        "title": "Décris ton idée",
+        "text": "Connecte-toi avec ton e-mail, recharge quelques crédits et écris ta première demande."
+      }
+    ],
+    "tools": "ANZAR installe lui-même les outils dont il a besoin.",
+    "requirements_title": "Il te faut",
+    "requirements": [
+      "Un Mac avec puce Apple et macOS 11 ou plus récent",
+      "ou un PC sous Windows 10 ou 11",
+      "Une connexion internet"
+    ],
+    "help_title": "Besoin d'aide ?",
+    "help": [
+      {
+        "q": "Windows affiche « Windows a protégé votre ordinateur »",
+        "a": "C'est un message habituel pour les nouvelles applications. Clique sur « Informations complémentaires », puis sur « Exécuter quand même »."
+      },
+      {
+        "q": "Comment savoir quelle puce a mon Mac ?",
+        "a": "Ouvre le menu Pomme, puis « À propos de ce Mac ». Si tu vois « Puce Apple M1 » (ou M2, M3…), ANZAR est fait pour ton Mac."
+      },
+      {
+        "q": "Mon Mac a un processeur Intel",
+        "a": "La version pour Mac Intel n'est pas encore disponible. En attendant, ANZAR fonctionne sur n'importe quel PC Windows 10 ou 11."
+      }
+    ],
+    "mobile_title": "Tu es sur ton téléphone",
+    "mobile_text": "ANZAR s'installe sur un ordinateur. Envoie-toi le lien pour le télécharger plus tard.",
+    "mobile_whatsapp": "Envoyer par WhatsApp",
+    "mobile_email": "Envoyer par e-mail",
+    "mobile_copy": "Copier le lien",
+    "mobile_copied": "Lien copié",
+    "mobile_share": "Télécharger ANZAR sur mon ordinateur :",
+    "mobile_subject": "Télécharger ANZAR",
+    "mobile_desktop_anyway": "Voir quand même les fichiers"
+  },
+  "pricing": {
+    "title": "Paie dans ta monnaie.",
+    "title2": "Seulement ce que tu utilises.",
+    "lead": "Pas d'abonnement. Tu recharges quand tu veux, et chaque demande affiche son coût en crédits.",
+    "currency_label": "Monnaie",
+    "currency_hint": "Choisie selon ton pays. Tu peux la changer.",
+    "credits": "crédits",
+    "bonus": "bonus",
+    "packs": [
+      {
+        "name": "Découverte",
+        "text": "Pour essayer ANZAR"
+      },
+      {
+        "name": "Starter",
+        "text": "Pour tes premiers projets"
+      },
+      {
+        "name": "Pro",
+        "text": "Pour travailler chaque semaine"
+      },
+      {
+        "name": "Business",
+        "text": "Pour les projets ambitieux"
+      },
+      {
+        "name": "Enterprise",
+        "text": "Pour les équipes et les gros volumes"
+      }
+    ],
+    "loading": "Chargement des prix…",
+    "confirmed": "Le prix exact s'affiche dans l'application au moment de payer.",
+    "indicative": "Prix indicatifs. Le prix exact s'affiche dans l'application au moment de payer.",
+    "fallback_usd": "Ta monnaie n'est pas encore proposée : les prix sont affichés en dollars.",
+    "free_title": "Ou le montant de ton choix",
+    "free_text": "De {min} à {max}. Bonus de {paliers}.",
+    "free_tier": "+{pct} % dès {montant}",
+    "free_and": " et ",
+    "payment_title": "Moyens de paiement",
+    "mobile_money": "Mobile money",
+    "mobile_money_detail": "Orange Money, MTN, Moov, Wave, Airtel…",
+    "card": "Carte bancaire",
+    "card_detail": "Visa, Mastercard…",
+    "currencies_title": "Monnaies acceptées",
+    "currencies": "Franc CFA, naira, cedi, shilling kényan, ougandais et tanzanien, franc rwandais, rand, dirham, euro, livre sterling, dollar canadien et dollar américain.",
+    "faq_title": "Questions sur les crédits",
+    "faq": [
+      {
+        "q": "C'est quoi un crédit ?",
+        "a": "C'est l'unité qu'ANZAR utilise pour compter le travail. Tu achètes des crédits, et chaque demande en utilise un peu, selon sa taille."
+      },
+      {
+        "q": "Combien coûte une demande ?",
+        "a": "Ça dépend de son ampleur : une question simple coûte peu, la création d'une application complète un peu plus. Le coût s'affiche pendant que l'agent travaille."
+      },
+      {
+        "q": "Mes crédits expirent-ils ?",
+        "a": "Non. Tes crédits restent sur ton compte jusqu'à ce que tu les utilises."
+      },
+      {
+        "q": "Comment recharger ?",
+        "a": "Dans l'application, bouton « Recharger » : choisis un pack, paie par mobile money ou par carte, et tes crédits s'ajoutent tout de suite."
+      }
+    ],
+    "cta_title": "Prêt à essayer ?",
+    "cta": "Télécharger ANZAR"
+  },
+  "legal": {
+    "draft": "Brouillon — ce texte est en cours de relecture et n'a pas encore de valeur contractuelle.",
+    "updated": "Dernière mise à jour : 23 novembre 2026",
+    "terms": {
+      "title": "Conditions d'utilisation",
+      "sections": [
+        {
+          "h": "1. Qui sommes-nous",
+          "p": [
+            "ANZAR est un service édité par IssalanHub, société enregistrée à Niamey (Niger). Contact : support@getanzar.com."
+          ]
+        },
+        {
+          "h": "2. Le service",
+          "p": [
+            "ANZAR est une application pour ordinateur qui réalise, à ta demande, des tâches de création : code, documents, visuels et vidéos. Elle utilise des modèles d'intelligence artificielle fournis par des tiers."
+          ]
+        },
+        {
+          "h": "3. Ton compte",
+          "p": [
+            "Tu te connectes avec ton adresse e-mail et un code de vérification. Tu es responsable de l'usage fait de ton compte. Préviens-nous sans tarder si tu penses qu'il a été utilisé sans ton accord."
+          ]
+        },
+        {
+          "h": "4. Crédits et paiements",
+          "p": [
+            "Le service fonctionne avec des crédits prépayés, sans abonnement. Le prix des packs est affiché dans l'application, dans ta monnaie, avant le paiement. Chaque demande consomme des crédits selon le travail réalisé, et son coût est affiché.",
+            "Les crédits n'expirent pas. Ils ne sont ni convertibles en argent, ni transférables à un autre compte.",
+            "[À valider] Les crédits achetés ne sont pas remboursables, sauf erreur de facturation ou obligation légale. En cas de problème avec un paiement, écris à support@getanzar.com."
+          ]
+        },
+        {
+          "h": "5. Bon usage",
+          "p": [
+            "Tu t'engages à ne pas utiliser ANZAR pour une activité illégale, pour nuire à autrui, pour créer des logiciels malveillants ou pour porter atteinte aux droits de tiers. Nous pouvons suspendre un compte qui ne respecte pas ces règles."
+          ]
+        },
+        {
+          "h": "6. Ce que tu crées",
+          "p": [
+            "Ce que tu crées avec ANZAR t'appartient. Les résultats produits par une intelligence artificielle peuvent contenir des erreurs : vérifie-les avant de les utiliser, en particulier pour un usage professionnel."
+          ]
+        },
+        {
+          "h": "7. Responsabilité",
+          "p": [
+            "[À valider] Nous faisons notre possible pour que le service soit disponible et fiable, sans pouvoir le garantir en permanence. Notre responsabilité est limitée au montant des crédits achetés au cours des douze derniers mois."
+          ]
+        },
+        {
+          "h": "8. Modifications",
+          "p": [
+            "Nous pouvons faire évoluer ces conditions. En cas de changement important, nous te prévenons dans l'application ou par e-mail."
+          ]
+        },
+        {
+          "h": "9. Droit applicable",
+          "p": [
+            "[À valider] Ces conditions sont soumises au droit nigérien."
+          ]
+        }
+      ]
+    },
+    "privacy": {
+      "title": "Confidentialité",
+      "sections": [
+        {
+          "h": "1. En bref",
+          "p": [
+            "Tes projets et tes fichiers restent sur ton ordinateur. Nous ne collectons que ce qui est nécessaire pour faire fonctionner ton compte, tes paiements et les réponses de l'intelligence artificielle. Nous ne vendons pas tes données."
+          ]
+        },
+        {
+          "h": "2. Ce que nous conservons",
+          "p": [
+            "Ton adresse e-mail, ton solde, l'historique de tes recharges et de ta consommation de crédits, et les informations que tu demandes à ANZAR de mémoriser. Nous conservons aussi des journaux techniques pour la sécurité du service."
+          ]
+        },
+        {
+          "h": "3. Tes demandes",
+          "p": [
+            "Pour répondre à une demande, ANZAR envoie ton message et les passages utiles de tes fichiers à notre serveur, qui les transmet au modèle d'intelligence artificielle (DeepSeek). [À valider] Nos serveurs ne conservent pas le contenu de tes conversations : il reste sur ton ordinateur. Si tu actives la recherche web, tes requêtes de recherche passent par un service de recherche."
+          ]
+        },
+        {
+          "h": "4. Paiements",
+          "p": [
+            "Les paiements sont traités par nos prestataires de paiement (mobile money et carte bancaire). Nous ne voyons ni ne conservons ton numéro de carte."
+          ]
+        },
+        {
+          "h": "5. Ce site",
+          "p": [
+            "Ce site n'utilise ni publicité ni outil de suivi. Il enregistre seulement ton choix de langue dans un cookie, si tu changes de langue."
+          ]
+        },
+        {
+          "h": "6. Tes droits",
+          "p": [
+            "Tu peux demander à consulter, corriger ou supprimer tes données en écrivant à support@getanzar.com."
+          ]
+        }
+      ]
+    }
+  },
+  "footer": {
+    "tagline": "ANZAR, un produit IssalanHub.",
+    "contact": "Contact",
+    "email": "support@getanzar.com",
+    "terms": "Conditions",
+    "privacy": "Confidentialité"
+  },
+  "notfound": {
+    "title": "Page introuvable",
+    "text": "Cette page n'existe pas ou a changé d'adresse.",
+    "back": "Retour à l'accueil"
+  }
+}

@@ -1,0 +1,5 @@
+dist/
+__pycache__/
+
+# data/ est ignoré à la racine (bases locales) ; ici ce sont les prix de repli du site
+!data/

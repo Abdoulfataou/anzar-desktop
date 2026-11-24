@@ -1,0 +1,87 @@
+    <section class="heros court">
+      <div class="cadre centre">
+        <h1>{{ t.download.title }}</h1>
+        <p class="chapo">{{ t.download.lead }}</p>
+      </div>
+    </section>
+
+    <div class="mobile-panneau" id="mobile" hidden>
+      <div class="cadre etroit centre">
+        <h2>{{ t.download.mobile_title }}</h2>
+        <p>{{ t.download.mobile_text }}</p>
+        <div class="actions colonne">
+          <a class="bouton grand" id="lien-whatsapp" href="#">{{ t.download.mobile_whatsapp }}</a>
+          <a class="bouton secondaire grand" id="lien-email" href="#">{{ t.download.mobile_email }}</a>
+          <button class="bouton secondaire grand" id="copier" type="button">{{ t.download.mobile_copy }}</button>
+        </div>
+        <p><a class="lien-discret" href="#ordinateur" id="voir-fichiers">{{ t.download.mobile_desktop_anyway }}</a></p>
+      </div>
+    </div>
+    <section class="section serre" id="ordinateur">
+      <div class="cadre">
+        <div class="plateformes">
+          <article class="plateforme" id="carte-mac" data-os="mac">
+            <p class="recommande" hidden>{{ t.download.recommended }}</p>
+            <svg class="ico grand-ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#apple"></use></svg>
+            <h2>{{ t.download.mac_name }}</h2>
+            <p>{{ t.download.mac_detail }}</p>
+            <a class="bouton grand" id="bouton-mac" href="https://github.com/Abdoulfataou/anzar-desktop/releases">
+              <svg class="ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#telecharger"></use></svg>
+              <span>{{ t.download.mac_button }}</span>
+            </a>
+            <p class="version" data-version="mac">{{ t.download.loading }}</p>
+            <p class="avis" id="avis-intel" hidden>{{ t.download.mac_intel }}</p>
+          </article>
+          <article class="plateforme" id="carte-windows" data-os="windows">
+            <p class="recommande" hidden>{{ t.download.recommended }}</p>
+            <svg class="ico grand-ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#windows"></use></svg>
+            <h2>{{ t.download.windows_name }}</h2>
+            <p>{{ t.download.windows_detail }}</p>
+            <a class="bouton grand" id="bouton-windows" href="https://github.com/Abdoulfataou/anzar-desktop/releases">
+              <svg class="ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#telecharger"></use></svg>
+              <span>{{ t.download.windows_button }}</span>
+            </a>
+            <p class="version" data-version="windows">{{ t.download.loading }}</p>
+            <a class="lien-discret" id="lien-msi" href="#" hidden>{{ t.download.windows_msi }}</a>
+          </article>
+        </div>
+        <p class="centre discret"><a class="lien-discret" href="https://github.com/Abdoulfataou/anzar-desktop/releases">{{ t.download.all_versions }}</a></p>
+      </div>
+    </section>
+
+    <section class="section clair" aria-labelledby="titre-etapes">
+      <div class="cadre">
+        <h2 id="titre-etapes" class="centre">{{ t.download.steps_title }}</h2>
+        <ol class="etapes">
+{% for s in t.download.steps %}          <li>
+            <span class="etape-num" aria-hidden="true">{{ loop.index }}</span>
+            <h3>{{ s.title }}</h3>
+            <p>{{ s.text }}</p>
+          </li>
+{% endfor %}        </ol>
+        <p class="centre">{{ t.download.tools }}</p>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="cadre etroit deux-col">
+        <div>
+          <h2>{{ t.download.requirements_title }}</h2>
+          <ul class="liste-coche">
+{% for r in t.download.requirements %}            <li>{{ r }}</li>
+{% endfor %}          </ul>
+        </div>
+        <div>
+          <h2>{{ t.download.help_title }}</h2>
+          <div class="faq">
+{% for q in t.download.help %}            <details>
+              <summary>{{ q.q }}</summary>
+              <p>{{ q.a }}</p>
+            </details>
+{% endfor %}          </div>
+        </div>
+      </div>
+    </section>
+
+    <script type="application/json" id="textes-telechargement">{{{ json.download }}}</script>
+    <script src="/assets/telecharger.js?v={{ v }}" defer></script>

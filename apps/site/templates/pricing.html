@@ -1,0 +1,75 @@
+    <section class="heros court">
+      <div class="cadre centre">
+        <h1>{{ t.pricing.title }}<br><span class="accent">{{ t.pricing.title2 }}</span></h1>
+        <p class="chapo">{{ t.pricing.lead }}</p>
+      </div>
+    </section>
+
+    <section class="section serre" aria-labelledby="titre-packs">
+      <div class="cadre">
+        <h2 id="titre-packs" class="visuellement-cache">{{ t.nav.pricing }}</h2>
+        <div class="choix-devise">
+          <label for="devise">{{ t.pricing.currency_label }}</label>
+          <select id="devise" disabled><option>…</option></select>
+          <p class="discret" id="devise-aide">{{ t.pricing.currency_hint }}</p>
+        </div>
+        <p class="avis centre" id="avis-devise" role="status" hidden></p>
+        <div class="grille-packs" id="packs" aria-live="polite" aria-busy="true">
+{% for k in t.pricing.packs %}          <article class="pack">
+            <h3>{{ k.name }}</h3>
+            <p class="pack-texte">{{ k.text }}</p>
+            <p class="pack-prix">…</p>
+            <p class="pack-credits">&nbsp;</p>
+          </article>
+{% endfor %}        </div>
+        <p class="centre discret" id="mention-prix">{{ t.pricing.confirmed }}</p>
+
+        <div class="montant-libre" id="montant-libre" hidden>
+          <h3>{{ t.pricing.free_title }}</h3>
+          <p id="montant-libre-texte"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section clair">
+      <div class="cadre deux-col">
+        <div>
+          <h2>{{ t.pricing.payment_title }}</h2>
+          <ul class="paiements">
+            <li id="pay-mobile">
+              <svg class="ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#mobile"></use></svg>
+              <div><strong>{{ t.pricing.mobile_money }}</strong><br><span class="discret">{{ t.pricing.mobile_money_detail }}</span></div>
+            </li>
+            <li id="pay-card">
+              <svg class="ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#carte"></use></svg>
+              <div><strong>{{ t.pricing.card }}</strong><br><span class="discret">{{ t.pricing.card_detail }}</span></div>
+            </li>
+          </ul>
+        </div>
+        <div>
+          <h2>{{ t.pricing.currencies_title }}</h2>
+          <p>{{ t.pricing.currencies }}</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="titre-faq-credits">
+      <div class="cadre etroit">
+        <h2 id="titre-faq-credits">{{ t.pricing.faq_title }}</h2>
+        <div class="faq">
+{% for q in t.pricing.faq %}          <details>
+            <summary>{{ q.q }}</summary>
+            <p>{{ q.a }}</p>
+          </details>
+{% endfor %}        </div>
+      </div>
+    </section>
+
+    <section class="section final">
+      <div class="cadre final-in">
+        <h2>{{ t.pricing.cta_title }}</h2>
+        <a class="bouton grand" href="{{ u.download }}">{{ t.pricing.cta }}</a>
+      </div>
+    </section>
+    <script type="application/json" id="textes-tarifs">{{{ json.pricing }}}</script>
+    <script src="/assets/tarifs.js?v={{ v }}" defer></script>

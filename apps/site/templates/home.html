@@ -1,0 +1,105 @@
+    <section class="heros">
+      <div class="cadre heros-in">
+        <div class="heros-texte">
+          <h1>{{ t.home.hero.title }}<br><span class="accent">{{ t.home.hero.title2 }}</span></h1>
+          <p class="chapo">{{ t.home.hero.lead }}</p>
+          <div class="actions">
+            <a class="bouton grand" id="cta-os" href="{{ u.download }}" data-mac="{{ t.home.hero.cta_mac }}" data-windows="{{ t.home.hero.cta_windows }}">
+              <svg class="ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#telecharger"></use></svg>
+              <span>{{ t.home.hero.cta }}</span>
+            </a>
+            <a class="bouton secondaire grand" href="{{ u.pricing }}">{{ t.home.hero.cta_pricing }}</a>
+          </div>
+          <p class="note">{{ t.home.hero.note }}</p>
+        </div>
+
+        <figure class="demo" aria-label="{{ t.home.demo.label }}">
+          <div class="fenetre">
+            <div class="fenetre-barre" aria-hidden="true"><i></i><i></i><i></i><span>ANZAR</span></div>
+            <div class="fenetre-corps">
+              <div class="conversation">
+                <p class="bulle moi">{{ t.home.demo.prompt }}</p>
+                <div class="bulle anzar">
+                  <ul class="etapes-demo">
+                    <li>{{ t.home.demo.step1 }}</li>
+                    <li>{{ t.home.demo.step2 }}</li>
+                    <li>{{ t.home.demo.step3 }}</li>
+                  </ul>
+                  <p>{{ t.home.demo.reply }}</p>
+                </div>
+                <p class="saisie" aria-hidden="true">{{ t.home.demo.input }}</p>
+              </div>
+              <div class="apercu" aria-hidden="true">
+                <p class="apercu-titre">{{ t.home.demo.preview_title }}</p>
+                <div class="apercu-carte"><span class="pastille p1"></span><span>{{ t.home.demo.preview_item1 }}</span></div>
+                <div class="apercu-carte"><span class="pastille p2"></span><span>{{ t.home.demo.preview_item2 }}</span></div>
+                <span class="apercu-bouton">{{ t.home.demo.preview_button }}</span>
+              </div>
+            </div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="section" id="fonctions" aria-labelledby="titre-fonctions">
+      <div class="cadre">
+        <h2 id="titre-fonctions">{{ t.home.features.title }}</h2>
+        <p class="intro">{{ t.home.features.lead }}</p>
+        <div class="grille-fonctions">
+{% for f in t.home.features.items %}          <article class="fonction">
+            <span class="fonction-ico"><svg class="ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#{{ f.icon }}"></use></svg></span>
+            <h3>{{ f.title }}</h3>
+            <p>{{ f.text }}</p>
+            <p class="exemple">{{ f.example }}</p>
+          </article>
+{% endfor %}        </div>
+      </div>
+    </section>
+
+    <section class="section clair" aria-labelledby="titre-raisons">
+      <div class="cadre">
+        <h2 id="titre-raisons">{{ t.home.reasons.title }}</h2>
+        <div class="grille-raisons">
+{% for r in t.home.reasons.items %}          <div class="raison">
+            <svg class="ico" aria-hidden="true"><use href="/assets/icones.svg?v={{ v }}#{{ r.icon }}"></use></svg>
+            <h3>{{ r.title }}</h3>
+            <p>{{ r.text }}</p>
+          </div>
+{% endfor %}        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="titre-prix">
+      <div class="cadre bandeau-prix">
+        <div>
+          <h2 id="titre-prix">{{ t.home.pricing.title }}</h2>
+          <p>{{ t.home.pricing.text }}</p>
+          <p class="discret">{{ t.home.pricing.currencies }}</p>
+        </div>
+        <div class="prix-depart">
+          <p class="discret">{{ t.home.pricing.from }}</p>
+          <p class="prix-depart-valeur" id="prix-depart" data-intl="{{ t.meta.intl }}">{{ t.home.pricing.fallback_from }}</p>
+          <a class="bouton" href="{{ u.pricing }}">{{ t.home.pricing.cta }}</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="titre-faq">
+      <div class="cadre etroit">
+        <h2 id="titre-faq">{{ t.home.faq.title }}</h2>
+        <div class="faq">
+{% for q in t.home.faq.items %}          <details>
+            <summary>{{ q.q }}</summary>
+            <p>{{ q.a }}</p>
+          </details>
+{% endfor %}        </div>
+      </div>
+    </section>
+
+    <section class="section final">
+      <div class="cadre final-in">
+        <h2>{{ t.home.cta.title }}</h2>
+        <a class="bouton grand" href="{{ u.download }}">{{ t.home.cta.button }}</a>
+      </div>
+    </section>
+    <script src="/assets/tarifs.js?v={{ v }}" defer></script>
