@@ -46,4 +46,10 @@ describe('isolation des commandes', () => {
     const out = `SocketException: Connection failed (OS Error: Operation not permitted)\n${NETWORK_BYPASS_TAG} : …`;
     expect(withSandboxHint(69, out)).toBe(out);
   });
+
+  it('explique la protection Git sans inviter à la contourner', () => {
+    const out = withSandboxHint(128, "error: could not lock config file .git/config: Operation not permitted");
+    expect(out).toContain('Ne contourne pas');
+    expect(out).toContain('git init');
+  });
 });

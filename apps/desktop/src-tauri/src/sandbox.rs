@@ -54,11 +54,6 @@ pub const PROFILE: &str = r#"(version 1)
   (literal "/dev/dtracehelper")
   (regex #"^/dev/tty")
   (regex #"^/dev/fd/"))
-(deny file-write*
-  (subpath (param "ROOT_HOOKS"))
-  (literal (param "ROOT_GITCONFIG"))
-  (subpath (param "GIT_HOOKS"))
-  (literal (param "GIT_CONFIG")))
 (deny file-read* file-write*
   (subpath (param "SSH"))
   (subpath (param "AWS"))
@@ -67,6 +62,44 @@ pub const PROFILE: &str = r#"(version 1)
   (literal (param "NETRC"))
   (literal (param "GITCRED")))
 "#;
+
+/// Hooks et configuration git du dépôt en lecture seule : un hook ou un `core.fsmonitor`
+/// écrit par l'agent s'exécuterait plus tard dans le git de l'utilisateur, hors isolation.
+/// Seule exception : un `git init` simple dans un projet sans dépôt (voir `git_init_allowed`).
+pub const GIT_PROTECT: &str = r#"
+(deny file-write*
+  (subpath (param "ROOT_HOOKS"))
+  (literal (param "ROOT_GITCONFIG"))
+  (subpath (param "GIT_HOOKS"))
+  (literal (param "GIT_CONFIG")))
+"#;
+
+/// `git init` simple (branche initiale, silencieux), lancé à la racine d'un projet qui n'a
+/// pas encore de dépôt : il n'écrit que la config par défaut et des hooks d'exemple inertes
+/// (`*.sample`). Les options qui choisissent un modèle, un autre dossier git ou un dépôt
+/// partagé restent refusées (`tool_runner::validate_args`).
+pub fn git_init_allowed(program: &str, args: &[String], root: &Path, cwd: &Path) -> bool {
+    if program != "git" || args.first().map(|s| s.as_str()) != Some("init") || cwd != root {
+        return false;
+    }
+    if root.join(".git").exists() {
+        return false;
+    }
+    let mut rest = args[1..].iter();
+    while let Some(a) = rest.next() {
+        match a.as_str() {
+            "-q" | "--quiet" | "." => {}
+            "-b" | "--initial-branch" => {
+                if rest.next().is_none() {
+                    return false;
+                }
+            }
+            s if s.starts_with("--initial-branch=") => {}
+            _ => return false,
+        }
+    }
+    true
+}
 
 /// Ajouté au profil quand la commande n'a pas droit au réseau : connexions sortantes
 /// coupées, sauf vers localhost. Les sockets Unix (résolution DNS du système) ne sont
@@ -205,7 +238,7 @@ pub fn available() -> bool {
 }
 
 /// Enveloppe une commande dans le sandbox (macOS). `root` doit être canonicalisé.
-pub fn wrap(program: &str, args: &[String], root: &Path, allow_network: bool) -> Wrapped {
+pub fn wrap(program: &str, args: &[String], root: &Path, allow_network: bool, git_init: bool) -> Wrapped {
     if !available() {
         return Wrapped { program: program.to_string(), args: args.to_vec() };
     }
@@ -213,10 +246,11 @@ pub fn wrap(program: &str, args: &[String], root: &Path, allow_network: bool) ->
         .and_then(|h| std::fs::canonicalize(h).ok())
         .unwrap_or_else(|| PathBuf::from("/var/empty"));
     let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| PathBuf::from("/private/tmp"));
+    let git = if git_init { "" } else { GIT_PROTECT };
     let profile = if allow_network {
-        format!("{PROFILE}{BLOCKED_LOCAL_PORTS}")
+        format!("{PROFILE}{git}{BLOCKED_LOCAL_PORTS}")
     } else {
-        format!("{PROFILE}{NETWORK_RULES}{BLOCKED_LOCAL_PORTS}")
+        format!("{PROFILE}{git}{NETWORK_RULES}{BLOCKED_LOCAL_PORTS}")
     };
     let mut out = vec!["-p".to_string(), profile];
     for (k, v) in profile_params(root, &home, &tmp) {
@@ -286,7 +320,7 @@ mod tests {
         for reseau in [false, true] {
             let essai = |port: &str| {
                 let args: Vec<String> = ["-z", "-w", "2", "127.0.0.1", port].iter().map(|x| x.to_string()).collect();
-                let w = wrap("/usr/bin/nc", &args, &root, reseau);
+                let w = wrap("/usr/bin/nc", &args, &root, reseau, false);
                 Command::new(&w.program).args(&w.args).status().unwrap().success()
             };
             assert!(essai(&port_ok), "un port local ordinaire doit rester joignable (réseau : {reseau})");
@@ -295,7 +329,7 @@ mod tests {
             assert!(!essai("4455"), "le port d'OBS doit être bloqué (réseau : {reseau})");
             // Tube d'Audacity : écriture interdite ; un fichier ordinaire de /tmp reste permis
             let touche = |chemin: &str| {
-                let w = wrap("/usr/bin/touch", &[chemin.to_string()], &root, reseau);
+                let w = wrap("/usr/bin/touch", &[chemin.to_string()], &root, reseau, false);
                 Command::new(&w.program).args(&w.args).status().unwrap().success()
             };
             let ok = format!("/private/tmp/anzar-sbx-ok-{}", std::process::id());
@@ -304,6 +338,44 @@ mod tests {
             assert!(!touche("/private/tmp/audacity_script_pipe.to.anzartest"), "tube Audacity bloqué");
             assert!(!touche("/tmp/audacity_script_pipe.from.anzartest"), "tube Audacity bloqué (via /tmp)");
         }
+    }
+
+    /// Vrai test Seatbelt (macOS) : hooks protégés, sauf pendant un `git init` autorisé.
+    #[test]
+    fn hooks_git_proteges_sauf_git_init() {
+        use std::process::Command;
+        if !available() { return; }
+        let base = std::fs::canonicalize(std::env::temp_dir()).unwrap()
+            .join(format!("anzar-sbx-git-{}", std::process::id()));
+        std::fs::create_dir_all(base.join(".git").join("hooks")).unwrap();
+        let hook = base.join(".git").join("hooks").join("pre-commit");
+        let touche = |git_init: bool| {
+            let w = wrap("/usr/bin/touch", &[hook.to_string_lossy().into_owned()], &base, false, git_init);
+            Command::new(&w.program).args(&w.args).status().unwrap().success()
+        };
+        assert!(!touche(false), "hook git protégé");
+        assert!(touche(true), "git init autorisé : écriture permise");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn git_init_simple_seulement_dans_un_projet_sans_depot() {
+        let dir = std::env::temp_dir().join(format!("anzar-gitinit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(git_init_allowed("git", &a(&["init"]), &dir, &dir));
+        assert!(git_init_allowed("git", &a(&["init", "-b", "main", "-q"]), &dir, &dir));
+        assert!(git_init_allowed("git", &a(&["init", "--initial-branch=main", "."]), &dir, &dir));
+        assert!(!git_init_allowed("git", &a(&["init", "--template="]), &dir, &dir));
+        assert!(!git_init_allowed("git", &a(&["init", "--separate-git-dir=.gitstore"]), &dir, &dir));
+        assert!(!git_init_allowed("git", &a(&["init", "--bare"]), &dir, &dir));
+        assert!(!git_init_allowed("git", &a(&["init", "-b"]), &dir, &dir));
+        assert!(!git_init_allowed("git", &a(&["init", "autre"]), &dir, &dir));
+        assert!(!git_init_allowed("git", &a(&["status"]), &dir, &dir));
+        assert!(!git_init_allowed("git", &a(&["init"]), &dir, &dir.join("sous")));
+        std::fs::create_dir_all(dir.join(".git")).unwrap();
+        assert!(!git_init_allowed("git", &a(&["init"]), &dir, &dir), "dépôt existant : protections gardées");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -315,11 +387,12 @@ mod tests {
     #[test]
     fn params_cover_every_profile_placeholder() {
         let params = profile_params(Path::new("/p"), Path::new("/h"), Path::new("/t"));
+        let full = format!("{PROFILE}{GIT_PROTECT}");
         for (k, _) in &params {
-            assert!(PROFILE.contains(&format!("(param \"{k}\")")), "paramètre inutilisé : {k}");
+            assert!(full.contains(&format!("(param \"{k}\")")), "paramètre inutilisé : {k}");
         }
         let names: Vec<&str> = params.iter().map(|(k, _)| *k).collect();
-        for cap in PROFILE.split("(param \"").skip(1) {
+        for cap in full.split("(param \"").skip(1) {
             let name = cap.split('"').next().unwrap();
             assert!(names.contains(&name), "paramètre manquant : {name}");
         }

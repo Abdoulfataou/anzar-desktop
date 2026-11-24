@@ -52,6 +52,9 @@ export function withSandboxHint(code: number, stderr: string): string {
     return `${stderr}\n${NETWORK_BLOCKED_TAG} par l'isolation des commandes : seules les connexions vers localhost, les installations acceptées (npm/pip install) et les téléchargements de cargo et git sont permis. ANZAR propose à l'utilisateur d'autoriser internet pour cette commande ; n'essaie pas de contourner (autre outil, autre script).`;
   }
   if (!SANDBOX_DENIED.test(stderr)) return stderr;
+  if (/\.git\/(hooks|config)|hooks\/|could not lock config file/i.test(stderr)) {
+    return `${stderr}\n[ANZAR] Les hooks et la configuration Git du projet sont protégés (un hook s'exécuterait plus tard dans le Git de l'utilisateur). Ne contourne pas : pas d'autre dossier .git, pas de --separate-git-dir, pas d'écriture à la main dans .git. Pour créer un dépôt, lance seulement « git init » (ou « git init -b main ») à la racine du projet. Sinon, explique à l'utilisateur ce qu'il doit faire lui-même.`;
+  }
   return `${stderr}\n[ANZAR] Bloqué par l'isolation des commandes : une commande ne peut écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo). Écris le fichier dans le projet (ou dans un dossier temporaire) ; si c'est impossible, explique à l'utilisateur ce qui est bloqué.`;
 }
 

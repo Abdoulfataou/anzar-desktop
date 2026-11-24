@@ -227,6 +227,17 @@ fn validate_args(program: &str, args: &[String], approved: bool) -> Result<(), S
         "git" if first == "config" || first == "-c" => {
             return Err("git config / git -c est refusé (hooks et fsmonitor).".into());
         }
+        // Options qui déplacent le dépôt ou choisissent un modèle : elles contourneraient la
+        // protection des hooks et de la config (dossier .git ailleurs, hooks du modèle).
+        "git" if args.iter().any(|a| {
+            let a = a.as_str();
+            a == "-C"
+                || ["--git-dir", "--work-tree", "--separate-git-dir", "--template", "--exec-path", "--config-env", "--super-prefix"]
+                    .iter()
+                    .any(|o| a == *o || a.starts_with(&format!("{o}=")))
+        }) => {
+            return Err("Option git refusée (-C, --git-dir, --work-tree, --separate-git-dir, --template…) : le dépôt reste dans le projet, avec ses hooks protégés.".into());
+        }
         "git" if first == "push" || (first == "remote" && second == "add") => {
             return Err("git push / git remote add est refusé par la politique locale.".into());
         }
@@ -483,7 +494,8 @@ pub fn tool_spawn(
     };
     let allow_network = net && proxy_port.is_none();
     let wrapped = if isolated {
-        crate::sandbox::wrap(&exe, &args, &root_p, allow_network)
+        let git_init = crate::sandbox::git_init_allowed(&program, &args, &root_p, &cwd_p);
+        crate::sandbox::wrap(&exe, &args, &root_p, allow_network, git_init)
     } else {
         crate::sandbox::Wrapped { program: exe.clone(), args: args.clone() }
     };
@@ -625,6 +637,14 @@ mod security_tests {
         assert!(validate_args("python3", &args(&["-c", "print(1)"]), false).is_err());
         assert!(validate_args("git", &args(&["config", "core.fsmonitor", "x"]), false).is_err());
         assert!(validate_args("git", &args(&["-c", "core.hooksPath=x", "status"]), false).is_err());
+        for bad in [
+            &["init", "--separate-git-dir=.gitstore"][..], &["init", "--template="], &["-C", ".", "config", "x", "y"],
+            &["--git-dir=autre", "status"], &["--work-tree", "/tmp", "status"], &["init", "--template", "/tmp/t"],
+        ] {
+            assert!(validate_args("git", &args(bad), true).is_err(), "{bad:?}");
+        }
+        assert!(validate_args("git", &args(&["init", "-b", "main"]), false).is_ok());
+        assert!(validate_args("git", &args(&["log", "--oneline"]), false).is_ok());
         assert!(validate_args("git", &args(&["push"]), false).is_err());
         assert!(validate_args("npm", &args(&["install"]), false).is_err());
         assert!(validate_args("npm", &args(&["install", "react"]), true).is_ok());
