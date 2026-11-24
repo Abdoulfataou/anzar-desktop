@@ -44,6 +44,7 @@
 
   function lireChoix() { try { return localStorage.getItem(CLE) || ""; } catch (e) { return ""; } }
   function ecrireChoix(c) { try { localStorage.setItem(CLE, c); } catch (e) { /* sans mémoire */ } }
+  function oublierChoix() { try { localStorage.removeItem(CLE); } catch (e) { /* sans mémoire */ } }
 
   function prix(minor, dec, devise) {
     var v = minor / Math.pow(10, dec);
@@ -75,7 +76,7 @@
         return b;
       };
       return {
-        source: "locale", currency: code, decimals: dec,
+        source: "locale", currency: code, decimals: dec, requested_currency: devise || code,
         fallback_reason: devise && devise !== code ? "no_provider" : "",
         packs: d.grilles[code].map(function (g, i) {
           return { label: d.labels[i], price_minor: g[0], credit_fcfa: g[1], bonus_pct: xof ? bonus(g[0]) : 0 };
@@ -129,9 +130,13 @@
     el("packs").setAttribute("aria-busy", "false");
     el("mention-prix").textContent = o.source === "api" ? T.confirmed : T.indicative;
 
+    // Monnaie demandée non proposée : on dit dans laquelle les prix sont affichés
+    var demandee = o.requested_currency || "";
+    var repliee = !!o.fallback_reason && demandee && demandee !== o.currency;
     var avis = el("avis-devise");
-    avis.hidden = !o.fallback_reason;
-    if (o.fallback_reason) avis.textContent = T.fallback_usd;
+    avis.hidden = !repliee;
+    if (repliee) avis.textContent = T.fallback_currency.replace("{devise}", nomDevise(o.currency));
+    if (repliee && lireChoix() === demandee) oublierChoix();   // ne pas redemander une monnaie impossible
 
     // Monnaies
     var choix = el("devise");
@@ -144,6 +149,8 @@
       choix.appendChild(opt);
     });
     choix.disabled = false;
+    // Une seule monnaie payable : pas de sélecteur (il ne servirait qu'à décevoir)
+    el("devise").closest(".choix-devise").hidden = o.currencies.length < 2;
 
     // Moyens de paiement
     var kinds = o.payment_kinds || [];

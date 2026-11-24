@@ -228,16 +228,30 @@
     "credits": "credits",
     "bonus": "bonus",
     "packs": [
-      { "name": "Discovery", "text": "To try ANZAR" },
-      { "name": "Starter", "text": "For your first projects" },
-      { "name": "Pro", "text": "For working every week" },
-      { "name": "Business", "text": "For ambitious projects" },
-      { "name": "Enterprise", "text": "For teams and heavy use" }
+      {
+        "name": "Discovery",
+        "text": "To try ANZAR"
+      },
+      {
+        "name": "Starter",
+        "text": "For your first projects"
+      },
+      {
+        "name": "Pro",
+        "text": "For working every week"
+      },
+      {
+        "name": "Business",
+        "text": "For ambitious projects"
+      },
+      {
+        "name": "Enterprise",
+        "text": "For teams and heavy use"
+      }
     ],
     "loading": "Loading prices…",
     "confirmed": "The exact price is shown in the app when you pay.",
     "indicative": "Indicative prices. The exact price is shown in the app when you pay.",
-    "fallback_usd": "Your currency isn't available yet, so prices are shown in US dollars.",
     "free_title": "Or any amount you choose",
     "free_text": "From {min} to {max}. Bonus of {paliers}.",
     "free_tier": "+{pct}% from {montant}",
@@ -269,7 +283,8 @@
       }
     ],
     "cta_title": "Ready to give it a try?",
-    "cta": "Download ANZAR"
+    "cta": "Download ANZAR",
+    "fallback_currency": "Your currency isn't available yet, so prices are shown in {devise}."
   },
   "legal": {
     "draft": "Draft — this text is under review and is not yet legally binding.",
@@ -279,15 +294,21 @@
       "sections": [
         {
           "h": "1. Who we are",
-          "p": ["ANZAR is a service published by IssalanHub, a company registered in Niamey, Niger. Contact: support@getanzar.com."]
+          "p": [
+            "ANZAR is a service published by IssalanHub, a company registered in Niamey, Niger. Contact: support@getanzar.com."
+          ]
         },
         {
           "h": "2. The service",
-          "p": ["ANZAR is a desktop application that carries out creative tasks at your request: code, documents, visuals and videos. It relies on artificial intelligence models provided by third parties."]
+          "p": [
+            "ANZAR is a desktop application that carries out creative tasks at your request: code, documents, visuals and videos. It relies on artificial intelligence models provided by third parties."
+          ]
         },
         {
           "h": "3. Your account",
-          "p": ["You sign in with your email address and a verification code. You are responsible for how your account is used. Let us know right away if you think someone has used it without your permission."]
+          "p": [
+            "You sign in with your email address and a verification code. You are responsible for how your account is used. Let us know right away if you think someone has used it without your permission."
+          ]
         },
         {
           "h": "4. Credits and payments",
@@ -299,23 +320,33 @@
         },
         {
           "h": "5. Acceptable use",
-          "p": ["You agree not to use ANZAR for illegal activities, to harm others, to create malicious software or to infringe anyone's rights. We may suspend accounts that break these rules."]
+          "p": [
+            "You agree not to use ANZAR for illegal activities, to harm others, to create malicious software or to infringe anyone's rights. We may suspend accounts that break these rules."
+          ]
         },
         {
           "h": "6. What you create",
-          "p": ["What you create with ANZAR belongs to you. AI-generated results can contain mistakes, so review them before you rely on them, especially for professional use."]
+          "p": [
+            "What you create with ANZAR belongs to you. AI-generated results can contain mistakes, so review them before you rely on them, especially for professional use."
+          ]
         },
         {
           "h": "7. Liability",
-          "p": ["[To be confirmed] We do our best to keep the service available and reliable, but we cannot guarantee it at all times. Our liability is limited to the amount of credits purchased in the past twelve months."]
+          "p": [
+            "[To be confirmed] We do our best to keep the service available and reliable, but we cannot guarantee it at all times. Our liability is limited to the amount of credits purchased in the past twelve months."
+          ]
         },
         {
           "h": "8. Changes",
-          "p": ["We may update these terms. If we make a significant change, we'll let you know in the app or by email."]
+          "p": [
+            "We may update these terms. If we make a significant change, we'll let you know in the app or by email."
+          ]
         },
         {
           "h": "9. Governing law",
-          "p": ["[To be confirmed] These terms are governed by the laws of Niger."]
+          "p": [
+            "[To be confirmed] These terms are governed by the laws of Niger."
+          ]
         }
       ]
     },
@@ -324,27 +355,39 @@
       "sections": [
         {
           "h": "1. In short",
-          "p": ["Your projects and files stay on your computer. We only collect what we need to run your account, your payments and the AI's answers. We do not sell your data."]
+          "p": [
+            "Your projects and files stay on your computer. We only collect what we need to run your account, your payments and the AI's answers. We do not sell your data."
+          ]
         },
         {
           "h": "2. What we keep",
-          "p": ["Your email address, your balance, your top-up and credit usage history, and anything you ask ANZAR to remember. We also keep technical logs to keep the service secure."]
+          "p": [
+            "Your email address, your balance, your top-up and credit usage history, and anything you ask ANZAR to remember. We also keep technical logs to keep the service secure."
+          ]
         },
         {
           "h": "3. Your requests",
-          "p": ["To answer a request, ANZAR sends your message and the relevant parts of your files to our server, which passes them on to the AI model (DeepSeek). [To be confirmed] Our servers do not store the content of your conversations: it stays on your computer. If you turn on web search, your search queries go through a search provider."]
+          "p": [
+            "To answer a request, ANZAR sends your message and the relevant parts of your files to our server, which passes them on to the AI model (DeepSeek). [To be confirmed] Our servers do not store the content of your conversations: it stays on your computer. If you turn on web search, your search queries go through a search provider."
+          ]
         },
         {
           "h": "4. Payments",
-          "p": ["Payments are processed by our payment providers (mobile money and bank card). We never see or store your card number."]
+          "p": [
+            "Payments are processed by our payment providers (mobile money and bank card). We never see or store your card number."
+          ]
         },
         {
           "h": "5. This website",
-          "p": ["This website uses no advertising and no tracking tools. It only stores your language choice in a cookie, if you switch languages."]
+          "p": [
+            "This website uses no advertising and no tracking tools. It only stores your language choice in a cookie, if you switch languages."
+          ]
         },
         {
           "h": "6. Your rights",
-          "p": ["You can ask to access, correct or delete your data by writing to support@getanzar.com."]
+          "p": [
+            "You can ask to access, correct or delete your data by writing to support@getanzar.com."
+          ]
         }
       ]
     }

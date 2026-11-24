@@ -252,7 +252,6 @@
     "loading": "Chargement des prix…",
     "confirmed": "Le prix exact s'affiche dans l'application au moment de payer.",
     "indicative": "Prix indicatifs. Le prix exact s'affiche dans l'application au moment de payer.",
-    "fallback_usd": "Ta monnaie n'est pas encore proposée : les prix sont affichés en dollars.",
     "free_title": "Ou le montant de ton choix",
     "free_text": "De {min} à {max}. Bonus de {paliers}.",
     "free_tier": "+{pct} % dès {montant}",
@@ -284,7 +283,8 @@
       }
     ],
     "cta_title": "Prêt à essayer ?",
-    "cta": "Télécharger ANZAR"
+    "cta": "Télécharger ANZAR",
+    "fallback_currency": "Ta monnaie n'est pas encore proposée : les prix sont affichés en {devise}."
   },
   "legal": {
     "draft": "Brouillon — ce texte est en cours de relecture et n'a pas encore de valeur contractuelle.",

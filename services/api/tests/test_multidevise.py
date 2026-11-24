@@ -607,3 +607,17 @@ def test_public_pricing_currency_and_fallback(client, multi, monkeypatch):
     assert d["payment_kinds"] == ["card"] and d["free_amount"] is False and d["min_fcfa"] is None
     d = client.get("/api/public/pricing?currency=GHS&country=GH").json()      # aucun fournisseur GHS actif
     assert d["currency"] == "USD" and d["fallback_reason"] == "no_provider"
+
+
+def test_public_pricing_lists_only_payable_currencies(client, multi, monkeypatch):
+    """Sans fournisseur actif, seul le XOF (paiement manuel) est proposé : pas de choix trompeur."""
+    monkeypatch.delitem(svc.PROVIDERS, "multi")                            # faux fournisseur du fixture
+    for k in ("fedapay_secret_key", "stripe_secret_key", "paystack_secret_key", "flutterwave_secret_key"):
+        monkeypatch.setattr(settings, k, "")
+    monkeypatch.setattr(settings, "manual_payments_enabled", True)
+    d = client.get("/api/public/pricing?currency=USD&country=US").json()
+    assert d["currency"] == "XOF" and d["fallback_reason"] == "no_provider" and d["requested_currency"] == "USD"
+    assert d["currencies"] == ["XOF"] and d["payment_kinds"] == []
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_x")
+    d = client.get("/api/public/pricing?currency=USD&country=US").json()
+    assert d["currency"] == "USD" and "USD" in d["currencies"] and "GHS" not in d["currencies"]

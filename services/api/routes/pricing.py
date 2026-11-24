@@ -103,6 +103,11 @@ async def public_pricing(request: Request, response: Response, currency: str = "
     async with Session() as session:
         codes = (await session.scalars(select(Currency.code).where(Currency.active.is_(True))
                                        .order_by(Currency.code))).all()
+    # Monnaies où un paiement est réellement possible aujourd'hui (fournisseur actif, ou
+    # paiement manuel en XOF) : la vitrine ne propose que celles-là dans son sélecteur.
+    from services.payments.routing import providers_for
+    payables = [c for c in codes
+                if providers_for(c, ctry) or (c == "XOF" and settings.manual_payments_enabled)]
     kinds = []
     for p in offer.providers:
         if p.get("kind") and p["kind"] not in kinds:
@@ -125,7 +130,7 @@ async def public_pricing(request: Request, response: Response, currency: str = "
         "min_fcfa": MIN_FCFA if offer.free_amount else None,
         "max_fcfa": MAX_FCFA if offer.free_amount else None,
         "bonus_tiers": _bonus_tiers(settings.recharge_bonus_tiers) if offer.free_amount else [],
-        "currencies": list(codes),
+        "currencies": payables or [offer.currency],
     }
 
 
