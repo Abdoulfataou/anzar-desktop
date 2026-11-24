@@ -15,6 +15,7 @@ import type { AgentToolOutcome } from '../engine/agentSession';
 import { approvalDecision } from '../policy/toolPolicy';
 import { commandRisk, noteAgentWrite } from '../policy/commandGuard';
 import { precheckCommand } from '../tools/shellTools';
+import { shellRefusal } from '../tools/bashTool';
 import { externalReason, type ExternalSource } from '../policy/untrusted';
 import { executeGenericTool } from '../tools/toolExecution';
 import { summarizeArgs, toolDelta, toolFilePath } from '../tools/toolDisplay';
@@ -132,8 +133,10 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
 
   // Pré-contrôle statique AVANT la carte d'accord : inutile de demander à l'utilisateur
   // une commande que la politique refusera de toute façon (git push, bash, chemin absolu…).
-  if (call.function.name === 'run_command') {
-    const refused = precheckCommand(String(args.command || ''));
+  if (call.function.name === 'run_command' || call.function.name === 'bash') {
+    const refused = call.function.name === 'run_command'
+      ? precheckCommand(String(args.command || ''))
+      : shellRefusal(String(args.command || ''));
     if (refused) {
       const output = `La commande n'a pas été exécutée.\n${refused}`;
       ev.status = 'error';

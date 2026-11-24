@@ -26,6 +26,47 @@ export function confinedShellAvailable(): boolean {
   return /Mac|Darwin|Linux|X11/i.test(platform);
 }
 
+/**
+ * Refus immédiat, avant toute carte d'accord, des opérations que la politique
+ * réserve à l'utilisateur ou qui lisent un secret. Rust applique la même règle
+ * (c'est la frontière) ; ce pré-contrôle évite une carte inutile.
+ */
+export function shellRefusal(command: string): string | null {
+  const tokens = command
+    .split(/[\s;&|()`]+/)
+    .map((t) => t.replace(/^["']|["']$/g, ''))
+    .filter(Boolean);
+  if (tokens.includes('sudo')) {
+    return 'Refusé : « sudo » est interdit à l’agent. Propose à l’utilisateur la commande à lancer lui-même.';
+  }
+  const secret = tokens.find((t) => t === '.env'
+    || (t.startsWith('.env.') && !/\.(example|sample|template)$/.test(t))
+    || t.endsWith('/.env')
+    || t.includes('/.ssh/') || t.includes('/.aws/') || t.includes('/.gnupg/') || t.includes('/.kube/')
+    || t.endsWith('/.netrc') || t.endsWith('/.git-credentials')
+    || t.endsWith('id_rsa') || t.endsWith('id_ed25519')
+    || /\.(pem|key)$/.test(t));
+  if (secret) {
+    return 'Refusé : ce chemin contient un secret (.env, clé ou identifiant). Ne le lis pas et ne le transmets pas ; '
+      + 'demande à l’utilisateur les variables dont tu as besoin.';
+  }
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    if (token !== 'git' && !token.endsWith('/git')) continue;
+    let j = i + 1;
+    while (j < tokens.length && tokens[j].startsWith('-')) {
+      j += ['-C', '-c', '--git-dir', '--work-tree', '--namespace'].includes(tokens[j]) ? 2 : 1;
+    }
+    const sub = tokens[j] || '';
+    const next = tokens[j + 1] || '';
+    if (sub === 'push') return 'Refusé : « git push » est réservé à l’utilisateur. Ne pousse pas le code ; dis-lui de le faire.';
+    if (sub === 'remote' && next === 'add') return 'Refusé : « git remote add » configure un dépôt distant. Laisse l’utilisateur le faire.';
+    if (sub === 'reset' && next === '--hard') return 'Refusé : « git reset --hard » efface le travail non commité. Utilise git status puis git checkout <fichier>.';
+    if (sub === 'clean' && next.startsWith('-') && next.includes('f')) return 'Refusé : « git clean -f » supprime les fichiers non suivis. Demande-le à l’utilisateur.';
+  }
+  return null;
+}
+
 function clampTimeout(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) return COMMAND_TIMEOUT_MS;
@@ -73,6 +114,8 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
   const command = String(args.command || '').trim();
   if (!command) return { output: 'Erreur: commande vide.', isError: true };
   if (command.length > 20_000) return { output: 'Erreur: commande trop longue (max 20 000 caractères).', isError: true };
+  const refused = shellRefusal(command);
+  if (refused) return { output: `La commande n'a pas été exécutée.\n${refused}`, isError: true };
 
   // `workdir` est relatif au projet ; le shell démarre dans ce dossier pour cette commande.
   const workdirArg = typeof args.workdir === 'string' && args.workdir.trim() ? args.workdir.trim() : '.';
