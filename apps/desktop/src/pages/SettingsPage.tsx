@@ -386,7 +386,7 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
               </div>
             )}
           </Row>
-          {isMac && sandbox && (
+          {isMac && (
             <Row
               label="Réseau des commandes"
               description="Ouvert par défaut. Coupé : les commandes de l'agent ne joignent que localhost (serveurs de dev), les installations que tu acceptes et les téléchargements de cargo et git ; ANZAR te demande alors avant toute autre connexion."
