@@ -343,14 +343,43 @@ fn handle(mut client: TcpStream) {
 
 fn connect(host: &str, port: u16) -> std::io::Result<TcpStream> {
     let addrs: Vec<_> = (host, port).to_socket_addrs()?.collect();
-    for addr in addrs {
-        if let Ok(stream) = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT) {
-            let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
-            let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
-            return Ok(stream);
+    let stream = connect_any(addrs, CONNECT_TIMEOUT)?;
+    let _ = stream.set_read_timeout(Some(IO_TIMEOUT));
+    let _ = stream.set_write_timeout(Some(IO_TIMEOUT));
+    Ok(stream)
+}
+
+/// Essaie toutes les adresses en parallèle (IPv4 d'abord) et garde la première qui répond.
+/// Avant, elles étaient essayées l'une après l'autre : une adresse IPv6 injoignable sans
+/// réponse (réseau sans IPv6) bloquait chaque connexion 20 s, et les gestionnaires de
+/// paquets aux délais courts (pub de Flutter) échouaient par intermittence.
+fn connect_any(mut addrs: Vec<std::net::SocketAddr>, timeout: Duration) -> std::io::Result<TcpStream> {
+    if addrs.is_empty() {
+        return Err(std::io::Error::new(std::io::ErrorKind::NotFound, "aucune adresse"));
+    }
+    addrs.sort_by_key(|a| a.is_ipv6());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let total = addrs.len();
+    for (i, addr) in addrs.into_iter().enumerate() {
+        let tx = tx.clone();
+        std::thread::spawn(move || {
+            // Petite avance donnée à IPv4 (« Happy Eyeballs ») sans bloquer IPv6.
+            if addr.is_ipv6() && i > 0 {
+                std::thread::sleep(Duration::from_millis(250));
+            }
+            let _ = tx.send(TcpStream::connect_timeout(&addr, timeout));
+        });
+    }
+    drop(tx);
+    let mut last = std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "aucune adresse joignable");
+    for _ in 0..total {
+        match rx.recv() {
+            Ok(Ok(stream)) => return Ok(stream),
+            Ok(Err(e)) => last = e,
+            Err(_) => break,
         }
     }
-    Err(std::io::Error::new(std::io::ErrorKind::ConnectionRefused, "aucune adresse joignable"))
+    Err(last)
 }
 
 /// Copie bidirectionnelle jusqu'à fermeture d'un côté.
@@ -401,6 +430,18 @@ mod tests {
         assert!(host_allowed("app.interne.local"));
         assert!(!host_allowed("exemple.tld"));
         set_extra_hosts(vec![]);
+    }
+
+    #[test]
+    fn connexion_parallele_garde_la_premiere_adresse_joignable() {
+        let ouvert = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let bon = ouvert.local_addr().unwrap();
+        // Port fermé : refus immédiat ; l'adresse joignable doit l'emporter quel que soit l'ordre.
+        let ferme = TcpListener::bind(("127.0.0.1", 0)).unwrap().local_addr().unwrap();
+        let s = connect_any(vec![ferme, bon], Duration::from_secs(2)).expect("connexion");
+        assert_eq!(s.peer_addr().unwrap(), bon);
+        assert!(connect_any(vec![ferme], Duration::from_secs(2)).is_err());
+        assert!(connect_any(vec![], Duration::from_secs(2)).is_err());
     }
 
     #[test]
