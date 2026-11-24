@@ -44,7 +44,7 @@
     "createUpdaterArtifacts": true
   },
   "productName": "ANZAR",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "identifier": "com.anzar.desktop",
   "plugins": {
     "updater": {
