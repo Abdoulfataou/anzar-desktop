@@ -3,3 +3,4 @@
 - Réseau : ANZAR diagnostique seul une connexion qui échoue (flutter pub get, téléchargements…) et relance la commande, sans réglage à toucher.
 - Mac : « python » et « pip » fonctionnent même si seul python3 est installé.
 - Rapports d'erreurs : quand une commande est bloquée, qu'une mise à jour échoue ou que l'app plante, ANZAR envoie un rapport nettoyé pour que le problème soit corrigé vite (désactivable dans Paramètres).
+- Bouton Stop : il arrête vraiment la tâche, y compris la commande en cours (installation, build…), au lieu d'attendre sa fin.
