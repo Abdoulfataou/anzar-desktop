@@ -20,6 +20,9 @@ jobs:
           - platform: windows-latest
             args: ""
     runs-on: ${{ matrix.platform }}
+    env:
+      # « true » seulement si un certificat Apple est fourni dans les secrets du dépôt
+      APPLE_SIGNE: ${{ secrets.APPLE_CERTIFICATE != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -46,7 +49,15 @@ jobs:
           workspaces: |
             apps/desktop/src-tauri -> target
 
-      - name: Build & publish (Tauri)
+      # Deux variantes de construction :
+      # - certificat Apple « Developer ID Application » présent dans les secrets : app signée,
+      #   notariée et vérifiée (Gatekeeper l'ouvre sans avertissement) ;
+      # - sinon (pas de compte développeur Apple payant) : Windows inchangé, et sur Mac une app
+      #   signée « ad hoc », non notariée. Elle fonctionne, mais macOS demande une confirmation
+      #   au premier lancement (expliqué sur getanzar.com/…/telecharger).
+      # Remettre le secret APPLE_CERTIFICATE (et les autres APPLE_*) suffit à repasser en signé.
+      - name: Build & publish (Tauri) — signé Apple
+        if: env.APPLE_SIGNE == 'true' || matrix.platform != 'macos-latest'
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,8 +65,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_KEY_PASSWORD }}
 
-          # Signature + notarisation macOS (Developer ID). Sans ces secrets, le binaire
-          # macOS reste non notarié : Gatekeeper bloque l'app chez l'utilisateur.
+          # Signature + notarisation macOS (Developer ID).
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -75,10 +85,29 @@ jobs:
           releaseDraft: true
           prerelease: false
 
-      # Refuse de publier un binaire macOS non signé/non notarié : c'est exactement
-      # l'erreur qui rend l'app inouvrable chez les utilisateurs.
+      - name: Build & publish (Tauri) — Mac non notarié (sans certificat Apple)
+        if: env.APPLE_SIGNE != 'true' && matrix.platform == 'macos-latest'
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_KEY_PASSWORD }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+        with:
+          projectPath: apps/desktop
+          # Signature « ad hoc » (identité « - ») : obligatoire pour lancer une app sur puce Apple
+          args: --config src-tauri/tauri.adhoc.conf.json ${{ matrix.args }}
+          tagName: v__VERSION__
+          releaseName: "ANZAR v__VERSION__"
+          releaseDraft: true
+          prerelease: false
+
+      # Refuse de publier un binaire macOS non signé/non notarié QUAND un certificat est fourni :
+      # c'est exactement l'erreur qui rend l'app inouvrable chez les utilisateurs.
       - name: Vérifier signature et notarisation (macOS)
-        if: matrix.platform == 'macos-latest'
+        if: matrix.platform == 'macos-latest' && env.APPLE_SIGNE == 'true'
         working-directory: apps/desktop
         run: |
           set -euo pipefail
@@ -90,3 +119,13 @@ jobs:
           xcrun stapler validate "$APP"
           spctl --assess --verbose=2 --type execute "$APP"
 
+      - name: Vérifier la signature ad hoc (macOS sans certificat)
+        if: matrix.platform == 'macos-latest' && env.APPLE_SIGNE != 'true'
+        working-directory: apps/desktop
+        run: |
+          set -euo pipefail
+          APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -n 1)
+          test -n "$APP" || { echo "Aucun .app produit"; exit 1; }
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv "$APP" 2>&1 | grep -q "Signature=adhoc"
+          echo "::warning::Mac non notarié (aucun certificat Developer ID) : macOS demandera une confirmation au premier lancement."
