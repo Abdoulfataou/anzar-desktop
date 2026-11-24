@@ -203,25 +203,28 @@ describe('runAgentEngine — budget', () => {
   });
 });
 
-describe('runAgentEngine — boucles', () => {
-  it('bloque un appel identique qui échoue et arrête si le modèle insiste', async () => {
+describe('runAgentEngine — rappels de boucle', () => {
+  it('exécute un appel identique, injecte un rappel, mais ne coupe pas la session', async () => {
     const messages = [userMessage()];
     const executeTool = vi.fn().mockResolvedValue({ output: 'échec', isError: true });
 
     const result = await runAgentEngine({
       messages,
+      maxSteps: 4,
       // Même outil, mêmes arguments à chaque étape.
       stream: () => stream({ tool_calls: [call('edit_file')] }),
       executeTool,
     });
 
-    expect(result.stopReason).toBe('loop_detected');
-    // Deux exécutions réelles, puis un blocage, puis l'arrêt.
-    expect(executeTool).toHaveBeenCalledTimes(2);
-    expect(result.summary).toContain('Boucle détectée');
+    // L'appel n'est plus bloqué : il est exécuté à chaque étape.
+    expect(executeTool).toHaveBeenCalledTimes(4);
+    expect(result.stopReason).toBe('max_steps');
+    // Au seuil 3, un rappel a été ajouté à l'historique.
+    expect(messages.some((m) => m.role === 'user' && String(m.content).includes('même appel'))).toBe(true);
+    expect(result.summary).not.toContain('Boucle détectée');
   });
 
-  it('arrête après une série d’échecs avec des arguments différents', async () => {
+  it('ne s’arrête plus après une série d’échecs avec des arguments différents', async () => {
     let n = 0;
     const executeTool = vi.fn().mockResolvedValue({ output: 'échec', isError: true });
     const varying = () => ({
@@ -233,16 +236,14 @@ describe('runAgentEngine — boucles', () => {
 
     const result = await runAgentEngine({
       messages: [userMessage()],
-      // Comme le chat : le plafond d'erreurs du moteur est désactivé (le mode Auto escalade),
-      // c'est la détection de boucle qui doit arrêter.
-      maxConsecutiveErrors: 0,
+      maxSteps: 10,
       stream: () => stream({ tool_calls: [varying()] }),
       executeTool,
     });
 
-    expect(result.stopReason).toBe('loop_detected');
-    expect(executeTool).toHaveBeenCalledTimes(8);
-    expect(result.summary).toContain('échecs');
+    expect(result.stopReason).toBe('max_steps');
+    expect(executeTool).toHaveBeenCalledTimes(10);
+    expect(result.summary).not.toContain('échecs');
   });
 
   it('laisse passer une répétition légitime sous le seuil', async () => {

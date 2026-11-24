@@ -156,7 +156,9 @@ export const TASKS: BenchTask[] = [
       { a: 'repeat', times: 6, of: { a: 'write', path: 'src/e.ts', content: 'export const e = 1;\n' } },
       { a: 'done', summary: 'Fini.' },
     ],
-    expect: { stop: 'loop_detected', minCalls: 5, maxCalls: 6 },
+    // Depuis la refonte : les répétitions ne bloquent plus, un rappel est injecté au
+    // 3e appel identique, et la tâche se termine normalement.
+    expect: { stop: 'task_done', minCalls: 6, maxCalls: 8 },
   },
   {
     id: 'budget-epuise',

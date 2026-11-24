@@ -30,82 +30,71 @@ describe('callSignature', () => {
   });
 });
 
-describe('LoopGuard', () => {
-  it('laisse passer les premiers appels identiques puis bloque', () => {
-    const guard = new LoopGuard({ maxIdentical: 3 });
+describe('LoopGuard — rappels, jamais de blocage', () => {
+  it('ne rappelle rien avant le premier seuil', () => {
+    const guard = new LoopGuard();
     const c = call('read_file', { path: 'a.ts' });
-    for (let i = 0; i < 3; i++) {
-      expect(guard.before(c).action).toBe('allow');
-      guard.after(c, {});
-    }
-    const verdict = guard.before(c);
-    expect(verdict.action).toBe('block');
-    if (verdict.action === 'block') {
-      expect(verdict.stop).toBe(false);
-      expect(verdict.message).toContain('mêmes arguments');
-      expect(verdict.message).toContain("Change d'approche");
-    }
+    expect(guard.after(c)).toBeNull();
+    expect(guard.after(c)).toBeNull();
   });
 
-  it('bloque plus tôt un appel qui échoue déjà deux fois', () => {
+  it('rappelle doucement au seuil 3, puis avec les arguments au seuil 5', () => {
+    const guard = new LoopGuard();
+    const c = call('read_file', { path: 'a.ts' });
+    guard.after(c);
+    guard.after(c);
+    const first = guard.after(c);
+    expect(first).toContain('même appel');
+    expect(first).toContain('change d’approche'.replace('’', "'"));
+
+    guard.after(c);
+    const second = guard.after(c);
+    expect(second).toContain('read_file');
+    expect(second).toContain('5');
+    expect(second).toContain('"path":"a.ts"');
+  });
+
+  it('rappelle aussi après des échecs répétés, sans jamais lever', () => {
     const guard = new LoopGuard();
     const c = call('edit_file', { path: 'a.ts', old_text: 'x', new_text: 'y' });
-    for (let i = 0; i < 2; i++) {
-      expect(guard.before(c).action).toBe('allow');
-      guard.after(c, { isError: true });
-    }
-    const verdict = guard.before(c);
-    expect(verdict.action).toBe('block');
+    for (let i = 0; i < 2; i++) expect(guard.after(c, { isError: true })).toBeNull();
+    const reminder = guard.after(c, { isError: true });
+    expect(reminder).not.toBeNull();
+    expect(guard.consecutiveFailures).toBe(3);
   });
 
-  it('arrête la session quand le modèle insiste après un blocage', () => {
+  it('change de chaîne dès que l’appel change', () => {
     const guard = new LoopGuard();
-    const c = call('list_dir', { path: '.' });
-    for (let i = 0; i < 3; i++) { guard.before(c); guard.after(c, {}); }
-    const blocked = guard.before(c);
-    expect(blocked.action).toBe('block');
-    guard.onBlocked(c);
-    const stop = guard.before(c);
-    expect(stop.action).toBe('block');
-    if (stop.action === 'block') expect(stop.stop).toBe(true);
+    const a = call('read_file', { path: 'a.ts' });
+    guard.after(a);
+    guard.after(a);
+    // Un appel différent remet le compteur à un : pas de rappel.
+    expect(guard.after(call('read_file', { path: 'b.ts' }))).toBeNull();
+    expect(guard.after(a)).toBeNull();
   });
 
-  it('arrête après une série d’échecs avec des arguments différents', () => {
-    const guard = new LoopGuard({ maxConsecutiveFailures: 8 });
-    for (let i = 0; i < 7; i++) {
-      const c = call('read_file', { path: `a${i}.ts` });
-      expect(guard.before(c).action).toBe('allow');
-      guard.after(c, { isError: true });
-    }
-    expect(guard.exhausted()).toBe(false);
-    guard.after(call('read_file', { path: 'a7.ts' }), { isError: true });
-    expect(guard.exhausted()).toBe(true);
-    expect(guard.stopMessage()).toContain('8 échecs');
-  });
-
-  it('remet le compteur d’échecs à zéro après un succès', () => {
-    const guard = new LoopGuard({ maxConsecutiveFailures: 3 });
-    guard.after(call('read_file', { path: 'a.ts' }), { isError: true });
-    guard.after(call('read_file', { path: 'b.ts' }), { isError: true });
-    guard.after(call('read_file', { path: 'c.ts' }), {});
-    guard.after(call('read_file', { path: 'd.ts' }), { isError: true });
-    expect(guard.exhausted()).toBe(false);
-  });
-
-  it('ne compte pas un blocage comme un appel exécuté', () => {
+  it('reset() remet la chaîne à zéro après une consigne utilisateur', () => {
     const guard = new LoopGuard();
-    const c = call('run_command', { command: 'npm test' });
-    for (let i = 0; i < 3; i++) { guard.before(c); guard.after(c, { isError: true }); }
-    guard.onBlocked(c);
-    expect(guard.blockedCalls).toBe(1);
-    // Trois échecs comptés + un blocage : la série continue de monter.
-    expect(guard.consecutiveErrors).toBe(4);
+    const c = call('read_file', { path: 'a.ts' });
+    guard.after(c);
+    guard.after(c);
+    guard.reset();
+    expect(guard.after(c)).toBeNull();
   });
 
-  it('laisse passer des appels différents', () => {
-    const guard = new LoopGuard();
-    expect(guard.before(call('read_file', { path: 'a.ts' })).action).toBe('allow');
-    expect(guard.before(call('read_file', { path: 'b.ts' })).action).toBe('allow');
-    expect(guard.before(call('list_dir', { path: '' })).action).toBe('allow');
+  it('borne l’aperçu des arguments sans changer la détection', () => {
+    const guard = new LoopGuard({ thresholds: [2, 3], argumentsPreviewChars: 10 });
+    const c = call('write_file', { path: 'a.ts', content: 'x'.repeat(5_000) });
+    guard.after(c);
+    guard.after(c);
+    const reminder = guard.after(c);
+    expect(reminder).toContain('caractères');
+    expect(reminder!.length).toBeLessThan(1_000);
+  });
+
+  it('refuse une configuration de seuils invalide', () => {
+    expect(() => new LoopGuard({ thresholds: [] })).toThrow();
+    expect(() => new LoopGuard({ thresholds: [1] })).toThrow();
+    expect(() => new LoopGuard({ thresholds: [3, 3] })).toThrow();
   });
 });

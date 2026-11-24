@@ -118,7 +118,7 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     maxSteps = DEFAULT_MAX_STEPS,
     budget,
     loopGuard,
-    maxConsecutiveErrors = 4,
+    maxConsecutiveErrors = 0,
     signal,
     retry,
     verify,
@@ -225,6 +225,7 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
       messages.push({ role: 'assistant', content: text || null });
       if (!nudged && options.shouldNudge?.()) {
         nudged = true;
+        loop.reset();
         messages.push({ role: 'user', content: options.nudgeMessage || DEFAULT_NUDGE });
         continue;
       }
@@ -240,36 +241,29 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     });
 
     let doneSummary: string | null = null;
+    /** Rappels de boucle à ajouter après le lot d'outils (jamais entre deux résultats). */
+    const reminders: string[] = [];
 
     for (const call of toolCalls) {
       if (signal?.aborted) return finish('aborted', 'Session annulée.', step);
       onToolCall?.(call, step);
 
-      // Appel identique déjà vu, ou déjà refusé : on ne l'exécute pas.
-      const verdict = loop.before(call);
       let outcome: AgentToolOutcome;
-      if (verdict.action === 'block') {
-        loop.onBlocked(call);
-        outcome = { output: verdict.message, isError: true };
-        if (verdict.stop) {
-          onToolResult?.(call, outcome, step);
-          messages.push({ role: 'tool', tool_call_id: call.id, content: outcome.output });
-          return finish('loop_detected', verdict.message, step);
-        }
-      } else if (allowedTools && !allowedTools.has(call.function.name)) {
+      if (allowedTools && !allowedTools.has(call.function.name)) {
         outcome = {
           output: `Outil non autorisé pour cette session : ${call.function.name}.`,
           isError: true,
         };
-        loop.after(call, outcome);
       } else {
         try {
           outcome = await options.executeTool(call, step);
         } catch (e) {
           outcome = { output: `Erreur outil : ${errorMessage(e)}`, isError: true };
         }
-        loop.after(call, outcome);
       }
+      // Le compteur ne bloque pas : il renvoie, aux seuils, un rappel ajouté après le lot.
+      const reminder = loop.after(call, outcome);
+      if (reminder) reminders.push(reminder);
       onToolResult?.(call, outcome, step);
 
       messages.push({ role: 'tool', tool_call_id: call.id, content: outcome.output || '(vide)' });
@@ -286,11 +280,19 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
 
       consecutiveErrors = outcome.isError ? consecutiveErrors + 1 : 0;
       if (maxConsecutiveErrors > 0 && consecutiveErrors >= maxConsecutiveErrors) {
-        return finish('error', 'Trop d’erreurs consécutives — session interrompue pour éviter une boucle infinie.', step);
+        return finish(
+          'error',
+          `Trop d'échecs d'outils consécutifs (${consecutiveErrors}). Le travail déjà fait est conservé : `
+            + 'explique ce qui bloque ou change d’approche, puis relance la tâche.',
+          step,
+        );
       }
-      // Filet indépendant de `maxConsecutiveErrors` : le chat le désactive pour laisser
-      // le mode Auto escalader, ce qui ne doit pas ouvrir une boucle sans fin.
-      if (loop.exhausted()) return finish('loop_detected', loop.stopMessage(), step);
+    }
+
+    // Le rappel arrive après tous les résultats du lot : l'historique reste valide pour l'API
+    // (un message utilisateur ne s'intercale pas entre un appel d'outil et sa réponse).
+    if (reminders.length > 0 && doneSummary === null) {
+      messages.push({ role: 'user', content: reminders.join('\n\n') });
     }
 
     onToolBatchEnd?.(step);
@@ -318,6 +320,7 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
         );
       }
 
+      loop.reset();
       messages.push({
         role: 'user',
         content:

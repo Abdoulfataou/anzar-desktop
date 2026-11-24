@@ -355,22 +355,31 @@ describe('AgentRunner — budget du tour', () => {
   });
 });
 
-describe('AgentRunner — boucles', () => {
-  it('rend la boucle visible au modèle et à l’utilisateur, puis fait un bilan sans outil', async () => {
-    vi.mocked(aiService.chatStream).mockImplementation(((_messages: any, opts: any) => (
-      opts?.tools
-        ? stream({ tool_calls: [toolCall('read_file', { path: 'a.ts' })] })
-        : stream({ content: 'Bilan : le fichier ne se lit pas.' })
-    )) as any);
+describe('AgentRunner — rappels de boucle', () => {
+  it('injecte un rappel après trois appels identiques et laisse le modèle conclure', async () => {
+    const seen: any[] = [];
+    let toolSteps = 0;
+    vi.mocked(aiService.chatStream).mockImplementation(((messages: any, opts: any) => {
+      seen.push(messages);
+      if (opts?.tools && toolSteps < 3) {
+        toolSteps++;
+        return stream({ tool_calls: [toolCall('read_file', { path: 'a.ts' })] });
+      }
+      return stream({ content: 'Bilan : le fichier ne se lit pas.' });
+    }) as any);
     vi.mocked(executeToolCall).mockResolvedValue({ output: 'échec', isError: true } as any);
     const runner = makeRunner();
 
     const result = await runner.sendMessage('Lis le fichier');
 
-    expect(result?.stopReason).toBe('loop_detected');
-    expect(result?.content).toContain('Boucle détectée');
+    expect(result?.stopReason).toBe('final_answer');
     expect(result?.content).toContain('Bilan');
-    // Seules deux tentatives réelles ont eu lieu avant le blocage.
-    expect(executeToolCall).toHaveBeenCalledTimes(2);
+    // Les trois appels sont réellement exécutés : plus de blocage.
+    expect(executeToolCall).toHaveBeenCalledTimes(3);
+    // Le 4e appel modèle voit le rappel ajouté après le 3e résultat.
+    const reminderSeen = seen[3].some(
+      (m: any) => m.role === 'user' && String(m.content).includes('même appel'),
+    );
+    expect(reminderSeen).toBe(true);
   });
 });

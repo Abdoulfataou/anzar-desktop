@@ -1,37 +1,29 @@
 /**
- * Détection de boucle : repère les appels d'outils identiques et les séries d'échecs.
+ * Rappel de boucle : repère les appels d'outils identiques répétés et **informe** le
+ * modèle, sans jamais bloquer l'appel ni arrêter la session.
  *
- * Deux pathologies coûtent cher dans un agent :
- * - le même appel rejoué à l'identique (même outil, mêmes arguments) alors qu'il a déjà
- *   échoué — le modèle s'entête au lieu de changer d'approche ;
- * - une série d'échecs avec des arguments différents (offsets, chemins voisins) — la
- *   signature ne suffit pas, il faut un compteur d'échecs consécutifs.
+ * Un agent légitime répète parfois exactement le même appel : relancer le même test après
+ * avoir corrigé un fichier, relire la même page après une modification, vérifier deux fois
+ * un build. Ces répétitions ne sont pas des boucles. Le rôle de ce module est de rappeler
+ * au modèle, à quelques seuils, de relire le dernier résultat et de changer d'approche
+ * s'il n'avance plus — la décision reste la sienne, et le budget du tour reste le seul
+ * plafond.
  *
- * Le garde **bloque** l'appel (résultat d'erreur expliqué au modèle) avant de l'exécuter,
- * puis **arrête la session** si le modèle insiste. Module pur : ni React, ni Tauri, ni horloge.
+ * Adapté du paquet `repeat-tool-reminder` de DeepSeek Harness (MIT) :
+ * https://github.com/deepseek-ai/deepseek-harness — voir THIRD_PARTY_NOTICES.
  */
 import type { ToolCall } from '@/types';
 
-export type LoopVerdict =
-  | { action: 'allow' }
-  | { action: 'block'; message: string; stop: boolean };
-
 export interface LoopGuardOptions {
-  /** Appels identiques déjà vus avant de bloquer (défaut : 3). */
-  maxIdentical?: number;
-  /** Échecs identiques déjà vus avant de bloquer (défaut : 2). */
-  maxIdenticalFailures?: number;
-  /** Blocages d'un même appel avant l'arrêt sec (défaut : 1). */
-  maxBlocks?: number;
-  /** Échecs consécutifs, toutes signatures confondues, avant l'arrêt (défaut : 8). */
-  maxConsecutiveFailures?: number;
+  /** Seuils de répétitions consécutives qui déclenchent un rappel (défaut : 3, 5, 8). */
+  thresholds?: number[];
+  /** Longueur maximale des arguments cités dans le rappel (défaut : 500). */
+  argumentsPreviewChars?: number;
 }
 
 export const DEFAULT_LOOP_GUARD: Required<LoopGuardOptions> = {
-  maxIdentical: 3,
-  maxIdenticalFailures: 2,
-  maxBlocks: 1,
-  maxConsecutiveFailures: 8,
+  thresholds: [3, 5, 8],
+  argumentsPreviewChars: 500,
 };
 
 /** Sérialisation stable : l'ordre des clés ne doit pas changer la signature. */
@@ -71,79 +63,80 @@ export function callSignature(call: ToolCall): { key: string; preview: string } 
   };
 }
 
+/** Texte du premier rappel : doux, il demande de relire avant de répéter. */
+const GENTLE_REMINDER =
+  "Tu répètes exactement le même appel d'outil avec les mêmes arguments. "
+  + "Lis le dernier résultat avant de recommencer : si la tâche n'est pas finie, "
+  + "change d'approche ou d'arguments au lieu de répéter l'appel.";
+
+/** Texte des rappels suivants : nomme l'outil, le nombre d'appels et les arguments. */
+function detailedReminder(toolName: string, count: number, argumentsPreview: string): string {
+  return 'Appel répété détecté :\n'
+    + `- outil : ${toolName}\n`
+    + `- appels consécutifs identiques : ${count}\n`
+    + `- arguments : ${argumentsPreview}\n`
+    + "Ces répétitions ne font pas avancer la tâche. Ne rappelle pas cet outil avec ces "
+    + "arguments exacts : inspecte le dernier résultat, change d'action ou d'arguments, "
+    + "ou termine si tu en sais assez.";
+}
+
+function validateThresholds(values: number[]): number[] {
+  if (values.length === 0) throw new Error('loopGuard: `thresholds` ne peut pas être vide');
+  for (const value of values) {
+    if (!Number.isInteger(value) || value < 2) {
+      throw new Error(`loopGuard: seuil invalide ${value} — chaque seuil doit être un entier >= 2`);
+    }
+  }
+  if (new Set(values).size !== values.length) {
+    throw new Error('loopGuard: `thresholds` ne peut pas contenir de doublons');
+  }
+  return [...values].sort((a, b) => a - b);
+}
+
+/** Aperçu borné des arguments complets : le compteur, lui, compare toujours la chaîne entière. */
+function previewArguments(canonical: string, cap: number): string {
+  if (canonical.length <= cap) return canonical;
+  return `${canonical.slice(0, cap)}… (+${canonical.length - cap} caractères)`;
+}
+
+/**
+ * Compteur de répétitions par agent. Il n'a plus de décision `allow`/`block` : il ne peut
+ * pas empêcher un appel. `after` renvoie un rappel aux seuils configurés, sinon `null`.
+ */
 export class LoopGuard {
   readonly options: Required<LoopGuardOptions>;
-  private readonly totals = new Map<string, number>();
-  private readonly failures = new Map<string, number>();
-  private readonly blocks = new Map<string, number>();
-  private consecutiveFailures = 0;
-  private blocked = 0;
+  private chain: { key: string; count: number } | null = null;
+  private consecutiveErrors = 0;
 
   constructor(options: LoopGuardOptions = {}) {
-    this.options = { ...DEFAULT_LOOP_GUARD, ...options };
+    this.options = {
+      thresholds: validateThresholds(options.thresholds ?? DEFAULT_LOOP_GUARD.thresholds),
+      argumentsPreviewChars: options.argumentsPreviewChars ?? DEFAULT_LOOP_GUARD.argumentsPreviewChars,
+    };
   }
 
-  /** Décision avant exécution. `stop` = le modèle insiste après un blocage. */
-  before(call: ToolCall): LoopVerdict {
-    const { key, preview } = callSignature(call);
-    const blocks = this.blocks.get(key) ?? 0;
-    if (blocks >= this.options.maxBlocks) {
-      return {
-        action: 'block',
-        stop: true,
-        message:
-          `Boucle détectée : ${preview} a déjà été refusé ${blocks} fois et tu insistes avec les mêmes arguments. ` +
-          `La session s'arrête pour ne pas consommer le budget inutilement. Explique ce qui te bloque.`,
-      };
-    }
-    const total = this.totals.get(key) ?? 0;
-    const fails = this.failures.get(key) ?? 0;
-    if (fails >= this.options.maxIdenticalFailures || total >= this.options.maxIdentical) {
-      const why = fails > 0 ? `a échoué ${fails} fois` : `a déjà été appelé ${total} fois`;
-      return {
-        action: 'block',
-        stop: false,
-        message:
-          `Appel bloqué : ${preview} ${why} avec exactement les mêmes arguments. ` +
-          `Ne le répète pas. Change d'approche : autre portion du fichier (offset/limit), search_files, ` +
-          `lecture du fichier pour vérifier son contenu réel, ou explique le blocage dans task_done.`,
-      };
-    }
-    return { action: 'allow' };
-  }
-
-  /** À appeler après exécution d'un appel autorisé. */
-  after(call: ToolCall, outcome: { isError?: boolean }): void {
+  /**
+   * À appeler après l'exécution d'un appel (réussi ou non). Ne lève jamais et ne bloque
+   * jamais : renvoie le rappel à ajouter à l'historique, ou `null`.
+   */
+  after(call: ToolCall, outcome: { isError?: boolean } = {}): string | null {
     const { key } = callSignature(call);
-    this.totals.set(key, (this.totals.get(key) ?? 0) + 1);
-    if (outcome.isError) {
-      this.failures.set(key, (this.failures.get(key) ?? 0) + 1);
-      this.consecutiveFailures += 1;
-    } else {
-      this.consecutiveFailures = 0;
-    }
+    const count = this.chain?.key === key ? this.chain.count + 1 : 1;
+    this.chain = { key, count };
+    this.consecutiveErrors = outcome.isError ? this.consecutiveErrors + 1 : 0;
+    if (!this.options.thresholds.includes(count)) return null;
+    let args: unknown = call.function.arguments;
+    try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* signature brute */ }
+    if (count === this.options.thresholds[0]) return GENTLE_REMINDER;
+    return detailedReminder(call.function.name, count, previewArguments(stable(args), this.options.argumentsPreviewChars));
   }
 
-  /** À appeler quand un appel a été bloqué sans être exécuté. */
-  onBlocked(call: ToolCall): void {
-    const { key } = callSignature(call);
-    this.blocks.set(key, (this.blocks.get(key) ?? 0) + 1);
-    this.blocked += 1;
-    this.consecutiveFailures += 1;
+  /** Un nouveau message utilisateur ou une nouvelle consigne remet la chaîne à zéro. */
+  reset(): void {
+    this.chain = null;
+    this.consecutiveErrors = 0;
   }
 
-  /** Trop d'échecs consécutifs (toutes signatures) : la session doit s'arrêter. */
-  exhausted(): boolean {
-    return this.options.maxConsecutiveFailures > 0
-      && this.consecutiveFailures >= this.options.maxConsecutiveFailures;
-  }
-
-  get consecutiveErrors(): number { return this.consecutiveFailures; }
-  get blockedCalls(): number { return this.blocked; }
-
-  /** Message d'arrêt pour échecs consécutifs. */
-  stopMessage(): string {
-    return `Boucle détectée : ${this.consecutiveFailures} échecs d'outils consécutifs. ` +
-      `La session s'arrête pour ne pas consommer le budget inutilement. Explique ce qui te bloque.`;
-  }
+  /** Nombre d'échecs consécutifs, pour les diagnostics et les tests. */
+  get consecutiveFailures(): number { return this.consecutiveErrors; }
 }

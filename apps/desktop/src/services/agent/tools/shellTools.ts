@@ -35,7 +35,11 @@ export function precheckCommand(command: string): string | null {
 
 export async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const refused = precheckCommand(args.command);
-  if (refused) return { output: refused, isError: true };
+  if (refused) {
+    // Refus : la commande n'a pas tourné. Le texte doit dire quoi faire à la place,
+    // sinon le modèle réessaie une variante au lieu de changer d'approche.
+    return { output: `La commande n'a pas été exécutée.\n${refused}`, isError: true };
+  }
   const cwd = await resolvePath(ctx.projectRoot, args.cwd);
   const result = await terminalService.exec(args.command, {
     cwd,
@@ -44,13 +48,24 @@ export async function execRunCommand(args: any, ctx: ToolExecutionContext): Prom
     signal: ctx.signal,
   });
 
+  // Refus de politique, outil introuvable, isolation ou lancement impossible : l'action
+  // n'a pas eu lieu. C'est une erreur d'outil, pas un échec de la commande.
+  if (result.ran === false) {
+    return {
+      output: `La commande n'a pas été exécutée (refus ou lancement impossible).\n${result.stderr || '(sans détail)'}`,
+      isError: true,
+    };
+  }
+
   const parts = [
     `exit_code: ${result.exitCode} (${result.durationMs}ms)`,
     result.stdout ? `stdout:\n${truncate(result.stdout, MAX_COMMAND_OUTPUT_CHARS, 'stdout')}` : '',
-    result.stderr ? `stderr:\n${truncate(result.stderr, MAX_COMMAND_OUTPUT_CHARS, 'stderr')}` : '',
+    result.stderr ? `[stderr]\n${truncate(result.stderr, MAX_COMMAND_OUTPUT_CHARS, 'stderr')}` : '',
   ].filter(Boolean);
 
-  return { output: parts.join('\n\n'), isError: !result.success };
+  // Un code non nul est un fait à lire, pas une panne d'outil : le modèle décide s'il
+  // corrige, relance ou explique. Seul un refus de l'isolation reste une erreur d'action.
+  return { output: parts.join('\n\n'), isError: result.denied === true };
 }
 
 export async function execInstallTool(args: Record<string, any>): Promise<ToolResult> {

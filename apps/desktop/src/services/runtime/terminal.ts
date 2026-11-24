@@ -41,6 +41,18 @@ export const NETWORK_UNREACHABLE_TAG = '[ANZAR] Réseau injoignable';
 export const NETWORK_BYPASS_TAG = '[ANZAR] Relais réseau ignoré';
 
 const SANDBOX_DENIED = /operation not permitted|EPERM|sandbox.*deny|deny.*file-write/i;
+
+/** Marqueurs ajoutés par `withSandboxHint` : le résultat n'est plus une simple sortie. */
+export const SANDBOX_HINT_MARKERS = [
+  '[ANZAR] Bloqué par l\'isolation des commandes',
+  '[ANZAR] Réseau coupé',
+  '[ANZAR] Les hooks et la configuration Git du projet sont protégés',
+];
+
+/** L'échec vient-il d'un refus de l'isolation (et non du code du projet) ? */
+export function isSandboxDenial(stderr: string): boolean {
+  return SANDBOX_HINT_MARKERS.some((marker) => stderr.includes(marker));
+}
 const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not resolve host|Network is unreachable|Temporary failure in name resolution|NewConnectionError|fetch failed|ECONNRESET.*registry|socket error|SocketException|Failed host lookup|UnknownHostException|Could not GET|Connection failed \(OS Error: Operation not permitted/i;
 
 /** Ajoute une explication quand l'isolation a bloqué une écriture ou une connexion. */
@@ -87,6 +99,15 @@ export interface CommandResult {
   stdout: string;
   stderr: string;
   durationMs: number;
+  /**
+   * La commande a-t-elle réellement été lancée ? `false` = refus de politique, outil
+   * introuvable, dossier invalide, lancement impossible. Un code de sortie non nul avec
+   * `ran: true` signifie que la commande a tourné et a échoué : ce n'est pas une panne
+   * de l'outil, et l'agent doit lire sa sortie au lieu de réessayer à l'aveugle.
+   */
+  ran?: boolean;
+  /** L'isolation a bloqué une écriture, une lecture ou une connexion : l'action a échoué. */
+  denied?: boolean;
 }
 
 export interface DependencyInfo {
@@ -464,7 +485,7 @@ class TerminalService {
       return { success: false, exitCode: 1, stdout: '', stderr: 'Commande non autorisée', durationMs: 0 };
     }
     if (!options.cwd) {
-      return { success: false, exitCode: 1, stdout: '', stderr: 'Dossier de travail manquant', durationMs: 0 };
+      return { success: false, exitCode: 1, stdout: '', stderr: 'Dossier de travail manquant', durationMs: 0, ran: false };
     }
     const id = `exec-${++this.processCounter}-${Date.now()}`;
     const base = parsed.cmdName.replace(/-\d+$/, '');
@@ -476,9 +497,10 @@ class TerminalService {
         stdout: r.stdout.trim(),
         stderr: r.stderr.trim(),
         durationMs: r.durationMs,
+        ran: true,
       };
     } catch (error: any) {
-      return { success: false, exitCode: 1, stdout: '', stderr: error?.message || String(error), durationMs: 0 };
+      return { success: false, exitCode: 1, stdout: '', stderr: error?.message || String(error), durationMs: 0, ran: false };
     }
   }
 
@@ -491,29 +513,32 @@ class TerminalService {
   ): Promise<CommandResult> {
     const startTime = Date.now();
     const missing = await programGate(command.trim().split(/\s+/)[0] || '');
-    if (missing) return { success: false, exitCode: 1, stdout: '', stderr: missing, durationMs: 0 };
+    if (missing) return { success: false, exitCode: 1, stdout: '', stderr: missing, durationMs: 0, ran: false };
 
     const validation = validateCommand(command);
     if (!validation.safe) {
-      return { success: false, exitCode: 1, stdout: '', stderr: `⛔ ${validation.reason}`, durationMs: 0 };
+      return { success: false, exitCode: 1, stdout: '', stderr: `⛔ ${validation.reason}`, durationMs: 0, ran: false };
     }
     const parsed = parseExecutable(command);
     if (!parsed) {
-      return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Commande non autorisée (exécutable non allowlisté)', durationMs: 0 };
+      return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Commande non autorisée (exécutable non allowlisté)', durationMs: 0, ran: false };
     }
     if (!options.cwd) {
-      return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Dossier de travail manquant', durationMs: 0 };
+      return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Dossier de travail manquant', durationMs: 0, ran: false };
     }
     const id = `exec-${++this.processCounter}-${Date.now()}`;
     const base = parsed.cmdName.replace(/-\d+$/, '');
     try {
       const r = await this.runTool(id, base, parsed.args, options.cwd, options.timeout, options.signal);
+      const stderr = r.stderr.trim();
       return {
         success: r.code === 0,
         exitCode: r.code,
         stdout: r.stdout.trim(),
-        stderr: r.stderr.trim(),
+        stderr,
         durationMs: Date.now() - startTime,
+        ran: true,
+        denied: isSandboxDenial(stderr) || undefined,
       };
     } catch (error: any) {
       return {
@@ -522,6 +547,7 @@ class TerminalService {
         stdout: '',
         stderr: explainSpawnError(error, command),
         durationMs: Date.now() - startTime,
+        ran: false,
       };
     }
   }

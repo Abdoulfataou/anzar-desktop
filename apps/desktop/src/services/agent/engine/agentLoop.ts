@@ -96,7 +96,9 @@ export interface AgentSessionResult {
 // LIMITES
 // ============================================================================
 
-const MAX_CONSECUTIVE_ERRORS = 4;
+// Plus de plafond d'échecs dans la boucle : le budget d'étapes et le rappel de boucle
+// suffisent. Un test qui échoue plusieurs fois pendant une correction est normal.
+const MAX_CONSECUTIVE_ERRORS = 0;
 
 // ============================================================================
 // CHECKPOINT GIT
