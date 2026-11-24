@@ -204,6 +204,9 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   persistant), mais **ne relâche ni les secrets, ni les hooks/config Git, ni le filtre
   réseau** : le profil Seatbelt d'élévation garde ces règles, et Rust refuse toujours
   `git push`, `git config`, `git reset --hard`, `git clean -f` et `sudo`.
+  Comme le drapeau `approved`, `escalated` vient de la webview : la carte est la
+  barrière d'interface, pas une signature cryptographique. Un renderer compromis
+  pourrait le forger ; l'isolation reste la défense en profondeur.
 - Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
   commandes `run_command` s'exécutent comme avant ; le shell `bash` reste refusé.
 - Réglage « Réseau des commandes » (ouvert par défaut). La protection contre l'envoi de
