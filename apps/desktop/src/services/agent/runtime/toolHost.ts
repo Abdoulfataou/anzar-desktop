@@ -13,7 +13,7 @@ import type { Message, TimelineItem, ToolCall, ToolEvent } from '@/types';
 import type { PermissionMode } from '../policy/permissions';
 import type { AgentToolOutcome } from '../engine/agentSession';
 import { approvalDecision } from '../policy/toolPolicy';
-import { commandRisk, noteAgentWrite } from '../policy/commandGuard';
+import { agentScriptSecretRisk, commandRisk, noteAgentWrite } from '../policy/commandGuard';
 import { precheckCommand } from '../tools/shellTools';
 import { shellRefusal } from '../tools/bashTool';
 import { externalReason, type ExternalSource } from '../policy/untrusted';
@@ -165,6 +165,19 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
       : shellRefusal(String(args.command || ''));
     if (refused) {
       const output = `La commande n'a pas été exécutée.\n${refused}`;
+      ev.status = 'error';
+      ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+      ctx.flush();
+      return { output, isError: true };
+    }
+  }
+
+  // Un script écrit pendant cette tâche ne doit pas lire .env ni les clés, même si
+  // l'isolation système l'autorise (le shell ne voit que le nom du script).
+  if ((call.function.name === 'bash' || call.function.name === 'run_command') && ctx.agentRoot) {
+    const secretScript = await agentScriptSecretRisk(ctx.convId, ctx.agentRoot, String(args.command || '')).catch(() => null);
+    if (secretScript) {
+      const output = `La commande n'a pas été exécutée : ${secretScript.reason}.\n${secretScript.detail || ''}`.trim();
       ev.status = 'error';
       ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
       ctx.flush();

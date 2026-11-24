@@ -90,7 +90,8 @@ date,version,agent,tache,passage,reussi,qualite,appels_outils,etapes_modele,toke
 ## 4. Les dix tâches
 
 Chaque fiche donne : la demande exacte, le point de départ, le critère objectif, ce qu'on
-observe particulièrement, et les pièges connus.
+observe particulièrement, et les pièges connus. Les points de départ T3, T5 et T10 sont
+fournis dans [`bench/fixtures/`](../../bench/fixtures/README.md) avec leur `verifier.sh`.
 
 ### T1 — Créer un projet Flutter avec dépôt git et premier commit
 

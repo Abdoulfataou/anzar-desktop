@@ -302,26 +302,104 @@ export function parseStructuredOutput(text: string, schema: unknown): { value?: 
   return error ? { error } : { value };
 }
 
+function typeOf(value: unknown): string {
+  if (value === null) return 'null';
+  if (Array.isArray(value)) return 'array';
+  if (typeof value === 'number') return Number.isInteger(value) ? 'integer' : 'number';
+  return typeof value;
+}
+
+function typeMatches(value: unknown, type: string): boolean {
+  const actual = typeOf(value);
+  if (type === 'number') return actual === 'number' || actual === 'integer';
+  if (type === 'integer') return actual === 'integer';
+  return actual === type;
+}
+
+function sameJson(a: unknown, b: unknown): boolean {
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch { return false; }
+}
+
+/** Validation d'un sous-ensemble de JSON Schema : types, enum, const, oneOf/anyOf/allOf, tableaux. */
 function validateSchema(value: unknown, schema: any, path = 'root'): string | null {
+  if (schema === true || schema === undefined) return null;
+  if (schema === false) return `${path}: valeur interdite par le schéma`;
   if (!schema || typeof schema !== 'object') return null;
-  const type = schema.type;
-  const actual = Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
-  if (type === 'object' && actual !== 'object') return `${path}: objet attendu, reçu ${actual}`;
-  if (type === 'array' && !Array.isArray(value)) return `${path}: tableau attendu, reçu ${actual}`;
-  if (type === 'string' && actual !== 'string') return `${path}: chaîne attendue, reçu ${actual}`;
-  if (type === 'number' && actual !== 'number') return `${path}: nombre attendu, reçu ${actual}`;
-  if (type === 'boolean' && actual !== 'boolean') return `${path}: booléen attendu, reçu ${actual}`;
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
-  const obj = value as Record<string, unknown>;
-  for (const key of Array.isArray(schema.required) ? schema.required : []) {
-    if (!(key in obj)) return `${path}: champ requis manquant « ${key} »`;
+
+  if (Array.isArray(schema.enum) && !schema.enum.some((candidate: unknown) => sameJson(candidate, value))) {
+    return `${path}: valeur hors de l'énumération ${JSON.stringify(schema.enum)}`;
   }
-  if (schema.properties && typeof schema.properties === 'object') {
-    for (const [key, child] of Object.entries(schema.properties)) {
-      if (key in obj) {
-        const err = validateSchema(obj[key], child, `${path}.${key}`);
+  if ('const' in schema && !sameJson(schema.const, value)) {
+    return `${path}: valeur différente de const ${JSON.stringify(schema.const)}`;
+  }
+  if (schema.nullable === true && value === null) return null;
+
+  if (Array.isArray(schema.allOf)) {
+    for (const child of schema.allOf) {
+      const err = validateSchema(value, child, path);
+      if (err) return err;
+    }
+  }
+  if (Array.isArray(schema.anyOf)) {
+    if (!schema.anyOf.some((child: unknown) => validateSchema(value, child, path) === null)) {
+      return `${path}: ne correspond à aucune branche anyOf`;
+    }
+  }
+  if (Array.isArray(schema.oneOf)) {
+    const matches = schema.oneOf.filter((child: unknown) => validateSchema(value, child, path) === null).length;
+    if (matches !== 1) return `${path}: doit correspondre à exactement une branche oneOf (reçu ${matches})`;
+  }
+
+  const declaredTypes: string[] = Array.isArray(schema.type)
+    ? schema.type
+    : schema.type ? [schema.type] : [];
+  if (declaredTypes.length > 0 && !declaredTypes.some((type) => typeMatches(value, type))) {
+    return `${path}: type attendu ${declaredTypes.join('|')}, reçu ${typeOf(value)}`;
+  }
+
+  if (typeof value === 'string') {
+    if (typeof schema.minLength === 'number' && value.length < schema.minLength) return `${path}: chaîne trop courte`;
+    if (typeof schema.maxLength === 'number' && value.length > schema.maxLength) return `${path}: chaîne trop longue`;
+    if (typeof schema.pattern === 'string') {
+      try { if (!new RegExp(schema.pattern).test(value)) return `${path}: ne correspond pas au motif`; } catch { /* motif invalide ignoré */ }
+    }
+  }
+  if (typeof value === 'number') {
+    if (typeof schema.minimum === 'number' && value < schema.minimum) return `${path}: inférieur à minimum`;
+    if (typeof schema.maximum === 'number' && value > schema.maximum) return `${path}: supérieur à maximum`;
+  }
+  if (Array.isArray(value)) {
+    if (typeof schema.minItems === 'number' && value.length < schema.minItems) return `${path}: trop peu d'éléments`;
+    if (typeof schema.maxItems === 'number' && value.length > schema.maxItems) return `${path}: trop d'éléments`;
+    if (schema.items && !Array.isArray(schema.items)) {
+      for (let i = 0; i < value.length; i++) {
+        const err = validateSchema(value[i], schema.items, `${path}[${i}]`);
         if (err) return err;
       }
+    } else if (Array.isArray(schema.items)) {
+      for (let i = 0; i < Math.min(value.length, schema.items.length); i++) {
+        const err = validateSchema(value[i], schema.items[i], `${path}[${i}]`);
+        if (err) return err;
+      }
+    }
+  }
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+    const obj = value as Record<string, unknown>;
+    for (const key of Array.isArray(schema.required) ? schema.required : []) {
+      if (!(key in obj)) return `${path}: champ requis manquant « ${key} »`;
+    }
+    if (schema.properties && typeof schema.properties === 'object') {
+      for (const [key, child] of Object.entries(schema.properties)) {
+        if (key in obj) {
+          const err = validateSchema(obj[key], child, `${path}.${key}`);
+          if (err) return err;
+        }
+      }
+    }
+    if (schema.additionalProperties === false && schema.properties && typeof schema.properties === 'object') {
+      const allowed = new Set(Object.keys(schema.properties));
+      const extra = Object.keys(obj).find((key) => !allowed.has(key));
+      if (extra) return `${path}: champ non autorisé « ${extra} »`;
     }
   }
   return null;

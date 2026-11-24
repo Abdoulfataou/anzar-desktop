@@ -31,6 +31,7 @@ vi.mock('@/services/agent/context/agentContext', () => ({
 vi.mock('@/services/agent/policy/commandGuard', () => ({
   commandRisk: vi.fn().mockResolvedValue(null),
   noteAgentWrite: vi.fn(),
+  agentScriptSecretRisk: vi.fn().mockResolvedValue(null),
 }));
 vi.mock('@/services/workspace/personalInstructions', () => ({
   loadPersonalInstructions: vi.fn().mockResolvedValue(''),

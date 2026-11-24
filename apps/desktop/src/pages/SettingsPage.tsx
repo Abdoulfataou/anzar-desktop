@@ -399,6 +399,14 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
           )}
         </>
       )}
+      {!isMac && (
+        <Row
+          label="Isolation des écritures"
+          description="Hors macOS, ANZAR ne peut pas confiner les écritures des commandes au dossier du projet. L'agent est prévenu et doit rester dans le projet, mais le système ne l'en empêche pas : travaille sur un projet sauvegardé."
+        >
+          <span className="text-ui-sm text-accent-warning">Non garantie</span>
+        </Row>
+      )}
       <Row label="Permissions" description="Un seul réglage : ce que l'agent peut faire sans te demander, et si le système confine ses commandes. Modifiable aussi depuis la saisie.">
         <select
           value={permissionChoice}

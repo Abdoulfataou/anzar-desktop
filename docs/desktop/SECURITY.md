@@ -224,11 +224,12 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
 - Limite connue : le réglage est transmis par la webview ; l'isolation est une défense en
   profondeur, en plus de la politique de commandes et des accords.
 - Limite connue (`.env` et clés du projet) : les outils fichiers les refusent (capacités Tauri),
-  et le shell refuse les mentions évidentes (`cat .env`, `~/.ssh/id_rsa`). Mais un programme
-  lancé par l'agent peut ouvrir un `.env` du projet par lui-même : un build ou un serveur de
-  développement en a souvent besoin. L'invariant est donc garanti pour les outils de l'agent,
-  pas pour tout code exécuté ; le prompt demande explicitement de ne pas lire ni transmettre
-  ces fichiers.
+  le shell refuse les mentions évidentes (`cat .env`, `~/.ssh/id_rsa`), et un script **écrit
+  pendant la tâche** qui lit un secret est refusé avant exécution (`agentScriptSecretRisk`).
+  Un script **déjà présent** dans le projet peut encore lire un `.env` : un build ou un serveur
+  de développement en a souvent besoin. L'invariant est donc garanti pour les outils de
+  l'agent et les scripts qu'il écrit, pas pour tout code existant ; le prompt demande
+  explicitement de ne pas lire ni transmettre ces fichiers.
 - Limite Seatbelt connue (ports des applications) : quand le réseau passe par le proxy,
   Seatbelt doit autoriser `localhost:*` pour que le proxy et les serveurs de développement
   restent joignables. Or une règle `deny` sur un port placé après cette autorisation coupe

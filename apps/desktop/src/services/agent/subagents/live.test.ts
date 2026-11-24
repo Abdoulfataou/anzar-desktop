@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
 import {
-  clearLiveAgents, listLiveAgents, resetLiveRegistryForTests, resolveLiveAgent,
+  clearLiveAgents, listLiveAgents, parseStructuredOutput, resetLiveRegistryForTests, resolveLiveAgent,
   sendToLiveAgent, spawnLiveAgent, stopLiveAgent, takeLiveNotifications, waitForLiveAgent,
 } from './live';
 
@@ -133,6 +133,32 @@ describe('sous-agents vivants', () => {
     const stopped = stopLiveAgent('conv-notif', spawned.agent!.name);
     expect(stopped).toBe(true);
     expect(resolveLiveAgent('conv-notif', spawned.agent!.name)?.status).toBe('stopped');
+  });
+
+  it('valide enum, oneOf et tableaux imbriqués', () => {
+    const schema = {
+      type: 'object',
+      required: ['statut', 'items'],
+      additionalProperties: false,
+      properties: {
+        statut: { enum: ['ok', 'ko'] },
+        score: { oneOf: [{ type: 'number', minimum: 0 }, { type: 'string', pattern: '^N/A$' }] },
+        items: {
+          type: 'array',
+          minItems: 1,
+          items: {
+            type: 'object',
+            required: ['nom'],
+            properties: { nom: { type: 'string', minLength: 2 }, qte: { type: 'integer', minimum: 1 } },
+          },
+        },
+      },
+    };
+    expect(parseStructuredOutput('```json\n{"statut":"ok","score":3,"items":[{"nom":"ab","qte":2}]}\n```', schema).error).toBeUndefined();
+    expect(parseStructuredOutput('```json\n{"statut":"peut-être","items":[]}\n```', schema).error).toContain('énumération');
+    expect(parseStructuredOutput('```json\n{"statut":"ok","score":-1,"items":[{"nom":"ab"}]}\n```', schema).error).toContain('oneOf');
+    expect(parseStructuredOutput('```json\n{"statut":"ok","score":"N/A","items":[]}\n```', schema).error).toContain('trop peu');
+    expect(parseStructuredOutput('```json\n{"statut":"ok","score":"N/A","items":[{"nom":"a"}]}\n```', schema).error).toContain('trop courte');
   });
 
   it('refuse la récursion et les noms invalides', () => {

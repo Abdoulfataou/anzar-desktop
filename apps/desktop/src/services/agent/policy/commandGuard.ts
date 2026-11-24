@@ -83,6 +83,55 @@ export async function noteAgentWrite(taskId: string, root: string, relPath: stri
   }
 }
 
+/** Motifs de secrets qu'un script ne doit pas lire, même s'il a été écrit par l'agent. */
+const SECRET_CONTENT: { re: RegExp; label: string }[] = [
+  { re: /(^|[\s'"`/])\.env(\.[a-z]+)?(["'\s]|$)/i, label: 'fichier .env' },
+  { re: /(\.ssh\/|\.aws\/|\.gnupg\/|\.kube\/|\.netrc|\.git-credentials)/i, label: 'dossier de secrets' },
+  { re: /\b(id_rsa|id_ed25519|vault-key\.dat)\b/i, label: 'clé privée' },
+  { re: /\.(pem|key|p12|pfx|ppk)\b/i, label: 'fichier de clé' },
+  { re: /\bmcp\.json\b/i, label: 'configuration de connecteurs' },
+];
+
+/** Le contenu d'un script mentionne-t-il un secret que l'agent ne doit pas lire ? */
+export function scriptMentionsSecret(body: string): string | null {
+  for (const pattern of SECRET_CONTENT) {
+    if (pattern.re.test(body)) return pattern.label;
+  }
+  return null;
+}
+
+/**
+ * Refuse une commande qui exécute un script écrit pendant cette tâche et dont le contenu
+ * lit un secret. Le shell bloque déjà les mentions évidentes ; ce garde couvre le script
+ * qui ouvre `.env` ou `~/.ssh` par lui-même.
+ */
+export async function agentScriptSecretRisk(
+  taskId: string,
+  root: string,
+  command: string,
+): Promise<{ reason: string; detail?: string } | null> {
+  const files = written.get(taskId);
+  if (!files || files.size === 0) return null;
+  const tokens = String(command || '').split(/\s+/).map((t) => t.replace(/^['"]|['"]$/g, ''));
+  for (const token of tokens) {
+    if (!token || token.startsWith('-')) continue;
+    const key = keyRel(token);
+    if (!key || !files.has(key)) continue;
+    // Seuls les scripts exécutables : un README écrit qui parle de .env ne doit pas bloquer.
+    if (!/\.(m?[jt]sx?|cjs|py|sh|bash|zsh|rb|pl|php|ps1|bat|cmd)$/i.test(token)) continue;
+    const content = await fileSystemService.readFile(join(root, token)).catch(() => null);
+    if (!content) continue;
+    const label = scriptMentionsSecret(content);
+    if (label) {
+      return {
+        reason: `le script « ${token} », écrit pendant cette tâche, lit un secret (${label})`,
+        detail: `Script concerné : ${token}. Ne lis pas ce secret : demande à l'utilisateur les variables nécessaires.`,
+      };
+    }
+  }
+  return null;
+}
+
 export function forgetTask(taskId: string) {
   written.delete(taskId);
   originalScripts.delete(taskId);

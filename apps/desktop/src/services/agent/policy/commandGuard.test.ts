@@ -5,7 +5,8 @@ vi.mock('@/services/filesystem/fileSystem', () => ({
   fileSystemService: { readFile: vi.fn().mockRejectedValue(new Error('absent')) },
 }));
 
-import { commandRisk, noteAgentWrite } from './commandGuard';
+import { agentScriptSecretRisk, commandRisk, noteAgentWrite, scriptMentionsSecret } from './commandGuard';
+import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { AGENT_TOOLS, isProtectedWritePath, precheckCommand } from '../tools';
 
 describe('command policy P0', () => {
@@ -57,6 +58,17 @@ describe('command policy P0', () => {
   it('rapproche python -m du module écrit', async () => {
     await noteAgentWrite('py1', '/p', 'evil.py');
     await expect(commandRisk('py1', '/p', 'python -m evil')).resolves.toMatchObject({ reason: expect.stringMatching(/module evil/) });
+  });
+
+  it('refuse un script écrit dans la tâche qui lit un secret', async () => {
+    expect(scriptMentionsSecret('readFileSync(".env")')).toContain('.env');
+    expect(scriptMentionsSecret('const k = readFileSync(home + "/.ssh/id_rsa")')).toContain('secrets');
+    expect(scriptMentionsSecret('console.log(process.env.PATH)')).toBeNull();
+    await noteAgentWrite('sec1', '/p', 'read-env.mjs');
+    vi.mocked(fileSystemService.readFile).mockResolvedValueOnce('const fs=require("fs"); console.log(fs.readFileSync(".env","utf8"));');
+    await expect(agentScriptSecretRisk('sec1', '/p', 'node read-env.mjs')).resolves.toMatchObject({ reason: expect.stringMatching(/\.env/) });
+    vi.mocked(fileSystemService.readFile).mockResolvedValueOnce('console.log("ok")');
+    await expect(agentScriptSecretRisk('sec1', '/p', 'node read-env.mjs')).resolves.toBeNull();
   });
 
   it('bloque les écritures dans .git et .husky', () => {

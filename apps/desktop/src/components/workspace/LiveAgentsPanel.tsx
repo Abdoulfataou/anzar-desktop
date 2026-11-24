@@ -3,8 +3,9 @@
  * Il ne remplace pas le chat : il montre qui travaille, qui est au repos et qui a
  * échoué, avec une action d'arrêt. Les résultats détaillés restent dans wait_agent.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Loader2, Square, Bot, Check, AlertTriangle } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import {
   listLiveAgents, stopLiveAgent, subscribeLiveAgents, type LiveAgent,
@@ -28,11 +29,29 @@ function statusLabel(status: LiveAgent['status']): string {
 
 export default function LiveAgentsPanel({ convId }: { convId: string | null }) {
   const [agents, setAgents] = useState<LiveAgent[]>(() => listLiveAgents(convId || undefined));
+  const previous = useRef<Map<string, LiveAgent['status']>>(new Map());
   useEffect(() => {
     const refresh = () => setAgents(listLiveAgents(convId || undefined));
     refresh();
     return subscribeLiveAgents(refresh);
   }, [convId]);
+
+  // Notification immédiate à la fin d'un enfant, sans attendre le prochain pas du modèle.
+  useEffect(() => {
+    const prev = previous.current;
+    for (const agent of agents) {
+      const before = prev.get(agent.id);
+      if (before === 'running' && agent.status === 'idle') {
+        toast.success(`Sous-agent ${agent.name} terminé`, { id: `agent-done-${agent.id}` });
+      } else if (before === 'running' && agent.status === 'error') {
+        toast.error(`Sous-agent ${agent.name} en échec`, { id: `agent-error-${agent.id}` });
+      }
+      prev.set(agent.id, agent.status);
+    }
+    for (const id of [...prev.keys()]) {
+      if (!agents.some((a) => a.id === id)) prev.delete(id);
+    }
+  }, [agents]);
 
   if (agents.length === 0) return null;
   return (

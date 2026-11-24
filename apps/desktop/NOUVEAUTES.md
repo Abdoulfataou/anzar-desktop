@@ -14,5 +14,7 @@
 - Sous-agents : nouvelle couche de sous-agents vivants (`spawn_agent`, `send_message`, `wait_agent`, `list_agents`, `stop_agent`) : un enfant garde son historique, peut reprendre après un message, et le parent est prévenu quand il a fini. 8 actifs au plus, profondeur 1 ; un panneau au-dessus de la saisie montre qui travaille. Les enfants au repos sont restaurés au redémarrage. En Accès complet, ils peuvent écrire et lancer des commandes ; hors Accès complet, ils restent en lecture seule.
 - Si tu étais déjà en « Accès complet » avant cette version, resélectionne-le une fois : l'isolation n'est retirée qu'après le nouvel avertissement.
 - Agent : il lit plusieurs fichiers et lance plusieurs recherches en parallèle (10 appels sûrs au plus) ; les écritures et commandes restent seules, dans l'ordre.
-- Sous-agents : `spawn_agent` accepte un `output_schema` ; le résultat JSON est validé (champs requis, types de base) et rendu par `wait_agent`.
+- Sous-agents : `spawn_agent` accepte un `output_schema` ; le résultat JSON est validé (types, `enum`, `oneOf`/`anyOf`/`allOf`, tableaux, champs requis) et rendu par `wait_agent`.
 - Agent : un refus, une annulation et l'absence de canal d'accord sont maintenant trois faits distincts ; il ne réessaie plus quand personne ne peut répondre.
+- Agent : un script écrit pendant la tâche qui lit `.env`, `~/.ssh` ou une clé est refusé avant exécution ; les outils fichiers gardent leur liste d'interdiction.
+- Windows : un avertissement visible dans les Paramètres rappelle que l'isolation des écritures n'est pas garantie hors macOS ; l'agent est prévenu dans son contexte.
