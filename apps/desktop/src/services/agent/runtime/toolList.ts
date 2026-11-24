@@ -48,6 +48,12 @@ export function buildToolsForStep(input: ToolListInput): ToolDefinition[] | unde
   if (input.mode === 'plan') {
     return [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask];
   }
-  const shell = shellToolAvailable() ? BASH_TOOLS : [];
-  return [...AGENT_TOOLS, ...shell, ...web, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask, ...input.mcpTools];
+  const shellAvailable = shellToolAvailable();
+  // Sur macOS, le shell confiné remplace run_command : une seule façon de lancer une
+  // commande, avec les pipes et les enchaînements. Windows garde run_command et sa liste.
+  const agentTools = shellAvailable
+    ? AGENT_TOOLS.filter((t) => t.function.name !== 'run_command')
+    : AGENT_TOOLS;
+  const shell = shellAvailable ? BASH_TOOLS : [];
+  return [...agentTools, ...shell, ...web, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask, ...input.mcpTools];
 }

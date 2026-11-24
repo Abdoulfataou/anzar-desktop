@@ -23,7 +23,8 @@ describe('buildToolsForStep', () => {
   it('donne tous les outils de l’agent hors mode plan', () => {
     const list = names(buildToolsForStep(base));
     expect(list).toContain('write_file');
-    expect(list).toContain('run_command');
+    // Selon la plateforme : shell confiné (macOS) ou run_command (Windows).
+    expect(list.some((n) => n === 'bash' || n === 'run_command')).toBe(true);
     expect(list).toContain('ask_user');
     expect(list).not.toContain('propose_plan');
   });
@@ -36,6 +37,8 @@ describe('buildToolsForStep', () => {
       expect(list).toContain('bash');
       expect(list).toContain('job_output');
       expect(list).toContain('job_kill');
+      // Le shell remplace run_command sur macOS : une seule façon de lancer une commande.
+      expect(list).not.toContain('run_command');
       expect(names(buildToolsForStep({ ...base, mode: 'plan' }))).not.toContain('bash');
     } finally {
       Object.defineProperty(navigator, 'platform', { value: original, configurable: true });
