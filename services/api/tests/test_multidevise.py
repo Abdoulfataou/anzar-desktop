@@ -577,3 +577,33 @@ def test_without_any_key_manual_xof_still_offered(client, user_and_token, monkey
     monkeypatch.setattr(settings, "manual_payments_enabled", False)
     d = client.get("/api/pricing", headers={**h, "CF-IPCountry": "FR"}).json()
     assert d["fallback_reason"] == "unavailable" and d["packs"] == []
+
+
+# ═══════════════════════ Vitrine : offre publique sans compte ═══════════════════════
+
+def test_public_pricing_without_account(client, multi, monkeypatch):
+    monkeypatch.setattr(settings, "fedapay_secret_key", "sk_x")
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_x")
+    r = client.get("/api/public/pricing", headers={"CF-IPCountry": "NE", "Origin": "https://getanzar.com"})
+    assert r.status_code == 200
+    assert r.headers["access-control-allow-origin"] == "*"
+    assert "max-age=300" in r.headers["cache-control"]
+    d = r.json()
+    assert d["currency"] == "XOF" and d["country"] == "NE" and d["free_amount"] is True
+    assert [p["price_minor"] for p in d["packs"]] == [500, 2000, 5000, 15000, 50000]
+    assert [p["bonus_pct"] for p in d["packs"]] == [0, 0, 15, 25, 35]
+    assert d["payment_kinds"] == ["mobile_money", "card"]
+    assert d["bonus_tiers"] == [[5000, 15], [15000, 25], [50000, 35]]
+    assert "XOF" in d["currencies"] and "EUR" in d["currencies"]
+    # Rien d'interne ni de personnel : ni taux, ni fournisseurs, ni préférence de compte
+    assert not {"fcfa_per_unit", "providers", "preferred_currency", "rate_source", "manual"} & d.keys()
+
+
+def test_public_pricing_currency_and_fallback(client, multi, monkeypatch):
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_x")
+    monkeypatch.setattr(settings, "fedapay_secret_key", "")
+    d = client.get("/api/public/pricing?currency=eur").json()
+    assert d["currency"] == "EUR" and [p["price_minor"] for p in d["packs"]] == [100, 300, 800, 2500, 8000]
+    assert d["payment_kinds"] == ["card"] and d["free_amount"] is False and d["min_fcfa"] is None
+    d = client.get("/api/public/pricing?currency=GHS&country=GH").json()      # aucun fournisseur GHS actif
+    assert d["currency"] == "USD" and d["fallback_reason"] == "no_provider"

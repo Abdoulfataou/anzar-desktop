@@ -4,12 +4,15 @@ PRICING routes — monnaies, prix des recharges, monnaie préférée.
   GET /api/pricing?currency=&country= offre de recharge : devise retenue (ou repli),
                                       packs, moyens de paiement, taux et sa date
   PUT /api/user/currency              {"currency": "NGN"} ou {"currency": null} (= automatique)
+  GET /api/public/pricing?currency=&country=
+                                      même offre, SANS compte, pour la vitrine getanzar.com :
+                                      packs, types de paiement et devises actives, rien d'autre
 """
 from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
@@ -82,6 +85,48 @@ async def pricing(request: Request, currency: str = "", country: str = "",
     data["manual"] = bool(settings.manual_payments_enabled) and offer.free_amount
     data["bonus_tiers"] = _bonus_tiers(settings.recharge_bonus_tiers) if offer.free_amount else []
     return data
+
+
+@router.get("/api/public/pricing")
+async def public_pricing(request: Request, response: Response, currency: str = "", country: str = ""):
+    """Offre de recharge publique (vitrine). Lecture seule, aucune donnée de compte.
+
+    Les prix sont ceux que le serveur appliquera (même `build_offer`) ; la vitrine ne fait
+    que les afficher. Limité par IP comme toute route /api anonyme.
+    """
+    from config import settings
+    from services.payments.service import MAX_FCFA, MIN_FCFA
+
+    ctry = request_country(request, country)
+    offer = await build_offer(norm_code(currency) or None, country=ctry)
+    Session = get_sessionmaker()
+    async with Session() as session:
+        codes = (await session.scalars(select(Currency.code).where(Currency.active.is_(True))
+                                       .order_by(Currency.code))).all()
+    kinds = []
+    for p in offer.providers:
+        if p.get("kind") and p["kind"] not in kinds:
+            kinds.append(p["kind"])
+    # Données publiques, sans cookie : lisibles depuis n'importe quelle origine (la vitrine).
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Cache-Control"] = "public, max-age=300"
+    response.headers["Vary"] = "CF-IPCountry"
+    return {
+        "currency": offer.currency,
+        "decimals": offer.decimals,
+        "symbol": offer.symbol,
+        "requested_currency": offer.requested_currency,
+        "fallback_reason": offer.fallback_reason,
+        "country": ctry,
+        "packs": [{"label": p.label, "price_minor": p.price_minor, "credit_fcfa": p.credit_fcfa,
+                   "bonus_pct": p.bonus_pct} for p in offer.packs],
+        "payment_kinds": kinds,
+        "free_amount": offer.free_amount,
+        "min_fcfa": MIN_FCFA if offer.free_amount else None,
+        "max_fcfa": MAX_FCFA if offer.free_amount else None,
+        "bonus_tiers": _bonus_tiers(settings.recharge_bonus_tiers) if offer.free_amount else [],
+        "currencies": list(codes),
+    }
 
 
 def _bonus_tiers(raw: str) -> list:
