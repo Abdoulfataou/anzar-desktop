@@ -1,6 +1,9 @@
-- Mac : après une mise à jour, macOS ne te redemande plus ton mot de passe pour le trousseau (une dernière fois pour cette version).
-- Accès complet : après un avertissement à accepter, l'agent installe, utilise internet et lance ses commandes sans plus rien te demander.
-- Réseau : ANZAR diagnostique seul une connexion qui échoue (flutter pub get, téléchargements…) et relance la commande, sans réglage à toucher.
-- Mac : « python » et « pip » fonctionnent même si seul python3 est installé.
-- Rapports d'erreurs : quand une commande est bloquée, qu'une mise à jour échoue ou que l'app plante, ANZAR envoie un rapport nettoyé pour que le problème soit corrigé vite (désactivable dans Paramètres).
-- Bouton Stop : il arrête vraiment la tâche, y compris la commande en cours (installation, build…), au lieu d'attendre sa fin.
+- Agent : sur Mac, il utilise désormais un vrai shell (commandes enchaînées, pipes, redirections, travail en arrière-plan). Il reste enfermé dans le dossier du projet, les dossiers temporaires et les caches ; il ne peut pas pousser ton code, changer la config git ni lire tes secrets.
+- Agent : les refus expliquent maintenant ce qui est permis et quoi faire à la place, au lieu de laisser l'agent essayer une variante puis s'arrêter. Les actions demandées sont pré-contrôlées : plus de carte d'accord pour une commande qui sera refusée de toute façon.
+- Agent : un test qui échoue deux fois pendant une correction n'est plus pris pour une boucle. Un simple rappel arrive après trois répétitions identiques, sans couper la tâche.
+- Agent : « Modifier automatiquement » ne demande plus une carte pour chaque commande ordinaire ; seules les actions risquées (installation, git, programme inconnu), les connecteurs « toujours demander » et un contenu externe suspect demandent encore.
+- Agent : nouveaux outils pour trouver des fichiers par motif (`glob`) et modifier plusieurs fichiers en une fois (`apply_patch`), utiles pour les renommages et les refactorings.
+- Agent : le prompt est plus court et les faits utiles (dossier, plateforme, réseau, permissions) sont renvoyés à chaque demande ; le contexte long est élagué puis résumé avec les chemins et les erreurs.
+- Réseau : corrige les erreurs « socket error » quand le proxy local était bloqué par l'isolation. `flutter pub get` et les installations passent à nouveau.
+- Accès complet : l'avertissement ne promet plus `git push` ; il rappelle que les écritures restent limitées au projet et que les dossiers de secrets restent illisibles.
+- Git : « git init » fonctionne dans un nouveau projet, et les hooks Git restent protégés quoi que tente l'agent.

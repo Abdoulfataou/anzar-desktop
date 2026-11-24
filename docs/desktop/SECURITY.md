@@ -189,8 +189,16 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
 | Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials` illisibles |
 | Réseau | Filtré par un **proxy local avec liste d'hôtes autorisés** (`src-tauri/src/netproxy.rs`) : les commandes reçoivent `HTTP(S)_PROXY` et `npm_config_*_proxy`. Sur macOS, le profil Seatbelt refuse toute sortie hors localhost : le proxy est le **seul** chemin vers l'extérieur, et il refuse tout hôte absent de la liste (registres npm/pip/cargo, GitHub, Node.js par défaut, plus les hôtes ajoutés dans Paramètres → Réseau). Si l'utilisateur coupe le réseau, sortant refusé sauf localhost. Sur Windows et Linux, le même filtre s'applique mais n'est **coopératif** (variables d'environnement) : un programme qui ignore le proxy n'est pas arrêté |
 
+- Shell `bash` (macOS) : l'outil `bash` exécute une ligne `bash -c` **uniquement si
+  l'isolation est active** ; sans elle, Rust refuse de lancer un shell nu. Il n'y a pas de
+  liste blanche : la frontière est Seatbelt (écriture projet/temporaires/caches, secrets
+  illisibles, réseau via le proxy). Rust refuse en plus les opérations réservées à
+  l'utilisateur (`git push`, `git remote add`, `git reset --hard`, `git clean -f`, `sudo`) et
+  les mentions évidentes de secrets (`.env`, clés, `~/.ssh`), avec un message qui dit quoi
+  faire à la place. Les travaux d'arrière-plan se lisent avec `job_output` et s'arrêtent avec
+  `job_kill` ; le bouton Stop arrête la commande au premier plan.
 - Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
-  commandes s'exécutent comme avant.
+  commandes `run_command` s'exécutent comme avant ; le shell `bash` reste refusé.
 - Réglage « Réseau des commandes » (ouvert par défaut). La protection contre l'envoi de
   données repose sur les secrets illisibles et sur l'accord demandé après lecture d'un
   contenu externe. Coupé, une connexion refusée ajoute `[ANZAR] Réseau coupé…` à la sortie.
@@ -202,6 +210,12 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   (`net_proxy_records`) donne les refus récents avec leur date.
 - Limite connue : le réglage est transmis par la webview ; l'isolation est une défense en
   profondeur, en plus de la politique de commandes et des accords.
+- Limite connue (`.env` et clés du projet) : les outils fichiers les refusent (capacités Tauri),
+  et le shell refuse les mentions évidentes (`cat .env`, `~/.ssh/id_rsa`). Mais un programme
+  lancé par l'agent peut ouvrir un `.env` du projet par lui-même : un build ou un serveur de
+  développement en a souvent besoin. L'invariant est donc garanti pour les outils de l'agent,
+  pas pour tout code exécuté ; le prompt demande explicitement de ne pas lire ni transmettre
+  ces fichiers.
 - Limite Seatbelt connue (ports des applications) : quand le réseau passe par le proxy,
   Seatbelt doit autoriser `localhost:*` pour que le proxy et les serveurs de développement
   restent joignables. Or une règle `deny` sur un port placé après cette autorisation coupe

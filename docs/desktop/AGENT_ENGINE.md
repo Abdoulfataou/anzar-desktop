@@ -7,7 +7,8 @@ src/services/agent/
 ├── engine/      boucle générique (agentSession), adaptateur sous-agents (agentLoop),
 │                assemblage des tool_calls, historique et compaction, timeline et coûts
 ├── tools/       registre (index.ts) + un fichier par famille d'outils :
-│                fsTools, shellTools, browserTools, mediaTools, metaTools,
+│                fsTools, globTool, patchTool, shellTools, bashTool,
+│                browserTools, mediaTools, metaTools,
 │                definitions (schémas envoyés au modèle), shared (chemins confinés), types
 ├── policy/      modes d'approbation, décision d'approbation, garde des commandes,
 │                politique des sous-agents
@@ -49,20 +50,18 @@ Règles :
   200 FCFA / 15 min, surchargeable par automatisation (`budgetFCFA`, `maxMinutes`) et par
   ticket (`budgetFCFA`, `maxMinutes`). Le compteur FCFA du tour s'affiche sous la zone de
   saisie (`components/chat/BudgetBadge.tsx`).
-- **Politique de commandes unique** : `policy/commands.json` — programmes autorisés, plafonds
-  d'arguments et motifs de refus (avec leur message). TypeScript l'importe pour le pré-contrôle
-  et les messages ; Rust l'inclut à la compilation (`include_str!`) pour la liste des
-  programmes et les plafonds. La liste ne peut donc plus diverger entre les deux côtés :
-  `ffmpeg` et `rg` sont désormais utilisables par `run_command` comme le promet `install_tool`.
-  Les motifs restent une couche de pré-contrôle : l'application est structurelle côté Rust
-  (pas de shell, programme allowlisté, arguments contrôlés).
-- **Détection de boucle** : `engine/loopGuard.ts`. Avant chaque appel d'outil, la signature
-  `(outil, arguments normalisés)` est comparée à l'historique du tour : un appel identique déjà
-  vu 3 fois, ou déjà échoué 2 fois, est **bloqué** (le modèle reçoit un message qui lui demande
-  de changer d'approche) ; s'il insiste, la session s'arrête en `loop_detected`. Un compteur
-  d'échecs consécutifs (8) attrape les boucles à arguments différents — c'est le filet qui
-  remplace, dans le chat, le plafond d'erreurs désactivé pour le mode Auto. En cas d'arrêt,
-  une synthèse sans outil fait le bilan.
+- **Deux chemins de commande** : `policy/commands.json` reste la source de la liste blanche
+  de `run_command` (TypeScript et Rust l'incluent), et le pré-contrôle TypeScript refuse avant
+  la carte d'accord. Sur macOS, `bash` exécute une ligne `bash -c` sous Seatbelt : pas de liste
+  blanche, mais l'écriture reste confinée au projet, aux temporaires et aux caches ; les
+  opérations réservées à l'utilisateur (git push, reset --hard, clean -f, sudo) et les secrets
+  évidents sont refusés par Rust. Windows et Linux gardent `run_command` et sa liste.
+- **Rappel de boucle** : `engine/loopGuard.ts`. Après chaque appel, la signature
+  `(outil, arguments normalisés)` est comparée au précédent : aux seuils 3, 5 et 8 appels
+  identiques consécutifs, un rappel est ajouté après le lot d'outils. Il ne bloque rien et
+  n'arrête jamais la session : le modèle relit le résultat et décide. Le budget du tour reste
+  le seul plafond ; une répétition légitime (relancer le même test après une correction) est
+  donc permise.
 - **Vérification** : au `task_done`, si l'agent a modifié le projet et que le réglage
   « vérifier après application » est actif, lint / build / tests sont lancés ; un échec refuse
   `task_done` (3 tentatives). Une commande qui exécute du code modifié par l'agent demande un accord.
@@ -114,10 +113,13 @@ Règles :
   La carte générale reste identique d'un message à l'autre
   (cache DeepSeek) ; les indices de la tâche utilisent un PageRank personnalisé par les fichiers
   trouvés, qui fait remonter leurs voisins importants (store, utilitaires, types).
-- **Condenser** : `engine/condenser.ts`. Au-delà du plafond, après la compaction habituelle, le
-  début de la session est résumé par `deepseek-flash` (réflexion courte) ; les 12 derniers
-  messages restent intacts et chaque appel d'outil garde sa réponse. Si le résumé échoue,
-  repli sur une compaction plus forte. Le coût du résumé est compté dans la réponse.
+- **Condenser** : `engine/condenser.ts`. Le seuil est mesuré en jetons estimés (40 000) ;
+  les vieux résultats d'outils sont d'abord élagués en gardant le début et la fin, puis
+  réduits si nécessaire, et seulement ensuite le début de la session est résumé par
+  `deepseek-flash` (réflexion courte, huit sections : demande, décisions, fichiers, erreurs,
+  travail en cours, suites, contexte critique). Les 12 derniers messages restent intacts et
+  chaque appel d'outil garde sa réponse. Si le résumé échoue, repli sur une compaction plus
+  forte. Le coût du résumé est compté dans la réponse.
 - **Fermer la fenêtre pendant un travail de fond** propose de la réduire (le travail continue)
   ou de quitter (le ticket reprendra au prochain lancement) : `services/background/closeGuard.ts`.
 - **Ajouter un rôle d'agent** : créer `profiles/<nom>.md`, rien d'autre. Le frontmatter est
