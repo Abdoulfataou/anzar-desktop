@@ -78,9 +78,12 @@ pub const NETWORK_RULES: &str = r#"
 
 /// Toujours ajouté en dernier (la dernière règle gagne) : ports locaux de logiciels qui
 /// exécutent du code sur demande, sans authentification. 9877 : serveur MCP de GIMP
-/// (gimp3-mcp), qui lance du Python avec les droits de l'utilisateur. Seul le connecteur
-/// GIMP d'ANZAR, filtré par Rust, doit pouvoir lui parler, jamais une commande de l'agent.
+/// (gimp3-mcp) ; 9876 : add-on MCP de Blender (mcp-for-blender). Tous deux lancent du Python
+/// avec les droits de l'utilisateur. Seuls les connecteurs d'ANZAR, filtrés par Rust, doivent
+/// pouvoir leur parler, jamais une commande de l'agent.
 pub const BLOCKED_LOCAL_PORTS: &str = r#"
+(deny network-outbound (remote ip "*:9876"))
+(deny network-outbound (remote ip "localhost:9876"))
 (deny network-outbound (remote ip "*:9877"))
 (deny network-outbound (remote ip "localhost:9877"))
 "#;
@@ -266,11 +269,12 @@ mod tests {
     /// Vrai test Seatbelt (macOS, donc en CI) : le profil se charge, un port local ordinaire
     /// reste joignable, le port de GIMP non, avec ou sans réseau.
     #[test]
-    fn gimp_port_unreachable_from_agent_commands() {
+    fn app_ports_unreachable_from_agent_commands() {
         use std::net::TcpListener;
         use std::process::Command;
         if !available() || !Path::new("/usr/bin/nc").exists() { return; }
         let Ok(_gimp) = TcpListener::bind("127.0.0.1:9877") else { return }; // port déjà pris : test ignoré
+        let Ok(_blender) = TcpListener::bind("127.0.0.1:9876") else { return };
         let autre = TcpListener::bind("127.0.0.1:0").unwrap();
         let port_ok = autre.local_addr().unwrap().port().to_string();
         let root = std::fs::canonicalize(std::env::temp_dir()).unwrap();
@@ -282,6 +286,7 @@ mod tests {
             };
             assert!(essai(&port_ok), "un port local ordinaire doit rester joignable (réseau : {reseau})");
             assert!(!essai("9877"), "le port de GIMP doit être bloqué (réseau : {reseau})");
+            assert!(!essai("9876"), "le port de Blender doit être bloqué (réseau : {reseau})");
         }
     }
 

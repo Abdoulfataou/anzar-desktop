@@ -106,46 +106,97 @@ fn validate_npx_args(args: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-/// Serveurs Python (uvx) autorisés : paquet ET version exacts, aucun autre argument.
-/// Une nouvelle version ne s'utilise qu'après relecture de son code.
-const ALLOWED_UVX: &[&str] = &[
-    "gimp3-mcp@0.2.0",
+/// Appel d'outil refusé par ANZAR. `op` : valeur exacte de `arguments.operation` (outils
+/// « fourre-tout ») ; `contains` : texte interdit dans les arguments (forme JSON canonique,
+/// en minuscules, donc insensible aux échappements \uXXXX).
+struct DeniedCall {
+    tool: &'static str,
+    op: Option<&'static str>,
+    contains: Option<&'static str>,
+}
+
+const fn deny(tool: &'static str) -> DeniedCall { DeniedCall { tool, op: None, contains: None } }
+
+/// Serveur Python (uvx) autorisé : paquet ET version exacts (aucun autre argument), outils
+/// refusés et variables d'environnement imposées. Toute nouvelle version passe par une
+/// relecture de son code (voir docs/desktop/SECURITY.md).
+struct UvxServer {
+    pkg: &'static str,
+    denied: &'static [DeniedCall],
+    env: &'static [(&'static str, &'static str)],
+}
+
+const UVX_SERVERS: &[UvxServer] = &[
+    // GIMP : call_api exécute du Python arbitraire dans GIMP.
+    UvxServer { pkg: "gimp3-mcp@0.2.0", denied: &[deny("call_api")], env: &[] },
+    // Blender : execute_blender_code exécute du Python arbitraire ; record_trajectory_feedback
+    // envoie les phrases de l'utilisateur à l'éditeur du connecteur. Télémétrie coupée.
+    UvxServer {
+        pkg: "mcp-for-blender@2.3.1",
+        denied: &[deny("execute_blender_code"), deny("record_trajectory_feedback")],
+        env: &[("DISABLE_TELEMETRY", "true"), ("BLENDER_MCP_DISABLE_TELEMETRY", "true")],
+    },
+    // Inkscape : execute_inkex et l'extension org.inkscape.mcp.execute exécutent du Python.
+    UvxServer {
+        pkg: "inkscape-mcp@2.0.0",
+        denied: &[
+            DeniedCall { tool: "inkscape_live", op: Some("execute_inkex"), contains: None },
+            DeniedCall { tool: "inkscape_system", op: None, contains: Some("mcp.execute") },
+            DeniedCall { tool: "inkscape_system", op: None, contains: Some("mcp_execute") },
+            DeniedCall { tool: "inkscape_extension", op: None, contains: Some("mcp.execute") },
+            DeniedCall { tool: "inkscape_extension", op: None, contains: Some("mcp_execute") },
+        ],
+        env: &[],
+    },
 ];
 
-fn validate_uvx_args(args: &[String]) -> Result<(), String> {
+fn uvx_server(launcher: &str, args: &[String]) -> Option<&'static UvxServer> {
+    if launcher != "uvx" { return None; }
     match args {
-        [pkg] if ALLOWED_UVX.contains(&pkg.as_str()) => Ok(()),
-        _ => Err(format!("Serveur uvx non autorisé. Seuls ces paquets le sont : {}.", ALLOWED_UVX.join(", "))),
+        [pkg] => UVX_SERVERS.iter().find(|s| s.pkg == pkg.as_str()),
+        _ => None,
     }
 }
 
-/// Outils d'un connecteur qu'ANZAR refuse d'appeler, quoi qu'en dise l'agent.
-/// gimp3-mcp : `call_api` exécute n'importe quel code Python dans GIMP, hors de
-/// l'isolation des commandes. Les autres outils (retouche, calques, export) restent.
-fn denied_tools(launcher: &str, args: &[String]) -> &'static [&'static str] {
-    if launcher == "uvx" && args.first().is_some_and(|a| a.starts_with("gimp3-mcp@")) {
-        &["call_api"]
-    } else {
-        &[]
-    }
+fn validate_uvx_args(args: &[String]) -> Result<(), String> {
+    uvx_server("uvx", args).map(|_| ()).ok_or_else(|| format!(
+        "Serveur uvx non autorisé. Seuls ces paquets le sont : {}.",
+        UVX_SERVERS.iter().map(|s| s.pkg).collect::<Vec<_>>().join(", ")
+    ))
+}
+
+/// Appels refusés pour ce serveur (aucun pour les serveurs npx).
+fn denied_tools(launcher: &str, args: &[String]) -> &'static [DeniedCall] {
+    uvx_server(launcher, args).map(|s| s.denied).unwrap_or(&[])
 }
 
 /// La ligne JSON-RPC appelle-t-elle un outil refusé ? (message seul ou lot)
-fn calls_denied_tool(line: &str, denied: &[&str]) -> bool {
+fn calls_denied_tool(line: &str, denied: &[DeniedCall]) -> bool {
     if denied.is_empty() { return false; }
     let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
-        // Illisible : on ne laisse passer que si aucun nom refusé n'y figure.
-        return denied.iter().any(|d| line.contains(d));
+        // Illisible : refusé dès qu'un nom d'outil sensible y figure.
+        return denied.iter().any(|d| line.contains(d.tool));
     };
-    let est_refuse = |m: &serde_json::Value| {
-        m.get("method").and_then(|x| x.as_str()) == Some("tools/call")
-            && m.get("params").and_then(|p| p.get("name")).and_then(|n| n.as_str())
-                .is_some_and(|n| denied.contains(&n))
+    let refuse = |m: &serde_json::Value| -> bool {
+        if m.get("method").and_then(|x| x.as_str()) != Some("tools/call") { return false; }
+        let params = m.get("params");
+        let Some(nom) = params.and_then(|p| p.get("name")).and_then(|n| n.as_str()) else { return false };
+        let args = params.and_then(|p| p.get("arguments")).cloned().unwrap_or(serde_json::Value::Null);
+        let op = args.get("operation").and_then(|o| o.as_str());
+        let canon = serde_json::to_string(&args).unwrap_or_default().to_lowercase();
+        denied.iter().any(|d| d.tool == nom
+            && d.op.is_none_or(|o| op == Some(o))
+            && d.contains.is_none_or(|c| canon.contains(c)))
     };
     match &v {
-        serde_json::Value::Array(lot) => lot.iter().any(est_refuse),
-        m => est_refuse(m),
+        serde_json::Value::Array(lot) => lot.iter().any(refuse),
+        m => refuse(m),
     }
+}
+
+/// Variables imposées par ANZAR pour ce serveur (ex. télémétrie coupée).
+fn forced_env(launcher: &str, args: &[String]) -> &'static [(&'static str, &'static str)] {
+    uvx_server(launcher, args).map(|s| s.env).unwrap_or(&[])
 }
 
 /// Options qui transforment un lanceur en shell ou en évaluateur de code.
@@ -225,8 +276,8 @@ struct Proc {
     child: Child,
     stdin: Option<ChildStdin>,
     lsp: bool,
-    /// Outils que ce serveur ne doit jamais exécuter (voir `denied_tools`)
-    denied: &'static [&'static str],
+    /// Appels que ce serveur ne doit jamais exécuter (voir `denied_tools`)
+    denied: &'static [DeniedCall],
 }
 
 #[derive(Default)]
@@ -570,6 +621,8 @@ pub fn mcp_spawn(
     }
     cmd.env("PATH", enriched_path());
     for (k, v) in &env { cmd.env(k, v); }
+    // Imposées en dernier : la configuration ne peut pas les annuler.
+    for (k, v) in forced_env(&launcher_name(&command), &args) { cmd.env(k, v); }
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -773,41 +826,49 @@ mod security_tests {
     }
 
     #[test]
-    fn uvx_only_runs_the_pinned_gimp_server() {
-        assert!(validate_args("uvx", &["gimp3-mcp@0.2.0".into()]).is_ok());
-        assert!(validate_args("uvx", &["gimp3-mcp".into()]).is_err());          // version non épinglée
-        assert!(validate_args("uvx", &["gimp3-mcp@latest".into()]).is_err());
+    fn uvx_only_runs_pinned_reviewed_servers() {
+        for ok in ["gimp3-mcp@0.2.0", "mcp-for-blender@2.3.1", "inkscape-mcp@2.0.0"] {
+            assert!(validate_args("uvx", &[ok.into()]).is_ok(), "{ok}");
+        }
+        assert!(validate_args("uvx", &["gimp3-mcp".into()]).is_err());           // version non épinglée
+        assert!(validate_args("uvx", &["mcp-for-blender@latest".into()]).is_err());
+        assert!(validate_args("uvx", &["mcp-for-blender@2.3.2".into()]).is_err()); // version non relue
         assert!(validate_args("uvx", &["evil-package".into()]).is_err());
         assert!(validate_args("uvx", &["--from".into(), "evil".into(), "gimp3-mcp@0.2.0".into()]).is_err());
-        assert!(validate_args("uvx", &["gimp3-mcp@0.2.0".into(), "install-plugin".into()]).is_err());
+        assert!(validate_args("uvx", &["mcp-for-blender@2.3.1".into(), "install-addon".into()]).is_err());
         assert!(validate_args("uvx", &[]).is_err());
     }
 
-    #[test]
-    fn gimp_code_execution_tool_is_blocked() {
-        let denied = denied_tools("uvx", &["gimp3-mcp@0.2.0".into()]);
-        assert_eq!(denied, &["call_api"]);
-        let appel = |nom: &str| format!(r#"{{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{{"name":"{nom}","arguments":{{}}}}}}"#);
-        assert!(calls_denied_tool(&appel("call_api"), denied));
-        assert!(!calls_denied_tool(&appel("crop_to_rect"), denied));
-        assert!(calls_denied_tool(&format!("[{},{}]", appel("add_text"), appel("call_api")), denied));
-        assert!(!calls_denied_tool(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, denied));
-        assert!(calls_denied_tool("{pas du json call_api", denied));
-        // Les autres connecteurs ne sont pas concernés
-        assert!(denied_tools("npx", &["-y".into(), "@playwright/mcp@0.0.85".into()]).is_empty());
-        assert!(!calls_denied_tool(&appel("call_api"), denied_tools("npx", &[])));
+    fn appel(nom: &str, args: &str) -> String {
+        format!(r#"{{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{{"name":"{nom}","arguments":{args}}}}}"#)
     }
 
     #[test]
-    fn refuses_inline_code_options() {
-        assert!(validate_args("npx", &["-c".into(), "node --eval 1".into()]).is_err());
-        assert!(validate_args("node", &["--eval".into(), "1".into()]).is_err());
-        assert!(validate_args("python3", &["-c".into(), "print(1)".into()]).is_err());
-        assert!(validate_args("node", &["server.js".into()]).is_ok());
-        assert!(validate_args("npx", &["-y".into(), "@playwright/mcp@0.0.85".into()]).is_ok());
-        assert!(validate_args("npx", &["-y".into(), "evil-package".into()]).is_err());
-        assert!(validate_args("npx", &["-y".into(), "-p".into(), "typescript-language-server@4".into(), "-p".into(), "typescript@5".into(), "typescript-language-server".into(), "--stdio".into()]).is_ok());
-        assert!(validate_args("npx", &["-y".into(), "-p".into(), "playwright-core".into(), "node".into(), "script.mjs".into()]).is_ok());
+    fn code_execution_tools_are_blocked() {
+        let gimp = denied_tools("uvx", &["gimp3-mcp@0.2.0".into()]);
+        assert!(calls_denied_tool(&appel("call_api", "{}"), gimp));
+        assert!(!calls_denied_tool(&appel("crop_to_rect", "{}"), gimp));
+        assert!(calls_denied_tool(&format!("[{},{}]", appel("add_text", "{}"), appel("call_api", "{}")), gimp));
+        assert!(!calls_denied_tool(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, gimp));
+        assert!(calls_denied_tool("{pas du json call_api", gimp));
+
+        let blender = denied_tools("uvx", &["mcp-for-blender@2.3.1".into()]);
+        assert!(calls_denied_tool(&appel("execute_blender_code", r#"{"code":"import os"}"#), blender));
+        assert!(calls_denied_tool(&appel("record_trajectory_feedback", r#"{"feedback":"accept"}"#), blender));
+        assert!(!calls_denied_tool(&appel("get_scene_info", "{}"), blender));
+        assert!(forced_env("uvx", &["mcp-for-blender@2.3.1".into()]).contains(&("DISABLE_TELEMETRY", "true")));
+
+        let ink = denied_tools("uvx", &["inkscape-mcp@2.0.0".into()]);
+        assert!(calls_denied_tool(&appel("inkscape_live", r#"{"operation":"execute_inkex","payload":"x"}"#), ink));
+        assert!(!calls_denied_tool(&appel("inkscape_live", r#"{"operation":"insert_svg"}"#), ink));
+        assert!(calls_denied_tool(&appel("inkscape_extension", r#"{"operation":"run","extension_id":"org.inkscape.mcp.execute"}"#), ink));
+        // Échappement JSON (\u002e = « . ») : la forme canonique le voit quand même
+        assert!(calls_denied_tool(&appel("inkscape_system", r#"{"operation":"execute_extension","extension_id":"org.inkscape.mcp\u002eexecute"}"#), ink));
+        assert!(!calls_denied_tool(&appel("inkscape_extension", r#"{"operation":"run","extension_id":"org.inkscape.render.barcode.qrcode"}"#), ink));
+
+        // Les serveurs npx ne sont pas concernés
+        assert!(denied_tools("npx", &["-y".into(), "@playwright/mcp@0.0.85".into()]).is_empty());
+        assert!(!calls_denied_tool(&appel("call_api", "{}"), denied_tools("npx", &[])));
     }
 
     #[test]

@@ -271,3 +271,19 @@ exécute du Python arbitraire avec les droits de l'utilisateur. Protections d'AN
   commandes de l'agent passent par la carte d'accord (mode par défaut « Demander »).
 - **Limite connue** : tant que le serveur MCP est démarré dans GIMP, un autre programme de
   l'ordinateur peut piloter GIMP. La fiche du connecteur demande de l'arrêter après usage.
+
+## Connecteurs Blender (mcp-for-blender) et Inkscape (inkscape-mcp)
+
+Même méthode que GIMP : paquet et version relus et épinglés dans `mcp.rs` (`UVX_SERVERS`),
+accord avant chaque action (`alwaysAsk`).
+
+- **Blender 2.3.1** : `execute_blender_code` (Python arbitraire) et `record_trajectory_feedback`
+  (envoie les phrases de l'utilisateur à l'éditeur du connecteur) sont refusés. Rust impose
+  `DISABLE_TELEMETRY=true`. L'add-on écoute sur `localhost:9876`, port interdit aux commandes
+  de l'agent par Seatbelt. Les autres outils envoient des scripts fixes du connecteur.
+- **Inkscape 2.0.0** : outils « fourre-tout » à opérations. Refusés : `inkscape_live` avec
+  `operation = execute_inkex`, et tout appel à `inkscape_system` / `inkscape_extension` dont les
+  arguments (forme JSON canonique, échappements compris) mentionnent l'extension
+  `org.inkscape.mcp.execute`. Pas de port réseau : le mode « fenêtre » passe par D-Bus.
+- Pour ajouter une version : lire le code, mettre à jour `UVX_SERVERS` et les tests
+  `uvx_only_runs_pinned_reviewed_servers` / `code_execution_tools_are_blocked`.

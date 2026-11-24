@@ -31,9 +31,20 @@ describe('connecteur GIMP', () => {
     expect(gimp.requirement).toContain('install-plugin');
   });
 
-  it('ne bloque rien chez les autres connecteurs', () => {
-    for (const p of MCP_PRESETS.filter((x) => x.id !== 'gimp')) {
+  it('ne masque rien chez les connecteurs qui ne passent pas par uvx', () => {
+    for (const p of MCP_PRESETS.filter((x) => x.build({ token: 't' }).command !== 'uvx')) {
       expect(deniedMcpTools(p.build({ token: 't' }))).toEqual([]);
     }
+  });
+});
+
+describe('connecteurs Blender et Inkscape', () => {
+  it('versions épinglées, accord à chaque action, outils dangereux masqués', () => {
+    const blender = MCP_PRESETS.find((p) => p.id === 'blender')!.build({});
+    expect(blender).toMatchObject({ command: 'uvx', args: ['mcp-for-blender@2.3.1'], alwaysAsk: true });
+    expect(deniedMcpTools(blender)).toEqual(['execute_blender_code', 'record_trajectory_feedback']);
+    const inkscape = MCP_PRESETS.find((p) => p.id === 'inkscape')!.build({});
+    expect(inkscape).toMatchObject({ command: 'uvx', args: ['inkscape-mcp@2.0.0'], alwaysAsk: true });
+    expect(deniedMcpTools(inkscape)).toEqual([]); // blocage par opération, fait par Rust
   });
 });

@@ -98,15 +98,50 @@ export const MCP_PRESETS: McpPreset[] = [
       alwaysAsk: true, preset: 'gimp',
     }),
   },
+  {
+    id: 'blender',
+    name: 'Blender',
+    description: "L'agent crée et modifie des scènes 3D dans Blender ouvert : objets, matériaux, lumières, caméra, rendu, et modèles gratuits (Poly Haven, Sketchfab).",
+    requirement: "Blender 3.0 ou plus récent et uv installés. Une seule fois, dans le Terminal : « uvx mcp-for-blender@2.3.1 install-addon », puis dans Blender : Édition → Préférences → Modules complémentaires → active « MCP for Blender ». Le serveur démarre avec Blender (panneau N → MCP for Blender).",
+    link: 'https://github.com/ahujasid/blender-mcp',
+    fields: [],
+    build: () => ({
+      // Version épinglée et relue (mcp.rs, UVX_SERVERS) : exécution de code bloquée,
+      // télémétrie coupée par Rust, accord avant chaque action.
+      id: 'blender', name: 'Blender', transport: 'stdio', command: 'uvx', args: ['mcp-for-blender@2.3.1'], env: {},
+      alwaysAsk: true, preset: 'blender',
+    }),
+  },
+  {
+    id: 'inkscape',
+    name: 'Inkscape',
+    description: "L'agent dessine et modifie des logos, affiches et illustrations vectorielles (SVG) avec Inkscape : formes, textes, dégradés, QR codes, exports PNG et PDF.",
+    requirement: "Inkscape 1.4 et uv installés. Sans réglage : travail sur des fichiers (sans fenêtre). Pour voir l'agent travailler dans une fenêtre Inkscape sur Mac : « brew install dbus glib ».",
+    link: 'https://github.com/aravindev/inkscape_mcp',
+    fields: [],
+    build: () => ({
+      // Version épinglée et relue (mcp.rs, UVX_SERVERS) : opérations qui exécutent du Python
+      // (execute_inkex, extension org.inkscape.mcp.execute) bloquées par Rust.
+      id: 'inkscape', name: 'Inkscape', transport: 'stdio', command: 'uvx', args: ['inkscape-mcp@2.0.0'], env: {},
+      alwaysAsk: true, preset: 'inkscape',
+    }),
+  },
 ];
 
 /**
  * Outils qu'ANZAR ne propose jamais à l'agent (le blocage effectif est fait par Rust,
- * mcp.rs `denied_tools`) : on ne les montre pas, pour qu'il ne tente même pas de les appeler.
+ * mcp.rs `UVX_SERVERS`) : on ne les montre pas, pour qu'il ne tente même pas de les appeler.
+ * Les blocages par opération (Inkscape) ne sont faits que par Rust : l'outil reste visible.
  */
+const HIDDEN_TOOLS: Record<string, string[]> = {
+  'gimp3-mcp': ['call_api'],
+  'mcp-for-blender': ['execute_blender_code', 'record_trajectory_feedback'],
+};
+
 export function deniedMcpTools(server: Pick<McpServerConfig, 'command' | 'args'>): string[] {
-  if (server.command === 'uvx' && server.args?.[0]?.startsWith('gimp3-mcp@')) return ['call_api'];
-  return [];
+  if (server.command !== 'uvx') return [];
+  const pkg = (server.args?.[0] || '').split('@')[0];
+  return HIDDEN_TOOLS[pkg] ?? [];
 }
 
 export function slugifyServerId(raw: string): string {
