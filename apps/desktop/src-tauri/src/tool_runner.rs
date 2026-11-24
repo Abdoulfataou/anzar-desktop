@@ -306,8 +306,35 @@ fn forbidden_shell_operation(command: &str) -> Option<&'static str> {
         .split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')' | '`'))
         .filter(|t| !t.is_empty())
         .collect();
-    if tokens.iter().any(|t| *t == "sudo") {
+    if tokens.contains(&"sudo") {
         return Some("« sudo » est interdit à l'agent : ne cherche pas à élever tes droits.");
+    }
+    let secret = tokens.iter().find(|t| {
+        let t = t.trim_matches(|c: char| matches!(c, '"' | '\''));
+        t == ".env"
+            || (t.starts_with(".env.")
+                && !t.ends_with(".example")
+                && !t.ends_with(".sample")
+                && !t.ends_with(".template"))
+            || t.ends_with("/.env")
+            || t.ends_with("/.env.local")
+            || t.contains("/.ssh/")
+            || t.contains("/.aws/")
+            || t.contains("/.gnupg/")
+            || t.contains("/.kube/")
+            || t.ends_with("/.netrc")
+            || t.ends_with("/.git-credentials")
+            || t.ends_with("id_rsa")
+            || t.ends_with("id_ed25519")
+            || t.ends_with(".pem")
+            || t.ends_with(".key")
+    });
+    if let Some(secret) = secret {
+        return Some(if secret.contains(".env") {
+            "Le fichier .env contient des secrets : ne le lis pas et ne le transmets pas. Demande à l'utilisateur les variables dont tu as besoin."
+        } else {
+            "Ce chemin contient un secret (clé ou identifiant) : ne le lis pas et ne le transmets pas."
+        });
     }
     for (i, token) in tokens.iter().enumerate() {
         if *token != "git" && !token.ends_with("/git") {
@@ -573,6 +600,9 @@ pub fn tool_spawn(
     let eff = crate::command_policy::effective(&policy, sandbox, network, proxy, install_net);
     // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
     let isolated = eff.sandbox && crate::sandbox::available();
+    if use_shell && !isolated {
+        return Err("Le shell confiné exige l'isolation des commandes : active-la dans les réglages ou utilise run_command.".into());
+    }
     if isolated && gradlew_path.is_none() && find_in_path(&program).is_none() {
         return Err(format!("« {program} » est introuvable sur cet ordinateur."));
     }
@@ -772,6 +802,11 @@ mod security_tests {
         assert!(forbidden_shell_operation("git remote add origin x").is_some());
         assert!(forbidden_shell_operation("sudo ls").is_some());
         assert!(forbidden_shell_operation("git reset --hard HEAD").is_some());
+        assert!(forbidden_shell_operation("cat .env").is_some());
+        assert!(forbidden_shell_operation("cat ./.env.local").is_some());
+        assert!(forbidden_shell_operation("cat ~/.ssh/id_rsa").is_some());
+        assert!(forbidden_shell_operation("cp certs/client.pem /tmp/x").is_some());
+        assert!(forbidden_shell_operation("cat .env.example").is_none());
         assert!(forbidden_shell_operation("git clean -fd").is_some());
         assert!(forbidden_shell_operation("git commit -m 'fix push'").is_none());
         assert!(forbidden_shell_operation("git log --grep push").is_none());
