@@ -183,7 +183,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
         id: call.id,
         name: call.function.name,
         summary: ev.argsSummary,
-        reason: `Élévation demandée pour cette commande : ${justification}`,
+        reason: `Élévation demandée pour cette commande : ${justification}. Elle peut aussi installer ou exécuter du code ; vérifie ce qu'elle fait avant d'autoriser.`,
         detail: String(args.command || ''),
       });
       if (!ok) {
