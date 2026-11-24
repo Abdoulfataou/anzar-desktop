@@ -296,6 +296,19 @@ fn validate_dir(root: &str, cwd: &str) -> Result<(std::path::PathBuf, std::path:
     Ok((root_p, cwd_p))
 }
 
+/// `python` → `python3` et `pip` → `pip3` quand seul le second existe (cas de macOS).
+fn python3_fallback(program: String, exists: impl Fn(&str) -> bool) -> String {
+    if cfg!(windows) {
+        return program;
+    }
+    let alt = match program.as_str() {
+        "python" => "python3",
+        "pip" => "pip3",
+        _ => return program,
+    };
+    if !exists(&program) && exists(alt) { alt.to_string() } else { program }
+}
+
 /// Cherche un programme dans le PATH de l'app (sandbox-exec ne dit pas clairement qu'il manque).
 fn find_in_path(program: &str) -> Option<std::path::PathBuf> {
     let path = crate::mcp::enriched_path();
@@ -398,6 +411,8 @@ pub fn tool_spawn(
     if is_denied_program(&program) {
         return Err(format!("« {program} » est interdit à l'agent, même avec ton accord."));
     }
+    // macOS n'a que `python3` / `pip3` : l'agent écrit souvent `python` ou `pip`.
+    let program = python3_fallback(program, |p| find_in_path(p).is_some());
     // Programme hors de la liste d'ANZAR : accepté seulement si l'utilisateur l'a autorisé
     // définitivement (réglage gardé par Rust) ou pour cette commande (carte d'accord).
     let known = is_allowed_program(&program);
@@ -631,6 +646,14 @@ mod security_tests {
     fn vibecoding_programs_follow_their_rules() {
         // Flutter / Dart : installations avec accord, SDK jamais modifié, pas de publication.
         assert!(is_allowed_program("flutter") && is_allowed_program("dart"));
+        // `python` absent mais `python3` présent (macOS) : redirigé ; sinon inchangé.
+        let only3 = |p: &str| p == "python3" || p == "pip3";
+        if !cfg!(windows) {
+            assert_eq!(python3_fallback("python".into(), only3), "python3");
+            assert_eq!(python3_fallback("pip".into(), only3), "pip3");
+        }
+        assert_eq!(python3_fallback("python".into(), |_| true), "python");
+        assert_eq!(python3_fallback("node".into(), only3), "node");
         assert!(validate_args("flutter", &args(&["pub", "get"]), false).is_err());
         assert!(validate_args("flutter", &args(&["pub", "get"]), true).is_ok());
         assert!(validate_args("flutter", &args(&["create", "--org", "app.x", "."]), false).is_err());
