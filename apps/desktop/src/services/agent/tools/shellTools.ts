@@ -3,12 +3,10 @@
  */
 import { terminalService } from '@/services/runtime/terminal';
 import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/runtime/toolsRuntime';
-import { AGENT_PROGRAMS, validateCommand } from '../policy/commandPolicy';
+import { isKnownProgram, isValidProgramName, parseExecutable, programBase, ruleRefusal, validateCommand } from '../policy/commandPolicy';
 import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_CHARS, resolvePath, truncate } from './shared';
 import { ToolExecutionContext, ToolResult } from './types';
 
-/** Programmes que l'agent peut lancer : dérivés de `policy/commands.json` (avec Rust). */
-const RUNNABLE = new Set(AGENT_PROGRAMS);
 const READ_INSTEAD: Record<string, string> = {
   grep: 'search_files', rg: 'search_files', find: 'search_files ou list_dir', ls: 'list_dir', tree: 'list_dir',
   cat: 'read_file', head: 'read_file', tail: 'read_file', less: 'read_file', wc: 'read_file',
@@ -22,14 +20,17 @@ export function precheckCommand(command: string): string | null {
   const cmd = String(command || '').trim();
   const validation = validateCommand(cmd);
   if (!validation.safe) return validation.reason || 'Commande refusée.';
-  const exe = (cmd.split(/\s+/)[0] || '').toLowerCase();
-  if (!RUNNABLE.has(exe)) {
-    const alt = READ_INSTEAD[exe];
-    return alt
-      ? `Refusé : « ${exe} » n'est pas disponible. Utilise l'outil ${alt}.`
-      : `Refusé : « ${exe} » n'est pas autorisé. Programmes possibles : ${[...RUNNABLE].join(', ')}.`;
+  const exe = programBase(cmd.split(/\s+/)[0] || '');
+  const alt = READ_INSTEAD[exe];
+  if (alt && !isKnownProgram(exe)) return `Refusé : « ${exe} » n'est pas disponible. Utilise l'outil ${alt}.`;
+  const parsed = parseExecutable(cmd);
+  if (!parsed) {
+    return ruleRefusal(exe, [])
+      || (isValidProgramName(exe) ? 'Refusé : trop d\'arguments.' : `Refusé : « ${exe} » n'est pas un nom de programme valide.`);
   }
-  return null;
+  // Sous-commande refusée, lanceur vers un programme interdit (mêmes règles que Rust).
+  // Un programme hors liste n'est PAS refusé ici : l'utilisateur donne son accord sur la carte.
+  return ruleRefusal(exe, parsed.args);
 }
 
 export async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {

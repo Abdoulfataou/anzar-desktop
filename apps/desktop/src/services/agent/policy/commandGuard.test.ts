@@ -9,11 +9,10 @@ import { commandRisk, noteAgentWrite } from './commandGuard';
 import { AGENT_TOOLS, isProtectedWritePath, precheckCommand } from '../tools';
 
 describe('command policy P0', () => {
-  it('refuse npx dans les commandes agent', () => {
-    // Une commande npx est refusée : soit pour le programme, soit pour le motif qu'elle
-    // contient (ici node --eval, dont le message est plus précis que « npx interdit »).
+  it('npx passe le pré-contrôle mais reste soumis à l\'accord ; le code inline reste refusé', () => {
     expect(precheckCommand('npx -c "node --eval 1"')).toBeTruthy();
-    expect(precheckCommand('npx -y package')).toMatch(/npx|autoris/i);
+    // npx télécharge et lance un paquet : commandRisk demande l'accord (voir vibecoding.test.ts).
+    expect(precheckCommand('npx -y package')).toBeNull();
     expect(precheckCommand('npm run build')).toBeNull();
     expect(precheckCommand('node script.mjs')).toBeNull();
   });

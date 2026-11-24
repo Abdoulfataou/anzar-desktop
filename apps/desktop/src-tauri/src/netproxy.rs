@@ -39,6 +39,29 @@ pub const DEFAULT_HOSTS: &[&str] = &[
     "objects.githubusercontent.com",
     "raw.githubusercontent.com",
     "nodejs.org",
+    // Flutter / Dart (paquets pub, artefacts du moteur)
+    "pub.dev",
+    "pub.dartlang.org",
+    "storage.googleapis.com",
+    // Android / Gradle / Maven
+    "maven.google.com",
+    "dl.google.com",
+    "repo.maven.apache.org",
+    "repo1.maven.org",
+    "plugins.gradle.org",
+    "services.gradle.org",
+    "downloads.gradle.org",
+    // iOS (CocoaPods), Go, Ruby, PHP, .NET, Deno, Rust, Yarn 2+
+    "cdn.cocoapods.org",
+    "proxy.golang.org",
+    "sum.golang.org",
+    "rubygems.org",
+    "repo.packagist.org",
+    "api.nuget.org",
+    "jsr.io",
+    "deno.land",
+    "static.rust-lang.org",
+    "repo.yarnpkg.com",
 ];
 
 #[derive(Clone, serde::Serialize)]

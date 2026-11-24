@@ -20,10 +20,15 @@ describe('commandPolicy', () => {
   });
 
   it('résout les arguments vers le nom de scope Tauri', () => {
-    expect(parseExecutable('npm run build')).toEqual({ cmdName: 'npm-2', args: ['run', 'build'] });
-    expect(parseExecutable('npm run build -- --watch')).toEqual({ cmdName: 'npm-4', args: ['run', 'build', '--', '--watch'] });
-    expect(parseExecutable('npx -y package')).toBeNull();
-    expect(parseExecutable('npm a b c d e f g h i')).toBeNull();
+    expect(parseExecutable('npm run build')).toEqual({ cmdName: 'npm-2', args: ['run', 'build'], known: true });
+    expect(parseExecutable('npm run build -- --watch')).toEqual({ cmdName: 'npm-4', args: ['run', 'build', '--', '--watch'], known: true });
+    // npx : accepté ici, l'accord de l'utilisateur est exigé ensuite (installation).
+    expect(parseExecutable('npx -y package')).toEqual({ cmdName: 'npx-2', args: ['-y', 'package'], known: true });
+    expect(parseExecutable(`npm ${Array.from({ length: 25 }, (_, i) => `a${i}`).join(' ')}`)).toBeNull();
+    // Programme hors liste : accepté (accord sur la carte), interdit : refusé.
+    expect(parseExecutable('supabase start')).toEqual({ cmdName: 'supabase-1', args: ['start'], known: false });
+    expect(parseExecutable('bash script.sh')).toBeNull();
+    expect(parseExecutable('./gradlew assembleDebug')).toEqual({ cmdName: 'gradlew-1', args: ['assembleDebug'], known: true });
   });
 
   it('tokenise les arguments entre guillemets', () => {
@@ -31,7 +36,7 @@ describe('commandPolicy', () => {
   });
 
   it('dérive programmes, plafonds et motifs du manifeste partagé', () => {
-    expect(MAX_ARGS).toBe(8);
+    expect(MAX_ARGS).toBe(24);
     expect(PROGRAMS).toContain('ffmpeg');
     expect(AGENT_PROGRAMS).toContain('rg');
     // ffprobe est autorisé au lanceur mais pas exposé à l'agent.
@@ -51,7 +56,7 @@ describe('commandPolicy', () => {
 
   it('accepte les programmes ajoutés au manifeste', () => {
     expect(validateCommand('ffmpeg -version')).toEqual({ safe: true });
-    expect(parseExecutable('ffmpeg -version')).toEqual({ cmdName: 'ffmpeg-1', args: ['-version'] });
-    expect(parseExecutable('rg --version')).toEqual({ cmdName: 'rg-1', args: ['--version'] });
+    expect(parseExecutable('ffmpeg -version')).toEqual({ cmdName: 'ffmpeg-1', args: ['-version'], known: true });
+    expect(parseExecutable('rg --version')).toEqual({ cmdName: 'rg-1', args: ['--version'], known: true });
   });
 });

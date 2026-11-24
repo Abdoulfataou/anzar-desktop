@@ -228,7 +228,10 @@ pub fn enriched_path() -> String {
             extra.push(format!("{h}\\AppData\\Roaming\\npm"));
             extra.push(format!("{h}\\.local\\bin"));
         } else {
-            for p in [".local/bin", ".cargo/bin", ".volta/bin", ".bun/bin", ".deno/bin", ".npm-global/bin", ".asdf/shims", ".pyenv/shims", "Library/pnpm"] {
+            for p in [".local/bin", ".cargo/bin", ".volta/bin", ".bun/bin", ".deno/bin", ".npm-global/bin", ".asdf/shims", ".pyenv/shims", "Library/pnpm",
+                      // Flutter, Dart, Go, .NET, PHP, Ruby, Android : emplacements d'installation courants
+                      "flutter/bin", "development/flutter/bin", "fvm/default/bin", ".pub-cache/bin", "go/bin",
+                      ".dotnet/tools", ".composer/vendor/bin", ".rbenv/shims", "Library/Android/sdk/platform-tools"] {
                 extra.push(format!("{h}/{p}"));
             }
             // nvm : la version de Node la plus récente installée
@@ -242,7 +245,7 @@ pub fn enriched_path() -> String {
         }
     }
     if !cfg!(windows) {
-        for p in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin"] {
+        for p in ["/opt/homebrew/bin", "/usr/local/bin", "/usr/local/go/bin", "/usr/local/share/dotnet", "/usr/bin", "/bin"] {
             extra.push(p.to_string());
         }
     }

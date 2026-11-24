@@ -26,6 +26,8 @@ export interface ApprovalRequest {
   detail?: string;
   /** Portée de l'accord quand elle dépasse cette seule action */
   scope?: string;
+  /** Programme hors de la liste d'ANZAR : la carte propose « Toujours autoriser ». */
+  trustProgram?: string;
 }
 
 /** Tout ce qu'il faut pour reprendre une réponse là où elle s'est arrêtée. */

@@ -34,6 +34,32 @@ struct CommandProgram {
     agent: bool,
     #[serde(default)]
     install: bool,
+    /// Sous-commandes qui installent ou téléchargent du code : accord de l'utilisateur + réseau.
+    /// "" = toute invocation, "<none>" = programme lancé sans argument.
+    #[serde(default)]
+    installs: Vec<String>,
+    /// Sous-commandes qui ont besoin d'internet sans être des installations (build, run…).
+    #[serde(default)]
+    network: Vec<String>,
+    /// Sous-commandes toujours refusées.
+    #[serde(default)]
+    deny: Vec<DenyRule>,
+    /// Sous-commandes qui lancent un autre programme (`npx X`, `bundle exec X`…) : X ne
+    /// doit pas être un programme interdit.
+    #[serde(default)]
+    launches: Vec<String>,
+}
+
+#[derive(Deserialize)]
+struct DenyRule {
+    args: String,
+    reason: String,
+}
+
+#[derive(Deserialize, Default)]
+struct DeniedPrograms {
+    #[serde(default)]
+    names: Vec<String>,
 }
 
 #[allow(dead_code)]
@@ -42,6 +68,8 @@ struct CommandsPolicy {
     version: u32,
     limits: CommandLimits,
     programs: Vec<CommandProgram>,
+    #[serde(default, rename = "deniedPrograms")]
+    denied_programs: DeniedPrograms,
 }
 
 const COMMANDS_POLICY_JSON: &str = include_str!("../../src/services/agent/policy/commands.json");
@@ -53,6 +81,79 @@ fn commands_policy() -> &'static CommandsPolicy {
 
 fn is_allowed_program(name: &str) -> bool {
     commands_policy().programs.iter().any(|p| p.name == name)
+}
+
+fn program_rule(name: &str) -> Option<&'static CommandProgram> {
+    commands_policy().programs.iter().find(|p| p.name == name)
+}
+
+/// Programme jamais lancé par l'agent, même avec l'accord de l'utilisateur
+/// (shells, sudo, outils réseau bruts, outils système…).
+pub(crate) fn is_denied_program(name: &str) -> bool {
+    let n = name.trim().to_lowercase();
+    let base = n.trim_end_matches(".exe").trim_end_matches(".cmd").trim_end_matches(".bat");
+    commands_policy().denied_programs.names.iter().any(|d| d == base)
+}
+
+/// Nom de programme simple (pas de chemin, pas d'espace) : `flutter`, `go`, `my-cli`…
+pub(crate) fn is_valid_program_name(name: &str) -> bool {
+    let len = name.chars().count();
+    (1..=64).contains(&len)
+        && name.chars().next().map(|c| c.is_ascii_alphanumeric()).unwrap_or(false)
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '+'))
+}
+
+/// Arguments positionnels (sans les options `-x` / `--xyz`), en minuscules.
+fn positional(args: &[String]) -> Vec<String> {
+    args.iter().filter(|a| !a.starts_with('-')).map(|a| a.to_lowercase()).collect()
+}
+
+/// Options de lanceurs suivies d'une valeur (`xcrun --sdk iphoneos X`, `npx -p pkg X`…).
+const VALUE_OPTIONS: &[&str] = &["--sdk", "-sdk", "--toolchain", "-toolchain", "-p", "--package", "--with",
+                                 "--from", "--python", "--directory", "--cwd", "-C", "--project"];
+
+/// Programme lancé par un lanceur : premier argument positionnel après les `skip` mots de la
+/// sous-commande, en sautant les valeurs des options connues.
+fn launch_target(args: &[String], skip: usize) -> Option<String> {
+    let mut seen = 0;
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
+        if a.starts_with('-') {
+            if !a.contains('=') && VALUE_OPTIONS.contains(&a.as_str()) {
+                it.next();
+            }
+            continue;
+        }
+        if seen == skip {
+            return Some(a.to_lowercase());
+        }
+        seen += 1;
+    }
+    None
+}
+
+/// La règle (« pub get », « install », "" ou "<none>") correspond-elle au début des arguments ?
+fn matches_rule(pos: &[String], rule: &str) -> bool {
+    match rule.trim() {
+        "" => true,
+        "<none>" => pos.is_empty(),
+        r => {
+            let words: Vec<&str> = r.split_whitespace().collect();
+            words.len() <= pos.len() && words.iter().zip(pos).all(|(w, p)| *w == p.as_str())
+        }
+    }
+}
+
+/// La commande installe-t-elle ou télécharge-t-elle du code (accord nécessaire) ?
+pub(crate) fn is_install(program: &str, args: &[String]) -> bool {
+    let pos = positional(args);
+    program_rule(program).map(|p| p.installs.iter().any(|r| matches_rule(&pos, r))).unwrap_or(false)
+}
+
+/// La commande a-t-elle besoin d'internet hors installation (build, run…) ?
+pub(crate) fn needs_network(program: &str, args: &[String]) -> bool {
+    let pos = positional(args);
+    program_rule(program).map(|p| p.network.iter().any(|r| matches_rule(&pos, r))).unwrap_or(false)
 }
 
 #[derive(Default)]
@@ -142,12 +243,44 @@ fn validate_args(program: &str, args: &[String], approved: bool) -> Result<(), S
         "pip" | "pip3" if first == "install" && !approved => {
             return Err("Installation pip refusée sans ton accord : l'agent doit la demander (carte d'accord).".into());
         }
-        "cargo" if first == "install" => {
-            return Err("cargo install refusé dans ce chemin.".into());
+        "cargo" if first == "install" && !approved => {
+            return Err("cargo install refusé sans ton accord : l'agent doit le demander (carte d'accord).".into());
         }
         _ => {}
     }
+    // Règles de commands.json (partagées avec l'interface)
+    if let Some(rule) = program_rule(program) {
+        let pos = positional(args);
+        if let Some(d) = rule.deny.iter().find(|d| matches_rule(&pos, &d.args)) {
+            return Err(format!("« {program} {} » est refusé : {}.", d.args, d.reason));
+        }
+        for launch in &rule.launches {
+            if !matches_rule(&pos, launch) {
+                continue;
+            }
+            if let Some(target) = launch_target(args, launch.split_whitespace().count()) {
+                let name = target.rsplit(['/', '\\']).next().unwrap_or(&target).to_string();
+                if is_denied_program(&name) {
+                    return Err(format!("« {program} » ne peut pas lancer « {name} » : programme interdit à l'agent."));
+                }
+            }
+        }
+        if !approved && rule.installs.iter().any(|r| matches_rule(&pos, r)) {
+            return Err(format!(
+                "« {program} {} » installe ou télécharge du code : il faut ton accord (carte d'accord).",
+                pos.first().map(|s| s.as_str()).unwrap_or("")
+            ));
+        }
+    }
     Ok(())
+}
+
+/// Cherche `program` dans `path` en essayant les extensions données (Windows : .exe, .cmd, .bat).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn resolve_with_exts(program: &str, path: &str, exts: &[&str]) -> Option<std::path::PathBuf> {
+    std::env::split_paths(path).find_map(|dir| {
+        exts.iter().map(|e| dir.join(format!("{program}{e}"))).find(|p| p.is_file())
+    })
 }
 
 fn validate_dir(root: &str, cwd: &str) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
@@ -182,12 +315,24 @@ fn apply_proxy_env(cmd: &mut Command, port: u16) {
     cmd.env("npm_config_https_proxy", &proxy);
     // Node 24+ : `fetch` honore les variables d'environnement avec ce drapeau.
     cmd.env("NODE_USE_ENV_PROXY", "1");
+    // Java / Gradle / Maven ignorent HTTPS_PROXY : propriétés JVM lues par toute JVM lancée.
+    cmd.env(
+        "JAVA_TOOL_OPTIONS",
+        format!(
+            "-Dhttp.proxyHost=127.0.0.1 -Dhttp.proxyPort={port} -Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort={port} -Dhttp.nonProxyHosts=localhost|127.0.0.1"
+        ),
+    );
 }
 
 fn apply_base_env(cmd: &mut Command) {
     cmd.env_clear();
     for key in ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "TERM", "TZ",
-                "SYSTEMROOT", "WINDIR", "ComSpec", "PATHEXT", "USERPROFILE", "APPDATA", "LOCALAPPDATA"] {
+                "SYSTEMROOT", "WINDIR", "ComSpec", "PATHEXT", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+                // Emplacements des SDK (pas des secrets) : Java, Android, Flutter, Go, .NET, Ruby, Xcode…
+                "JAVA_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT", "FLUTTER_ROOT", "PUB_CACHE", "CHROME_EXECUTABLE",
+                "GOPATH", "GOROOT", "DOTNET_ROOT", "GEM_HOME", "GEM_PATH", "DEVELOPER_DIR",
+                "CARGO_HOME", "RUSTUP_HOME", "PNPM_HOME", "BUN_INSTALL", "DENO_DIR", "COMPOSER_HOME",
+                "GRADLE_USER_HOME", "PYENV_ROOT"] {
         if let Ok(v) = std::env::var(key) {
             cmd.env(key, v);
         }
@@ -247,14 +392,35 @@ pub fn tool_spawn(
     let _ = proxy_hosts;
     let policy = crate::command_policy::current(&app);
     let program = program.trim().to_lowercase();
-    if program.contains('/') || program.contains('\\') || !is_allowed_program(&program) {
+    if program.contains('/') || program.contains('\\') || !is_valid_program_name(&program) {
         return Err("Programme non autorisé.".into());
+    }
+    if is_denied_program(&program) {
+        return Err(format!("« {program} » est interdit à l'agent, même avec ton accord."));
+    }
+    // Programme hors de la liste d'ANZAR : accepté seulement si l'utilisateur l'a autorisé
+    // définitivement (réglage gardé par Rust) ou pour cette commande (carte d'accord).
+    let known = is_allowed_program(&program);
+    if !known && !policy.trusted_programs.contains(&program) && !approved.unwrap_or(false) {
+        return Err(format!("« {program} » n'est pas dans la liste d'ANZAR : il faut ton accord (carte d'accord)."));
     }
     validate_args(&program, &args, approved.unwrap_or(false))?;
     let (root_p, cwd_p) = validate_dir(&root, &cwd)?;
     if !crate::roots::is_allowed_root(&app, &root_p) {
         return Err("Dossier non autorisé : ouvre-le d'abord comme projet dans ANZAR.".into());
     }
+    // `./gradlew` : script du projet, résolu dans le dossier de travail (jamais via le PATH).
+    let gradlew_path = if program == "gradlew" {
+        let file = cwd_p.join(if cfg!(windows) { "gradlew.bat" } else { "gradlew" });
+        let real = std::fs::canonicalize(&file)
+            .map_err(|_| "Pas de script gradlew dans ce dossier.".to_string())?;
+        if !real.starts_with(&root_p) {
+            return Err("Le script gradlew est hors du projet.".into());
+        }
+        Some(real)
+    } else {
+        None
+    };
 
     // Protection effective : l'interface peut en demander plus, jamais moins que les réglages.
     let eff = crate::command_policy::effective(
@@ -266,9 +432,26 @@ pub fn tool_spawn(
     );
     // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
     let isolated = eff.sandbox && crate::sandbox::available();
-    if isolated && find_in_path(&program).is_none() {
+    if isolated && gradlew_path.is_none() && find_in_path(&program).is_none() {
         return Err(format!("« {program} » est introuvable sur cet ordinateur."));
     }
+    // Programme réellement lancé : chemin du script gradlew, ou nom cherché dans le PATH.
+    // Windows : `Command::new` n'ajoute que « .exe » ; npm, flutter, yarn… sont des .cmd/.bat.
+    let exe: String = match &gradlew_path {
+        Some(p) => p.to_string_lossy().into_owned(),
+        None => {
+            #[cfg(windows)]
+            {
+                resolve_with_exts(&program, &crate::mcp::enriched_path(), &[".exe", ".cmd", ".bat"])
+                    .map(|p| p.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| program.clone())
+            }
+            #[cfg(not(windows))]
+            {
+                program.clone()
+            }
+        }
+    };
     // Réseau : réglage « Réseau des commandes » ouvert, ou commande qui télécharge.
     let net = eff.network;
     // Filtrage : quand il est actif, la commande ne sort que par le proxy (localhost) et le
@@ -284,9 +467,9 @@ pub fn tool_spawn(
     };
     let allow_network = net && proxy_port.is_none();
     let wrapped = if isolated {
-        crate::sandbox::wrap(&program, &args, &root_p, allow_network)
+        crate::sandbox::wrap(&exe, &args, &root_p, allow_network)
     } else {
-        crate::sandbox::Wrapped { program: program.clone(), args: args.clone() }
+        crate::sandbox::Wrapped { program: exe.clone(), args: args.clone() }
     };
 
     let mut cmd = Command::new(&wrapped.program);
@@ -415,7 +598,9 @@ mod security_tests {
         assert!(validate_args("npm", &args(&["install", "react"]), true).is_ok());
         assert!(validate_args("npm", &args(&["publish"]), true).is_err());
         assert!(validate_args("npm", &args(&["exec", "x"]), true).is_err());
-        assert!(validate_args("cargo", &args(&["install", "x"]), true).is_err());
+        // cargo install : seulement avec l'accord de l'utilisateur (comme npm install).
+        assert!(validate_args("cargo", &args(&["install", "x"]), false).is_err());
+        assert!(validate_args("cargo", &args(&["install", "x"]), true).is_ok());
         assert!(validate_args("git", &args(&["status"]), false).is_ok());
         assert!(validate_args("npm", &args(&["run", "build"]), false).is_ok());
     }
@@ -423,16 +608,90 @@ mod security_tests {
     #[test]
     fn command_policy_matches_the_shared_manifest() {
         let policy = commands_policy();
-        assert_eq!(policy.version, 1);
-        assert_eq!(policy.limits.max_args, 8);
+        assert_eq!(policy.version, 2);
+        assert_eq!(policy.limits.max_args, 24);
         assert_eq!(policy.limits.max_arg_chars, 400);
         for name in ["npm", "node", "git", "cargo", "python", "python3", "pip", "pip3", "ffmpeg", "ffprobe", "rg"] {
             assert!(is_allowed_program(name), "{name} absent de commands.json");
         }
         assert!(!is_allowed_program("curl"));
-        assert!(!is_allowed_program("npx"));
         // Chaque programme destiné à l'agent doit aussi être autorisé côté Rust.
         assert!(policy.programs.iter().filter(|p| p.agent).all(|p| is_allowed_program(&p.name)));
+        // Aucun programme de la liste ne peut être en même temps interdit.
+        assert!(policy.programs.iter().all(|p| !is_denied_program(&p.name)), "programme à la fois listé et interdit");
+        // Chaque règle de lanceur, d'installation ou de refus est bien formée.
+        for p in &policy.programs {
+            for r in p.installs.iter().chain(&p.network).chain(&p.launches) {
+                assert!(r.is_empty() || r == "<none>" || r.split_whitespace().all(|w| !w.starts_with('-')), "{}: {r}", p.name);
+            }
+        }
+    }
+
+    #[test]
+    fn vibecoding_programs_follow_their_rules() {
+        // Flutter / Dart : installations avec accord, SDK jamais modifié, pas de publication.
+        assert!(is_allowed_program("flutter") && is_allowed_program("dart"));
+        assert!(validate_args("flutter", &args(&["pub", "get"]), false).is_err());
+        assert!(validate_args("flutter", &args(&["pub", "get"]), true).is_ok());
+        assert!(validate_args("flutter", &args(&["create", "--org", "app.x", "."]), false).is_err());
+        assert!(validate_args("flutter", &args(&["create", "--org", "app.x", "."]), true).is_ok());
+        assert!(validate_args("flutter", &args(&["analyze"]), false).is_ok());
+        assert!(validate_args("flutter", &args(&["build", "apk"]), false).is_ok());
+        assert!(validate_args("flutter", &args(&["upgrade"]), true).is_err());
+        assert!(validate_args("flutter", &args(&["pub", "publish"]), true).is_err());
+        assert!(validate_args("dart", &args(&["pub", "publish"]), true).is_err());
+        // Options avant la sous-commande : la règle s'applique quand même.
+        assert!(validate_args("flutter", &args(&["--no-color", "pub", "get"]), false).is_err());
+        // yarn sans argument = installation.
+        assert!(validate_args("yarn", &args(&[]), false).is_err());
+        assert!(validate_args("yarn", &args(&["build"]), false).is_ok());
+        // npx : toujours avec accord.
+        assert!(validate_args("npx", &args(&["create-next-app"]), false).is_err());
+        assert!(validate_args("npx", &args(&["create-next-app"]), true).is_ok());
+        // Publications refusées même avec accord.
+        for (prog, a) in [("pnpm", "publish"), ("gem", "push"), ("cargo", "publish"), ("mvn", "deploy"), ("uv", "publish")] {
+            assert!(validate_args(prog, &args(&[a]), true).is_err(), "{prog} {a}");
+        }
+        // Git : sous-commandes qui exécutent du shell.
+        assert!(validate_args("git", &args(&["submodule", "foreach", "ls"]), true).is_err());
+        assert!(validate_args("git", &args(&["submodule", "update"]), false).is_ok());
+    }
+
+    #[test]
+    fn launchers_cannot_start_forbidden_programs() {
+        assert!(validate_args("xcrun", &args(&["bash"]), true).is_err());
+        assert!(validate_args("xcrun", &args(&["--sdk", "iphoneos", "/bin/sh"]), true).is_err());
+        assert!(validate_args("xcrun", &args(&["simctl", "list"]), false).is_ok());
+        assert!(validate_args("bundle", &args(&["exec", "sh"]), true).is_err());
+        assert!(validate_args("bundle", &args(&["exec", "rspec"]), true).is_ok());
+        assert!(validate_args("npx", &args(&["curl"]), true).is_err());
+        assert!(validate_args("uv", &args(&["run", "bash"]), true).is_err());
+        assert!(validate_args("uv", &args(&["run", "pytest"]), false).is_ok());
+        assert!(validate_args("rustup", &args(&["run", "nightly", "cargo"]), true).is_err());
+    }
+
+    #[test]
+    fn denied_and_unknown_program_names() {
+        for name in ["bash", "sh", "sudo", "curl", "ssh", "osascript", "powershell", "cmd.exe", "env", "xargs"] {
+            assert!(is_denied_program(name), "{name} devrait être interdit");
+        }
+        for name in ["flutter", "supabase", "firebase", "my-cli", "node"] {
+            assert!(!is_denied_program(name), "{name} ne devrait pas être interdit");
+        }
+        assert!(is_valid_program_name("supabase") && is_valid_program_name("clang++"));
+        assert!(!is_valid_program_name("../x") && !is_valid_program_name("a b") && !is_valid_program_name("-rf"));
+        assert!(!is_valid_program_name(""));
+    }
+
+    #[test]
+    fn windows_extension_lookup() {
+        let dir = std::env::temp_dir().join(format!("anzar-exts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("flutter.bat"), "").unwrap();
+        let path = std::env::join_paths([&dir]).unwrap().to_string_lossy().into_owned();
+        assert_eq!(resolve_with_exts("flutter", &path, &[".exe", ".cmd", ".bat"]), Some(dir.join("flutter.bat")));
+        assert_eq!(resolve_with_exts("dart", &path, &[".exe", ".cmd", ".bat"]), None);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

@@ -250,7 +250,8 @@ class TerminalService {
   /** Enregistre l'accord de l'utilisateur pour CETTE commande d'installation. */
   grantInstall(command: string): void {
     const parsed = parseExecutable(String(command || '').trim());
-    if (!parsed || parsed.args.length === 0) return;
+    // Sans argument aussi : `yarn` seul installe, un programme inconnu peut se lancer nu.
+    if (!parsed) return;
     const program = parsed.cmdName.replace(/-\d+$/, '');
     this.installGrants.set(TerminalService.installKey(program, parsed.args), Date.now() + 10 * 60_000);
   }
@@ -350,7 +351,7 @@ class TerminalService {
 
     const parsed = parseExecutable(command);
     if (!parsed) {
-      const msg = `Commande non autorisée. Autorisées: ${Object.keys(COMMAND_NAME_MAP).join(', ')}`;
+      const msg = 'Commande non autorisée (programme interdit ou nom invalide).';
       this.emitOutput(processId, 'error', `⛔ ${msg}`);
       this.eventBus.emit({ type: 'process-error', processId, error: msg });
       return processId;

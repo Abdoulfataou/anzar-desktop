@@ -23,6 +23,7 @@ import { detectDevCommand } from '../tools/devServer';
 import { snapshotBeforeChange, type Snapshots } from '../tools/fileChanges';
 import { isMcpTool, mcpNeedsApproval, mcpToolRef } from '@/services/mcp/manager';
 import { NETWORK_BLOCKED_TAG, terminalService } from '@/services/runtime/terminal';
+import { useSettingsStore } from '@/stores/settingsStore';
 import type { Skill } from '@/services/skills';
 import { recordSessionEvent } from './sessionStore';
 import type { ApprovalRequest } from './turnTypes';
@@ -138,7 +139,9 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     ? String(args.command || (await detectDevCommand(ctx.workspacePath).catch(() => null)) || '')
     : '';
   const risk = riskCommand && ctx.agentRoot && ctx.mode !== 'plan'
-    ? await commandRisk(ctx.convId, ctx.agentRoot, riskCommand).catch(() => null)
+    ? await commandRisk(ctx.convId, ctx.agentRoot, riskCommand, {
+      trustedPrograms: useSettingsStore.getState().settings.trustedPrograms || [],
+    }).catch(() => null)
     : null;
 
   // Connecteur MCP : lecture déclarée par le serveur, ou action à faire valider
@@ -175,6 +178,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
       reason,
       detail: risk?.detail,
       scope,
+      trustProgram: risk?.unknownProgram,
     });
     if (allowed && ctx.personalSpace && risk) ctx.onTrustConversation();
   }

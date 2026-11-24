@@ -248,6 +248,7 @@ function GeneralSection() {
   const sandbox = useSettingsStore((s) => s.settings.sandboxCommands !== false);
   const commandNetwork = useSettingsStore((s) => s.settings.commandNetwork !== false);
   const networkProxy = useSettingsStore((s) => s.settings.networkProxy !== false);
+  const trustedPrograms = useSettingsStore((s) => s.settings.trustedPrograms) || [];
   const [extraHosts, setExtraHosts] = useState(() =>
     (useSettingsStore.getState().settings.networkAllowedHosts || []).join('\n'));
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
@@ -354,6 +355,30 @@ function GeneralSection() {
               )}
             </>
           )}
+          <Row
+            label="Programmes autorisés définitivement"
+            description="Programmes hors de la liste d'ANZAR que tu as autorisés avec « Toujours autoriser ». Les autres demandent ton accord à chaque fois ; les shells, sudo et les outils réseau bruts restent toujours interdits."
+          >
+            {trustedPrograms.length === 0 ? (
+              <span className="text-ui-sm text-text-muted">Aucun</span>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {trustedPrograms.map((name) => (
+                  <span key={name} className="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md bg-hover-fill font-mono text-ui-sm text-text-primary">
+                    {name}
+                    <button
+                      type="button"
+                      aria-label={`Retirer ${name}`}
+                      onClick={() => void changeSecurity({ trustedPrograms: trustedPrograms.filter((p) => p !== name) })}
+                      className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-surface-hover"
+                    >
+                      <XCircle size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </Row>
           {isMac && sandbox && (
             <Row
               label="Réseau des commandes"

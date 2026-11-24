@@ -5,13 +5,34 @@
  * package.json puis lancer « npm run x » sans que personne ne voie la vraie commande.
  */
 import { fileSystemService } from '@/services/filesystem/fileSystem';
+import { isInstallCommand, isKnownProgram, programBase } from './commandPolicy';
 
 export interface CommandRisk {
   /** Pourquoi on demande l'accord (affiché à l'utilisateur) */
   reason: string;
   /** Ce qui va réellement s'exécuter (corps du script) */
   detail?: string;
+  /** Programme hors de la liste d'ANZAR : la carte propose « Toujours autoriser ». */
+  unknownProgram?: string;
 }
+
+export interface CommandRiskOptions {
+  /** Programmes autorisés définitivement par l'utilisateur (réglage gardé par Rust). */
+  trustedPrograms?: string[];
+}
+
+/** Interpréteurs : lancer un fichier écrit par l'agent dans la tâche demande l'accord. */
+const INTERPRETERS = ['node', 'python', 'python3', 'deno', 'bun', 'ts-node', 'tsx', 'ruby', 'php', 'go', 'dart', 'java', 'swift', 'kotlinc'];
+/** Scripts de build exécutés par ces programmes : modifiés par l'agent → accord. */
+const BUILD_SCRIPTS: Record<string, RegExp> = {
+  make: /(^|\/)(gnu)?makefile$|\.mk$/,
+  cmake: /(^|\/)cmakelists\.txt$|\.cmake$/,
+  gradle: /(^|\/)(build|settings)\.gradle(\.kts)?$|(^|\/)gradle\.properties$/,
+  gradlew: /(^|\/)gradlew(\.bat)?$|(^|\/)(build|settings)\.gradle(\.kts)?$|gradle-wrapper\.properties$/,
+  flutter: /(^|\/)(build|settings)\.gradle(\.kts)?$|(^|\/)podfile$/,
+  pod: /(^|\/)podfile$/,
+  mvn: /(^|\/)pom\.xml$/,
+};
 
 type Scripts = Record<string, string>;
 
@@ -107,11 +128,26 @@ export function npmScriptsFor(tokens: string[]): string[] | null {
  * Risque d'une commande run_command pour la tâche `taskId`.
  * null : rien de particulier (le mode de permission habituel s'applique).
  */
-export async function commandRisk(taskId: string, root: string, command: string): Promise<CommandRisk | null> {
+export async function commandRisk(
+  taskId: string,
+  root: string,
+  command: string,
+  opts: CommandRiskOptions = {},
+): Promise<CommandRisk | null> {
   const tokens = String(command || '').trim().split(/\s+/).filter(Boolean);
   if (!tokens.length) return null;
-  const exe = tokens[0].toLowerCase();
+  const exe = tokens[0].toLowerCase() === './gradlew' ? 'gradlew' : programBase(tokens[0]);
   const touched = written.get(taskId) || new Set<string>();
+
+  // Programme hors de la liste d'ANZAR : accord à chaque fois, sauf s'il a été autorisé
+  // définitivement. Rust refuse de toute façon sans cet accord.
+  if (!isKnownProgram(exe) && !(opts.trustedPrograms || []).includes(exe)) {
+    return {
+      reason: `lance « ${exe} », un programme qu'ANZAR ne connaît pas (il peut tout faire dans ce projet)`,
+      detail: command,
+      unknownProgram: exe,
+    };
+  }
 
   // Sorties réseau et configurations Git : jamais silencieuses, même en Full.
   if (exe === 'git') {
@@ -138,11 +174,23 @@ export async function commandRisk(taskId: string, root: string, command: string)
   if (exe === 'cargo' && tokens[1] === 'install') {
     return { reason: 'installe un binaire Cargo (code de build possible)', detail: command };
   }
+  // Autres outils (flutter pub get, go get, pod install, npx, docker…) : règles de commands.json
+  if (isInstallCommand(exe, tokens.slice(1))) {
+    return { reason: 'installe ou télécharge du code (paquets, modèles de projet, images)', detail: command };
+  }
 
-  // node / python sur un fichier que l'agent vient d'écrire
-  if (['node', 'python', 'python3', 'deno', 'bun', 'ts-node', 'tsx'].includes(exe)) {
-    const file = tokens.slice(1).find((t) => !t.startsWith('-'));
-    if (file && touched.has(keyRel(file))) {
+  // Script de build modifié par l'agent dans cette tâche (Makefile, build.gradle, Podfile…)
+  const buildRe = BUILD_SCRIPTS[exe];
+  const buildFile = buildRe ? [...touched].find((rel) => buildRe.test(rel)) : undefined;
+  if (buildFile) {
+    return { reason: `${exe} exécute ${buildFile}, un fichier de build modifié par l'agent dans cette tâche`, detail: command };
+  }
+
+  // Interpréteur sur un fichier que l'agent vient d'écrire
+  if (INTERPRETERS.includes(exe)) {
+    // `node x.js`, mais aussi `go run main.go`, `dart run bin/x.dart`
+    const file = tokens.slice(1).filter((t) => !t.startsWith('-')).find((t) => touched.has(keyRel(t)));
+    if (file) {
       return { reason: `exécute ${normRel(file)}, un fichier écrit par l'agent dans cette tâche` };
     }
     // python -m package : le module exécutable est package/__main__.py ou package.py

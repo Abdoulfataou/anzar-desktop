@@ -16,9 +16,11 @@ export interface CommandPolicy {
   network: boolean;
   proxy: boolean;
   extraHosts: string[];
+  /** Programmes hors liste autorisés définitivement (« Toujours autoriser »). */
+  trustedPrograms: string[];
 }
 
-export type PolicySettings = Pick<Settings, 'sandboxCommands' | 'commandNetwork' | 'networkProxy' | 'networkAllowedHosts'>;
+export type PolicySettings = Pick<Settings, 'sandboxCommands' | 'commandNetwork' | 'networkProxy' | 'networkAllowedHosts' | 'trustedPrograms'>;
 
 export function policyFromSettings(s: PolicySettings): CommandPolicy {
   return {
@@ -26,6 +28,7 @@ export function policyFromSettings(s: PolicySettings): CommandPolicy {
     network: s.commandNetwork !== false,
     proxy: s.networkProxy !== false,
     extraHosts: (s.networkAllowedHosts || []).map((h) => h.trim()).filter(Boolean),
+    trustedPrograms: (s.trustedPrograms || []).map((p) => p.trim().toLowerCase()).filter(Boolean),
   };
 }
 
@@ -35,6 +38,7 @@ export function settingsFromPolicy(p: CommandPolicy): PolicySettings {
     commandNetwork: p.network,
     networkProxy: p.proxy,
     networkAllowedHosts: [...(p.extraHosts || [])],
+    trustedPrograms: [...(p.trustedPrograms || [])],
   };
 }
 
@@ -45,6 +49,7 @@ function currentPolicySettings(): PolicySettings {
     commandNetwork: s.commandNetwork,
     networkProxy: s.networkProxy,
     networkAllowedHosts: s.networkAllowedHosts,
+    trustedPrograms: s.trustedPrograms,
   };
 }
 
@@ -63,6 +68,14 @@ export async function pullCommandPolicy(): Promise<void> {
  * Change un ou plusieurs réglages de sécurité. Rust demande confirmation si le changement
  * affaiblit la protection ; en cas de refus, les réglages affichés restent ceux de Rust.
  */
+/** « Toujours autoriser » ce programme : Rust demande une confirmation système. */
+export async function trustProgram(name: string): Promise<{ ok: boolean; error?: string }> {
+  const current = useSettingsStore.getState().settings.trustedPrograms || [];
+  const program = name.trim().toLowerCase();
+  if (current.includes(program)) return { ok: true };
+  return applyCommandPolicy({ trustedPrograms: [...current, program] });
+}
+
 export async function applyCommandPolicy(patch: Partial<PolicySettings>): Promise<{ ok: boolean; error?: string }> {
   const store = useSettingsStore.getState();
   const next: PolicySettings = { ...currentPolicySettings(), ...patch };

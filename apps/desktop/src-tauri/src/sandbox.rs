@@ -28,6 +28,27 @@ pub const PROFILE: &str = r#"(version 1)
   (subpath (param "NPM"))
   (subpath (param "DOTCACHE"))
   (subpath (param "CARGO"))
+  (subpath (param "RUSTUP"))
+  (subpath (param "PUB"))
+  (subpath (param "DART_TOOL"))
+  (subpath (param "DART_SERVER"))
+  (subpath (param "FLUTTER_HOME"))
+  (subpath (param "FLUTTER_SDK_CACHE"))
+  (subpath (param "FLUTTER_TOOLS_CACHE"))
+  (subpath (param "GRADLE"))
+  (subpath (param "M2"))
+  (subpath (param "ANDROID"))
+  (subpath (param "GOPATH"))
+  (subpath (param "COCOAPODS"))
+  (subpath (param "XCODE"))
+  (subpath (param "GEM"))
+  (subpath (param "BUNDLE"))
+  (subpath (param "COMPOSER"))
+  (subpath (param "NUGET"))
+  (subpath (param "DOTNET"))
+  (subpath (param "BUN"))
+  (subpath (param "YARN"))
+  (subpath (param "PNPM"))
   (literal "/dev/null")
   (literal "/dev/zero")
   (literal "/dev/dtracehelper")
@@ -60,14 +81,27 @@ pub const NETWORK_RULES: &str = r#"
 /// après l'accord de l'utilisateur (`approved`).
 pub fn network_allowed(program: &str, args: &[String], approved: bool) -> bool {
     let first = args.first().map(|s| s.as_str()).unwrap_or("");
-    match program {
+    let legacy = match program {
         "npm" => approved && matches!(first, "install" | "i" | "ci" | "add"),
         "pip" | "pip3" => approved && first == "install",
         "python" | "python3" => approved && first == "-m" && args.get(1).map(|s| s == "pip").unwrap_or(false),
         "cargo" => matches!(first, "build" | "b" | "check" | "c" | "test" | "t" | "fetch" | "update" | "tree"),
         "git" => matches!(first, "clone" | "fetch" | "pull" | "ls-remote" | "submodule"),
         _ => false,
-    }
+    };
+    // Règles de commands.json : téléchargements sans installation (build…), et
+    // installations seulement après l'accord de l'utilisateur.
+    legacy
+        || crate::tool_runner::needs_network(program, args)
+        || (approved && crate::tool_runner::is_install(program, args))
+}
+
+/// Dossier `bin/cache` du SDK Flutter installé (Flutter y prend un verrou à chaque commande).
+fn flutter_sdk() -> Option<PathBuf> {
+    let path = crate::mcp::enriched_path();
+    let bin = std::env::split_paths(&path).map(|d| d.join("flutter")).find(|p| p.is_file())?;
+    let real = std::fs::canonicalize(bin).ok()?;
+    real.parent()?.parent().map(|p| p.to_path_buf())
 }
 
 pub struct Wrapped {
@@ -104,6 +138,8 @@ pub fn git_common_dir(root: &Path) -> PathBuf {
 /// Paramètres passés au profil (`-D CLÉ=valeur`), chemins réels (canonicalisés).
 pub fn profile_params(root: &Path, home: &Path, tmp: &Path) -> Vec<(&'static str, String)> {
     let git = git_common_dir(root);
+    // SDK Flutter absent : chemin inexistant, la règle ne donne alors accès à rien.
+    let flutter = flutter_sdk().unwrap_or_else(|| PathBuf::from("/nonexistent/flutter-sdk"));
     let s = |p: PathBuf| p.to_string_lossy().into_owned();
     vec![
         ("ROOT", s(root.to_path_buf())),
@@ -117,6 +153,27 @@ pub fn profile_params(root: &Path, home: &Path, tmp: &Path) -> Vec<(&'static str
         ("NPM", s(home.join(".npm"))),
         ("DOTCACHE", s(home.join(".cache"))),
         ("CARGO", s(home.join(".cargo"))),
+        ("RUSTUP", s(home.join(".rustup"))),
+        ("PUB", s(home.join(".pub-cache"))),
+        ("DART_TOOL", s(home.join(".dart-tool"))),
+        ("DART_SERVER", s(home.join(".dartServer"))),
+        ("FLUTTER_HOME", s(home.join(".flutter"))),
+        ("FLUTTER_SDK_CACHE", s(flutter.join("bin").join("cache"))),
+        ("FLUTTER_TOOLS_CACHE", s(flutter.join("packages").join("flutter_tools").join(".dart_tool"))),
+        ("GRADLE", s(home.join(".gradle"))),
+        ("M2", s(home.join(".m2"))),
+        ("ANDROID", s(home.join(".android"))),
+        ("GOPATH", s(home.join("go"))),
+        ("COCOAPODS", s(home.join(".cocoapods"))),
+        ("XCODE", s(home.join("Library").join("Developer"))),
+        ("GEM", s(home.join(".gem"))),
+        ("BUNDLE", s(home.join(".bundle"))),
+        ("COMPOSER", s(home.join(".composer"))),
+        ("NUGET", s(home.join(".nuget"))),
+        ("DOTNET", s(home.join(".dotnet"))),
+        ("BUN", s(home.join(".bun"))),
+        ("YARN", s(home.join(".yarn"))),
+        ("PNPM", s(home.join("Library").join("pnpm"))),
         ("SSH", s(home.join(".ssh"))),
         ("AWS", s(home.join(".aws"))),
         ("GNUPG", s(home.join(".gnupg"))),
@@ -181,6 +238,16 @@ mod tests {
         assert!(network_allowed("git", &a(&["pull"]), false));
         assert!(!network_allowed("git", &a(&["status"]), false));
         assert!(NETWORK_RULES.contains("localhost:*"));
+        // Règles de commands.json
+        assert!(!network_allowed("flutter", &a(&["pub", "get"]), false));
+        assert!(network_allowed("flutter", &a(&["pub", "get"]), true));
+        assert!(network_allowed("flutter", &a(&["build", "apk"]), false));
+        assert!(!network_allowed("flutter", &a(&["format", "."]), false));
+        assert!(network_allowed("gradlew", &a(&["assembleDebug"]), false));
+        assert!(network_allowed("go", &a(&["build", "./..."]), false));
+        assert!(!network_allowed("go", &a(&["get", "x"]), false));
+        assert!(network_allowed("go", &a(&["get", "x"]), true));
+        assert!(!network_allowed("jq", &a(&["."]), true));
     }
 
     #[test]

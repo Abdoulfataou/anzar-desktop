@@ -1,22 +1,662 @@
 {
-  "version": 1,
+  "version": 2,
   "limits": {
-    "maxArgs": 8,
+    "maxArgs": 24,
     "maxArgChars": 400,
     "maxCommandChars": 2000
   },
   "programs": [
-    { "name": "npm", "agent": true, "install": true },
-    { "name": "node", "agent": true },
-    { "name": "git", "agent": true },
-    { "name": "cargo", "agent": true },
-    { "name": "python", "agent": true },
-    { "name": "python3", "agent": true },
-    { "name": "pip", "agent": true, "install": true },
-    { "name": "pip3", "agent": true, "install": true },
-    { "name": "ffmpeg", "agent": true },
-    { "name": "ffprobe", "agent": false },
-    { "name": "rg", "agent": true }
+    {
+      "name": "npm",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "i",
+        "ci",
+        "add",
+        "update",
+        "up"
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication npm"
+        },
+        {
+          "args": "exec",
+          "reason": "npm exec télécharge et lance un paquet : utilise npx (avec ton accord)"
+        }
+      ]
+    },
+    {
+      "name": "node",
+      "agent": true
+    },
+    {
+      "name": "git",
+      "agent": true,
+      "deny": [
+        {
+          "args": "submodule foreach",
+          "reason": "exécute une commande shell dans chaque sous-module"
+        },
+        {
+          "args": "bisect run",
+          "reason": "exécute une commande shell"
+        },
+        {
+          "args": "filter-branch",
+          "reason": "réécrit l'historique en exécutant du shell"
+        }
+      ]
+    },
+    {
+      "name": "cargo",
+      "agent": true,
+      "installs": [
+        "install",
+        "add"
+      ],
+      "network": [
+        "build",
+        "b",
+        "check",
+        "c",
+        "test",
+        "t",
+        "fetch",
+        "update",
+        "tree"
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication crates.io"
+        },
+        {
+          "args": "login",
+          "reason": "identifiants crates.io"
+        }
+      ]
+    },
+    {
+      "name": "python",
+      "agent": true
+    },
+    {
+      "name": "python3",
+      "agent": true
+    },
+    {
+      "name": "pip",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "download"
+      ]
+    },
+    {
+      "name": "pip3",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "download"
+      ]
+    },
+    {
+      "name": "ffmpeg",
+      "agent": true
+    },
+    {
+      "name": "ffprobe",
+      "agent": false
+    },
+    {
+      "name": "rg",
+      "agent": true
+    },
+    {
+      "name": "npx",
+      "agent": true,
+      "install": true,
+      "installs": [
+        ""
+      ],
+      "launches": [
+        ""
+      ]
+    },
+    {
+      "name": "pnpm",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "i",
+        "add",
+        "update",
+        "up",
+        "dlx",
+        "create",
+        "import"
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication npm"
+        }
+      ],
+      "launches": [
+        "exec",
+        "dlx"
+      ]
+    },
+    {
+      "name": "yarn",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "<none>",
+        "install",
+        "add",
+        "up",
+        "upgrade",
+        "dlx",
+        "create",
+        "import"
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication npm"
+        },
+        {
+          "args": "npm publish",
+          "reason": "publication npm"
+        }
+      ],
+      "launches": [
+        "exec",
+        "dlx"
+      ]
+    },
+    {
+      "name": "bun",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "i",
+        "add",
+        "update",
+        "x",
+        "create",
+        "init"
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication npm"
+        }
+      ],
+      "launches": [
+        "x"
+      ]
+    },
+    {
+      "name": "bunx",
+      "agent": true,
+      "install": true,
+      "installs": [
+        ""
+      ],
+      "launches": [
+        ""
+      ]
+    },
+    {
+      "name": "deno",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "add",
+        "cache",
+        "upgrade",
+        "compile"
+      ],
+      "deny": [
+        {
+          "args": "eval",
+          "reason": "code inline : écris un fichier puis `deno run fichier.ts`"
+        },
+        {
+          "args": "publish",
+          "reason": "publication JSR"
+        }
+      ]
+    },
+    {
+      "name": "tsc",
+      "agent": true
+    },
+    {
+      "name": "flutter",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "create",
+        "pub get",
+        "pub add",
+        "pub upgrade",
+        "pub downgrade",
+        "pub outdated",
+        "precache",
+        "packages get",
+        "packages upgrade"
+      ],
+      "network": [
+        "build",
+        "run",
+        "test",
+        "doctor",
+        "devices",
+        "emulators",
+        "drive",
+        "analyze"
+      ],
+      "deny": [
+        {
+          "args": "pub publish",
+          "reason": "publication pub.dev"
+        },
+        {
+          "args": "upgrade",
+          "reason": "met à jour le SDK Flutter de l'ordinateur : fais-le toi-même dans un terminal"
+        },
+        {
+          "args": "downgrade",
+          "reason": "modifie le SDK Flutter de l'ordinateur"
+        },
+        {
+          "args": "channel",
+          "reason": "modifie le SDK Flutter de l'ordinateur"
+        },
+        {
+          "args": "config",
+          "reason": "modifie la configuration globale de Flutter"
+        }
+      ]
+    },
+    {
+      "name": "dart",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "create",
+        "pub get",
+        "pub add",
+        "pub upgrade",
+        "pub downgrade",
+        "pub global activate",
+        "pub outdated"
+      ],
+      "network": [
+        "run",
+        "test",
+        "compile"
+      ],
+      "deny": [
+        {
+          "args": "pub publish",
+          "reason": "publication pub.dev"
+        }
+      ]
+    },
+    {
+      "name": "gradle",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "wrapper",
+        "dependencies"
+      ],
+      "network": [
+        ""
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication d'artefacts"
+        }
+      ]
+    },
+    {
+      "name": "gradlew",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "dependencies"
+      ],
+      "network": [
+        ""
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication d'artefacts"
+        }
+      ]
+    },
+    {
+      "name": "pod",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "update",
+        "repo update",
+        "init"
+      ],
+      "deny": [
+        {
+          "args": "trunk",
+          "reason": "publication CocoaPods"
+        }
+      ]
+    },
+    {
+      "name": "xcodebuild",
+      "agent": true,
+      "network": [
+        ""
+      ]
+    },
+    {
+      "name": "xcrun",
+      "agent": true,
+      "deny": [
+        {
+          "args": "altool",
+          "reason": "envoi vers Apple"
+        },
+        {
+          "args": "notarytool",
+          "reason": "envoi vers Apple"
+        }
+      ],
+      "launches": [
+        ""
+      ]
+    },
+    {
+      "name": "swift",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "package resolve",
+        "package update",
+        "package init"
+      ],
+      "network": [
+        "build",
+        "run",
+        "test"
+      ]
+    },
+    {
+      "name": "java",
+      "agent": true
+    },
+    {
+      "name": "javac",
+      "agent": true
+    },
+    {
+      "name": "kotlinc",
+      "agent": true
+    },
+    {
+      "name": "mvn",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "dependency:resolve",
+        "install"
+      ],
+      "network": [
+        ""
+      ],
+      "deny": [
+        {
+          "args": "deploy",
+          "reason": "publication d'artefacts"
+        }
+      ]
+    },
+    {
+      "name": "adb",
+      "agent": true,
+      "deny": [
+        {
+          "args": "root",
+          "reason": "droits administrateur sur l'appareil"
+        }
+      ]
+    },
+    {
+      "name": "go",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "get",
+        "install",
+        "mod download",
+        "mod tidy"
+      ],
+      "network": [
+        "build",
+        "run",
+        "test",
+        "vet",
+        "generate"
+      ]
+    },
+    {
+      "name": "rustc",
+      "agent": true
+    },
+    {
+      "name": "rustup",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "target add",
+        "component add",
+        "toolchain install",
+        "update"
+      ],
+      "deny": [
+        {
+          "args": "self",
+          "reason": "modifie rustup lui-même"
+        },
+        {
+          "args": "run",
+          "reason": "lance un programme arbitraire : utilise directement cargo ou rustc"
+        }
+      ]
+    },
+    {
+      "name": "php",
+      "agent": true
+    },
+    {
+      "name": "composer",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "require",
+        "update",
+        "create-project",
+        "global"
+      ]
+    },
+    {
+      "name": "ruby",
+      "agent": true
+    },
+    {
+      "name": "gem",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "update"
+      ],
+      "deny": [
+        {
+          "args": "push",
+          "reason": "publication RubyGems"
+        },
+        {
+          "args": "signin",
+          "reason": "identifiants RubyGems"
+        }
+      ]
+    },
+    {
+      "name": "bundle",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "<none>",
+        "install",
+        "update",
+        "add",
+        "exec"
+      ],
+      "launches": [
+        "exec"
+      ]
+    },
+    {
+      "name": "rails",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "new"
+      ]
+    },
+    {
+      "name": "dotnet",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "add",
+        "restore",
+        "tool install",
+        "workload install",
+        "new install"
+      ],
+      "network": [
+        "build",
+        "run",
+        "test",
+        "publish"
+      ],
+      "deny": [
+        {
+          "args": "nuget push",
+          "reason": "publication NuGet"
+        }
+      ],
+      "launches": [
+        "tool run"
+      ]
+    },
+    {
+      "name": "uv",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "add",
+        "sync",
+        "pip install",
+        "tool install",
+        "python install",
+        "init",
+        "lock"
+      ],
+      "network": [
+        "run"
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication PyPI"
+        }
+      ],
+      "launches": [
+        "run",
+        "tool run"
+      ]
+    },
+    {
+      "name": "poetry",
+      "agent": true,
+      "install": true,
+      "installs": [
+        "install",
+        "add",
+        "update",
+        "lock"
+      ],
+      "deny": [
+        {
+          "args": "publish",
+          "reason": "publication PyPI"
+        }
+      ],
+      "launches": [
+        "run"
+      ]
+    },
+    {
+      "name": "pytest",
+      "agent": true
+    },
+    {
+      "name": "make",
+      "agent": true
+    },
+    {
+      "name": "cmake",
+      "agent": true
+    },
+    {
+      "name": "docker",
+      "agent": true,
+      "install": true,
+      "installs": [
+        ""
+      ],
+      "network": [
+        ""
+      ]
+    },
+    {
+      "name": "sqlite3",
+      "agent": true
+    },
+    {
+      "name": "jq",
+      "agent": true
+    }
   ],
   "blocked": [
     {
@@ -30,6 +670,12 @@
       "pattern": "\\bpython3?\\s+-c(\\s|$)",
       "flags": "i",
       "reason": "python -c est refusé. Écris ton code dans un fichier .py avec write_file, puis lance `python script.py`."
+    },
+    {
+      "id": "inline-script",
+      "pattern": "\\b(ruby|perl)\\s+-e\\b|\\bphp\\s+-r\\b|\\bbun\\s+(-e|--eval)\\b|\\bdeno\\s+eval\\b",
+      "flags": "i",
+      "reason": "Le code inline (ruby -e, php -r, bun -e, deno eval…) est refusé. Écris un fichier avec write_file, puis exécute-le."
     },
     {
       "id": "inline-shell",
@@ -123,5 +769,89 @@
       "pattern": "(^|\\s)(/|~/|[A-Za-z]:\\\\)",
       "reason": "Les chemins absolus sont refusés : utilise un chemin relatif au projet (ex. scripts/build.mjs)."
     }
-  ]
+  ],
+  "deniedPrograms": {
+    "reason": "jamais lancé par l'agent, même avec ton accord",
+    "names": [
+      "sh",
+      "bash",
+      "zsh",
+      "fish",
+      "dash",
+      "ksh",
+      "csh",
+      "tcsh",
+      "pwsh",
+      "powershell",
+      "cmd",
+      "sudo",
+      "su",
+      "doas",
+      "runas",
+      "env",
+      "xargs",
+      "nohup",
+      "exec",
+      "eval",
+      "source",
+      "time",
+      "timeout",
+      "watch",
+      "script",
+      "nice",
+      "osascript",
+      "open",
+      "launchctl",
+      "crontab",
+      "at",
+      "systemctl",
+      "service",
+      "security",
+      "defaults",
+      "diskutil",
+      "fdisk",
+      "mkfs",
+      "dd",
+      "mount",
+      "umount",
+      "chown",
+      "chgrp",
+      "spctl",
+      "csrutil",
+      "nvram",
+      "xattr",
+      "codesign",
+      "shutdown",
+      "reboot",
+      "halt",
+      "kill",
+      "killall",
+      "pkill",
+      "curl",
+      "wget",
+      "nc",
+      "ncat",
+      "netcat",
+      "telnet",
+      "ssh",
+      "scp",
+      "sftp",
+      "rsync",
+      "ftp",
+      "reg",
+      "regedit",
+      "schtasks",
+      "sc",
+      "net",
+      "netsh",
+      "rundll32",
+      "regsvr32",
+      "mshta",
+      "wscript",
+      "cscript",
+      "certutil",
+      "bitsadmin",
+      "perl"
+    ]
+  }
 }

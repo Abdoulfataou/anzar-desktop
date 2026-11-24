@@ -49,6 +49,8 @@ export interface Settings {
   networkProxy?: boolean;
   /** Hôtes autorisés en plus des valeurs par défaut (registres, GitHub, Node.js). */
   networkAllowedHosts?: string[];
+  /** Programmes hors liste autorisés définitivement (copie du réglage gardé par Rust). */
+  trustedPrograms?: string[];
 
   // Interface
   theme: 'light' | 'dark' | 'system';

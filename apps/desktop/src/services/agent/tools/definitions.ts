@@ -269,7 +269,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'run_command',
       description:
-        "Exécute UNE commande dans le projet. Programmes autorisés : npm, node, git, python, pip, cargo, ffmpeg (après install_tool), rg — rien d'autre (pas de grep, ls, cat, find, head, echo). " +
+        "Exécute UNE commande dans le projet. Outils de développement acceptés : npm, pnpm, yarn, bun, npx, deno, node, python, pip, uv, poetry, git, cargo, go, flutter, dart, ./gradlew, gradle, pod, xcodebuild, swift, dotnet, php, composer, ruby, gem, bundle, make, docker, ffmpeg (après install_tool), rg. Un programme absent de cette liste demande l'accord de l'utilisateur ; les installations (npm install, flutter pub get, go get…) aussi. Interdits même avec accord : bash/sh/powershell, sudo, curl, wget, ssh. Pas de grep, ls, cat, find, head, echo. " +
         "Jamais node -e ni python -c (refusés) : pour un traitement, écris un fichier script (.mjs/.py) avec write_file puis lance-le. Interdits : |, ;, &&, ||, >, <, $(…) et chemins absolus. Pour chercher dans le code utilise search_files, pour lister list_dir, pour lire read_file. " +
         "Sert à installer des dépendances, lancer build/lint/tests et VÉRIFIER ton travail. Renvoie stdout/stderr + code de sortie.",
       parameters: {

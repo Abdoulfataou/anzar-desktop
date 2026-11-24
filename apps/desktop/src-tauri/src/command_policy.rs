@@ -20,6 +20,7 @@ use tauri::{AppHandle, Manager, State};
 
 const POLICY_FILE: &str = "command-policy.json";
 const MAX_EXTRA_HOSTS: usize = 100;
+const MAX_TRUSTED_PROGRAMS: usize = 200;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -32,12 +33,15 @@ pub struct CommandPolicy {
     pub proxy: bool,
     /// Hôtes autorisés en plus des valeurs par défaut du proxy.
     pub extra_hosts: Vec<String>,
+    /// Programmes hors de la liste d'ANZAR que l'utilisateur a autorisés définitivement
+    /// (« Toujours autoriser » sur la carte d'accord). Les programmes interdits n'y entrent jamais.
+    pub trusted_programs: Vec<String>,
 }
 
 impl Default for CommandPolicy {
     /// Mêmes valeurs par défaut que les réglages de l'interface.
     fn default() -> Self {
-        Self { sandbox: true, network: true, proxy: true, extra_hosts: Vec::new() }
+        Self { sandbox: true, network: true, proxy: true, extra_hosts: Vec::new(), trusted_programs: Vec::new() }
     }
 }
 
@@ -51,6 +55,17 @@ impl CommandPolicy {
         }
         hosts.truncate(MAX_EXTRA_HOSTS);
         self.extra_hosts = hosts;
+        let mut programs: Vec<String> = Vec::new();
+        for p in self.trusted_programs.iter().map(|p| p.trim().to_lowercase()) {
+            if crate::tool_runner::is_valid_program_name(&p)
+                && !crate::tool_runner::is_denied_program(&p)
+                && !programs.contains(&p)
+            {
+                programs.push(p);
+            }
+        }
+        programs.truncate(MAX_TRUSTED_PROGRAMS);
+        self.trusted_programs = programs;
         self
     }
 }
@@ -113,6 +128,15 @@ pub fn weakenings(old: &CommandPolicy, new: &CommandPolicy) -> Vec<String> {
         .collect();
     if !added.is_empty() {
         out.push(format!("autoriser ces adresses pour les commandes : {}", added.join(", ")));
+    }
+    let trusted: Vec<&str> = new
+        .trusted_programs
+        .iter()
+        .filter(|p| !old.trusted_programs.contains(p))
+        .map(|p| p.as_str())
+        .collect();
+    if !trusted.is_empty() {
+        out.push(format!("autoriser définitivement l'agent à lancer : {}", trusted.join(", ")));
     }
     out
 }
@@ -187,7 +211,28 @@ mod tests {
     use super::*;
 
     fn p(sandbox: bool, network: bool, proxy: bool, hosts: &[&str]) -> CommandPolicy {
-        CommandPolicy { sandbox, network, proxy, extra_hosts: hosts.iter().map(|s| s.to_string()).collect() }
+        CommandPolicy {
+            sandbox,
+            network,
+            proxy,
+            extra_hosts: hosts.iter().map(|s| s.to_string()).collect(),
+            trusted_programs: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn trusted_programs_filtered_and_confirmed() {
+        let pol = CommandPolicy {
+            trusted_programs: vec!["Supabase".into(), "bash".into(), "../x".into(), "supabase".into(), "firebase".into()],
+            ..CommandPolicy::default()
+        }
+        .normalized();
+        // Interdit (bash), invalide (../x) et doublon retirés ; minuscules.
+        assert_eq!(pol.trusted_programs, vec!["supabase".to_string(), "firebase".to_string()]);
+        let w = weakenings(&CommandPolicy::default(), &pol);
+        assert!(w.iter().any(|l| l.contains("supabase") && l.contains("firebase")));
+        // Retirer un programme de confiance ne demande rien.
+        assert!(weakenings(&pol, &CommandPolicy::default()).is_empty());
     }
 
     #[test]
@@ -248,5 +293,6 @@ mod tests {
     fn unknown_or_missing_fields_fall_back_to_safe_defaults() {
         let parsed: CommandPolicy = serde_json::from_str("{\"network\":false}").unwrap();
         assert_eq!(parsed, p(true, false, true, &[]));
+        assert!(parsed.trusted_programs.is_empty());
     }
 }
