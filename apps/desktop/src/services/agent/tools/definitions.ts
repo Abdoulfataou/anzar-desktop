@@ -415,7 +415,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'task_done',
       description:
-        "Signale que la tâche est TERMINÉE et vérifiée. À appeler UNIQUEMENT après avoir vérifié ton travail (build/lint/tests via run_command quand c'est possible).",
+        "Optionnel : signale explicitement que la tâche est terminée et vérifiée (build/lint/tests quand c'est possible). Tu peux aussi simplement terminer par une réponse claire ; la vérification se lance dans les deux cas.",
       parameters: {
         type: 'object',
         properties: {

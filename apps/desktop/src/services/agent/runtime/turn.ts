@@ -307,8 +307,9 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
           flush();
         },
         // ── Vérification automatique (Verify → Fix → Verify) ──
-        // Au task_done, si l'agent a modifié le projet : lint / build / tests détectés.
-        // En cas d'échec, task_done est refusé et les erreurs sont renvoyées à l'agent.
+        // À la fin du tour (réponse naturelle ou task_done), si l'agent a modifié le
+        // projet : lint / build / tests détectés. En cas d'échec, les erreurs sont
+        // renvoyées à l'agent et le tour continue.
         shouldVerify: () => turn.filesWritten > 0 && verifier.enabled && host.mode !== 'plan',
         maxVerifyAttempts: 3,
         verify: () => verifier.verify(),

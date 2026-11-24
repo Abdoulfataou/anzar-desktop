@@ -79,26 +79,44 @@ describe('runAgentEngine', () => {
 
     expect(verify).toHaveBeenCalledTimes(2);
     expect(result.stopReason).toBe('task_done');
-    expect(messages.some((m) => m.role === 'user' && String(m.content).includes('REFUSÉ'))).toBe(true);
+    expect(messages.some((m) => m.role === 'user' && String(m.content).includes('Vérification automatique échouée'))).toBe(true);
   });
 
-  it('ajoute une relance quand des fichiers ont changé sans task_done', async () => {
+  it('termine sur une réponse texte, sans relance ni task_done', async () => {
     const messages = [userMessage()];
     let callIndex = 0;
-    const onToolBatchEnd = vi.fn();
 
     const result = await runAgentEngine({
       messages,
-      stream: () => (callIndex++ === 0 ? stream({ content: 'fait' }) : stream({ content: 'terminé' })),
+      stream: () => { callIndex++; return stream({ content: 'fait' }); },
       executeTool: vi.fn(),
-      shouldNudge: () => true,
-      nudgeMessage: 'Appelle task_done.',
-      onToolBatchEnd,
     });
 
-    expect(callIndex).toBe(2);
+    expect(callIndex).toBe(1);
     expect(result.stopReason).toBe('final_answer');
-    expect(messages.some((m) => m.role === 'user' && m.content === 'Appelle task_done.')).toBe(true);
+    expect(result.summary).toBe('fait');
+    expect(messages.some((m) => m.role === 'user' && m.content !== 'Tâche')).toBe(false);
+  });
+
+  it('vérifie une réponse texte qui a modifié des fichiers, puis accepte après correction', async () => {
+    const messages = [userMessage()];
+    const verify = vi.fn()
+      .mockResolvedValueOnce({ passed: false, failureSummary: 'ERREUR DE BUILD' })
+      .mockResolvedValueOnce({ passed: true, failureSummary: '' });
+    let callIndex = 0;
+
+    const result = await runAgentEngine({
+      messages,
+      stream: () => (callIndex++ === 0 ? stream({ content: 'fini' }) : stream({ content: 'corrigé' })),
+      executeTool: vi.fn(),
+      verify,
+      shouldVerify: () => true,
+    });
+
+    expect(verify).toHaveBeenCalledTimes(2);
+    expect(result.stopReason).toBe('final_answer');
+    expect(result.summary).toBe('corrigé');
+    expect(messages.some((m) => m.role === 'user' && String(m.content).includes('Vérification automatique échouée'))).toBe(true);
   });
 
   it('réessaie une étape coupée', async () => {

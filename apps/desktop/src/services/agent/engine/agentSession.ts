@@ -68,8 +68,6 @@ export interface AgentSessionOptions {
   verify?: () => Promise<{ passed: boolean; failureSummary: string }>;
   shouldVerify?: () => boolean;
   maxVerifyAttempts?: number;
-  shouldNudge?: () => boolean;
-  nudgeMessage?: string;
   /** Appelé avant chaque appel modèle (compaction, estimation de tokens…). */
   beforeStep?: (messages: APIMessage[], step: number) => void | Promise<void>;
   onStepStart?: (step: number) => void;
@@ -95,9 +93,6 @@ export interface AgentEngineResult {
   messages: APIMessage[];
   errorMessage?: string;
 }
-
-const DEFAULT_NUDGE =
-  "Tu as modifié des fichiers mais tu n'as pas appelé task_done. Vérifie ton travail puis appelle task_done avec un résumé. Si la tâche n'est pas finie, continue.";
 
 function sleepAbortable(ms: number, signal?: AbortSignal): Promise<void> {
   if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
@@ -144,7 +139,6 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
       ? (options.tools as () => ToolDefinition[] | undefined)
       : () => options.tools as ToolDefinition[] | undefined;
   let consecutiveErrors = 0;
-  let nudged = false;
   let verifyAttempts = 0;
 
   const finish = (stopReason: AgentStopReason, summary: string, steps: number, error?: string): AgentEngineResult => ({
@@ -157,6 +151,49 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
 
   const loop = loopGuard ?? new LoopGuard();
   const stepLimit = budget?.spec.steps ?? maxSteps;
+  const verificationNeeded = (): boolean => Boolean(verify) && (shouldVerify ? shouldVerify() : true);
+
+  /**
+   * Vérifie le travail puis termine, ou renvoie null pour laisser le modèle corriger.
+   * Appelée aussi bien après une réponse texte naturelle qu'après task_done : la fin
+   * du tour ne dépend plus d'un outil de complétion.
+   */
+  const verifyAndFinish = async (
+    summary: string,
+    step: number,
+    passedReason: 'final_answer' | 'task_done',
+  ): Promise<AgentEngineResult | null> => {
+    if (!verificationNeeded()) return finish(passedReason, summary, step);
+    verifyAttempts++;
+    onVerifyStart?.(verifyAttempts, maxVerifyAttempts);
+    let report: { passed: boolean; failureSummary: string };
+    try {
+      report = await verify!();
+    } catch (e) {
+      report = { passed: false, failureSummary: errorMessage(e) };
+    }
+    onVerifyResult?.(report.passed, report.failureSummary);
+
+    if (report.passed) return finish(passedReason, summary, step);
+    if (verifyAttempts >= maxVerifyAttempts) {
+      return finish(
+        'verify_failed',
+        `La vérification échoue toujours après ${verifyAttempts} tentatives de correction.\n\n${report.failureSummary.slice(0, 2000)}`,
+        step,
+      );
+    }
+
+    loop.reset();
+    messages.push({
+      role: 'user',
+      content:
+        `⚠️ Vérification automatique échouée (tentative ${verifyAttempts}/${maxVerifyAttempts}).\n\n` +
+        `${report.failureSummary}\n\n` +
+        `Analyse ces erreurs, corrige les fichiers concernés, puis termine par une réponse claire ` +
+        `(ou appelle task_done). La vérification sera relancée automatiquement.`,
+    });
+    return null;
+  };
 
   for (let step = 1; step <= stepLimit; step++) {
     if (signal?.aborted) return finish('aborted', 'Session annulée.', step - 1);
@@ -220,16 +257,14 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     const toolCalls = assembler.finish();
     onStepEnd?.({ step, text, reasoning, toolCalls });
 
-    // ── Réponse texte sans outil ──
+    // ── Réponse texte sans outil : c'est une fin naturelle ──
+    // Si le tour a modifié des fichiers et que la vérification est active, elle passe
+    // avant de rendre la réponse ; en cas d'échec, le modèle reçoit les erreurs et continue.
     if (toolCalls.length === 0) {
       messages.push({ role: 'assistant', content: text || null });
-      if (!nudged && options.shouldNudge?.()) {
-        nudged = true;
-        loop.reset();
-        messages.push({ role: 'user', content: options.nudgeMessage || DEFAULT_NUDGE });
-        continue;
-      }
-      return finish('final_answer', text || 'Réponse terminée.', step);
+      const done = await verifyAndFinish(text || 'Réponse terminée.', step, 'final_answer');
+      if (done) return done;
+      continue;
     }
 
     // ── Exécution des tool_calls ──
@@ -298,37 +333,8 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     onToolBatchEnd?.(step);
 
     if (doneSummary !== null) {
-      const needsVerify = verify && (shouldVerify ? shouldVerify() : true);
-      if (!needsVerify) return finish('task_done', doneSummary, step);
-
-      verifyAttempts++;
-      onVerifyStart?.(verifyAttempts, maxVerifyAttempts);
-      let report: { passed: boolean; failureSummary: string };
-      try {
-        report = await verify!();
-      } catch (e) {
-        report = { passed: false, failureSummary: errorMessage(e) };
-      }
-      onVerifyResult?.(report.passed, report.failureSummary);
-
-      if (report.passed) return finish('task_done', doneSummary, step);
-      if (verifyAttempts >= maxVerifyAttempts) {
-        return finish(
-          'verify_failed',
-          `La vérification échoue toujours après ${verifyAttempts} tentatives de correction.\n\n${report.failureSummary.slice(0, 2000)}`,
-          step,
-        );
-      }
-
-      loop.reset();
-      messages.push({
-        role: 'user',
-        content:
-          `⚠️ task_done REFUSÉ — la vérification automatique a échoué (tentative ${verifyAttempts}/${maxVerifyAttempts}).\n\n` +
-          `${report.failureSummary}\n\n` +
-          `Analyse ces erreurs, corrige les fichiers concernés, puis rappelle task_done. ` +
-          `La vérification sera relancée automatiquement.`,
-      });
+      const done = await verifyAndFinish(doneSummary, step, 'task_done');
+      if (done) return done;
     }
   }
 

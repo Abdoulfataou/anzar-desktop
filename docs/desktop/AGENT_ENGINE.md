@@ -71,9 +71,10 @@ Règles :
   n'arrête jamais la session : le modèle relit le résultat et décide. Le budget du tour reste
   le seul plafond ; une répétition légitime (relancer le même test après une correction) est
   donc permise.
-- **Vérification** : au `task_done`, si l'agent a modifié le projet et que le réglage
-  « vérifier après application » est actif, lint / build / tests sont lancés ; un échec refuse
-  `task_done` (3 tentatives). Une commande qui exécute du code modifié par l'agent demande un accord.
+- **Vérification** : à la fin du tour (réponse texte naturelle ou `task_done`), si l'agent a
+  modifié le projet et que le réglage « vérifier après application » est actif, lint / build /
+  tests sont lancés ; un échec renvoie les erreurs à l'agent (3 tentatives). `task_done` est
+  optionnel : une réponse claire termine aussi le tour. Une commande qui exécute du code modifié par l'agent demande un accord.
 - **Référence persistée** : la ligne de base (2 h) est écrite dans `store/baselines/` et relue
   au démarrage, au lieu d'être recapturée à chaque lancement (3 commandes par projet).
 - **Vérification ciblée** : `verify/targeted.ts`. Les fichiers modifiés par l'agent (suivis par

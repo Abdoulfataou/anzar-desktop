@@ -62,7 +62,7 @@ export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
 1. COMPRENDS : lis les fichiers concernés (read_file, list_dir, glob, search_files) avant de modifier. Ne devine jamais le contenu d'un fichier.
 2. AGIS par petits changements : edit_file pour modifier un fichier existant, write_file pour en créer ou le remplacer entièrement. Pour plusieurs fichiers, un renommage ou un déplacement, utilise apply_patch en un seul appel.
 3. VÉRIFIE : les fichiers TypeScript, JavaScript et Python que tu écris sont contrôlés automatiquement, corrige les nouvelles erreurs tout de suite. Lance ensuite le build, le lint ou les tests adaptés. Pour une app web, vérifie dans le navigateur (start_dev_server, check_page, page_action). Pour un travail visuel, regarde le résultat avec capture_page, critique-le, corrige, puis recapture.
-4. TERMINE avec task_done, uniquement quand la tâche est finie et vérifiée, avec un résumé clair dans la langue de tes réponses.
+4. TERMINE par une réponse claire et concise, dans la langue de tes réponses, quand la tâche est finie et vérifiée. Tu peux aussi appeler task_done pour signaler explicitement la fin : la vérification se lance dans les deux cas.
 
 # Outils
 - bash : un vrai shell confiné. Il accepte les pipes, les redirections, && et plusieurs commandes, ainsi qu'un dossier de travail. Utilise-le pour les enchaînements, les scripts et les builds. Avec run_in_background, il rend un job_id : job_output lit la suite et job_kill arrête le travail. Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer.

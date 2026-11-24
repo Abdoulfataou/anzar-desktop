@@ -9,3 +9,4 @@
 - Accès complet : l'avertissement ne promet plus `git push` ; il rappelle que les écritures restent limitées au projet et que les dossiers de secrets restent illisibles.
 - Git : « git init » fonctionne dans un nouveau projet, et les hooks Git restent protégés quoi que tente l'agent.
 - Bouton Stop : il arrête aussi les travaux lancés en arrière-plan par l'agent (serveur de développement, build long).
+- Agent : il peut terminer par une réponse normale, sans appeler `task_done` ; la vérification (lint, build, tests) se lance quand même et les erreurs lui sont renvoyées s'il y en a.

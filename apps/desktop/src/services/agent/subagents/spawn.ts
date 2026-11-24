@@ -133,7 +133,7 @@ export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): 
 
   const anyError = results.some(r => r.stopReason === 'error' || r.stopReason === 'budget_exhausted');
   return {
-    output: `${report}\n\n→ Vérifie maintenant la cohérence de l'ensemble (imports croisés, build) avant task_done.`,
+    output: `${report}\n\n→ Vérifie maintenant la cohérence de l'ensemble (imports croisés, build) avant de conclure.`,
     isError: anyError,
   };
 }

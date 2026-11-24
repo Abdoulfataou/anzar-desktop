@@ -182,7 +182,7 @@ export const TASKS: BenchTask[] = [
       { a: 'text', text: 'J’ai créé le fichier.' },
       { a: 'done', summary: 'src/f.ts créé.' },
     ],
-    // Le chat n'utilise pas le nudging de `agentLoop` : un texte sans task_done termine le tour.
+    // Une réponse texte sans task_done termine le tour (fin naturelle).
     expect: { stop: 'final_answer', maxCalls: 2, files: { 'src/f.ts': 'export const f' } },
   },
   {

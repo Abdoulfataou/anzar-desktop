@@ -6,7 +6,7 @@
  *   2. Le modèle répond avec du texte et/ou des tool_calls
  *   3. Les tool_calls sont exécutés localement (FS Tauri + shell allowlisté)
  *   4. Les résultats sont réinjectés (role: tool) et on boucle
- *   5. Fin quand l'agent appelle task_done, ou budget épuisé, ou annulation
+ *   5. Fin quand l'agent répond sans demander d'outil (ou appelle task_done), budget épuisé, ou annulation
  *
  * Sécurité :
  *   - Checkpoint git automatique avant la session (rollback en 1 clic)
@@ -61,9 +61,9 @@ export interface AgentLoopOptions {
   /** Checkpoint git automatique avant de commencer (défaut: true) */
   gitCheckpoint?: boolean;
   /**
-   * Vérification automatique au task_done (défaut: false ; le chat principal la pilote via le réglage autoVerifyAfterApply).
-   * Si lint/build/tests échouent, task_done est REFUSÉ et les erreurs
-   * sont réinjectées à l'agent pour correction (boucle Verify→Fix→Verify).
+   * Vérification automatique en fin de tour (défaut: false ; le chat principal la pilote
+   * via le réglage autoVerifyAfterApply). Si lint/build/tests échouent, la réponse est
+   * refusée et les erreurs sont réinjectées à l'agent (boucle Verify→Fix→Verify).
    */
   autoVerify?: boolean;
   /** Nombre max de cycles vérification-correction (défaut: 3) */
@@ -239,9 +239,6 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     },
     shouldVerify: () => autoVerify && filesChanged.size > 0,
     maxVerifyAttempts,
-    shouldNudge: () => filesChanged.size > 0,
-    nudgeMessage:
-      "Tu as modifié des fichiers mais tu n'as pas appelé task_done. Vérifie ton travail (run_command: build/lint/tests si applicable) puis appelle task_done avec un résumé. Si la tâche n'est pas finie, continue.",
     onStepStart: (step) => emit({ type: 'step_start', step, maxSteps }),
     onTextDelta: (content) => emit({ type: 'text', content }),
     onReasoningDelta: (content) => emit({ type: 'reasoning', content }),
