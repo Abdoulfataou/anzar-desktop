@@ -25,8 +25,10 @@ export const FULL_ACCESS_UNCONFINED_WARNING = {
   title: 'Désactiver aussi l’isolation ?',
   message:
     "L'accès complet sans isolation va plus loin : les commandes de l'agent ne sont plus confinées par le système. " +
-    "Il peut écrire en dehors du projet, et un programme qu'il lance peut lire tes fichiers personnels, y compris " +
-    'tes clés (~/.ssh, ~/.aws). Un paquet ou un script peut donc agir sur ta machine.\n\n' +
+    "Elles peuvent écrire en dehors du projet et lire les dossiers que l'isolation protégeait : ~/.ssh (clés), " +
+    "~/.aws (identifiants cloud), ~/.gnupg, ~/.kube, ~/.netrc et ~/.git-credentials. Un programme peut aussi ignorer " +
+    "le proxy réseau et modifier les hooks/config Git ; les refus de la politique de commandes (git push, git config, " +
+    'secrets explicitement cités) restent, mais un script peut les contourner.\n\n' +
     'Ne l’active que sur une machine de confiance, avec un projet sauvegardé (Git). ' +
     'Tu peux revenir à « Accès complet » (isolé) ou à un autre mode à tout moment.\n\n' +
     'Le code n’est jamais poussé : git push et la configuration git restent à ta main.',

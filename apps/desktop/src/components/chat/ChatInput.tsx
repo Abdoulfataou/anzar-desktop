@@ -430,7 +430,7 @@ const PERMISSIONS: { id: PermissionChoice; label: string; hint: string }[] = [
   { id: 'auto', label: 'Modifier automatiquement',   hint: "Les fichiers sont modifiés sans demander ; seules les actions risquées (installation, git, programme inconnu) demandent ton accord ; les commandes restent isolées" },
   { id: 'plan', label: 'Mode plan',                  hint: "L'agent lit et propose un plan, sans rien modifier" },
   { id: 'full', label: 'Accès complet (isolé)',      hint: "L'agent modifie, installe et exécute sans rien demander, mais reste dans le projet et ne lit pas les secrets" },
-  { id: 'full-unconfined', label: 'Accès complet sans isolation', hint: "Comme l'accès complet, mais le système ne confine plus les commandes : l'agent peut écrire hors du projet et un programme peut lire tes fichiers personnels" },
+  { id: 'full-unconfined', label: 'Accès complet sans isolation', hint: "Comme l'accès complet, mais le système ne confine plus les commandes : écriture hors projet et lecture de ~/.ssh, ~/.aws, ~/.gnupg, ~/.kube, ~/.netrc, ~/.git-credentials possibles" },
 ];
 
 const MODELS: { id: AIModel; label: string; hint: string }[] = [
