@@ -66,3 +66,6 @@ id_ed25519*
 
 # Généré par la CI (certificat personnel macOS)
 apps/desktop/src-tauri/tauri.perso.conf.json
+
+# Suivi des erreurs (scripts/erreurs) : rapports et diagnostics locaux
+.erreurs/
