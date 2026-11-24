@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import { authService } from '@/services/infra/auth';
 import TitleBar from '@/components/layout/TitleBar';
+import { SUPPORT_EMAIL, siteUrl } from '@/lib/siteLinks';
 
 type Step = 'email' | 'otp' | 'password';
 type AuthMode = 'login' | 'register';
@@ -435,8 +436,8 @@ export default function LoginPage() {
           {/* Footer */}
           <div className="mt-10 pt-6 border-t border-border-subtle/30 text-center space-y-3">
             <div className="flex items-center justify-center gap-4 text-xs text-text-muted">
-              <button onClick={() => openExternalUrl('mailto:abdul@issalanhub.com')} className="hover:text-accent-primary transition-colors">
-                abdul@issalanhub.com
+              <button onClick={() => openExternalUrl(`mailto:${SUPPORT_EMAIL}`)} className="hover:text-accent-primary transition-colors">
+                {SUPPORT_EMAIL}
               </button>
               <span className="text-border-subtle">|</span>
               <button onClick={() => openExternalUrl('https://wa.me/17172161490')} className="hover:text-accent-success transition-colors">
@@ -447,6 +448,12 @@ export default function LoginPage() {
                 Telegram
               </button>
             </div>
+            <p className="text-[11px] text-text-muted">
+              En te connectant, tu acceptes les{' '}
+              <button type="button" onClick={() => openExternalUrl(siteUrl('terms'))} className="underline-offset-2 hover:underline hover:text-text-secondary">conditions d'utilisation</button>
+              {' '}et la{' '}
+              <button type="button" onClick={() => openExternalUrl(siteUrl('privacy'))} className="underline-offset-2 hover:underline hover:text-text-secondary">politique de confidentialité</button>.
+            </p>
             <p className="text-[10px] text-text-muted/60">
               {"© "}{new Date().getFullYear()} IssalanHub · USA · Niger · Tous droits réservés
             </p>

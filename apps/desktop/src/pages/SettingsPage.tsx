@@ -32,6 +32,7 @@ import type { PermissionMode } from '@/hooks/useAgentChat';
 import { installAppleDevTools, installCommand, installGitNow, platform, programsStatus, type ProgramInfo } from '@/services/runtime/programs';
 import { installNodeNow } from '@/services/runtime/nodeRuntime';
 import { applyCommandPolicy, type PolicySettings } from '@/services/runtime/commandPolicy';
+import { SUPPORT_EMAIL, siteUrl } from '@/lib/siteLinks';
 
 type SectionId = 'general' | 'appearance' | 'personalization' | 'programs' | 'account' | 'usage' | 'data' | 'about';
 
@@ -863,12 +864,18 @@ function AboutSection() {
       <Card>
         <Row label="Support" description="Une question, un problème de recharge ou de facturation.">
           <div className="flex gap-2">
-            <button onClick={() => openExternalUrl('mailto:abdul@issalanhub.com')} className={btn}><Mail size={14} /> E-mail</button>
+            <button onClick={() => openExternalUrl(`mailto:${SUPPORT_EMAIL}`)} className={btn}><Mail size={14} /> E-mail</button>
             <button onClick={() => openExternalUrl('https://wa.me/17172161490')} className={btn}><MessageCircle size={14} /> WhatsApp</button>
           </div>
         </Row>
-        <Row label="Documentation">
-          <button onClick={() => openExternalUrl('https://anzar.dev/docs')} className={btn}><ExternalLink size={14} /> Ouvrir</button>
+        <Row label="Site web" description="getanzar.com : téléchargement et tarifs.">
+          <button onClick={() => openExternalUrl(siteUrl('home'))} className={btn}><ExternalLink size={14} /> Ouvrir</button>
+        </Row>
+        <Row label="Conditions et confidentialité">
+          <div className="flex gap-2">
+            <button onClick={() => openExternalUrl(siteUrl('terms'))} className={btn}><ExternalLink size={14} /> Conditions</button>
+            <button onClick={() => openExternalUrl(siteUrl('privacy'))} className={btn}><ExternalLink size={14} /> Confidentialité</button>
+          </div>
         </Row>
       </Card>
       <p className="text-center text-ui-sm text-text-muted">© {new Date().getFullYear()} IssalanHub</p>

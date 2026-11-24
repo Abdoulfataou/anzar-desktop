@@ -1,2 +1,3 @@
 - Mises à jour plus simples : un bandeau te prévient dès qu'une nouvelle version est prête, et tu l'installes en un clic.
 - L'agent te répond dans la langue dans laquelle tu lui écris.
+- Paramètres → À propos : lien vers le site, les conditions et la confidentialité ; e-mail de support support@getanzar.com.
