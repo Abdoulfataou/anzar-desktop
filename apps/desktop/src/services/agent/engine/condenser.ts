@@ -14,7 +14,7 @@ const TOOL_OUTPUT_CHARS = 1_200;
 const TOOL_ARGS_CHARS = 300;
 
 export const CONDENSER_PROMPT = `Tu résumes le début d'une session de travail d'un agent de code pour que l'agent puisse continuer sans le relire.
-Écris en français, 40 lignes au plus, sous ces titres :
+Écris dans la langue de la conversation, 40 lignes au plus, sous ces titres :
 ## Demandes de l'utilisateur
 ## Ce qui a été fait (fichiers créés ou modifiés, avec leurs chemins)
 ## Décisions et contraintes

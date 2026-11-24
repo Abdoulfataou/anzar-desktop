@@ -117,7 +117,7 @@ export async function runForcedFinalAnswer(input: FinalAnswerInput): Promise<voi
     role: 'user',
     content:
       "Limite d'étapes atteinte. N'utilise plus aucun outil. Donne maintenant ta réponse finale complète, " +
-      "en français, à partir de ce que tu as déjà lu. Si le travail est incomplet, dis précisément ce qui reste.",
+      "dans la langue de tes réponses précédentes, à partir de ce que tu as déjà lu. Si le travail est incomplet, dis précisément ce qui reste.",
   });
   let finalText = '';
   for await (const delta of aiService.chatStream(apiHistory, { model: input.callModel(), signal })) {

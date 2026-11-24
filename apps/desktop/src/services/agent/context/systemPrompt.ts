@@ -10,6 +10,7 @@ import {
   buildAgentSystemPrompt, memorySection,
   CONNECTORS_GUIDE, FORMATTING_GUIDE, VISUALS_GUIDE,
 } from './agentPrompts';
+import { replyLanguageRule } from '@/services/agent/context/replyLanguage';
 
 export const PLAN_MODE_PROMPT = `
 
@@ -78,7 +79,7 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
     system = {
       role: 'system',
       content:
-        'Tu es ANZAR, assistant de développement. Réponds en français, clair et direct.\n\n' +
+        'Tu es ANZAR, assistant de développement. Sois clair et direct. ' + replyLanguageRule() + '\n\n' +
         (input.webEnabled
           ? "Tu peux chercher sur le web (web_search) et lire une page (read_url) quand la question porte sur une information récente " +
             "ou une documentation ; cite alors tes sources avec leur URL.\n\n"

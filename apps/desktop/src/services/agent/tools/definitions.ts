@@ -377,7 +377,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       parameters: {
         type: 'object',
         properties: {
-          summary: { type: 'string', description: "Résumé de ce qui a été fait, en français" },
+          summary: { type: 'string', description: "Résumé de ce qui a été fait, dans la langue de tes réponses à l'utilisateur" },
           verification: { type: 'string', description: 'Comment le travail a été vérifié (commande + résultat)' },
         },
         required: ['summary'],
