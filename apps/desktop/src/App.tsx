@@ -10,7 +10,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useAccountStore } from '@/stores/accountStore';
 import { authService } from '@/services/infra/auth';
-import { autoCheckOncePerDay } from '@/services/infra/updateService';
+import { startUpdateWatcher } from '@/services/infra/updateService';
 import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useSettingsStore } from '@/stores/settingsStore';
@@ -90,10 +90,11 @@ export default function App() {
         if (alive) setBooting(false);
       }
     })();
-    // Non-bloquant: check update (Tauri) max 1/jour
-    void autoCheckOncePerDay();
+    // Mises à jour : au lancement puis toutes les 6 h ; affichées dans le bandeau de l'app
+    const stopUpdates = startUpdateWatcher();
     return () => {
       alive = false;
+      stopUpdates();
     };
   }, []);
 

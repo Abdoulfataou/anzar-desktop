@@ -1,13 +1,14 @@
 #!/usr/bin/env sh
 # Prépare une nouvelle version de l'app ANZAR : numéro mis à jour partout, commit et tag.
 #   ./scripts/nouvelle-version.sh 2.1.2
+# Avant : écris les nouveautés de la version dans apps/desktop/NOUVEAUTES.md (affichées dans l'app).
 # Ensuite : git push && git push origin v2.1.2  (la CI construit Mac + Windows en brouillon)
 set -eu
 V="${1:-}"
 echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "Usage : $0 X.Y.Z (ex. 2.1.2)"; exit 1; }
 cd "$(git rev-parse --show-toplevel)"
 git rev-parse -q --verify "refs/tags/v$V" >/dev/null && { echo "Le tag v$V existe déjà."; exit 1; }
-if ! git diff --quiet -- apps/desktop || ! git diff --cached --quiet; then
+if ! git diff --quiet -- apps/desktop ':!apps/desktop/NOUVEAUTES.md' || ! git diff --cached --quiet -- ':!apps/desktop/NOUVEAUTES.md'; then
   echo "Des modifications de apps/desktop ne sont pas commitées : commite-les d'abord."; exit 1
 fi
 
@@ -38,10 +39,11 @@ remplacer(D + "src/services/mcp/client.ts", r"(name: 'anzar', title: 'ANZAR', ve
 print(f"✓ {actuelle} → {v}")
 PY
 
+git add apps/desktop/NOUVEAUTES.md 2>/dev/null || true
 git add apps/desktop/package.json apps/desktop/package-lock.json apps/desktop/src-tauri/tauri.conf.json \
   apps/desktop/src-tauri/Cargo.toml apps/desktop/src-tauri/Cargo.lock \
   apps/desktop/src/services/lsp/client.ts apps/desktop/src/services/mcp/client.ts
 git commit -q -m "release: ANZAR $V"
 git tag -a "v$V" -m "ANZAR $V"
-echo "✓ Commit et tag v$V créés. Pour lancer la construction :"
+echo "✓ Commit et tag v$V créés (nouveautés : apps/desktop/NOUVEAUTES.md). Pour lancer la construction :"
 echo "    git push && git push origin v$V"

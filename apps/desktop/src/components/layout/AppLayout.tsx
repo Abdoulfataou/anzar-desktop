@@ -8,6 +8,7 @@ import { useEffect } from 'react';
 import { WifiOff } from 'lucide-react';
 import TitleBar from './TitleBar';
 import Sidebar from './Sidebar';
+import UpdateBanner from './UpdateBanner';
 import CommandPalette from '@/components/ui/CommandPalette';
 import { startBackgroundQueues } from '@/services/background';
 import { importKnownProjectRoots } from '@/services/workspace/projectRoots';
@@ -80,6 +81,8 @@ export default function AppLayout({ className }: AppLayoutProps) {
         <Sidebar />
 
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+          {/* Nouvelle version disponible : installation en un clic */}
+          <UpdateBanner />
           {/* Offline / slow connection banner */}
           {!isOnline && (
             <div className="flex items-center gap-2 px-4 py-2 bg-accent-error/10 border-b border-accent-error/20 flex-shrink-0">

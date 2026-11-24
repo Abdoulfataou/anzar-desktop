@@ -49,6 +49,18 @@ jobs:
           workspaces: |
             apps/desktop/src-tauri -> target
 
+      # Notes de version (apps/desktop/NOUVEAUTES.md) : affichées dans la release GitHub et
+      # dans le bandeau de mise à jour de l'app (« Voir les nouveautés »).
+      - name: Notes de version
+        id: notes
+        shell: bash
+        run: |
+          {
+            echo "texte<<FIN_NOTES"
+            cat apps/desktop/NOUVEAUTES.md 2>/dev/null || true
+            echo "FIN_NOTES"
+          } >> "$GITHUB_OUTPUT"
+
       # Deux variantes de construction :
       # - certificat Apple « Developer ID Application » présent dans les secrets : app signée,
       #   notariée et vérifiée (Gatekeeper l'ouvre sans avertissement) ;
@@ -82,6 +94,7 @@ jobs:
           args: ${{ matrix.args }}
           tagName: v__VERSION__
           releaseName: "ANZAR v__VERSION__"
+          releaseBody: ${{ steps.notes.outputs.texte }}
           releaseDraft: true
           prerelease: false
 
@@ -101,6 +114,7 @@ jobs:
           args: --config src-tauri/tauri.adhoc.conf.json ${{ matrix.args }}
           tagName: v__VERSION__
           releaseName: "ANZAR v__VERSION__"
+          releaseBody: ${{ steps.notes.outputs.texte }}
           releaseDraft: true
           prerelease: false
 
