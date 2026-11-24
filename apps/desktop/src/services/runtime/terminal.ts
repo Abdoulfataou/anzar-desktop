@@ -461,6 +461,7 @@ class TerminalService {
         network: this.networkFor(displayName, parsed.args),
         proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(),
         direct: this.takeDirect(displayName, parsed.args),
+        shell: false, shellCommand: null,
       });
       process.pid = pid;
       return processId;
