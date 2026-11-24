@@ -620,10 +620,10 @@ pub fn tool_spawn(
     // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
     // Une élévation approuvée à usage unique élargit l'écriture pour CET appel seulement,
     // sans relâcher les secrets, les hooks Git ni le filtre réseau.
+    // Le shell n'existe que là où l'isolation est disponible ; si l'utilisateur a
+    // explicitement choisi « Accès complet sans isolation », il tourne alors sans
+    // profil Seatbelt (c'est le sens de ce choix, averti deux fois dans l'interface).
     let isolated = eff.sandbox && crate::sandbox::available();
-    if use_shell && !isolated {
-        return Err("Le shell confiné exige l'isolation des commandes : active-la dans les réglages ou utilise run_command.".into());
-    }
     if isolated && !use_shell && gradlew_path.is_none() && find_in_path(&program).is_none() {
         return Err(format!("« {program} » est introuvable sur cet ordinateur."));
     }

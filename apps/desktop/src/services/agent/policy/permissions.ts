@@ -22,3 +22,29 @@ export function needsApproval(mode: PermissionMode, tool: string): boolean {
   if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);
   return false;
 }
+
+/**
+ * Choix unique de l'utilisateur : le mode d'accord et l'isolation des commandes
+ * ensemble. `full-unconfined` est le seul choix qui désactive Seatbelt ; il n'est
+ * proposé que sur macOS, avec deux avertissements.
+ */
+export type PermissionChoice = PermissionMode | 'full-unconfined';
+
+export const PERMISSION_CHOICES: readonly PermissionChoice[] = [
+  'ask', 'auto', 'plan', 'full', 'full-unconfined',
+];
+
+/** Ce que le sélecteur doit afficher pour l'état courant (mode + isolation). */
+export function permissionChoiceOf(mode: PermissionMode, sandbox: boolean): PermissionChoice {
+  return mode === 'full' && !sandbox ? 'full-unconfined' : mode;
+}
+
+/** Mode d'accord correspondant au choix. */
+export function modeOfChoice(choice: PermissionChoice): PermissionMode {
+  return choice === 'full-unconfined' ? 'full' : choice;
+}
+
+/** Le choix garde-t-il l'isolation des commandes ? */
+export function choiceKeepsSandbox(choice: PermissionChoice): boolean {
+  return choice !== 'full-unconfined';
+}

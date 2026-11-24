@@ -184,18 +184,18 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
 
 | Règle | Effet |
 |---|---|
-| Écriture | Autorisée seulement dans le dossier du projet, le dossier git du dépôt (worktrees des tickets), les dossiers temporaires et les caches (`~/Library/Caches`, `~/.npm`, `~/.cache`, `~/.cargo`) |
+| Écriture | Autorisée seulement dans le dossier du projet, le dossier git du dépôt (worktrees des tickets), les dossiers temporaires et les caches (`~/Library/Caches`, `~/.npm`, `~/.cache`, `~/.cargo`) — sauf si « Accès complet sans isolation » est choisi |
 | Git | `.git/hooks` et `.git/config` en lecture seule, y compris pour une worktree |
-| Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials` illisibles |
+| Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials` illisibles (sauf si l'isolation est désactivée) |
 | Réseau | Filtré par un **proxy local avec liste d'hôtes autorisés** (`src-tauri/src/netproxy.rs`) : les commandes reçoivent `HTTP(S)_PROXY` et `npm_config_*_proxy`. Sur macOS, le profil Seatbelt refuse toute sortie hors localhost : le proxy est le **seul** chemin vers l'extérieur, et il refuse tout hôte absent de la liste (registres npm/pip/cargo, GitHub, Node.js par défaut, plus les hôtes ajoutés dans Paramètres → Réseau). Si l'utilisateur coupe le réseau, sortant refusé sauf localhost. Sur Windows et Linux, le même filtre s'applique mais n'est **coopératif** (variables d'environnement) : un programme qui ignore le proxy n'est pas arrêté |
 
-- Shell `bash` (macOS) : l'outil `bash` exécute une ligne `bash -c` **uniquement si
-  l'isolation est active** ; sans elle, Rust refuse de lancer un shell nu. Il n'y a pas de
-  liste blanche : la frontière est Seatbelt (écriture projet/temporaires/caches, secrets
-  illisibles, réseau via le proxy). Rust refuse en plus les opérations réservées à
-  l'utilisateur (`git push`, `git remote add`, `git reset --hard`, `git clean -f`, `sudo`) et
-  les mentions évidentes de secrets (`.env`, clés, `~/.ssh`), avec un message qui dit quoi
-  faire à la place. Les travaux d'arrière-plan se lisent avec `job_output` et s'arrêtent avec
+- Shell `bash` (macOS) : l'outil `bash` exécute une ligne `bash -c`. Par défaut, il tourne
+  sous Seatbelt (écriture projet/temporaires/caches, secrets illisibles, réseau via le proxy).
+  Si l'utilisateur choisit explicitement « Accès complet sans isolation », il tourne sans
+  profil, après deux avertissements ; les règles de police restent appliquées. Rust refuse en
+  plus les opérations réservées à l'utilisateur (`git push`, `git remote add`,
+  `git reset --hard`, `git clean -f`, `sudo`) et les mentions évidentes de secrets (`.env`,
+  clés, `~/.ssh`), avec un message qui dit quoi faire à la place. Les travaux d'arrière-plan se lisent avec `job_output` et s'arrêtent avec
   `job_kill` ; le bouton Stop arrête aussi ceux lancés pendant le tour courant.
 - Élévation à usage unique : après un refus d'écriture, le modèle peut relancer **la même
   commande** avec `sandbox_permissions: "danger-full-access"` et une justification. Hors
@@ -207,8 +207,10 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   Comme le drapeau `approved`, `escalated` vient de la webview : la carte est la
   barrière d'interface, pas une signature cryptographique. Un renderer compromis
   pourrait le forger ; l'isolation reste la défense en profondeur.
-- Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
-  commandes `run_command` s'exécutent comme avant ; le shell `bash` reste refusé.
+- Réglage : Paramètres → Général → « Permissions ». Un seul sélecteur règle le mode
+  d'accord et l'isolation : « Accès complet » reste isolé ; « Accès complet sans isolation »
+  est le seul choix qui retire Seatbelt, avec deux avertissements et la confirmation native
+  de Rust.
 - Réglage « Réseau des commandes » (ouvert par défaut). La protection contre l'envoi de
   données repose sur les secrets illisibles et sur l'accord demandé après lecture d'un
   contenu externe. Coupé, une connexion refusée ajoute `[ANZAR] Réseau coupé…` à la sortie.

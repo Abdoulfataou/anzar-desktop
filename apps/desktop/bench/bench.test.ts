@@ -24,6 +24,7 @@ vi.mock('@/services/ai/ai', () => ({
 vi.mock('@/services/runtime/terminal', () => ({
   NETWORK_BLOCKED_TAG: '[ANZAR] Réseau coupé',
   commandNetworkOpen: () => true,
+  sandboxEnabled: () => true,
   terminalService: {
     exec: (command: string) => h.world.exec(command),
     grantInstall: vi.fn(),

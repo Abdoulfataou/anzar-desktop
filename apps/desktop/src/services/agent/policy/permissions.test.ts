@@ -30,3 +30,16 @@ describe('permissions', () => {
     expect(needsApproval('full', 'run_command')).toBe(false);
   });
 });
+
+describe('permissionChoiceOf', () => {
+  it('dérive le choix unique depuis le mode et l’isolation', async () => {
+    const { permissionChoiceOf, modeOfChoice, choiceKeepsSandbox } = await import('./permissions');
+    expect(permissionChoiceOf('auto', true)).toBe('auto');
+    expect(permissionChoiceOf('full', true)).toBe('full');
+    expect(permissionChoiceOf('full', false)).toBe('full-unconfined');
+    expect(permissionChoiceOf('ask', false)).toBe('ask');
+    expect(modeOfChoice('full-unconfined')).toBe('full');
+    expect(choiceKeepsSandbox('full-unconfined')).toBe(false);
+    expect(choiceKeepsSandbox('full')).toBe(true);
+  });
+});

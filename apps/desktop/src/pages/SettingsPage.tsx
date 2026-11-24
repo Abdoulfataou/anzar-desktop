@@ -28,12 +28,15 @@ import { creditsInLocal, currencyName, formatCredits } from '@/lib/money';
 import { fetchRechargeHistory, type RechargeEntry } from '@/lib/rechargeHistory';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import type { Conversation, Project } from '@/types';
-import type { PermissionMode } from '@/hooks/useAgentChat';
+import {
+  choiceKeepsSandbox, modeOfChoice, permissionChoiceOf,
+  type PermissionChoice,
+} from '@/services/agent/policy/permissions';
 import { installAppleDevTools, installCommand, installGitNow, platform, programsStatus, type ProgramInfo } from '@/services/runtime/programs';
 import { installNodeNow } from '@/services/runtime/nodeRuntime';
 import { applyCommandPolicy, type PolicySettings } from '@/services/runtime/commandPolicy';
 import { SUPPORT_EMAIL, siteUrl } from '@/lib/siteLinks';
-import { FULL_ACCESS_WARNING } from '@/lib/fullAccess';
+import { FULL_ACCESS_UNCONFINED_WARNING, FULL_ACCESS_WARNING } from '@/lib/fullAccess';
 
 type SectionId = 'general' | 'appearance' | 'personalization' | 'programs' | 'account' | 'usage' | 'data' | 'about';
 
@@ -257,16 +260,28 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
   const [advanced, setAdvanced] = useState(false);
   const mode = useSettingsStore((s) => s.settings.permissionMode ?? 'auto');
   const errorReports = useSettingsStore((s) => s.settings.errorReports !== false);
-  const changeMode = async (m: PermissionMode) => {
-    if (m === 'full' && mode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
-    useSettingsStore.getState().updateSettings({ permissionMode: m });
+  const permissionChoice = isMac ? permissionChoiceOf(mode, sandbox) : mode;
+  const changePermissionChoice = async (next: PermissionChoice) => {
+    if (next === 'full-unconfined') {
+      if (!(await confirm(FULL_ACCESS_WARNING))) return;
+      if (!(await confirm(FULL_ACCESS_UNCONFINED_WARNING))) return;
+      useSettingsStore.getState().updateSettings({ permissionMode: 'full' });
+      if (!(await changeSecurity({ sandboxCommands: false }))) return;
+      return;
+    }
+    if (choiceKeepsSandbox(next) && !sandbox) {
+      if (!(await changeSecurity({ sandboxCommands: true }))) return;
+    }
+    if (next === 'full' && mode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
+    useSettingsStore.getState().updateSettings({ permissionMode: modeOfChoice(next) });
   };
   // Réglages de sécurité des commandes : enregistrés par le cœur Rust, qui demande une
   // confirmation système avant tout affaiblissement.
-  const changeSecurity = async (patch: Partial<PolicySettings>) => {
+  const changeSecurity = async (patch: Partial<PolicySettings>): Promise<boolean> => {
     const r = await applyCommandPolicy(patch);
     if (!r.ok) toast.error(r.error || 'Changement annulé');
     setExtraHosts((useSettingsStore.getState().settings.networkAllowedHosts || []).join('\n'));
+    return r.ok;
   };
   return (
     <Card>
@@ -316,18 +331,6 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
               options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
             />
           </Row>
-          {isMac && (
-            <Row
-              label="Isoler les commandes"
-              description="Les commandes lancées par l'agent ne peuvent écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo), et ne peuvent pas lire tes clés (~/.ssh, ~/.aws…). Désactive seulement si un outil légitime est bloqué."
-            >
-              <Segmented
-                value={sandbox ? 'on' : 'off'}
-                onChange={(v) => void changeSecurity({ sandboxCommands: v === 'on' })}
-                options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
-              />
-            </Row>
-          )}
           {commandNetwork && (
             <>
               <Row
@@ -397,16 +400,17 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
           )}
         </>
       )}
-      <Row label="Permissions par défaut" description="Ce que l'agent peut faire sans te demander. Modifiable à tout moment depuis la saisie.">
+      <Row label="Permissions" description="Un seul réglage : ce que l'agent peut faire sans te demander, et si le système confine ses commandes. Modifiable aussi depuis la saisie.">
         <select
-          value={mode}
-          onChange={(e) => changeMode(e.target.value as PermissionMode)}
+          value={permissionChoice}
+          onChange={(e) => void changePermissionChoice(e.target.value as PermissionChoice)}
           className="h-8 px-2 rounded-lg bg-input border border-input-border text-ui-base text-text-primary outline-none"
         >
-          <option value="ask">Demander avant de modifier</option>
-          <option value="auto">Modifier automatiquement</option>
-          <option value="plan">Mode plan</option>
-          <option value="full">Accès complet</option>
+          <option value="ask">Demander avant de modifier (isolé)</option>
+          <option value="auto">Auto : demander seulement les risques (isolé)</option>
+          <option value="plan">Plan : lecture seule (isolé)</option>
+          <option value="full">Accès complet (isolé)</option>
+          {isMac && <option value="full-unconfined">Accès complet sans isolation (déconseillé)</option>}
         </select>
       </Row>
       <Row

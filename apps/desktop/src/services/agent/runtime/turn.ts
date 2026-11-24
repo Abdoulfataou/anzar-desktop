@@ -24,7 +24,7 @@ import { mcpAgentTools, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, type Skill } from '@/services/skills';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildSessionSystemPrompt } from '@/services/agent/context/systemPrompt';
-import { commandNetworkOpen } from '@/services/runtime/terminal';
+import { commandNetworkOpen, sandboxEnabled } from '@/services/runtime/terminal';
 import { withAttachments } from '@/services/agent/context/attachments';
 import { resolveAgentRoot } from '@/services/agent/context/agentRoot';
 import { buildAgentContext } from '@/services/agent/context/agentContext';
@@ -118,6 +118,7 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
           permissionMode: host.mode,
           shellAvailable: !isWindows,
           networkOpen: commandNetworkOpen(),
+          sandboxed: sandboxEnabled(),
         });
         setupNewTurn({
           apiHistory: host.apiHistory,

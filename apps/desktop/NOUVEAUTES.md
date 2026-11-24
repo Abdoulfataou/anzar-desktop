@@ -10,3 +10,4 @@
 - Git : « git init » fonctionne dans un nouveau projet, et les hooks Git restent protégés quoi que tente l'agent.
 - Bouton Stop : il arrête aussi les travaux lancés en arrière-plan par l'agent (serveur de développement, build long).
 - Agent : il peut terminer par une réponse normale, sans appeler `task_done` ; la vérification (lint, build, tests) se lance quand même et les erreurs lui sont renvoyées s'il y en a.
+- Paramètres : un seul sélecteur « Permissions » règle à la fois ce que l'agent peut faire sans demander et l'isolation des commandes. « Accès complet sans isolation » est le seul choix qui retire la protection système, avec deux avertissements.

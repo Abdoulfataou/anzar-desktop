@@ -40,6 +40,8 @@ export interface SessionPromptInput {
   shellAvailable?: boolean;
   /** Le réseau des commandes est ouvert (filtré par le proxy). */
   networkOpen?: boolean;
+  /** L'isolation des commandes est active. */
+  sandboxed?: boolean;
 }
 
 export interface SessionPromptBundle {
@@ -116,6 +118,7 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
     permissionMode: input.permissionMode,
     shellAvailable: input.shellAvailable,
     networkOpen: input.networkOpen,
+    sandboxed: input.sandboxed,
   });
   return { system, systemHead, systemRefresh, turnContext };
 }

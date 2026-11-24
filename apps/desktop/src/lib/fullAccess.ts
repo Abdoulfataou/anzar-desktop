@@ -15,3 +15,22 @@ export const FULL_ACCESS_WARNING = {
   cancelLabel: 'Annuler',
   variant: 'warning' as const,
 };
+
+/**
+ * Second avertissement, réservé au choix « Accès complet sans isolation ».
+ * Sans Seatbelt, un programme lancé par l'agent peut lire les secrets du home :
+ * il faut le dire clairement, pas le cacher derrière le mot « complet ».
+ */
+export const FULL_ACCESS_UNCONFINED_WARNING = {
+  title: 'Désactiver aussi l’isolation ?',
+  message:
+    "L'accès complet sans isolation va plus loin : les commandes de l'agent ne sont plus confinées par le système. " +
+    "Il peut écrire en dehors du projet, et un programme qu'il lance peut lire tes fichiers personnels, y compris " +
+    'tes clés (~/.ssh, ~/.aws). Un paquet ou un script peut donc agir sur ta machine.\n\n' +
+    'Ne l’active que sur une machine de confiance, avec un projet sauvegardé (Git). ' +
+    'Tu peux revenir à « Accès complet » (isolé) ou à un autre mode à tout moment.\n\n' +
+    'Le code n’est jamais poussé : git push et la configuration git restent à ta main.',
+  confirmLabel: 'Je comprends, désactiver l’isolation',
+  cancelLabel: 'Annuler',
+  variant: 'danger' as const,
+};

@@ -60,11 +60,11 @@ Règles :
   (`sandbox_permissions: "danger-full-access"` + justification) : l'écriture est élargie hors
   du projet pour cet appel, tandis que secrets, hooks/config Git et réseau restent protégés ;
   une carte l'approuve hors Accès complet, l'appel suivant retrouve la politique normale.
-- **Deux réglages, volontairement séparés** : le mode de conversation (`ask`/`auto`/`plan`/`full`)
-  règle les accords ; l'isolation des commandes reste un réglage global qui ne peut pas être
-  désactivé par un mode. C'est plus strict que le sélecteur unique de Harness : un mode ne
-  peut pas retirer la frontière système par inadvertance. L'élévation ponctuelle est le seul
-  chemin pour élargir une écriture, et elle est approuvée.
+- **Un seul sélecteur de permissions** : « Permissions » règle ensemble le mode d'accord et
+  l'isolation. « Accès complet » reste isolé ; « Accès complet sans isolation » est le seul
+  choix qui retire Seatbelt, avec deux avertissements et la confirmation native de Rust. Un
+  mode ordinaire réactive toujours l'isolation, et l'élévation ponctuelle reste le chemin
+  pour élargir une écriture sans changer de mode.
 - **Rappel de boucle** : `engine/loopGuard.ts`. Après chaque appel, la signature
   `(outil, arguments normalisés)` est comparée au précédent : aux seuils 3, 5 et 8 appels
   identiques consécutifs, un rappel est ajouté après le lot d'outils. Il ne bloque rien et

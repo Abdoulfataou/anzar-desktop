@@ -22,7 +22,13 @@ import { isAllowedProjectRoot, showPathNotAllowedMessage } from '@/lib/allowedPr
 import { imageToDataUrl, imageMimeFromName } from '@/lib/imageAttach';
 import { readTextFile, readBinaryFile } from '@/lib/tauri/fs';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
-import { FULL_ACCESS_WARNING } from '@/lib/fullAccess';
+import { FULL_ACCESS_UNCONFINED_WARNING, FULL_ACCESS_WARNING } from '@/lib/fullAccess';
+import { applyCommandPolicy } from '@/services/runtime/commandPolicy';
+import { useSettingsStore } from '@/stores/settingsStore';
+import {
+  choiceKeepsSandbox, modeOfChoice, permissionChoiceOf,
+  type PermissionChoice, type PermissionMode as PolicyPermissionMode,
+} from '@/services/agent/policy/permissions';
 
 interface ChatInputProps {
   /** Texte placé dans le champ (ex. idée saisie avant la connexion, non envoyée faute de crédit) */
@@ -417,13 +423,14 @@ async function extractFromPath(filePath: string): Promise<ChatAttachment> {
 
 /* ===== Project Selector Dropdown ===== */
 /** Modes de permission de l'agent (qui décide avant d'agir). */
-export type PermissionMode = 'ask' | 'auto' | 'plan' | 'full';
+export type PermissionMode = PolicyPermissionMode;
 
-const PERMISSIONS: { id: PermissionMode; label: string; hint: string }[] = [
-  { id: 'ask',  label: 'Demander avant de modifier', hint: "Chaque modification et chaque commande attend ton accord" },
-  { id: 'auto', label: 'Modifier automatiquement',   hint: "Les fichiers sont modifiés sans demander ; seules les actions risquées (installation, git, programme inconnu) demandent ton accord" },
+const PERMISSIONS: { id: PermissionChoice; label: string; hint: string }[] = [
+  { id: 'ask',  label: 'Demander avant de modifier', hint: "Chaque modification et chaque commande attend ton accord ; les commandes restent isolées" },
+  { id: 'auto', label: 'Modifier automatiquement',   hint: "Les fichiers sont modifiés sans demander ; seules les actions risquées (installation, git, programme inconnu) demandent ton accord ; les commandes restent isolées" },
   { id: 'plan', label: 'Mode plan',                  hint: "L'agent lit et propose un plan, sans rien modifier" },
-  { id: 'full', label: 'Accès complet',              hint: "L'agent modifie, installe et exécute sans rien demander" },
+  { id: 'full', label: 'Accès complet (isolé)',      hint: "L'agent modifie, installe et exécute sans rien demander, mais reste dans le projet et ne lit pas les secrets" },
+  { id: 'full-unconfined', label: 'Accès complet sans isolation', hint: "Comme l'accès complet, mais le système ne confine plus les commandes : l'agent peut écrire hors du projet et un programme peut lire tes fichiers personnels" },
 ];
 
 const MODELS: { id: AIModel; label: string; hint: string }[] = [
@@ -524,9 +531,40 @@ export default function ChatInput({
   useEffect(() => { if (draft) setMessage(draft); }, [draft]);
   // « Accès complet » : avertissement à accepter avant de l'activer.
   const { confirm, ConfirmDialog } = useConfirmModal();
-  const changePermission = async (mode: PermissionMode) => {
-    if (mode === 'full' && permissionMode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
-    onPermissionChange?.(mode);
+  const sandbox = useSettingsStore((s) => s.settings.sandboxCommands !== false);
+  const isMacClient = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
+  const permissionChoice = isMacClient ? permissionChoiceOf(permissionMode, sandbox) : permissionMode;
+  const permissionOptions = isMacClient
+    ? PERMISSIONS
+    : PERMISSIONS.filter((p) => p.id !== 'full-unconfined');
+  // Ancien réglage incohérent (isolation coupée hors Accès complet) : on la rétablit.
+  // Un mode ordinaire ne doit pas laisser les commandes sans confinement.
+  useEffect(() => {
+    if (sandbox || permissionMode === 'full') return;
+    if (typeof navigator === 'undefined' || !/mac/i.test(navigator.platform)) return;
+    void applyCommandPolicy({ sandboxCommands: true });
+  }, [sandbox, permissionMode]);
+  const changePermission = async (next: PermissionChoice) => {
+    if (next === 'full-unconfined') {
+      if (!(await confirm(FULL_ACCESS_WARNING))) return;
+      if (!(await confirm(FULL_ACCESS_UNCONFINED_WARNING))) return;
+      // Le mode passe d'abord à full : si la confirmation native de Rust est annulée,
+      // l'utilisateur reste au moins en Accès complet isolé, jamais dans un état bâtard.
+      onPermissionChange?.('full');
+      const r = await applyCommandPolicy({ sandboxCommands: false });
+      if (!r.ok) toast.error(r.error || 'Isolation conservée');
+      return;
+    }
+    // Un mode autre que « sans isolation » réactive toujours l'isolation.
+    if (choiceKeepsSandbox(next) && !sandbox) {
+      const r = await applyCommandPolicy({ sandboxCommands: true });
+      if (!r.ok) {
+        toast.error(r.error || 'Changement annulé');
+        return;
+      }
+    }
+    if (next === 'full' && permissionMode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
+    onPermissionChange?.(modeOfChoice(next));
   };
   const [isFocused, setIsFocused] = useState(false);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
@@ -977,11 +1015,11 @@ export default function ChatInput({
 
               {onPermissionChange && (
                 <ToolbarMenu
-                  value={permissionMode}
-                  options={PERMISSIONS}
+                  value={permissionChoice}
+                  options={permissionOptions}
                   onChange={changePermission}
                   icon={<Shield size={14} />}
-                  tone={permissionMode === 'full' ? 'text-credit' : undefined}
+                  tone={permissionChoice === 'full' || permissionChoice === 'full-unconfined' ? 'text-credit' : undefined}
                 />
               )}
             </div>

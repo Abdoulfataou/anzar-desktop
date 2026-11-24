@@ -120,6 +120,8 @@ export interface RuntimeFacts {
   permissionMode?: 'ask' | 'auto' | 'plan' | 'full';
   shellAvailable?: boolean;
   networkOpen?: boolean;
+  /** L'isolation des commandes est active (false = choix « sans isolation »). */
+  sandboxed?: boolean;
 }
 
 const PERMISSION_FACT: Record<NonNullable<RuntimeFacts['permissionMode']>, string> = {
@@ -134,7 +136,9 @@ export function runtimeFactsSection(facts: RuntimeFacts): string {
     facts.projectRoot ? `Dossier de travail : ${facts.projectRoot}` : '',
     facts.platform ? `Plateforme : ${facts.platform}` : '',
     facts.shellAvailable
-      ? 'Commandes : bash confiné disponible (pipes, &&, redirections, arrière-plan).'
+      ? (facts.sandboxed === false
+        ? "Commandes : bash disponible, mais l'isolation est désactivée : le système ne confine plus les commandes. Reste dans le projet et ne lis pas les secrets, même si rien ne t'en empêche techniquement."
+        : 'Commandes : bash confiné disponible (pipes, &&, redirections, arrière-plan).')
       : 'Commandes : run_command seul (un programme par appel, sans pipe ni enchaînement).',
     facts.networkOpen
       ? "Réseau : ouvert pour les commandes, filtré par ANZAR (liste d'hôtes autorisés)."
