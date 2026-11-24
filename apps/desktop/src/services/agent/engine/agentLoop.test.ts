@@ -5,7 +5,7 @@ vi.mock('@/services/ai/ai', () => ({ aiService: { chatStream: vi.fn() } }));
 vi.mock('@/services/runtime/terminal', () => ({
   terminalService: { gitIsRepo: vi.fn(), gitInit: vi.fn(), gitCommit: vi.fn() },
 }));
-vi.mock('../tools', () => ({ AGENT_TOOLS: [], executeToolCall: vi.fn() }));
+vi.mock('../tools', () => ({ AGENT_TOOLS: [], BASH_TOOLS: [], executeToolCall: vi.fn() }));
 vi.mock('../context/agentPrompts', () => ({
   buildAgentSystemPrompt: () => 'SYSTEM',
   taskHintsSection: () => '',

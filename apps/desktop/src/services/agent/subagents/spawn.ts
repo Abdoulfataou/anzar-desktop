@@ -4,7 +4,7 @@
 import { AGENT_PROFILES, detectSubagentRole, isSubagentRole, subagentSystemPrompt, type SubagentRole } from '../profiles';
 import { READ_ONLY_TOOLS } from '../policy/permissions';
 import { subagentAllowedTools } from '../policy/subagentPolicy';
-import { AGENT_TOOLS } from '../tools/definitions';
+import { AGENT_TOOLS, BASH_TOOLS } from '../tools/definitions';
 import type { SubagentProgress, ToolExecutionContext, ToolResult } from '../tools/types';
 
 export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
@@ -51,7 +51,7 @@ export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): 
   };
 
   // Le profil du rôle restreint les outils ; le modèle et la réflexion déclarés s'appliquent.
-  const allToolNames = AGENT_TOOLS.map((tool) => tool.function.name);
+  const allToolNames = [...AGENT_TOOLS, ...BASH_TOOLS].map((tool) => tool.function.name);
 
   // Répartit 80 % du budget restant entre les sous-agents (le parent garde 20 %).
   const share = 0.8 / tasks.length;

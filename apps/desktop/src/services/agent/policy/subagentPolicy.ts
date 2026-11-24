@@ -8,9 +8,6 @@ import type { Capability } from '../profiles';
 export const SUBAGENT_EXCLUDED_TOOLS = new Set([
   'spawn_subagents',
   'run_command',
-  'bash',
-  'job_output',
-  'job_kill',
   'start_dev_server',
   'export_animation',
 ]);

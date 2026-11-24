@@ -218,7 +218,7 @@ Couverture actuelle (121 tests) :
 - `webTools.test.ts` : refus loopback/privé/metadata ;
 - `manager.test.ts` : `alwaysAsk` prioritaire, annotations MCP non fiables ;
 - `VisualBlock.test.ts` : Mermaid filtré (scripts/foreignObject/onclick) ;
-- `subagentPolicy.test.ts` : sous-agents Full sans commandes/spawn/export, lecture seule hors Full ;
+- `subagentPolicy.test.ts` : sous-agents Full avec écriture et shell, mais sans run_command/spawn/export ; lecture seule hors Full ;
 - `commandPolicy.test.ts` : motifs interdits, chemins absolus, tokenisation et scope Tauri ;
 - `pathSymlink.test.ts` : rejet d’un lien symbolique sortant du projet.
 - `agentLoop.test.ts` : réponse finale, tool_call, `task_done` + vérification,

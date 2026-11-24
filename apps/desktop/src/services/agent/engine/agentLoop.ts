@@ -16,7 +16,7 @@
 import { APIMessage, AIModel, AIProvider, ReasoningEffort } from '@/types';
 import { aiService } from '@/services/ai/ai';
 import { terminalService } from '@/services/runtime/terminal';
-import { AGENT_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from '../tools';
+import { AGENT_TOOLS, BASH_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from '../tools';
 import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from '../context/agentPrompts';
 import { runVerification, VerifyCommandResult } from '../verify/agentVerifier';
 import { buildAgentContext } from '../context/agentContext';
@@ -189,9 +189,13 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
 
   const result = await runAgentEngine({
     messages,
-    tools: options.allowedTools
-      ? AGENT_TOOLS.filter((t) => options.allowedTools!.has(t.function.name))
-      : AGENT_TOOLS,
+    tools: (() => {
+      // Sur macOS, les sous-agents en Accès complet peuvent aussi utiliser le shell
+      // confiné ; ailleurs, seul AGENT_TOOLS existe et la politique retire les commandes.
+      const shellAvailable = typeof navigator !== 'undefined' && /Mac|Darwin/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+      const all = shellAvailable ? [...AGENT_TOOLS, ...BASH_TOOLS] : AGENT_TOOLS;
+      return options.allowedTools ? all.filter((t) => options.allowedTools!.has(t.function.name)) : all;
+    })(),
     allowedTools: options.allowedTools,
     maxSteps,
     budget,

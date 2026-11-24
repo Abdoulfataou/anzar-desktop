@@ -2,15 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { READ_ONLY_TOOLS } from './permissions';
 import { CAPABILITY_TOOLS, subagentAllowedTools } from './subagentPolicy';
 
-const all = ['read_file', 'write_file', 'run_command', 'start_dev_server', 'spawn_subagents', 'export_animation', 'capture_page', 'task_done'];
+const all = ['read_file', 'write_file', 'run_command', 'bash', 'job_output', 'job_kill', 'start_dev_server', 'spawn_subagents', 'export_animation', 'capture_page', 'task_done'];
 const base = { allToolNames: all, readOnlyTools: READ_ONLY_TOOLS };
 
 describe('subagentAllowedTools', () => {
-  it('en Full : écriture autorisée, commandes/spawn/export interdits', () => {
+  it('en Full : écriture et shell autorisés, run_command/spawn/export interdits', () => {
     const tools = subagentAllowedTools({ ...base, mode: 'full' });
     expect(tools.has('write_file')).toBe(true);
     expect(tools.has('read_file')).toBe(true);
     expect(tools.has('run_command')).toBe(false);
+    expect(tools.has('bash')).toBe(true);
+    expect(tools.has('job_output')).toBe(true);
     expect(tools.has('start_dev_server')).toBe(false);
     expect(tools.has('spawn_subagents')).toBe(false);
     expect(tools.has('export_animation')).toBe(false);
@@ -21,6 +23,7 @@ describe('subagentAllowedTools', () => {
     expect(tools.has('read_file')).toBe(true);
     expect(tools.has('write_file')).toBe(false);
     expect(tools.has('run_command')).toBe(false);
+    expect(tools.has('bash')).toBe(false);
     expect(tools.has('spawn_subagents')).toBe(false);
     expect(tools.has('task_done')).toBe(true);
   });
