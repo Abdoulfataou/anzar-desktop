@@ -22,7 +22,7 @@ import { type AgentQuestion, type QuestionAnswer } from '../tools/questions';
 import { detectDevCommand } from '../tools/devServer';
 import { snapshotBeforeChange, type Snapshots } from '../tools/fileChanges';
 import { isMcpTool, mcpNeedsApproval, mcpToolRef } from '@/services/mcp/manager';
-import { NETWORK_BLOCKED_TAG, terminalService } from '@/services/runtime/terminal';
+import { NETWORK_BLOCKED_TAG, NETWORK_BYPASS_TAG, NETWORK_UNREACHABLE_TAG, terminalService } from '@/services/runtime/terminal';
 import { useSettingsStore } from '@/stores/settingsStore';
 import type { Skill } from '@/services/skills';
 import { recordSessionEvent } from './sessionStore';
@@ -275,9 +275,32 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     });
     if (ok) {
       terminalService.grantNetwork(command);
+      // L'accord d'installation est à usage unique : la relance en a encore besoin.
+      if (risk) terminalService.grantInstall(riskCommand);
       result = await runTool();
     } else {
       result = { ...result, output: `${result.output}\nL'utilisateur a refusé l'accès internet pour cette commande. Ne contourne pas : fais sans, ou explique-lui ce qui manque.` };
+    }
+  }
+
+  // Diagnostic réseau automatique (Rust) : traité ici, sans rien demander à l'utilisateur.
+  // - l'outil ignore le relais (Dart/Flutter, certains SDK) : relance une fois sans relais,
+  //   ce que Rust n'accepte que pour une commande à qui il donne déjà internet ;
+  // - hôte injoignable (connexion instable) : nouvel essai après une courte pause.
+  if (allowed && call.function.name === 'run_command' && result.isError && !ctx.signal.aborted) {
+    const command = String(args.command || '');
+    const out = result.output || '';
+    const bypass = out.includes(NETWORK_BYPASS_TAG);
+    if (bypass || out.includes(NETWORK_UNREACHABLE_TAG)) {
+      if (bypass) terminalService.grantDirect(command);
+      else await new Promise((r) => setTimeout(r, 3000));
+      if (risk) terminalService.grantInstall(riskCommand);
+      if (!ctx.signal.aborted) {
+        const retry = await runTool();
+        result = retry.isError
+          ? { ...retry, output: `${retry.output}\n[ANZAR] Nouvel essai automatique déjà fait. Si c'est encore le réseau, dis-le simplement à l'utilisateur (connexion internet) au lieu de chercher un contournement.` }
+          : retry;
+      }
     }
   }
 

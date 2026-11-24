@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const settings: { sandboxCommands?: boolean; commandNetwork?: boolean } = {};
 vi.mock('@/stores/settingsStore', () => ({ useSettingsStore: { getState: () => ({ settings }) } }));
 
-import { sandboxEnabled, withSandboxHint } from './terminal';
+import { NETWORK_BLOCKED_TAG, NETWORK_BYPASS_TAG, sandboxEnabled, withSandboxHint } from './terminal';
 
 describe('isolation des commandes', () => {
   beforeEach(() => { delete settings.sandboxCommands; delete settings.commandNetwork; });
@@ -34,5 +34,16 @@ describe('isolation des commandes', () => {
     expect(withSandboxHint(1, err)).toBe(err); // ouvert par défaut
     settings.commandNetwork = false;
     expect(withSandboxHint(1, err)).toContain('Réseau coupé');
+  });
+
+  it('reconnaît une coupure réseau de Dart/Flutter', () => {
+    const dart = 'Got socket error trying to find package flutter_lints at https://pub.dev.';
+    settings.commandNetwork = false;
+    expect(withSandboxHint(69, dart)).toContain(NETWORK_BLOCKED_TAG);
+  });
+
+  it('laisse le diagnostic du relais tel quel (traité automatiquement)', () => {
+    const out = `SocketException: Connection failed (OS Error: Operation not permitted)\n${NETWORK_BYPASS_TAG} : …`;
+    expect(withSandboxHint(69, out)).toBe(out);
   });
 });

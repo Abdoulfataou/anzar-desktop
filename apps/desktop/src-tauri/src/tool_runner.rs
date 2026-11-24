@@ -165,6 +165,8 @@ struct Proc {
     child: Arc<Mutex<Child>>,
     /// Séquence du journal réseau au lancement : les refus postérieurs concernent cette commande.
     blocked_seq: u64,
+    /// La commande devait passer par le relais réseau (variables de proxy fournies).
+    proxied: bool,
     status: (Mutex<Option<i32>>, Condvar),
     stdout: Mutex<String>,
     stderr: Mutex<String>,
@@ -398,6 +400,7 @@ pub fn tool_spawn(
     network: Option<bool>,
     proxy: Option<bool>,
     proxy_hosts: Option<Vec<String>>,
+    direct: Option<bool>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
     // Les hôtes autorisés viennent des réglages gardés par Rust (command_policy), plus de
@@ -437,14 +440,12 @@ pub fn tool_spawn(
         None
     };
 
+    // Réseau décidé par Rust (téléchargement, installation acceptée) : seul cas où l'interface
+    // peut demander de contourner le relais (outil qui l'ignore, diagnostic `TAG_BYPASS`).
+    let install_net = crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false));
+    let direct = direct.unwrap_or(false) && install_net;
     // Protection effective : l'interface peut en demander plus, jamais moins que les réglages.
-    let eff = crate::command_policy::effective(
-        &policy,
-        sandbox,
-        network,
-        proxy,
-        crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false)),
-    );
+    let eff = crate::command_policy::effective(&policy, sandbox, network, proxy, install_net);
     // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
     let isolated = eff.sandbox && crate::sandbox::available();
     if isolated && gradlew_path.is_none() && find_in_path(&program).is_none() {
@@ -472,7 +473,7 @@ pub fn tool_spawn(
     // Filtrage : quand il est actif, la commande ne sort que par le proxy (localhost) et le
     // proxy n'ouvre que les hôtes autorisés. S'il ne démarre pas, on garde le comportement
     // précédent plutôt que de bloquer l'utilisateur.
-    let proxy_port = if eff.proxy && net {
+    let proxy_port = if eff.proxy && net && !direct {
         let port = crate::netproxy::ensure();
         // Après ensure() : avant le premier démarrage du proxy, la liste était perdue.
         crate::netproxy::set_extra_hosts(policy.extra_hosts.clone());
@@ -518,6 +519,7 @@ pub fn tool_spawn(
     let target = Arc::new(Proc {
         child: child.clone(),
         blocked_seq: crate::netproxy::blocked_seq(),
+        proxied: proxy_port.is_some(),
         status: (Mutex::new(None), Condvar::new()),
         stdout: Mutex::new(String::new()),
         stderr: Mutex::new(String::new()),
@@ -566,6 +568,14 @@ pub async fn tool_wait(
                 "\n[ANZAR] Hôtes bloqués par le filtre réseau : {}. Ajoute-les dans Paramètres → Réseau si c'est légitime.",
                 blocked.join(", ")
             ));
+        } else if let Some(diag) = crate::netproxy::diagnose(
+            &crate::netproxy::records_since(proc.blocked_seq),
+            proc.proxied,
+            code,
+            &format!("{stdout}\n{stderr}"),
+        ) {
+            // Diagnostic lu par l'interface, qui relance seule la commande (voir toolHost).
+            stderr.push_str(&format!("\n{diag}"));
         }
         Ok(ToolWaitResult { code, stdout, stderr })
     })

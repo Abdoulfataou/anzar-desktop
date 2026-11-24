@@ -69,6 +69,65 @@ pub struct Record {
     pub seq: u64,
     pub host: String,
     pub allowed: bool,
+    /// Hôte autorisé mais injoignable (erreur de connexion vers l'extérieur).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// Marqueurs ajoutés à la sortie d'une commande (lus par l'interface pour réagir seule).
+pub const TAG_UNREACHABLE: &str = "[ANZAR] Réseau injoignable";
+pub const TAG_BYPASS: &str = "[ANZAR] Relais réseau ignoré";
+
+/// Enregistrements depuis `since` (commande en cours).
+pub fn records_since(since: u64) -> Vec<Record> {
+    let Some(state) = STATE.get() else { return Vec::new() };
+    let records = state.records.lock().unwrap();
+    records.iter().filter(|r| r.seq > since).cloned().collect()
+}
+
+/// Sortie qui ressemble à un échec réseau (Node, Python, Dart/Flutter, Java, curl…).
+pub fn looks_like_network_error(text: &str) -> bool {
+    const SIGNES: &[&str] = &[
+        "socket error", "socketexception", "failed host lookup", "enotfound", "eai_again",
+        "getaddrinfo", "could not resolve", "network is unreachable", "connection refused",
+        "econnrefused", "econnreset", "connection reset", "connection timed out", "etimedout",
+        "temporary failure in name resolution", "nodename nor servname", "unknownhostexception",
+        "connect eperm", "connection failed", "failed to connect", "unable to connect",
+        "no route to host", "newconnectionerror", "fetch failed", "could not get resource",
+    ];
+    let t = text.to_lowercase();
+    SIGNES.iter().any(|s| t.contains(s))
+}
+
+/// Diagnostic réseau d'une commande terminée en échec, d'après ce que le relais a vu.
+/// - un hôte autorisé injoignable : problème de connexion (souvent passager) ;
+/// - aucune requête reçue alors que la sortie parle de réseau : l'outil n'utilise pas le
+///   relais (il ignore HTTPS_PROXY), et l'isolation coupe sa connexion directe.
+///
+/// Les hôtes refusés par la liste sont signalés à part (`blocked_hosts_since`).
+pub fn diagnose(records: &[Record], proxied: bool, code: i32, output: &str) -> Option<String> {
+    if code == 0 {
+        return None;
+    }
+    let mut injoignables: Vec<String> = Vec::new();
+    for r in records.iter().filter(|r| r.allowed && r.error.is_some()) {
+        let ligne = format!("{} ({})", r.host, r.error.as_deref().unwrap_or(""));
+        if !injoignables.contains(&ligne) {
+            injoignables.push(ligne);
+        }
+    }
+    if !injoignables.is_empty() {
+        return Some(format!(
+            "{TAG_UNREACHABLE} : {}. Connexion internet instable ou site indisponible.",
+            injoignables.join(", ")
+        ));
+    }
+    if proxied && records.is_empty() && looks_like_network_error(output) {
+        return Some(format!(
+            "{TAG_BYPASS} : l'outil n'est pas passé par le relais d'ANZAR, sa connexion directe a été coupée."
+        ));
+    }
+    None
 }
 
 struct ProxyState {
@@ -172,10 +231,18 @@ pub fn host_allowed(host: &str) -> bool {
 }
 
 fn record(host: &str, allowed: bool) {
+    record_full(host, allowed, None);
+}
+
+fn record_failed(host: &str, error: &std::io::Error) {
+    record_full(host, true, Some(error.to_string()));
+}
+
+fn record_full(host: &str, allowed: bool, error: Option<String>) {
     let Some(state) = STATE.get() else { return };
     let seq = state.seq.fetch_add(1, Ordering::SeqCst) + 1;
     let mut records = state.records.lock().unwrap();
-    records.push_back(Record { seq, host: normalize(host), allowed });
+    records.push_back(Record { seq, host: normalize(host), allowed, error });
     while records.len() > MAX_RECORDS {
         records.pop_front();
     }
@@ -295,7 +362,10 @@ fn handle(mut client: TcpStream) {
                 let _ = client.write_all(b"HTTP/1.1 200 Connection Established\r\n\r\n");
                 tunnel(client, upstream, &leftover);
             }
-            Err(e) => respond(&mut client, "502 Bad Gateway", &format!("Connexion impossible à {host}:{port} — {e}\n")),
+            Err(e) => {
+                record_failed(&host, &e);
+                respond(&mut client, "502 Bad Gateway", &format!("Connexion impossible à {host}:{port} — {e}\n"))
+            }
         }
         return;
     }
@@ -316,9 +386,13 @@ fn handle(mut client: TcpStream) {
         );
         return;
     }
-    let Ok(mut upstream) = connect(&host, port) else {
-        respond(&mut client, "502 Bad Gateway", &format!("Connexion impossible à {host}:{port}\n"));
-        return;
+    let mut upstream = match connect(&host, port) {
+        Ok(s) => s,
+        Err(e) => {
+            record_failed(&host, &e);
+            respond(&mut client, "502 Bad Gateway", &format!("Connexion impossible à {host}:{port}\n"));
+            return;
+        }
     };
     record(&host, true);
     // Requête réécrite en forme origine, en retirant les en-têtes propres au proxy.
@@ -442,6 +516,29 @@ mod tests {
         assert_eq!(s.peer_addr().unwrap(), bon);
         assert!(connect_any(vec![ferme], Duration::from_secs(2)).is_err());
         assert!(connect_any(vec![], Duration::from_secs(2)).is_err());
+    }
+
+    #[test]
+    fn diagnostique_les_echecs_reseau() {
+        let r = |host: &str, allowed: bool, error: Option<&str>| Record {
+            seq: 1, host: host.into(), allowed, error: error.map(String::from),
+        };
+        let dart = "Got socket error trying to find package flutter_lints at https://pub.dev.";
+        // Succès : rien à dire
+        assert_eq!(diagnose(&[], true, 0, dart), None);
+        // Aucune requête au relais + erreur réseau : outil qui ignore le relais
+        assert!(diagnose(&[], true, 69, dart).unwrap().starts_with(TAG_BYPASS));
+        // Sans relais (réseau direct ou coupé), pas de conclusion « ignoré »
+        assert_eq!(diagnose(&[], false, 69, dart), None);
+        // Échec sans rapport avec le réseau
+        assert_eq!(diagnose(&[], true, 1, "error: expected `;`"), None);
+        // Le relais a vu passer la requête mais n'a pas pu joindre l'hôte
+        let d = diagnose(&[r("pub.dev", true, Some("timed out"))], true, 69, dart).unwrap();
+        assert!(d.starts_with(TAG_UNREACHABLE) && d.contains("pub.dev"));
+        // Requête passée normalement : l'échec vient d'ailleurs
+        assert_eq!(diagnose(&[r("pub.dev", true, None)], true, 69, dart), None);
+        assert!(looks_like_network_error("SocketException: Failed host lookup: 'pub.dev'"));
+        assert!(!looks_like_network_error("Operation not permitted: /etc/hosts"));
     }
 
     #[test]

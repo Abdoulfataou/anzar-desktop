@@ -33,13 +33,18 @@ export const networkProxyHosts = (): string[] => useSettingsStore.getState().set
 
 /** Marqueur ajouté à la sortie quand l'isolation a coupé une connexion. */
 export const NETWORK_BLOCKED_TAG = '[ANZAR] Réseau coupé';
+/** Diagnostics du relais réseau (Rust, netproxy::diagnose) : traités seuls par toolHost. */
+export const NETWORK_UNREACHABLE_TAG = '[ANZAR] Réseau injoignable';
+export const NETWORK_BYPASS_TAG = '[ANZAR] Relais réseau ignoré';
 
 const SANDBOX_DENIED = /operation not permitted|EPERM|sandbox.*deny|deny.*file-write/i;
-const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not resolve host|Network is unreachable|Temporary failure in name resolution|NewConnectionError|fetch failed|ECONNRESET.*registry/i;
+const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not resolve host|Network is unreachable|Temporary failure in name resolution|NewConnectionError|fetch failed|ECONNRESET.*registry|socket error|SocketException|Failed host lookup|UnknownHostException|Could not GET|Connection failed \(OS Error: Operation not permitted/i;
 
 /** Ajoute une explication quand l'isolation a bloqué une écriture ou une connexion. */
 export function withSandboxHint(code: number, stderr: string): string {
   if (code === 0 || !sandboxEnabled()) return stderr;
+  // Diagnostic déjà posé par le relais (Rust) : traité automatiquement, pas de carte d'accord.
+  if (stderr.includes(NETWORK_BYPASS_TAG) || stderr.includes(NETWORK_UNREACHABLE_TAG)) return stderr;
   if (!commandNetworkOpen() && NETWORK_DENIED.test(stderr)) {
     return `${stderr}\n${NETWORK_BLOCKED_TAG} par l'isolation des commandes : seules les connexions vers localhost, les installations acceptées (npm/pip install) et les téléchargements de cargo et git sont permis. ANZAR propose à l'utilisateur d'autoriser internet pour cette commande ; n'essaie pas de contourner (autre outil, autre script).`;
   }
@@ -265,6 +270,22 @@ class TerminalService {
     this.networkGrants.add(TerminalService.installKey(parsed.cmdName.replace(/-\d+$/, ''), parsed.args));
   }
 
+  /**
+   * Relances sans le relais réseau, à usage unique : l'outil l'ignore (diagnostic Rust).
+   * Rust ne l'accepte que pour une commande à qui il donne lui-même internet.
+   */
+  private directGrants = new Set<string>();
+
+  grantDirect(command: string): void {
+    const parsed = parseExecutable(String(command || '').trim());
+    if (!parsed) return;
+    this.directGrants.add(TerminalService.installKey(parsed.cmdName.replace(/-\d+$/, ''), parsed.args));
+  }
+
+  private takeDirect(program: string, args: string[]): boolean {
+    return this.directGrants.delete(TerminalService.installKey(program, args));
+  }
+
   private networkFor(program: string, args: string[]): boolean {
     return commandNetworkOpen() || this.networkGrants.has(TerminalService.installKey(program, args));
   }
@@ -297,7 +318,7 @@ class TerminalService {
     await invoke('tool_spawn', {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
       approved: this.takeInstallGrant(program, args), network: this.networkFor(program, args),
-      proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(),
+      proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(), direct: this.takeDirect(program, args),
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
@@ -400,6 +421,7 @@ class TerminalService {
         approved: this.takeInstallGrant(displayName, parsed.args),
         network: this.networkFor(displayName, parsed.args),
         proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(),
+        direct: this.takeDirect(displayName, parsed.args),
       });
       process.pid = pid;
       return processId;

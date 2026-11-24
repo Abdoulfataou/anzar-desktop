@@ -17,4 +17,17 @@ describe('accord d\'installation', () => {
     const spawns = invoke.mock.calls.filter(([c]) => c === 'tool_spawn').map((c) => (c[1] as any).approved);
     expect(spawns).toEqual([true, false, false]);
   });
+
+  it('relance sans relais : direct passé une seule fois, pour la commande diagnostiquée', async () => {
+    const { terminalService } = await import('./terminal');
+    const t = terminalService as any;
+    t.allowedProjectPaths = new Set(['/Users/x/proj']);
+    t.ensureToolEvents = async () => {};
+    invoke.mockClear();
+    terminalService.grantDirect('flutter pub get');
+    await t.runTool('d', 'flutter', ['pub', 'get'], '/Users/x/proj');
+    await t.runTool('e', 'flutter', ['pub', 'get'], '/Users/x/proj');
+    const spawns = invoke.mock.calls.filter(([c]) => c === 'tool_spawn').map((c) => (c[1] as any).direct);
+    expect(spawns).toEqual([true, false]);
+  });
 });
