@@ -13,14 +13,20 @@ const MAX_TRANSCRIPT_CHARS = 120_000;
 const TOOL_OUTPUT_CHARS = 1_200;
 const TOOL_ARGS_CHARS = 300;
 
-export const CONDENSER_PROMPT = `Tu résumes le début d'une session de travail d'un agent de code pour que l'agent puisse continuer sans le relire.
-Écris dans la langue de la conversation, 40 lignes au plus, sous ces titres :
-## Demandes de l'utilisateur
-## Ce qui a été fait (fichiers créés ou modifiés, avec leurs chemins)
-## Décisions et contraintes
-## Erreurs rencontrées et comment elles ont été réglées
-## État actuel et ce qui reste à faire
-Garde les chemins, noms de fonctions, commandes et messages d'erreur exacts. N'invente rien.`;
+export const CONDENSER_PROMPT = `Tu résumes le début d'une session de travail d'un agent de code pour qu'il puisse continuer sans le relire.
+Écris dans la langue de la conversation, 60 lignes au plus, EXACTEMENT sous ces titres, dans cet ordre :
+## Demande et intention
+## Concepts et décisions
+## Fichiers et code
+## Erreurs et corrections
+## Travail en cours
+## Prochaines étapes
+## Contexte critique
+Règles :
+- Garde les chemins, noms de fonctions, commandes et messages d'erreur exacts.
+- N'invente rien ; si une section est vide, écris « (aucun) ».
+- Ne mentionne pas cette demande de résumé ni le fait que le contexte a été compacté.
+- Écris des puces courtes, pas des paragraphes.`;
 
 const text = (m: APIMessage): string =>
   typeof m.content === 'string'
@@ -87,7 +93,7 @@ export async function condenseHistory(
     return false;
   }
   if (!summary) return false;
-  const head = `${CONDENSED_MARK}\n${summary}\n\n---\n`;
+  const head = `${CONDENSED_MARK}\nRésumé automatique du travail déjà accompli. Reprends à partir de l'état décrit ci-dessous, sans le répéter.\n\n${summary}\n\n---\n`;
   const target = messages[cut];
   const merged: APIMessage = Array.isArray(target.content)
     ? { ...target, content: [{ type: 'text', text: head }, ...target.content] }

@@ -12,8 +12,8 @@ import type { ExternalSource } from '@/services/agent/policy/untrusted';
 import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason } from '@/services/agent/engine/agentSession';
 import { BACKGROUND_BUDGET, BudgetLedger, CHAT_BUDGET } from '@/services/agent/engine/budget';
 import {
-  closeDanglingToolCalls, compactHistory, historyChars,
-  KEEP_RECENT_TOOL_RESULTS, SOFT_LIMIT_CHARS, STUB_CHARS,
+  closeDanglingToolCalls, compactHistory,
+  KEEP_RECENT_TOOL_RESULTS, SOFT_LIMIT_TOKENS, STUB_CHARS, pruneToolResults,
 } from '@/services/agent/engine/history';
 import { CONDENSER_PROMPT, condenseHistory } from '@/services/agent/engine/condenser';
 import type { PermissionMode } from '@/services/agent/policy/permissions';
@@ -239,9 +239,15 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         signal: controller.signal,
         beforeStep: async () => {
           // Compaction en une fois, seulement au-delà du plafond, pour garder le cache.
-          if (historyChars(host.apiHistory) > SOFT_LIMIT_CHARS) {
-            compactHistory(host.apiHistory, KEEP_RECENT_TOOL_RESULTS, STUB_CHARS);
-            if (historyChars(host.apiHistory) > SOFT_LIMIT_CHARS * 0.6) {
+          if (estimateHistoryTokens(host.apiHistory) > SOFT_LIMIT_TOKENS) {
+            // 1. Élaguer les vieux résultats en gardant début et fin.
+            pruneToolResults(host.apiHistory, KEEP_RECENT_TOOL_RESULTS);
+            // 2. Si cela ne suffit pas, réduire fortement les anciens résultats.
+            if (estimateHistoryTokens(host.apiHistory) > SOFT_LIMIT_TOKENS * 0.8) {
+              compactHistory(host.apiHistory, KEEP_RECENT_TOOL_RESULTS, STUB_CHARS);
+            }
+            // 3. En dernier recours, résumer le début du travail par le modèle.
+            if (estimateHistoryTokens(host.apiHistory) > SOFT_LIMIT_TOKENS * 0.6) {
               // Encore trop long : le début du travail est résumé par le modèle (rapide, réflexion
               // courte) ; si le résumé échoue, repli sur une compaction plus forte.
               const condensed = await condenseHistory(host.apiHistory, {

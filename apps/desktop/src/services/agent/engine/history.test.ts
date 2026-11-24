@@ -5,6 +5,10 @@ import {
   compactHistory,
   historyChars,
   shrinkText,
+  pruneToolResults,
+  PRUNE_HEAD_CHARS,
+  PRUNE_MARK,
+  PRUNE_TAIL_CHARS,
   SMALL_RESULT_CHARS,
   SHRUNK_MARK,
 } from './history';
@@ -58,6 +62,24 @@ describe('history', () => {
     const args = history[1].tool_calls?.[0].function.arguments || '';
     expect(args.length).toBeLessThan(big.length);
     expect(args).toContain('raccourci');
+  });
+
+  it('pruneToolResults garde le début et la fin, et protège les résultats récents', () => {
+    const long = `${'D'.repeat(5_000)}${'F'.repeat(5_000)}`;
+    const history: APIMessage[] = [
+      toolMsg('old', long),
+      toolMsg('mid', long),
+      toolMsg('recent-1', long),
+      toolMsg('recent-2', long),
+    ];
+    pruneToolResults(history, 2);
+    const old = history[0].content as string;
+    expect(old.startsWith('D'.repeat(PRUNE_HEAD_CHARS))).toBe(true);
+    expect(old.endsWith('F'.repeat(PRUNE_TAIL_CHARS))).toBe(true);
+    expect(old).toContain(PRUNE_MARK);
+    expect(old.length).toBeLessThan(6_000);
+    expect((history[2].content as string)).toHaveLength(10_000);
+    expect((history[3].content as string)).toHaveLength(10_000);
   });
 
   it('closeDanglingToolCalls répond aux appels sans résultat', () => {

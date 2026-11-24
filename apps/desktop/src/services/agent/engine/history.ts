@@ -11,6 +11,13 @@ export const KEEP_RECENT_TOOL_RESULTS = 6;
 export const SMALL_RESULT_CHARS = 1_500;
 export const STUB_CHARS = 600;
 export const SOFT_LIMIT_CHARS = 160_000;
+/** Seuil de compaction en jetons estimés (le serveur facture en jetons, pas en caractères). */
+export const SOFT_LIMIT_TOKENS = 40_000;
+/** Un résultat d'outil ancien plus long que ce seuil est élagué avant tout résumé. */
+export const PRUNE_MAX_CHARS = 8_000;
+export const PRUNE_HEAD_CHARS = 4_000;
+export const PRUNE_TAIL_CHARS = 1_000;
+export const PRUNE_MARK = '\n\n[… résultat d’outil ancien tronqué ; relance l’outil si tu as besoin du détail …]\n\n';
 export const SHRUNK_MARK = '[ancien résultat raccourci';
 /** Les résultats de skills ne sont jamais compactés : l'agent les relit rarement. */
 export const SKILL_RESULT_PREFIX = '# Skill « ';
@@ -34,6 +41,25 @@ export function shrinkToolCallArgs(call: ToolCall): ToolCall {
     return { ...call, function: { ...call.function, arguments: JSON.stringify(args) } };
   } catch {
     return call;
+  }
+}
+
+/**
+ * Élague les résultats d'outils anciens en gardant le début et la fin : moins destructeur
+ * qu'un stub de 600 caractères, il conserve les erreurs et les derniers chemins. À appeler
+ * avant `compactHistory` quand l'historique dépasse le seuil de jetons.
+ */
+export function pruneToolResults(history: APIMessage[], keepRecent: number, maxChars = PRUNE_MAX_CHARS): void {
+  const toolIdx: number[] = [];
+  history.forEach((m, i) => { if (m.role === 'tool') toolIdx.push(i); });
+  const cutoff = keepRecent > 0 ? toolIdx[toolIdx.length - keepRecent] ?? 0 : history.length;
+  for (let i = 0; i < cutoff; i++) {
+    const m = history[i];
+    if (m.role !== 'tool' || typeof m.content !== 'string') continue;
+    if (m.content.length <= maxChars || m.content.startsWith(SKILL_RESULT_PREFIX)) continue;
+    const head = m.content.slice(0, PRUNE_HEAD_CHARS);
+    const tail = m.content.slice(-PRUNE_TAIL_CHARS);
+    history[i] = { ...m, content: `${head}${PRUNE_MARK}${tail}` };
   }
 }
 
