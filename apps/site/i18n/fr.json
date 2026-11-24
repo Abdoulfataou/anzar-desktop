@@ -170,7 +170,7 @@
     "loading": "Recherche de la dernière version…",
     "version": "Version {version} · {date}",
     "size": "{taille} Mo",
-    "unavailable": "Téléchargement bientôt disponible ici.",
+    "unavailable": "Les fichiers sont sur la page « Toutes les versions ».",
     "all_versions": "Toutes les versions",
     "steps_title": "Prêt en trois étapes",
     "steps": [
@@ -291,7 +291,6 @@
     "fallback_currency": "Ta monnaie n'est pas encore proposée : les prix sont affichés en {devise}."
   },
   "legal": {
-    "draft": "Brouillon — ce texte est en cours de relecture et n'a pas encore de valeur contractuelle.",
     "updated": "Dernière mise à jour : 23 novembre 2026",
     "terms": {
       "title": "Conditions d'utilisation",
@@ -319,7 +318,7 @@
           "p": [
             "Le service fonctionne avec des crédits prépayés, sans abonnement. Le prix des packs est affiché dans l'application, dans ta monnaie, avant le paiement. Chaque demande consomme des crédits selon le travail réalisé, et son coût est affiché.",
             "Les crédits n'expirent pas. Ils ne sont ni convertibles en argent, ni transférables à un autre compte.",
-            "[À valider] Les crédits achetés ne sont pas remboursables, sauf erreur de facturation ou obligation légale. En cas de problème avec un paiement, écris à support@getanzar.com."
+            "Les crédits achetés ne sont pas remboursables, sauf erreur de facturation ou obligation légale. En cas de problème avec un paiement, écris à support@getanzar.com."
           ]
         },
         {
@@ -337,7 +336,7 @@
         {
           "h": "7. Responsabilité",
           "p": [
-            "[À valider] Nous faisons notre possible pour que le service soit disponible et fiable, sans pouvoir le garantir en permanence. Notre responsabilité est limitée au montant des crédits achetés au cours des douze derniers mois."
+            "Nous faisons notre possible pour que le service soit disponible et fiable, sans pouvoir le garantir en permanence. Notre responsabilité est limitée au montant des crédits achetés au cours des douze derniers mois."
           ]
         },
         {
@@ -349,7 +348,7 @@
         {
           "h": "9. Droit applicable",
           "p": [
-            "[À valider] Ces conditions sont soumises au droit nigérien."
+            "Ces conditions sont soumises au droit nigérien."
           ]
         }
       ]
@@ -372,7 +371,7 @@
         {
           "h": "3. Tes demandes",
           "p": [
-            "Pour répondre à une demande, ANZAR envoie ton message et les passages utiles de tes fichiers à notre serveur, qui les transmet au modèle d'intelligence artificielle (DeepSeek). [À valider] Nos serveurs ne conservent pas le contenu de tes conversations : il reste sur ton ordinateur. Si tu actives la recherche web, tes requêtes de recherche passent par un service de recherche."
+            "Pour répondre à une demande, ANZAR envoie ton message et les passages utiles de tes fichiers à notre serveur, qui les transmet au modèle d'intelligence artificielle (DeepSeek). Nos serveurs ne conservent pas le contenu de tes conversations : il reste sur ton ordinateur. Si tu actives la recherche web, tes requêtes de recherche passent par un service de recherche."
           ]
         },
         {

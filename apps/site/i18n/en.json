@@ -146,7 +146,7 @@
         },
         {
           "q": "What language does ANZAR speak?",
-          "a": "Yours. It replies in whatever language you write to it in. The app itself is in French for now, with English coming soon."
+          "a": "Yours: it replies in whatever language you write to it in. The app's menus are in French for now."
         }
       ]
     },
@@ -170,7 +170,7 @@
     "loading": "Finding the latest version…",
     "version": "Version {version} · {date}",
     "size": "{taille} MB",
-    "unavailable": "Downloads will be available here soon.",
+    "unavailable": "The files are on the “All versions” page.",
     "all_versions": "All versions",
     "steps_title": "Ready in three steps",
     "steps": [
@@ -291,7 +291,6 @@
     "fallback_currency": "Your currency isn't available yet, so prices are shown in {devise}."
   },
   "legal": {
-    "draft": "Draft — this text is under review and is not yet legally binding.",
     "updated": "Last updated: November 23, 2026",
     "terms": {
       "title": "Terms of use",
@@ -319,7 +318,7 @@
           "p": [
             "The service runs on prepaid credits, with no subscription. Pack prices are shown in the app, in your currency, before you pay. Each request uses credits based on the work done, and its cost is displayed.",
             "Credits never expire. They cannot be exchanged for cash or transferred to another account.",
-            "[To be confirmed] Purchased credits are non-refundable, except in the case of a billing error or where the law requires otherwise. If you have a problem with a payment, write to support@getanzar.com."
+            "Purchased credits are non-refundable, except in the case of a billing error or where the law requires otherwise. If you have a problem with a payment, write to support@getanzar.com."
           ]
         },
         {
@@ -337,7 +336,7 @@
         {
           "h": "7. Liability",
           "p": [
-            "[To be confirmed] We do our best to keep the service available and reliable, but we cannot guarantee it at all times. Our liability is limited to the amount of credits purchased in the past twelve months."
+            "We do our best to keep the service available and reliable, but we cannot guarantee it at all times. Our liability is limited to the amount of credits purchased in the past twelve months."
           ]
         },
         {
@@ -349,7 +348,7 @@
         {
           "h": "9. Governing law",
           "p": [
-            "[To be confirmed] These terms are governed by the laws of Niger."
+            "These terms are governed by the laws of Niger."
           ]
         }
       ]
@@ -372,7 +371,7 @@
         {
           "h": "3. Your requests",
           "p": [
-            "To answer a request, ANZAR sends your message and the relevant parts of your files to our server, which passes them on to the AI model (DeepSeek). [To be confirmed] Our servers do not store the content of your conversations: it stays on your computer. If you turn on web search, your search queries go through a search provider."
+            "To answer a request, ANZAR sends your message and the relevant parts of your files to our server, which passes them on to the AI model (DeepSeek). Our servers do not store the content of your conversations: it stays on your computer. If you turn on web search, your search queries go through a search provider."
           ]
         },
         {
