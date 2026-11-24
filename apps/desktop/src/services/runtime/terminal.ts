@@ -276,61 +276,84 @@ class TerminalService {
   }
 
   /**
-   * Accords d'installation (npm/pip install) donnés par l'utilisateur sur la carte d'accord.
-   * Usage unique, valable 10 min, pour la commande exacte acceptée : Rust refuse
-   * l'installation sans ce drapeau.
+   * Accords donnés par l'utilisateur pour une commande exacte. Un seul registre porte
+   * les trois usages (installation, réseau, contournement du relais) ; chaque accord
+   * garde sa durée de vie : installation 10 min et usage unique, réseau jusqu'à la
+   * fermeture, relais une seule relance.
    */
-  private installGrants = new Map<string, number>();
+  private grants = new Map<string, { installUntil?: number; network?: boolean; direct?: boolean }>();
 
-  private static installKey(program: string, args: string[]): string {
+  private static grantKey(program: string, args: string[]): string {
     return [program.toLowerCase().replace(/\.(cmd|exe)$/, ''), ...args].join(' ');
+  }
+
+  /** Clé d'accord d'une commande, ou null si elle ne peut pas être découpée. */
+  private static keyFor(command: string): string | null {
+    const parsed = parseExecutable(String(command || '').trim());
+    if (!parsed) return null;
+    return TerminalService.grantKey(parsed.cmdName.replace(/-\d+$/, ''), parsed.args);
+  }
+
+  private grantOf(key: string): { installUntil?: number; network?: boolean; direct?: boolean } {
+    let grant = this.grants.get(key);
+    if (!grant) {
+      grant = {};
+      this.grants.set(key, grant);
+    }
+    return grant;
+  }
+
+  /** Supprime l'entrée quand aucun accord ne reste : la carte ne garde pas de commandes vides. */
+  private dropIfEmpty(key: string, grant: { installUntil?: number; network?: boolean; direct?: boolean }): void {
+    if (grant.installUntil === undefined && !grant.network && !grant.direct) this.grants.delete(key);
   }
 
   /** Enregistre l'accord de l'utilisateur pour CETTE commande d'installation. */
   grantInstall(command: string): void {
-    const parsed = parseExecutable(String(command || '').trim());
-    // Sans argument aussi : `yarn` seul installe, un programme inconnu peut se lancer nu.
-    if (!parsed) return;
-    const program = parsed.cmdName.replace(/-\d+$/, '');
-    this.installGrants.set(TerminalService.installKey(program, parsed.args), Date.now() + 10 * 60_000);
+    const key = TerminalService.keyFor(command);
+    if (!key) return;
+    this.grantOf(key).installUntil = Date.now() + 10 * 60_000;
   }
 
   /** Commandes autorisées à utiliser internet (accord de l'utilisateur), jusqu'à la fermeture. */
-  private networkGrants = new Set<string>();
-
   grantNetwork(command: string): void {
-    const parsed = parseExecutable(String(command || '').trim());
-    if (!parsed) return;
-    this.networkGrants.add(TerminalService.installKey(parsed.cmdName.replace(/-\d+$/, ''), parsed.args));
+    const key = TerminalService.keyFor(command);
+    if (!key) return;
+    this.grantOf(key).network = true;
   }
 
   /**
    * Relances sans le relais réseau, à usage unique : l'outil l'ignore (diagnostic Rust).
    * Rust ne l'accepte que pour une commande à qui il donne lui-même internet.
    */
-  private directGrants = new Set<string>();
-
   grantDirect(command: string): void {
-    const parsed = parseExecutable(String(command || '').trim());
-    if (!parsed) return;
-    this.directGrants.add(TerminalService.installKey(parsed.cmdName.replace(/-\d+$/, ''), parsed.args));
+    const key = TerminalService.keyFor(command);
+    if (!key) return;
+    this.grantOf(key).direct = true;
   }
 
   private takeDirect(program: string, args: string[]): boolean {
-    return this.directGrants.delete(TerminalService.installKey(program, args));
+    const key = TerminalService.grantKey(program, args);
+    const grant = this.grants.get(key);
+    if (!grant?.direct) return false;
+    grant.direct = false;
+    this.dropIfEmpty(key, grant);
+    return true;
   }
 
   private networkFor(program: string, args: string[]): boolean {
-    return commandNetworkOpen() || this.networkGrants.has(TerminalService.installKey(program, args));
+    return commandNetworkOpen() || this.grants.get(TerminalService.grantKey(program, args))?.network === true;
   }
 
-  /** Consomme l'accord correspondant, s'il existe et n'a pas expiré. */
+  /** Consomme l'accord d'installation, s'il existe et n'a pas expiré. */
   private takeInstallGrant(program: string, args: string[]): boolean {
-    const key = TerminalService.installKey(program, args);
-    const until = this.installGrants.get(key);
-    if (until === undefined) return false;
-    this.installGrants.delete(key);
-    return until > Date.now();
+    const key = TerminalService.grantKey(program, args);
+    const grant = this.grants.get(key);
+    if (grant?.installUntil === undefined) return false;
+    const valid = grant.installUntil > Date.now();
+    grant.installUntil = undefined;
+    this.dropIfEmpty(key, grant);
+    return valid;
   }
 
   private rootFor(cwd: string): string {

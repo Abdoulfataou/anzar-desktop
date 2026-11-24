@@ -18,6 +18,21 @@ describe('accord d\'installation', () => {
     expect(spawns).toEqual([true, false, false]);
   });
 
+  it('un seul registre : le réseau reste ouvert, l’installation ne vaut qu’une fois', async () => {
+    const { terminalService } = await import('./terminal');
+    const t = terminalService as any;
+    t.allowedProjectPaths = new Set(['/Users/x/proj']);
+    t.ensureToolEvents = async () => {};
+    invoke.mockClear();
+    terminalService.grantNetwork('npm install react');
+    terminalService.grantInstall('npm install react');
+    await t.runTool('g', 'npm', ['install', 'react'], '/Users/x/proj');
+    await t.runTool('h', 'npm', ['install', 'react'], '/Users/x/proj');
+    const spawns = invoke.mock.calls.filter(([c]) => c === 'tool_spawn').map((c) => c[1] as any);
+    expect(spawns.map((s) => s.approved)).toEqual([true, false]);
+    expect(spawns.map((s) => s.network)).toEqual([true, true]);
+  });
+
   it('relance sans relais : direct passé une seule fois, pour la commande diagnostiquée', async () => {
     const { terminalService } = await import('./terminal');
     const t = terminalService as any;
