@@ -46,6 +46,8 @@ services:
       ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:?à définir dans .env}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?clé DeepSeek à mettre dans .env}
       BREVO_API_KEY: ${BREVO_API_KEY:-}
+      # Suivi automatique des erreurs (scripts/erreurs, DeepSeek Harness) ; vide = désactivé
+      ERROR_ANALYSIS_TOKEN: ${ERROR_ANALYSIS_TOKEN:-}
       SENDER_EMAIL: ${SENDER_EMAIL:-no-reply@issalanhub.com}
       SENDER_NAME: ${SENDER_NAME:-ANZAR}
       DEEPSEEK_MARGIN: ${DEEPSEEK_MARGIN:-3.0}
