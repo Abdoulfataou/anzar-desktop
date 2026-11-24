@@ -13,7 +13,7 @@ export const PERSONAL_SUBDIR = 'fichiers';
 
 /** Outils sur les fichiers ouverts dans l'espace (pas de serveur de dev, de navigateur ni d'exploration de code). */
 export const PERSONAL_SPACE_TOOLS = new Set([
-  'read_file', 'write_file', 'edit_file', 'delete_file', 'list_dir', 'search_files', 'run_command',
+  'read_file', 'write_file', 'edit_file', 'apply_patch', 'delete_file', 'list_dir', 'glob', 'search_files', 'run_command',
   // Visuels et vidéos : le moteur de rendu ouvre directement les fichiers HTML du dossier
   'capture_page', 'export_animation',
 ]);

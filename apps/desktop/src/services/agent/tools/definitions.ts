@@ -63,6 +63,22 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'apply_patch',
+      description:
+        "Modifie plusieurs fichiers en UN appel avec un patch : « *** Begin Patch », sections « *** Add File: », « *** Update File: » avec hunks « @@ » (lignes ' ' contexte, '-' suppression, '+' ajout), « *** Move to: » juste après Update pour renommer/déplacer, « *** Delete File: », puis « *** End Patch ». " +
+        "Sert à renommer/déplacer et à éditer plusieurs fichiers d'un coup. Si un contexte est obsolète ou ambigu, RIEN n'est appliqué : relis les fichiers (read_file) et refais le patch.",
+      parameters: {
+        type: 'object',
+        properties: {
+          patch: { type: 'string', description: 'Patch complet, 200 000 caractères au plus, entre « *** Begin Patch » et « *** End Patch »' },
+        },
+        required: ['patch'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'delete_file',
       description: 'Supprime un fichier du projet.',
       parameters: {
@@ -244,6 +260,23 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           paths: { type: 'array', items: { type: 'string' }, description: 'Chemins relatifs des fichiers à vérifier (8 au plus)' },
         },
         required: ['paths'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'glob',
+      description:
+        'Trouve des fichiers par motif de chemin (glob). Utilise-le au lieu de find.',
+      parameters: {
+        type: 'object',
+        properties: {
+          pattern: { type: 'string', description: 'Motif glob : *, **, ?, {a,b}. Exemples : "**/*.ts", "src/**/*.{ts,tsx}"' },
+          path: { type: 'string', description: "Dossier de départ relatif au projet (défaut : racine)" },
+          limit: { type: 'number', description: 'Nombre max de chemins (défaut : 100, max : 500)' },
+        },
+        required: ['pattern'],
       },
     },
   },

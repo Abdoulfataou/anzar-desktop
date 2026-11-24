@@ -8,6 +8,8 @@ import type { ToolCall } from '@/types';
 import type { ToolExecutionContext, ToolResult } from './types';
 import { execCapturePage, execCheckPage, execDevServerLogs, execPageAction, execStartDevServer, execStopDevServer } from './browserTools';
 import { execDeleteFile, execEditFile, execGetDiagnostics, execListDir, execReadFile, execSearchFiles, execWriteFile } from './fsTools';
+import { execGlob } from './globTool';
+import { execApplyPatch } from './patchTool';
 import { execExportAnimation, execVendorLib } from './mediaTools';
 import { execExplore, execRemember, execTaskDone } from './metaTools';
 import { execInstallTool, execRunCommand } from './shellTools';
@@ -18,6 +20,8 @@ export type { SubagentProgress, ToolExecutionContext, ToolResult } from './types
 export { AGENT_TOOLS, BASH_TOOLS } from './definitions';
 export { resolvePath, isProtectedWritePath } from './shared';
 export { compileSearchPattern } from './fsTools';
+export { execGlob, globToRegExp, globToRegExpSource } from './globTool';
+export { applyHunks, execApplyPatch, isProtectedPatchPath, parsePatch, patchTouchedPaths, validatePatchPath } from './patchTool';
 export { precheckCommand } from './shellTools';
 
 type ToolExecutor = (args: any, ctx: ToolExecutionContext) => Promise<ToolResult>;
@@ -28,8 +32,10 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   read_file: execReadFile,
   write_file: execWriteFile,
   edit_file: execEditFile,
+  apply_patch: execApplyPatch,
   delete_file: execDeleteFile,
   list_dir: execListDir,
+  glob: execGlob,
   search_files: execSearchFiles,
   get_diagnostics: execGetDiagnostics,
   explore: execExplore,

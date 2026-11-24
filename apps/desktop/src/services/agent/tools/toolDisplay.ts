@@ -3,6 +3,19 @@
  * d'arguments, delta de lignes. Fonctions pures, testables sans Tauri.
  */
 
+const PATCH_SECTION_RE = /^\*\*\* (?:Add|Update|Delete) File:\s*(.+)$/gm;
+
+/** Chemins visés par les sections d'un patch (sans validation : affichage seulement). */
+function patchSectionPaths(patch: unknown): string[] {
+  if (typeof patch !== 'string') return [];
+  const paths = new Set<string>();
+  for (const match of patch.matchAll(PATCH_SECTION_RE)) {
+    const path = match[1].trim();
+    if (path) paths.add(path);
+  }
+  return [...paths];
+}
+
 /** Chemin cliquable d'un outil (ouvre l'éditeur ou la visionneuse média). */
 export function toolFilePath(name: string, args: Record<string, any>): string | undefined {
   switch (name) {
@@ -10,6 +23,10 @@ export function toolFilePath(name: string, args: Record<string, any>): string | 
     case 'write_file':
     case 'edit_file':
       return args.path || args.file_path || undefined;
+    case 'apply_patch': {
+      const paths = patchSectionPaths(args.patch);
+      return paths.length === 1 ? paths[0] : undefined;
+    }
     case 'export_animation': {
       if (args.output) return String(args.output);
       const ext = args.format === 'png' ? 'png' : args.format === 'gif' ? 'gif' : 'mp4';
@@ -27,6 +44,12 @@ export function summarizeArgs(name: string, args: Record<string, any>): string {
     case 'edit_file':
     case 'delete_file':
       return args.path || args.file_path || '';
+    case 'apply_patch': {
+      const count = patchSectionPaths(args.patch).length;
+      return count ? `${count} fichier${count > 1 ? 's' : ''}` : 'patch';
+    }
+    case 'glob':
+      return args.pattern || '';
     case 'list_dir':
       return args.path || '.';
     case 'search_files':

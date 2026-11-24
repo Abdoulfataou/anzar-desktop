@@ -51,6 +51,16 @@ describe('buildToolsForStep', () => {
     expect(list).not.toContain('spawn_subagents');
   });
 
+  it('propose glob en mode normal et en mode plan, apply_patch seulement en normal', () => {
+    const normal = names(buildToolsForStep(base));
+    expect(normal).toContain('glob');
+    expect(normal).toContain('apply_patch');
+
+    const plan = names(buildToolsForStep({ ...base, mode: 'plan' }));
+    expect(plan).toContain('glob');
+    expect(plan).not.toContain('apply_patch');
+  });
+
   it('ne propose pas ask_user quand personne n’est devant l’écran', () => {
     expect(names(buildToolsForStep({ ...base, background: true }))).not.toContain('ask_user');
   });

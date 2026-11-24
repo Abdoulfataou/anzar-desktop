@@ -5,9 +5,28 @@ describe('toolDisplay', () => {
   it('résume les arguments des outils principaux', () => {
     expect(summarizeArgs('read_file', { path: 'a.ts' })).toBe('a.ts');
     expect(summarizeArgs('list_dir', {})).toBe('.');
+    expect(summarizeArgs('glob', { pattern: '**/*.ts' })).toBe('**/*.ts');
     expect(summarizeArgs('run_command', { command: 'npm test' })).toBe('npm test');
     expect(summarizeArgs('spawn_subagents', { tasks: [{}, {}] })).toBe('2 sous-tâches');
     expect(summarizeArgs('ask_user', { questions: [{ question: 'A ?' }, { question: 'B ?' }] })).toBe('A ? · B ?');
+  });
+
+  it('résume un patch par son nombre de fichiers', () => {
+    const patch = [
+      '*** Begin Patch',
+      '*** Update File: src/a.ts',
+      '@@',
+      '-a',
+      '+b',
+      '*** Add File: src/c.ts',
+      '+c',
+      '*** End Patch',
+    ].join('\n');
+    expect(summarizeArgs('apply_patch', { patch })).toBe('2 fichiers');
+    expect(toolFilePath('apply_patch', { patch })).toBeUndefined();
+    expect(toolFilePath('apply_patch', {
+      patch: '*** Begin Patch\n*** Update File: src/a.ts\n@@\n-a\n+b\n*** End Patch',
+    })).toBe('src/a.ts');
   });
 
   it('calcule le chemin cliquable', () => {

@@ -29,7 +29,7 @@ export interface ToolListInput {
 /** Le shell confiné n'est proposé que là où l'isolation système existe (macOS aujourd'hui). */
 function shellToolAvailable(): boolean {
   if (typeof navigator === 'undefined') return false;
-  return /Mac|Darwin|Linux|X11/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+  return /Mac|Darwin/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
 }
 
 /** Outils envoyés au modèle pour l'étape suivante. */

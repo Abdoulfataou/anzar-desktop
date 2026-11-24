@@ -18,6 +18,7 @@ import { precheckCommand } from '../tools/shellTools';
 import { externalReason, type ExternalSource } from '../policy/untrusted';
 import { executeGenericTool } from '../tools/toolExecution';
 import { summarizeArgs, toolDelta, toolFilePath } from '../tools/toolDisplay';
+import { patchTouchedPaths, isProtectedPatchPath } from '../tools/patchTool';
 import { askUser, loadSkill, parsePlan } from '../tools/specialTools';
 import { type AgentQuestion, type QuestionAnswer } from '../tools/questions';
 import { detectDevCommand } from '../tools/devServer';
@@ -34,7 +35,7 @@ import type { ApprovalRequest } from './turnTypes';
 const MAX_TOOL_OUTPUT_DISPLAY = 600;
 
 /** Outils qui écrivent sur le disque (déclenchent la vérification au task_done). */
-const WRITE_TOOLS = ['write_file', 'edit_file', 'delete_file'];
+const WRITE_TOOLS = ['write_file', 'edit_file', 'apply_patch', 'delete_file'];
 /** Outils susceptibles de modifier le projet : leurs commandes comptent dans la carte. */
 const MUTATING_TOOLS = new Set([...WRITE_TOOLS, 'run_command', 'bash', 'start_dev_server']);
 
@@ -205,8 +206,17 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   if (allowed && ctx.agentRoot && WRITE_TOOLS.includes(call.function.name)) {
     // Référence de vérification : ce qui était déjà cassé avant que l'agent n'écrive.
     if (ctx.turn.filesWritten === 0) await ctx.beforeFirstWrite?.().catch(() => {});
-    await noteAgentWrite(ctx.convId, ctx.agentRoot, args.path || args.file_path).catch(() => {});
-    await snapshotBeforeChange(ctx.snapshots, ctx.agentRoot, args.path || args.file_path);
+    // Un patch touche plusieurs fichiers et n'a pas d'argument `path` : on mémorise
+    // chaque chemin cité (sources, cibles de déplacement) avant l'application.
+    const directPath = args.path || args.file_path;
+    const patchPaths = call.function.name === 'apply_patch' && typeof args.patch === 'string'
+      ? patchTouchedPaths(args.patch).filter((path) => !isProtectedPatchPath(path))
+      : [];
+    const writePaths = [...new Set([...(directPath ? [String(directPath)] : []), ...patchPaths])];
+    for (const rel of writePaths) {
+      await noteAgentWrite(ctx.convId, ctx.agentRoot, rel).catch(() => {});
+      await snapshotBeforeChange(ctx.snapshots, ctx.agentRoot, rel);
+    }
   }
 
   // Questions à l'utilisateur : l'agent attend ses réponses

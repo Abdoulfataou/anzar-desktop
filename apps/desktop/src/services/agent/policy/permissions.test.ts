@@ -4,9 +4,12 @@ import { EDIT_TOOLS, READ_ONLY_TOOLS, COMMAND_TOOLS, needsApproval } from './per
 describe('permissions', () => {
   it('classe les outils', () => {
     expect(EDIT_TOOLS.has('write_file')).toBe(true);
+    expect(EDIT_TOOLS.has('apply_patch')).toBe(true);
     expect(EDIT_TOOLS.has('read_file')).toBe(false);
     expect(COMMAND_TOOLS.has('run_command')).toBe(true);
     expect(READ_ONLY_TOOLS.has('search_files')).toBe(true);
+    expect(READ_ONLY_TOOLS.has('glob')).toBe(true);
+    expect(READ_ONLY_TOOLS.has('apply_patch')).toBe(false);
     expect(READ_ONLY_TOOLS.has('write_file')).toBe(false);
   });
 

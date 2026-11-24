@@ -36,3 +36,27 @@ Les fichiers `public/wasm/*.wasm` sont des binaires WebAssembly :
 
 Ces fichiers sont chargés à la demande par l'agent pour extraire les symboles
 du projet ; ils ne sont pas modifiés.
+
+## DeepSeek Harness (DeepSeek)
+
+Certaines parties de l'agent d'ANZAR adaptent des mécanismes de DeepSeek Harness,
+version `0.2.3-alpha.2` (commit `4b399c3`, 22 novembre 2026) :
+
+- le rappel de répétition non bloquant (`packages/guard/repeat-tool-reminder`) ;
+- le shell `bash` confiné, ses marqueurs de résultat et la promotion en
+  arrière-plan (`packages/shell/tool-bash`, `tool-bash/src/render.ts`,
+  `packages/shell/bash-sandbox`) ;
+- l'architecture du prompt en sections et les faits d'exécution renvoyés dans
+  la demande (`packages/core/system-prompt`, `packages/core/agent-loop`) ;
+- l'élagage des résultats d'outils et la structure du résumé de compaction
+  (`packages/compaction/compaction-basic`) ;
+- les outils `glob` et `apply_patch` (`packages/fs/tool-fs`,
+  `packages/fs/tool-fs-search`).
+
+Ces éléments ont été réécrits pour ANZAR (TypeScript/Rust, messages en français,
+serveur de crédits, connecteurs MCP, isolation Seatbelt) ; ils ne sont pas
+copiés tels quels. Les en-têtes des fichiers concernés rappellent la source.
+
+Source : https://github.com/deepseek-ai/deepseek-harness
+Copyright (c) 2026 DeepSeek. Distribué sous licence MIT :
+https://opensource.org/licenses/MIT

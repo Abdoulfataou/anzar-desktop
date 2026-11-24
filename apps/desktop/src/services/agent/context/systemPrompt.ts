@@ -15,7 +15,7 @@ import { replyLanguageRule } from '@/services/agent/context/replyLanguage';
 export const PLAN_MODE_PROMPT = `
 
 # MODE PLAN (actif)
-Tu ne peux RIEN modifier ni exécuter : seuls read_file, list_dir, search_files et propose_plan sont disponibles.
+Tu ne peux RIEN modifier ni exécuter : seuls read_file, list_dir, glob, search_files, get_diagnostics et propose_plan sont disponibles.
 Explore ce qu'il faut (sans tout lire), puis appelle propose_plan UNE fois avec le plan complet en Markdown :
 un titre court, puis des étapes numérotées et concrètes (fichiers concernés, changements prévus, vérifications), et les risques éventuels.
 N'écris pas le plan dans ta réponse texte : il s'affiche dans un onglet dédié où l'utilisateur le valide.`;

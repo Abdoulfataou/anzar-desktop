@@ -20,7 +20,7 @@ const ALWAYS_ALLOWED = new Set(['task_done']);
 
 /** Outils retirés par capacité refusée. Une capacité inconnue ne retire rien (validation). */
 export const CAPABILITY_TOOLS: Record<Capability, readonly string[]> = {
-  'fs.write': ['write_file', 'edit_file', 'delete_file'],
+  'fs.write': ['write_file', 'edit_file', 'apply_patch', 'delete_file'],
   'shell.exec': ['run_command', 'bash', 'job_output', 'job_kill', 'start_dev_server', 'stop_dev_server', 'install_tool', 'vendor_lib'],
   'network': ['web_search', 'read_url', 'page_action', 'check_page', 'capture_page'],
 };

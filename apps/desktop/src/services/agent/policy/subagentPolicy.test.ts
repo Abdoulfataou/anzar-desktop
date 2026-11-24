@@ -56,10 +56,11 @@ describe('subagentAllowedTools', () => {
   it('refuse les outils des capacités déclarées (deny)', () => {
     const tools = subagentAllowedTools({
       ...base, mode: 'full',
-      allToolNames: [...all, 'web_search', 'read_url'],
+      allToolNames: [...all, 'web_search', 'read_url', 'apply_patch'],
       deny: ['fs.write', 'network'],
     });
     expect(tools.has('write_file')).toBe(false);
+    expect(tools.has('apply_patch')).toBe(false);
     expect(tools.has('web_search')).toBe(false);
     expect(tools.has('read_url')).toBe(false);
     // Les lectures restent, et task_done ne peut jamais être refusé.
@@ -73,6 +74,7 @@ describe('subagentAllowedTools', () => {
     const tools = subagentAllowedTools({ ...base, mode: 'full', deny: ['fs.destroy'] });
     expect(tools.has('write_file')).toBe(true);
     expect(CAPABILITY_TOOLS['fs.write']).toContain('write_file');
+    expect(CAPABILITY_TOOLS['fs.write']).toContain('apply_patch');
   });
 
   it('deny ne rouvre pas ce que la politique exclut', () => {
