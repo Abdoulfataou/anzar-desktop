@@ -39,6 +39,9 @@ export function shellRefusal(command: string): string | null {
   if (tokens.includes('sudo')) {
     return 'Refusé : « sudo » est interdit à l’agent. Propose à l’utilisateur la commande à lancer lui-même.';
   }
+  if (tokens.some((t) => t.includes('.git/hooks') || t.includes('.git/config') || t.endsWith('/.git'))) {
+    return 'Refusé : les hooks et la configuration Git du projet restent protégés, même avec une élévation.';
+  }
   const secret = tokens.find((t) => t === '.env'
     || (t.startsWith('.env.') && !/\.(example|sample|template)$/.test(t))
     || t.endsWith('/.env')
@@ -61,6 +64,7 @@ export function shellRefusal(command: string): string | null {
     const next = tokens[j + 1] || '';
     if (sub === 'push') return 'Refusé : « git push » est réservé à l’utilisateur. Ne pousse pas le code ; dis-lui de le faire.';
     if (sub === 'remote' && next === 'add') return 'Refusé : « git remote add » configure un dépôt distant. Laisse l’utilisateur le faire.';
+    if (sub === 'config') return 'Refusé : « git config » appartient à l’utilisateur ; ne modifie pas la configuration Git.';
     if (sub === 'reset' && next === '--hard') return 'Refusé : « git reset --hard » efface le travail non commité. Utilise git status puis git checkout <fichier>.';
     if (sub === 'clean' && next.startsWith('-') && next.includes('f')) return 'Refusé : « git clean -f » supprime les fichiers non suivis. Demande-le à l’utilisateur.';
   }
@@ -127,8 +131,11 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
   }
   const timeout = clampTimeout(args.timeoutMs);
 
+  const escalated = ctx.escalated === true;
+  const escalationReason = String(args.justification || '');
+
   if (args.run_in_background === true) {
-    const jobId = await terminalService.runShell(command, { cwd });
+    const jobId = await terminalService.runShell(command, { cwd, escalated, escalationReason });
     // Laisse au processus le temps de produire ses premières lignes (ou d'échouer au lancement).
     await new Promise<void>((r) => setTimeout(r, 250));
     const job = terminalService.getJob(jobId);
@@ -136,7 +143,7 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
     return { output: renderJob(job, jobId), isError: job.status === 'failed' };
   }
 
-  const result = await terminalService.execShell(command, { cwd, timeout, signal: ctx.signal });
+  const result = await terminalService.execShell(command, { cwd, timeout, signal: ctx.signal, escalated, escalationReason });
   if (result.ran === false) {
     return {
       output: `La commande n'a pas été exécutée (refus ou lancement impossible).\n${result.stderr || '(sans détail)'}`,

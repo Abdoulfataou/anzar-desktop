@@ -17,6 +17,7 @@ describe('isolation des commandes', () => {
   it('explique un refus d’écriture hors du projet', () => {
     const out = withSandboxHint(1, "EPERM: operation not permitted, open '/Users/a/Documents/x'");
     expect(out).toContain("[ANZAR] Bloqué par l'isolation des commandes");
+    expect(out).toContain('sandbox_permissions:"danger-full-access"');
   });
 
   it('ne touche pas une erreur ordinaire ni un succès', () => {

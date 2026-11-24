@@ -146,6 +146,56 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     }
   }
 
+  // Élévation à usage unique demandée par le modèle après un refus d'isolation.
+  // Elle ne contourne jamais la politique statique (pré-contrôle ci-dessus) : elle ne
+  // fait que désactiver Seatbelt pour CET appel, après accord explicite hors Full.
+  const wantsEscalation = (call.function.name === 'bash' || call.function.name === 'run_command')
+    && args.sandbox_permissions === 'danger-full-access';
+  let escalated = false;
+  if (wantsEscalation) {
+    if (ctx.mode === 'plan') {
+      return {
+        output: 'Le mode plan est en lecture seule : aucune commande, même avec élévation. Termine par propose_plan.',
+        isError: true,
+      };
+    }
+    if (!/Mac|Darwin/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`)) {
+      return {
+        output: "L'élévation n'est disponible que sur un système où l'isolation existe (macOS).",
+        isError: true,
+      };
+    }
+    const justification = String(args.justification || '').trim();
+    if (!justification) {
+      return {
+        output: "Élévation refusée : ajoute une justification d'une phrase expliquant pourquoi cette commande a besoin d'un accès complet.",
+        isError: true,
+      };
+    }
+    if (ctx.background) {
+      return {
+        output: "Élévation refusée : personne ne peut l'approuver pendant une automatisation. Signale-le dans ta réponse.",
+        isError: true,
+      };
+    }
+    if (ctx.mode !== 'full') {
+      const ok = await ctx.requestApproval({
+        id: call.id,
+        name: call.function.name,
+        summary: ev.argsSummary,
+        reason: `Élévation demandée pour cette commande : ${justification}`,
+        detail: String(args.command || ''),
+      });
+      if (!ok) {
+        return {
+          output: "L'utilisateur a refusé l'élévation. La commande reste bloquée : ne la contourne pas, explique ce qui manque.",
+          isError: true,
+        };
+      }
+    }
+    escalated = true;
+  }
+
   // Commande qui exécute du code écrit par l'agent, installation, script npm sensible :
   // accord demandé hors « Accès complet » (garde S3, voir approvalDecision)
   const riskCommand = call.function.name === 'run_command' || call.function.name === 'bash'
@@ -181,7 +231,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     && (COMMAND_LIKE.includes(call.function.name) || (!!mcpRef && !mcpReadOnly));
   let allowed = decision.allowed;
   const refusal = decision.refusal ?? "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
-  if (decision.ask) {
+  if (decision.ask && !escalated) {
     const reason = [risk?.reason, afterExternal ? externalReason(ctx.externalSources) : '']
       .filter(Boolean).join(' ; ') || undefined;
     allowed = await ctx.requestApproval({
@@ -263,6 +313,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     signal: ctx.signal,
     permissionMode: ctx.mode,
     childBudget: ctx.childBudget,
+    escalated,
     onFileChanged: (rel, action) => { if (ctx.workspacePath) ctx.onFileChanged?.(rel, action); },
     onSubagentProgress: call.function.name === 'spawn_subagents'
       ? (progress) => { ev.subagents = progress; ctx.flush(''); }

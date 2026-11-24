@@ -310,6 +310,15 @@ export const AGENT_TOOLS: ToolDefinition[] = [
         properties: {
           command: { type: 'string', description: "Une seule commande, ex: 'npm run build' ou 'git log --oneline -5'" },
           cwd: { type: 'string', description: 'Sous-dossier relatif (optionnel, défaut: racine du projet)' },
+          sandbox_permissions: {
+            type: 'string',
+            enum: ['danger-full-access'],
+            description: "Après un refus d'isolation seulement : relance la MÊME commande avec ce champ pour un accès complet à usage unique. Hors Accès complet, l'utilisateur doit approuver.",
+          },
+          justification: {
+            type: 'string',
+            description: "Obligatoire avec sandbox_permissions : une phrase expliquant pourquoi cette commande précise a besoin d'un accès complet.",
+          },
         },
         required: ['command'],
       },
@@ -453,6 +462,15 @@ export const BASH_TOOLS: ToolDefinition[] = [
           run_in_background: {
             type: 'boolean',
             description: 'Lance le travail en arrière-plan et rend un job_id immédiatement (à lire avec job_output, arrêter avec job_kill).',
+          },
+          sandbox_permissions: {
+            type: 'string',
+            enum: ['danger-full-access'],
+            description: "Après un refus d'isolation seulement : relance la MÊME commande avec ce champ pour un accès complet à usage unique. Hors Accès complet, l'utilisateur doit approuver.",
+          },
+          justification: {
+            type: 'string',
+            description: "Obligatoire avec sandbox_permissions : une phrase expliquant pourquoi cette commande précise a besoin d'un accès complet.",
           },
         },
         required: ['command'],

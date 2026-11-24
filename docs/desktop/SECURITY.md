@@ -197,6 +197,12 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   les mentions évidentes de secrets (`.env`, clés, `~/.ssh`), avec un message qui dit quoi
   faire à la place. Les travaux d'arrière-plan se lisent avec `job_output` et s'arrêtent avec
   `job_kill` ; le bouton Stop arrête la commande au premier plan.
+- Élévation à usage unique : après un refus d'écriture, le modèle peut relancer **la même
+  commande** avec `sandbox_permissions: "danger-full-access"` et une justification. Hors
+  Accès complet, une carte demande l'accord ; en Accès complet, l'accord est déjà donné.
+  L'élévation ne vaut que pour cet appel (aucun droit persistant) et ne contourne pas les
+  refus de politique : `git push`, `git config`, `git reset --hard`, `git clean -f`, `sudo`,
+  les secrets et les hooks/config Git restent refusés par Rust, même avec l'élévation.
 - Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
   commandes `run_command` s'exécutent comme avant ; le shell `bash` reste refusé.
 - Réglage « Réseau des commandes » (ouvert par défaut). La protection contre l'envoi de

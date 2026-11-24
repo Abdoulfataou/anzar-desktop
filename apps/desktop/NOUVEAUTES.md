@@ -1,5 +1,6 @@
 - Agent : sur Mac, il utilise désormais un vrai shell (commandes enchaînées, pipes, redirections, travail en arrière-plan). Il reste enfermé dans le dossier du projet, les dossiers temporaires et les caches ; il ne peut pas pousser ton code, changer la config git ni accéder aux dossiers de secrets.
 - Agent : les refus expliquent maintenant ce qui est permis et quoi faire à la place, au lieu de laisser l'agent essayer une variante puis s'arrêter. Les actions demandées sont pré-contrôlées : plus de carte d'accord pour une commande qui sera refusée de toute façon.
+- Agent : si une commande a vraiment besoin d'écrire hors du projet, il peut demander une autorisation ponctuelle (une seule commande, approuvée par toi) au lieu de contourner l'isolation.
 - Agent : un test qui échoue deux fois pendant une correction n'est plus pris pour une boucle. Un simple rappel arrive après trois répétitions identiques, sans couper la tâche.
 - Agent : « Modifier automatiquement » ne demande plus une carte pour chaque commande ordinaire ; seules les actions risquées (installation, git, programme inconnu), les connecteurs « toujours demander » et un contenu externe suspect demandent encore.
 - Agent : nouveaux outils pour trouver des fichiers par motif (`glob`) et modifier plusieurs fichiers en une fois (`apply_patch`), utiles pour les renommages et les refactorings.

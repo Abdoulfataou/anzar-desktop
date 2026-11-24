@@ -105,7 +105,7 @@ const toolCall = (name: string, args: Record<string, unknown>, id = 'c1') => ({
   function: { name, arguments: JSON.stringify(args) },
 });
 
-const makeRunner = (permissionMode: 'ask' | 'plan' | 'full' = 'full') =>
+const makeRunner = (permissionMode: 'ask' | 'auto' | 'plan' | 'full' = 'full') =>
   new AgentRunner({ workspacePath: '/tmp/projet', workspaceName: 'projet', model: 'fast', permissionMode });
 
 /** Rapport de vérification : une seule commande, en échec si `output` est fourni. */
@@ -292,6 +292,47 @@ describe('AgentRunner — approbations', () => {
 
     expect(executeToolCall).toHaveBeenCalledTimes(1);
     expect(result?.content).toContain('Écrit');
+  });
+});
+
+describe('AgentRunner — escalade à usage unique', () => {
+  it('demande l’accord puis transmet escalated au shell', async () => {
+    vi.mocked(aiService.chatStream)
+      .mockReturnValueOnce(stream({ tool_calls: [toolCall('bash', {
+        command: 'touch ../hors-projet.txt',
+        sandbox_permissions: 'danger-full-access',
+        justification: 'écrire un fichier de test hors du projet',
+      })] }) as any)
+      .mockReturnValueOnce(stream({ content: 'Fait' }) as any);
+    vi.mocked(executeToolCall).mockResolvedValue({ output: 'fichier créé' } as any);
+    const runner = makeRunner('auto');
+
+    const pending = runner.sendMessage('Crée le fichier de test');
+    await vi.waitFor(() => expect(runner.getState().approval?.name).toBe('bash'));
+    expect(runner.getState().approval?.reason).toContain('écrire un fichier de test hors du projet');
+    runner.resolveApproval(true);
+    const result = await pending;
+
+    expect(executeToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({ function: expect.objectContaining({ name: 'bash' }) }),
+      expect.objectContaining({ escalated: true }),
+    );
+    expect(result?.content).toContain('Fait');
+  });
+
+  it('refuse l’élévation sans justification, sans demander de carte', async () => {
+    vi.mocked(aiService.chatStream)
+      .mockReturnValueOnce(stream({ tool_calls: [toolCall('bash', {
+        command: 'touch ../x',
+        sandbox_permissions: 'danger-full-access',
+      })] }) as any)
+      .mockReturnValueOnce(stream({ content: 'Je reste dans le projet' }) as any);
+    const runner = makeRunner('auto');
+
+    const result = await runner.sendMessage('Crée le fichier');
+
+    expect(executeToolCall).not.toHaveBeenCalled();
+    expect(result?.content).toContain('Je reste dans le projet');
   });
 });
 

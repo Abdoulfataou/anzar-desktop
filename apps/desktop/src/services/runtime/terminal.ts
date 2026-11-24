@@ -55,6 +55,11 @@ export function isSandboxDenial(stderr: string): boolean {
 }
 const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not resolve host|Network is unreachable|Temporary failure in name resolution|NewConnectionError|fetch failed|ECONNRESET.*registry|socket error|SocketException|Failed host lookup|UnknownHostException|Could not GET|Connection failed \(OS Error: Operation not permitted/i;
 
+/** Indication d'escalade ajoutée après un refus d'isolation (une seule relance, approuvée). */
+export const ESCALATION_HINT =
+  '[ANZAR] Si c\'est indispensable, relance la MÊME commande avec sandbox_permissions:"danger-full-access" et justification:"…" : '
+  + "l'utilisateur devra approuver (sauf en Accès complet), et l'accès complet ne vaut que pour cet appel.";
+
 /** Ajoute une explication quand l'isolation a bloqué une écriture ou une connexion. */
 export function withSandboxHint(code: number, stderr: string): string {
   if (code === 0 || !sandboxEnabled()) return stderr;
@@ -67,7 +72,7 @@ export function withSandboxHint(code: number, stderr: string): string {
   if (/\.git\/(hooks|config)|hooks\/|could not lock config file/i.test(stderr)) {
     return `${stderr}\n[ANZAR] Les hooks et la configuration Git du projet sont protégés (un hook s'exécuterait plus tard dans le Git de l'utilisateur). Ne contourne pas : pas d'autre dossier .git, pas de --separate-git-dir, pas d'écriture à la main dans .git. Pour créer un dépôt, lance seulement « git init » (ou « git init -b main ») à la racine du projet. Sinon, explique à l'utilisateur ce qu'il doit faire lui-même.`;
   }
-  return `${stderr}\n[ANZAR] Bloqué par l'isolation des commandes : une commande ne peut écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo). Écris le fichier dans le projet (ou dans un dossier temporaire) ; si c'est impossible, explique à l'utilisateur ce qui est bloqué.`;
+  return `${stderr}\n[ANZAR] Bloqué par l'isolation des commandes : une commande ne peut écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo). Écris le fichier dans le projet (ou dans un dossier temporaire) ; si c'est impossible, explique à l'utilisateur ce qui est bloqué.\n${ESCALATION_HINT}`;
 }
 
 // ============================================================================
@@ -343,6 +348,8 @@ class TerminalService {
     timeout?: number,
     signal?: AbortSignal,
     shellCommand?: string,
+    escalated = false,
+    escalationReason?: string,
   ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
     const start = Date.now();
     if (signal?.aborted) return { code: 130, stdout: '', stderr: STOPPED_MESSAGE, durationMs: 0, timedOut: false };
@@ -352,6 +359,7 @@ class TerminalService {
       approved: this.takeInstallGrant(program, args), network: this.networkFor(program, args),
       proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(), direct: this.takeDirect(program, args),
       shell: shellCommand !== undefined, shellCommand: shellCommand ?? null,
+      escalated, escalationReason: escalationReason ?? null,
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
@@ -521,7 +529,7 @@ class TerminalService {
    */
   async exec(
     command: string,
-    options: { cwd?: string; timeout?: number; silent?: boolean; signal?: AbortSignal } = {}
+    options: { cwd?: string; timeout?: number; silent?: boolean; signal?: AbortSignal; escalated?: boolean; escalationReason?: string } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
     const missing = await programGate(command.trim().split(/\s+/)[0] || '');
@@ -541,7 +549,7 @@ class TerminalService {
     const id = `exec-${++this.processCounter}-${Date.now()}`;
     const base = parsed.cmdName.replace(/-\d+$/, '');
     try {
-      const r = await this.runTool(id, base, parsed.args, options.cwd, options.timeout, options.signal);
+      const r = await this.runTool(id, base, parsed.args, options.cwd, options.timeout, options.signal, undefined, options.escalated === true, options.escalationReason);
       const stderr = r.stderr.trim();
       return {
         success: r.code === 0,
@@ -572,7 +580,7 @@ class TerminalService {
    */
   async execShell(
     command: string,
-    options: { cwd?: string; timeout?: number; signal?: AbortSignal } = {}
+    options: { cwd?: string; timeout?: number; signal?: AbortSignal; escalated?: boolean; escalationReason?: string } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
     const trimmed = String(command || '').trim();
@@ -584,7 +592,7 @@ class TerminalService {
     }
     const id = `shell-${++this.processCounter}-${Date.now()}`;
     try {
-      const r = await this.runTool(id, 'bash', [], options.cwd, options.timeout, options.signal, trimmed);
+      const r = await this.runTool(id, 'bash', [], options.cwd, options.timeout, options.signal, trimmed, options.escalated === true, options.escalationReason);
       const stderr = r.stderr.trim();
       return {
         success: r.code === 0,
@@ -614,7 +622,7 @@ class TerminalService {
    */
   async runShell(
     command: string,
-    options: { cwd?: string; silent?: boolean; onProcessId?: (id: string) => void } = {}
+    options: { cwd?: string; silent?: boolean; onProcessId?: (id: string) => void; escalated?: boolean; escalationReason?: string } = {}
   ): Promise<string> {
     const processId = `job-${++this.processCounter}-${Date.now()}`;
     options.onProcessId?.(processId);
@@ -651,6 +659,8 @@ class TerminalService {
         direct: false,
         shell: true,
         shellCommand: trimmed,
+        escalated: options.escalated === true,
+        escalationReason: options.escalationReason ?? null,
       });
       process.pid = pid;
     } catch (error: any) {

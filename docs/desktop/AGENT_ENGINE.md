@@ -56,6 +56,9 @@ Règles :
   blanche, mais l'écriture reste confinée au projet, aux temporaires et aux caches ; les
   opérations réservées à l'utilisateur (git push, reset --hard, clean -f, sudo) et les secrets
   évidents sont refusés par Rust. Windows et Linux gardent `run_command` et sa liste.
+  Après un refus de Seatbelt, l'agent peut demander une **élévation à usage unique**
+  (`sandbox_permissions: "danger-full-access"` + justification) : une carte l'approuve hors
+  Accès complet, l'appel suivant retrouve la politique normale.
 - **Rappel de boucle** : `engine/loopGuard.ts`. Après chaque appel, la signature
   `(outil, arguments normalisés)` est comparée au précédent : aux seuils 3, 5 et 8 appels
   identiques consécutifs, un rappel est ajouté après le lot d'outils. Il ne bloque rien et

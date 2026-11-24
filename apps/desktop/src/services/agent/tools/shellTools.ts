@@ -46,6 +46,8 @@ export async function execRunCommand(args: any, ctx: ToolExecutionContext): Prom
     timeout: COMMAND_TIMEOUT_MS,
     silent: false,
     signal: ctx.signal,
+    escalated: ctx.escalated === true,
+    escalationReason: String(args.justification || ''),
   });
 
   // Refus de politique, outil introuvable, isolation ou lancement impossible : l'action

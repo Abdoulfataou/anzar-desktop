@@ -78,6 +78,16 @@ describe('execBash', () => {
     expect(shell.execShell).toHaveBeenCalledTimes(2);
   });
 
+  it('transmet une élévation approuvée à usage unique au shell', async () => {
+    shell.execShell.mockResolvedValue({ success: true, exitCode: 0, stdout: 'ok', stderr: '', durationMs: 1, ran: true });
+    const escalatedCtx = { ...ctx, escalated: true };
+    await execBash({ command: 'touch ../hors-projet', justification: 'nécessaire pour ce test' }, escalatedCtx);
+    expect(shell.execShell).toHaveBeenCalledWith(
+      'touch ../hors-projet',
+      expect.objectContaining({ escalated: true, escalationReason: 'nécessaire pour ce test' }),
+    );
+  });
+
   it('rend un job_id pour un travail en arrière-plan', async () => {
     shell.runShell.mockResolvedValue('job-1');
     shell.getJob.mockReturnValue({ status: 'running', output: 'démarrage', command: 'npm run dev' });

@@ -309,6 +309,9 @@ fn forbidden_shell_operation(command: &str) -> Option<&'static str> {
     if tokens.contains(&"sudo") {
         return Some("« sudo » est interdit à l'agent : ne cherche pas à élever tes droits.");
     }
+    if tokens.iter().any(|t| t.contains(".git/hooks") || t.contains(".git/config") || t.ends_with("/.git")) {
+        return Some("Les hooks et la configuration Git du projet restent protégés, même avec une élévation : ne les écris pas à la main.");
+    }
     let secret = tokens.iter().find(|t| {
         let t = t.trim_matches(|c: char| matches!(c, '"' | '\''));
         t == ".env"
@@ -352,6 +355,9 @@ fn forbidden_shell_operation(command: &str) -> Option<&'static str> {
             "push" => return Some("« git push » est réservé à l'utilisateur : ne pousse pas le code, dis-lui de le faire."),
             "remote" if next == "add" => {
                 return Some("« git remote add » configure un dépôt distant : laisse l'utilisateur le faire.");
+            }
+            "config" => {
+                return Some("« git config » est refusé : la configuration Git appartient à l'utilisateur.");
             }
             "reset" if next == "--hard" => {
                 return Some("« git reset --hard » efface le travail non commité : utilise git status puis git checkout <fichier>.");
@@ -514,6 +520,8 @@ pub fn tool_spawn(
     direct: Option<bool>,
     shell: Option<bool>,
     shell_command: Option<String>,
+    escalated: Option<bool>,
+    escalation_reason: Option<String>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
     // Les hôtes autorisés viennent des réglages gardés par Rust (command_policy), plus de
@@ -521,6 +529,17 @@ pub fn tool_spawn(
     let _ = proxy_hosts;
     let policy = crate::command_policy::current(&app);
     let use_shell = shell.unwrap_or(false);
+    let escalated = escalated.unwrap_or(false);
+    if escalated {
+        // Élévation à usage unique : elle n'a de sens que là où une isolation existe,
+        // et seulement avec une justification lisible par l'utilisateur.
+        if !crate::sandbox::available() {
+            return Err("L'élévation n'est disponible que sur un système où l'isolation existe (macOS).".into());
+        }
+        if escalation_reason.as_deref().unwrap_or("").trim().is_empty() {
+            return Err("Élévation refusée : une justification est obligatoire.".into());
+        }
+    }
     let mut shell_text: Option<String> = None;
     let (program, args) = if use_shell {
         // Shell confiné : la frontière est l'isolation du système d'exploitation. Sans
@@ -599,8 +618,9 @@ pub fn tool_spawn(
     // Protection effective : l'interface peut en demander plus, jamais moins que les réglages.
     let eff = crate::command_policy::effective(&policy, sandbox, network, proxy, install_net);
     // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
-    let isolated = eff.sandbox && crate::sandbox::available();
-    if use_shell && !isolated {
+    // Une élévation approuvée à usage unique désactive Seatbelt pour CET appel seulement.
+    let isolated = eff.sandbox && crate::sandbox::available() && !escalated;
+    if use_shell && !isolated && !escalated {
         return Err("Le shell confiné exige l'isolation des commandes : active-la dans les réglages ou utilise run_command.".into());
     }
     if isolated && gradlew_path.is_none() && find_in_path(&program).is_none() {
@@ -641,7 +661,7 @@ pub fn tool_spawn(
     } else {
         None
     };
-    let allow_network = net && proxy_port.is_none();
+    let allow_network = net && proxy_port.is_none() && !escalated;
     let wrapped = if isolated {
         let git_init = if use_shell {
             shell_text.as_deref().map(|c| shell_git_init_allowed(c, &root_p, &cwd_p)).unwrap_or(false)
@@ -809,6 +829,8 @@ mod security_tests {
         assert!(forbidden_shell_operation("cat .env.example").is_none());
         assert!(forbidden_shell_operation("git clean -fd").is_some());
         assert!(forbidden_shell_operation("git commit -m 'fix push'").is_none());
+        assert!(forbidden_shell_operation("git config --global user.email x").is_some());
+        assert!(forbidden_shell_operation("echo x > .git/hooks/pre-commit").is_some());
         assert!(forbidden_shell_operation("git log --grep push").is_none());
         assert!(forbidden_shell_operation("npm test").is_none());
         assert!(forbidden_shell_operation("git status").is_none());
