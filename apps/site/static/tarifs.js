@@ -1,7 +1,7 @@
 // Tarifs dans la monnaie du visiteur.
 // 1. On devine le pays (fuseau horaire, puis région du navigateur) ; le serveur peut aussi le lire.
-// 2. On demande l'offre au backend (mêmes prix que l'app). 3. S'il ne répond pas : grilles
-//    embarquées (/assets/prix.json), signalées comme indicatives.
+// 2. On demande l'offre au backend (mêmes prix que l'app). 3. S'il ne répond pas, ou si la
+//    monnaie n'est pas encore payable : grilles prévues pour cette monnaie (/assets/prix.json).
 (function () {
   "use strict";
 
@@ -128,7 +128,7 @@
       }
     });
     el("packs").setAttribute("aria-busy", "false");
-    el("mention-prix").textContent = o.source === "api" ? T.confirmed : T.indicative;
+    el("mention-prix").textContent = T.confirmed;
 
     // Monnaie demandée non proposée : on dit dans laquelle les prix sont affichés
     var demandee = o.requested_currency || "";
@@ -173,9 +173,32 @@
     }
   }
 
+  // Monnaie pas encore payable (aucun fournisseur actif) : plutôt que d'afficher une autre
+  // monnaie, on montre la grille prévue pour la sienne (celle que le paiement appliquera).
+  function versIndicatif(o) {
+    var voulue = o.requested_currency;
+    if (o.source !== "api" || !o.fallback_reason || !voulue || voulue === o.currency) return Promise.resolve(o);
+    return offreLocale(voulue, pays).then(function (loc) {
+      if (loc.currency !== voulue) return o;
+      loc.source = "indicatif";
+      loc.payment_kinds = [];
+      return loc;
+    });
+  }
+
+  // Toutes les monnaies du sélecteur : payables (API) + grilles prévues (indicatives)
+  function avecToutesMonnaies(o) {
+    return chargerRepli().then(function (d) {
+      var liste = (o.currencies || []).slice();
+      Object.keys(d.grilles).forEach(function (c) { if (liste.indexOf(c) < 0) liste.push(c); });
+      o.currencies = liste.sort();
+      return o;
+    }, function () { return o; });
+  }
+
   var pays = paysProbable();
   function charger(devise) {
-    return offre(devise, pays).then(function (o) {
+    return offre(devise, pays).then(versIndicatif).then(avecToutesMonnaies).then(function (o) {
       if (depart) rendreAccueil(o);
       if (T) rendreTarifs(o);
     });

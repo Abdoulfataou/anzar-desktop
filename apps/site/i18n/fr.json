@@ -256,7 +256,6 @@
     ],
     "loading": "Chargement des prix…",
     "confirmed": "Le prix exact s'affiche dans l'application au moment de payer.",
-    "indicative": "Prix indicatifs. Le prix exact s'affiche dans l'application au moment de payer.",
     "free_title": "Ou le montant de ton choix",
     "free_text": "De {min} à {max}. Bonus de {paliers}.",
     "free_tier": "+{pct} % dès {montant}",

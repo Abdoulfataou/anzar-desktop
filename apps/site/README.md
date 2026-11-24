@@ -34,7 +34,8 @@ Change-le dans `i18n/fr.json` **et** `i18n/en.json` (le script refuse de génér
 
 - La page Tarifs lit `GET https://anzar-api.issalanhub.com/api/public/pricing` (sans compte),
   dans la monnaie du visiteur. Le serveur reste seul à calculer les prix.
-- Si l'API ne répond pas, le site affiche `data/prix.json`, marqué « indicatif ».
+- Si l'API ne répond pas, ou si la monnaie du visiteur n'est pas encore payable (aucun fournisseur actif),
+  le site affiche la grille prévue pour cette monnaie dans `data/prix.json`.
   Après un changement de grille dans le backend : `python3 build.py --sync-prix ../../services/api`.
 
 ## Téléchargement

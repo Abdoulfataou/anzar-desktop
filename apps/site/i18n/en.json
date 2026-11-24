@@ -256,7 +256,6 @@
     ],
     "loading": "Loading prices…",
     "confirmed": "The exact price is shown in the app when you pay.",
-    "indicative": "Indicative prices. The exact price is shown in the app when you pay.",
     "free_title": "Or any amount you choose",
     "free_text": "From {min} to {max}. Bonus of {paliers}.",
     "free_tier": "+{pct}% from {montant}",
