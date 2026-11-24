@@ -73,6 +73,11 @@ npm run dev
 
 ## Releases et mise à jour automatique
 
+Nouvelle version de l'app : `./scripts/nouvelle-version.sh X.Y.Z`, puis `git push && git push origin vX.Y.Z`.
+La CI construit Mac et Windows dans une release en brouillon ; une fois publiée
+(`gh release edit vX.Y.Z --draft=false`), getanzar.com et la mise à jour automatique la proposent.
+Site et API : `git push`, puis sur le serveur `cd /root/anzar/deploy && ./mettre-a-jour.sh`.
+
 Les versions desktop sont publiées par `.github/workflows/release.yml` (macOS + Windows).
 Secrets GitHub requis : `TAURI_PRIVATE_KEY`, `TAURI_KEY_PASSWORD` ; optionnels pour Sentry :
 `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`.
