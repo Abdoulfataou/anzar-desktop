@@ -79,6 +79,28 @@ La notarisation n'est pas nécessaire pour 10 à 20 testeurs : distribuer le DMG
 indiquer **clic droit → Ouvrir** (ou Réglages → Confidentialité → Ouvrir quand même). À
 faire avant toute distribution large.
 
+## Sans compte Apple : certificat personnel (gratuit)
+
+Sans certificat Developer ID, une app signée « ad hoc » change d'identité à chaque version :
+après une mise à jour, macOS redemande le mot de passe de session pour laisser ANZAR relire
+ses données du trousseau (`com.anzar.desktop`). Pour l'éviter, une fois :
+
+```bash
+./scripts/creer-certificat-mac.sh
+```
+
+Le script crée un certificat de signature personnel (10 ans) dans `~/.anzar-certificat`
+et l'envoie dans les secrets `MAC_CERT_P12` et `MAC_CERT_PASSWORD`. La CI signe alors chaque
+version avec la même identité (« ANZAR Signature ») : le trousseau ne pose la question qu'une
+fois, à la première version signée ainsi. Si le certificat est absent ou inutilisable, la CI
+revient à la signature ad hoc (avertissement dans le journal).
+
+- Ce n'est pas une notarisation : l'avertissement de Gatekeeper au premier lancement reste.
+- Ne jamais changer ce certificat (relancer le script le réutilise) et en garder une copie
+  hors de l'ordinateur. Qui l'obtiendrait pourrait signer une app que le trousseau prendrait
+  pour ANZAR : il ne doit jamais être commité ni partagé.
+- Avec un vrai certificat Developer ID (`APPLE_CERTIFICATE`), celui-ci est ignoré.
+
 ## Windows (équivalent)
 
 SmartScreen affiche « Windows a protégé votre PC » pour un exécutable non signé. Un

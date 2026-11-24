@@ -98,6 +98,51 @@ jobs:
           releaseDraft: true
           prerelease: false
 
+      # Sans compte Apple payant : signature avec le certificat personnel ANZAR s'il est fourni
+      # (secrets MAC_CERT_P12 / MAC_CERT_PASSWORD, créés par scripts/creer-certificat-mac.sh).
+      # Même identité à chaque version → le trousseau macOS ne redemande plus l'accès aux
+      # données d'ANZAR après une mise à jour. Sinon, ou si le certificat est inutilisable :
+      # signature ad hoc, comme avant.
+      - name: Certificat personnel (Mac sans compte Apple)
+        id: certmac
+        if: env.APPLE_SIGNE != 'true' && matrix.platform == 'macos-latest'
+        working-directory: apps/desktop
+        shell: bash
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          set -uo pipefail
+          ADHOC=src-tauri/tauri.adhoc.conf.json
+          if [ -z "${MAC_CERT_P12:-}" ]; then
+            echo "Pas de certificat personnel : signature ad hoc."
+            echo "config=$ADHOC" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          NOM="ANZAR Signature"
+          KC="$RUNNER_TEMP/anzar-signature.keychain-db"
+          KCMDP="$(openssl rand -hex 16)"
+          printf '%s' "$MAC_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KCMDP" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$KCMDP" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KC" -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KCMDP" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          # Essai sur un binaire jetable avec les options de Tauri, avant la vraie construction.
+          cp /usr/bin/true "$RUNNER_TEMP/essai"
+          if codesign --force --options runtime --timestamp -s "$NOM" "$RUNNER_TEMP/essai" \
+             && codesign -d -r- "$RUNNER_TEMP/essai" > "$RUNNER_TEMP/exigence.txt" 2>&1 \
+             && grep -Eq 'certificate (root|leaf)' "$RUNNER_TEMP/exigence.txt"; then
+            printf '{"bundle":{"macOS":{"signingIdentity":"%s"}}}\n' "$NOM" > src-tauri/tauri.perso.conf.json
+            echo "config=src-tauri/tauri.perso.conf.json" >> "$GITHUB_OUTPUT"
+            echo "perso=true" >> "$GITHUB_OUTPUT"
+            echo "✓ Certificat personnel prêt."
+          else
+            echo "::warning::Certificat personnel inutilisable : repli sur la signature ad hoc."
+            echo "config=$ADHOC" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build & publish (Tauri) — Mac non notarié (sans certificat Apple)
         if: env.APPLE_SIGNE != 'true' && matrix.platform == 'macos-latest'
         uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0.6.2
@@ -110,8 +155,9 @@ jobs:
           SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
         with:
           projectPath: apps/desktop
-          # Signature « ad hoc » (identité « - ») : obligatoire pour lancer une app sur puce Apple
-          args: --config src-tauri/tauri.adhoc.conf.json ${{ matrix.args }}
+          # Certificat personnel ANZAR, ou signature « ad hoc » (identité « - ») à défaut :
+          # une signature est obligatoire pour lancer une app sur puce Apple.
+          args: --config ${{ steps.certmac.outputs.config }} ${{ matrix.args }}
           tagName: v__VERSION__
           releaseName: "ANZAR v__VERSION__"
           releaseBody: ${{ steps.notes.outputs.texte }}
@@ -138,13 +184,23 @@ jobs:
           xcrun stapler validate "$APP"
           spctl --assess --verbose=2 --type execute "$APP"
 
-      - name: Vérifier la signature ad hoc (macOS sans certificat)
+      - name: Vérifier la signature (macOS sans compte Apple)
         if: matrix.platform == 'macos-latest' && env.APPLE_SIGNE != 'true'
         working-directory: apps/desktop
+        env:
+          PERSO: ${{ steps.certmac.outputs.perso }}
         run: |
           set -euo pipefail
           APP=$(find src-tauri/target/release/bundle/macos -maxdepth 1 -name '*.app' | head -n 1)
           test -n "$APP" || { echo "Aucun .app produit"; exit 1; }
           codesign --verify --deep --strict --verbose=2 "$APP"
-          codesign -dv "$APP" 2>&1 | grep -q "Signature=adhoc"
+          if [ "$PERSO" = "true" ]; then
+            # L'identité exigée doit reposer sur le certificat (stable), pas sur l'empreinte du binaire.
+            codesign -d -r- "$APP" 2>&1 | tee /tmp/exigence.txt
+            grep -Eq 'certificate (root|leaf)' /tmp/exigence.txt
+            ! grep -q 'cdhash' /tmp/exigence.txt
+            echo "::notice::Mac signé avec le certificat personnel ANZAR : plus de demande du trousseau après les mises à jour."
+          else
+            codesign -dv "$APP" 2>&1 | grep -q "Signature=adhoc"
+          fi
           echo "::warning::Mac non notarié (aucun certificat Developer ID) : macOS demandera une confirmation au premier lancement."

@@ -63,3 +63,6 @@ id_ed25519*
 # Variables d'environnement locales
 .env.*
 !.env.example
+
+# Généré par la CI (certificat personnel macOS)
+apps/desktop/src-tauri/tauri.perso.conf.json
