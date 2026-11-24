@@ -103,8 +103,9 @@ un premier commit. Vérifie qu'elle compile. »
 `git log --oneline` contient au moins un commit, `git status --porcelain` vide.
 
 **À observer.** Le nombre d'appels pour `flutter create` + `git init` + `git add` +
-`git commit` (ANZAR ne peut pas chaîner), les refus sur `git config`/hooks, le passage en
-`--offline` si `pub get` échoue, le temps de `flutter create`.
+`git commit` (un shell peut les chaîner ; `run_command` ne le peut pas), les refus sur
+`git config`/hooks, le passage en `--offline` si `pub get` échoue, le temps de
+`flutter create`.
 
 **Pièges.** `git init` est une exception de la protection des hooks ; vérifier qu'elle
 fonctionne encore. Un `git commit` peut échouer si l'identité git n'est pas configurée :
@@ -172,8 +173,9 @@ imports, et vérifie que le build passe. »
 **Critère.** Plus aucune occurrence de `panier` dans les imports et les noms de fichiers
 (sauf historique git), `tsc --noEmit` et les tests passent.
 
-**À observer.** Le nombre d'appels `read`/`edit`, les oublis d'imports, le recours à un
-script (`node`, `python`) pour faire le renommage, les refus sur `mv`/`sed`, le temps.
+**À observer.** Le nombre d'appels `read`/`edit`, les oublis d'imports, le recours à
+`apply_patch` ou à un script (`node`, `python`) pour faire le renommage, les refus sur
+`mv`/`sed`, le temps.
 
 **Pièges.** Un renommage partiel qui compile mais casse un test ; un script écrit par
 l'agent qui exécute du code et déclenche un accord.

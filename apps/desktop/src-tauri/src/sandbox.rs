@@ -407,10 +407,12 @@ mod tests {
             .join(format!("anzar-sbx-shell-{}", std::process::id()));
         std::fs::create_dir_all(&base).unwrap();
         let inside = base.join("ok.txt");
-        let script = format!("echo ok > '{}'", inside.display());
+        let second = base.join("ok2.txt");
+        let script = format!("echo ok > '{}' && echo deux > '{}'", inside.display(), second.display());
         let w = wrap("/bin/bash", &["-c".to_string(), script], &base, false, false);
         assert!(Command::new(&w.program).args(&w.args).status().unwrap().success());
         assert!(inside.exists(), "écriture dans le projet autorisée");
+        assert!(second.exists(), "un enchaînement && fonctionne dans le shell confiné");
 
         let home = dirs::home_dir().unwrap();
         let outside = home.join(format!(".anzar-sbx-shell-{}.txt", std::process::id()));
