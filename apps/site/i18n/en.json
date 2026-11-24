@@ -197,6 +197,10 @@
     "help_title": "Need help?",
     "help": [
       {
+        "q": "macOS says it can't verify ANZAR",
+        "a": "That's expected during the beta. Open System Settings, then Privacy & Security, scroll down to the message about ANZAR and click “Open Anyway”. On older versions of macOS, right-click ANZAR in Applications and choose “Open”. You only need to do this once."
+      },
+      {
         "q": "Windows says “Windows protected your PC”",
         "a": "That's a common message for new apps. Click “More info”, then “Run anyway”."
       },
@@ -217,7 +221,8 @@
     "mobile_copied": "Link copied",
     "mobile_share": "Download ANZAR on my computer:",
     "mobile_subject": "Download ANZAR",
-    "mobile_desktop_anyway": "Show the files anyway"
+    "mobile_desktop_anyway": "Show the files anyway",
+    "mac_first_open": "The first time you open it, macOS asks you to confirm: see how."
   },
   "pricing": {
     "title": "Pay in your currency.",

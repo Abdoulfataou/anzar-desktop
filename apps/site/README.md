@@ -42,6 +42,10 @@ Change-le dans `i18n/fr.json` **et** `i18n/en.json` (le script refuse de génér
 La page lit la dernière release **publiée** de `Abdoulfataou/anzar-desktop` (API GitHub).
 Une release en brouillon n'est pas visible : il faut la publier sur GitHub.
 
+Tant que le Mac n'est pas notarié (pas de certificat Apple « Developer ID Application »), la page
+explique comment ouvrir l'app la première fois. Le jour où l'app est notariée : vider
+`download.mac_first_open` (FR et EN) et retirer la première entrée de `download.help`.
+
 ## Images de partage
 
 `static/og-fr.png` et `static/og-en.png` (1200 × 630). À régénérer si le titre change.

@@ -197,6 +197,10 @@
     "help_title": "Besoin d'aide ?",
     "help": [
       {
+        "q": "macOS dit qu'il ne peut pas vérifier ANZAR",
+        "a": "C'est normal pendant la bêta. Ouvre Réglages Système, puis Confidentialité et sécurité, descends jusqu'au message qui parle d'ANZAR et clique sur « Ouvrir quand même ». Sur les versions plus anciennes de macOS : clic droit sur ANZAR dans Applications, puis « Ouvrir ». Tu ne le fais qu'une seule fois."
+      },
+      {
         "q": "Windows affiche « Windows a protégé votre ordinateur »",
         "a": "C'est un message habituel pour les nouvelles applications. Clique sur « Informations complémentaires », puis sur « Exécuter quand même »."
       },
@@ -217,7 +221,8 @@
     "mobile_copied": "Lien copié",
     "mobile_share": "Télécharger ANZAR sur mon ordinateur :",
     "mobile_subject": "Télécharger ANZAR",
-    "mobile_desktop_anyway": "Voir quand même les fichiers"
+    "mobile_desktop_anyway": "Voir quand même les fichiers",
+    "mac_first_open": "Au premier lancement, macOS te demande une confirmation : voir comment."
   },
   "pricing": {
     "title": "Paie dans ta monnaie.",

@@ -31,6 +31,8 @@
             </a>
             <p class="version" data-version="mac">{{ t.download.loading }}</p>
             <p class="avis" id="avis-intel" hidden>{{ t.download.mac_intel }}</p>
+{% if t.download.mac_first_open %}            <p class="aide-mac"><a class="lien-discret" href="#aide">{{ t.download.mac_first_open }}</a></p>
+{% endif %}
           </article>
           <article class="plateforme" id="carte-windows" data-os="windows">
             <p class="recommande" hidden>{{ t.download.recommended }}</p>
@@ -72,7 +74,7 @@
 {% endfor %}          </ul>
         </div>
         <div>
-          <h2>{{ t.download.help_title }}</h2>
+          <h2 id="aide">{{ t.download.help_title }}</h2>
           <div class="faq">
 {% for q in t.download.help %}            <details>
               <summary>{{ q.q }}</summary>

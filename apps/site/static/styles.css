@@ -152,6 +152,8 @@ p { margin: .6rem 0 0; }
 .recommande { position: absolute; top: -.8rem; left: 50%; transform: translateX(-50%); white-space: nowrap;
   background: var(--pervenche); color: var(--encre) !important; font-size: .8rem; font-weight: 700; padding: .2rem .8rem; border-radius: 999px; }
 .version { font-size: .9rem; }
+.aide-mac { margin-top: .5rem !important; font-size: .9rem; max-width: 30ch; }
+#aide { scroll-margin-top: 90px; }
 .avis { color: #ffd59a !important; font-size: .93rem; margin-top: .4rem !important; }
 .etapes { list-style: none; padding: 0; margin: 2.5rem 0 2rem; display: grid; gap: 1.5rem; counter-reset: e; }
 .etapes li { background: var(--encre); border: 1px solid var(--trait); border-radius: var(--rayon); padding: 1.5rem; }
