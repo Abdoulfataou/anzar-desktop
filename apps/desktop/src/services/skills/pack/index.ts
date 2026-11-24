@@ -525,6 +525,104 @@ function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a
 - Durées rondes identiques partout (400 ms partout = template).
 - Mouvement pendant que du texte se lit : l'œil ne suit qu'un seul flux.`;
 
+const retoucheImages = `---
+name: retouche-images
+description: Retoucher des photos et images (recadrer, redimensionner, formats réseaux sociaux, compresser, convertir, logo ou texte sur l'image, couleurs, montage, icônes, traitement par lot) avec Node.js et sharp.
+---
+
+## Quand l'utiliser
+- L'utilisateur joint une ou plusieurs images, ou désigne un dossier d'images, et veut les transformer.
+- Exemples : « mets cette photo au format story », « ajoute mon logo sur toutes ces photos », « compresse ces images pour mon site », « fais-moi les icônes de mon app ».
+Pour créer un visuel à partir de rien (affiche, publication), préfère une page HTML exportée avec capture_page.
+
+## Règles
+1. Ne modifie JAMAIS l'original : écris les résultats dans un dossier \`resultats/\` à côté des images.
+2. Travaille avec Node.js (toujours disponible avec ANZAR) et la bibliothèque sharp :
+   \`npm init -y\` (si aucun package.json), puis \`npm install sharp\`, puis un script \`retouche.mjs\` lancé avec \`node retouche.mjs\`.
+3. Appelle \`.rotate()\` sans argument sur les photos : il applique l'orientation de l'appareil photo (sinon une photo de téléphone peut sortir couchée).
+4. Vérifie chaque résultat avec \`sharp(fichier).metadata()\` (taille, format) avant d'annoncer, puis donne la liste des fichiers produits avec leurs dimensions.
+5. Si une demande dépasse ce que sharp sait faire (voir « Limites »), dis-le simplement et propose une alternative.
+
+## Recettes (testées)
+
+\`\`\`js
+import sharp from 'sharp';
+import { readdir, mkdir } from 'node:fs/promises';
+import path from 'node:path';
+
+const src = 'photo.jpg';
+const out = (nom) => path.join('resultats', nom);
+await mkdir('resultats', { recursive: true });
+const meta = await sharp(src).metadata();
+
+// Formats réseaux sociaux : recadrage sur la zone la plus intéressante de l'image
+const FORMATS = { 'carre-1080': [1080, 1080], 'story-1080x1920': [1080, 1920], 'paysage-1200x630': [1200, 630] };
+for (const [nom, [w, h]] of Object.entries(FORMATS)) {
+  await sharp(src).rotate().resize(w, h, { fit: 'cover', position: sharp.strategy.attention })
+    .jpeg({ quality: 85, mozjpeg: true }).toFile(out(\`\${nom}.jpg\`));
+}
+
+// Redimensionner sans déformer ni agrandir
+await sharp(src).rotate().resize({ width: 800, withoutEnlargement: true }).toFile(out('largeur-800.jpg'));
+
+// Convertir et compresser (WebP pour le web, JPEG qualité 80-85 pour WhatsApp et les réseaux)
+await sharp(src).rotate().webp({ quality: 80 }).toFile(out('photo.webp'));
+
+// Logo en bas à droite : 25 % de la largeur, marge de 3 %
+const logo = await sharp('logo.png').resize({ width: Math.round(meta.width * 0.25) }).png().toBuffer();
+const lm = await sharp(logo).metadata();
+const marge = Math.round(meta.width * 0.03);
+await sharp(src).rotate()
+  .composite([{ input: logo, left: meta.width - lm.width - marge, top: meta.height - lm.height - marge }])
+  .toFile(out('avec-logo.jpg'));
+
+// Texte sur l'image : bandeau sombre en bas, taille adaptée à la longueur, caractères échappés
+const xml = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+const texte = (t, w, h) => Buffer.from(\`<svg width="\${w}" height="\${h}">
+  <style>.t{font:700 \${Math.round(Math.min(h / 10, (w * 0.9) / (String(t).length * 0.58)))}px sans-serif;fill:#fff}</style>
+  <rect y="\${h * 0.78}" width="\${w}" height="\${h * 0.22}" fill="rgba(0,0,0,.45)"/>
+  <text x="50%" y="\${h * 0.92}" text-anchor="middle" class="t">\${xml(t)}</text></svg>\`);
+await sharp(src).rotate().composite([{ input: texte('Promo -20 %', meta.width, meta.height) }]).toFile(out('avec-texte.jpg'));
+
+// Couleurs : plus lumineux et plus vif, noir et blanc, netteté
+await sharp(src).rotate().modulate({ brightness: 1.1, saturation: 1.2 }).sharpen().toFile(out('plus-vif.jpg'));
+await sharp(src).rotate().grayscale().toFile(out('noir-blanc.jpg'));
+
+// Montage 2 × 2 (même image ici ; mets 4 fichiers différents)
+const tuile = await sharp(src).rotate().resize(540, 540, { fit: 'cover' }).toBuffer();
+await sharp({ create: { width: 1080, height: 1080, channels: 3, background: '#ffffff' } })
+  .composite([[0, 0], [540, 0], [0, 540], [540, 540]].map(([left, top]) => ({ input: tuile, left, top })))
+  .jpeg().toFile(out('montage.jpg'));
+
+// Icônes d'application (fond transparent)
+for (const t of [16, 32, 180, 192, 512]) {
+  await sharp('logo.png').resize(t, t, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+    .png().toFile(out(\`icone-\${t}.png\`));
+}
+
+// Tout un dossier d'un coup
+for (const f of (await readdir('.')).filter((f) => /\\.(jpe?g|png|webp)$/i.test(f))) {
+  await sharp(f).rotate().resize({ width: 1200, withoutEnlargement: true }).jpeg({ quality: 82 })
+    .toFile(out(\`\${path.parse(f).name}.jpg\`));
+}
+
+// Vérification
+for (const f of (await readdir('resultats')).sort()) {
+  const m = await sharp(out(f)).metadata();
+  console.log(f, \`\${m.width}×\${m.height}\`, m.format);
+}
+\`\`\`
+
+## Tailles utiles
+- Instagram : carré 1080×1080, portrait 1080×1350, story et statut WhatsApp 1080×1920.
+- Facebook et lien partagé : 1200×630. Couverture YouTube : 2560×1440. Miniature YouTube : 1280×720.
+- Web : 1200 à 1600 px de large, WebP qualité 75-80.
+
+## Limites (dis-le à l'utilisateur)
+- Détourage précis (enlever le fond), retouche de peau, suppression d'un objet, calques PSD : sharp ne sait pas faire.
+  Si le connecteur GIMP est actif (Connecteurs), utilise ses outils ; sinon propose de l'activer.
+- Photos HEIC d'iPhone : sharp peut ne pas les lire. Demande de les exporter en JPEG (Photos → Exporter) si la lecture échoue.`;
+
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'brainstorming', markdown: brainstorming },
   { name: 'ecrire-un-plan', markdown: plan },
@@ -543,4 +641,5 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'ecrire-une-skill', markdown: writeSkill },
   { name: 'gsap-cookbook', markdown: gsapCookbook },
   { name: 'motion-system', markdown: motionSystem },
+  { name: 'retouche-images', markdown: retoucheImages },
 ];
