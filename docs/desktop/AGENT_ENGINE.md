@@ -61,10 +61,10 @@ Règles :
   du projet pour cet appel, tandis que secrets, hooks/config Git et réseau restent protégés ;
   une carte l'approuve hors Accès complet, l'appel suivant retrouve la politique normale.
 - **Un seul sélecteur de permissions** : « Permissions » règle ensemble le mode d'accord et
-  l'isolation. « Accès complet » reste isolé ; « Accès complet sans isolation » est le seul
-  choix qui retire Seatbelt, avec deux avertissements et la confirmation native de Rust. Un
-  mode ordinaire réactive toujours l'isolation, et l'élévation ponctuelle reste le chemin
-  pour élargir une écriture sans changer de mode.
+  l'isolation. « Accès complet » est le `danger-full-access` de Harness : il retire Seatbelt
+  et les demandes, après un avertissement unique et la confirmation native de Rust. Tout
+  autre mode réactive l'isolation. L'élévation ponctuelle reste disponible hors Accès
+  complet pour élargir une seule écriture sans changer de mode.
 - **Rappel de boucle** : `engine/loopGuard.ts`. Après chaque appel, la signature
   `(outil, arguments normalisés)` est comparée au précédent : aux seuils 3, 5 et 8 appels
   identiques consécutifs, un rappel est ajouté après le lot d'outils. Il ne bloque rien et

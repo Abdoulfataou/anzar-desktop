@@ -6,9 +6,10 @@
 - Agent : nouveaux outils pour trouver des fichiers par motif (`glob`) et modifier plusieurs fichiers en une fois (`apply_patch`), utiles pour les renommages et les refactorings.
 - Agent : le prompt est plus court et les faits utiles (dossier, plateforme, réseau, permissions) sont renvoyés à chaque demande ; le contexte long est élagué puis résumé avec les chemins et les erreurs.
 - Réseau : corrige les erreurs « socket error » quand le proxy local était bloqué par l'isolation. `flutter pub get` et les installations passent à nouveau.
-- Accès complet : l'avertissement ne promet plus `git push` ; il rappelle que les écritures restent limitées au projet et que les dossiers de secrets restent illisibles.
+- Accès complet : comme dans Harness, il n'y a plus d'isolation ni de demande. L'avertissement dit exactement ce que cela ouvre : écritures hors projet, lecture des dossiers de secrets, réseau direct. Les refus de police d'ANZAR (git push, git config, sudo, secrets cités) restent, mais un script peut les contourner.
 - Git : « git init » fonctionne dans un nouveau projet, et les hooks Git restent protégés quoi que tente l'agent.
 - Bouton Stop : il arrête aussi les travaux lancés en arrière-plan par l'agent (serveur de développement, build long).
 - Agent : il peut terminer par une réponse normale, sans appeler `task_done` ; la vérification (lint, build, tests) se lance quand même et les erreurs lui sont renvoyées s'il y en a.
-- Paramètres : un seul sélecteur « Permissions » règle à la fois ce que l'agent peut faire sans demander et l'isolation des commandes. « Accès complet sans isolation » est le seul choix qui retire la protection système, avec deux avertissements.
-- Sous-agents : en Accès complet, ils peuvent aussi lancer des commandes (shell confiné), en séquence, pour vérifier leur travail ; hors Accès complet, ils restent en lecture seule.
+- Paramètres : un seul sélecteur « Permissions » règle à la fois ce que l'agent peut faire sans demander et l'isolation des commandes. « Accès complet » est le seul choix qui retire la protection système, avec un avertissement unique (comme le danger-full-access de Harness).
+- Sous-agents : en Accès complet, ils peuvent aussi lancer des commandes (shell sans isolation, comme le parent), en séquence, pour vérifier leur travail ; hors Accès complet, ils restent en lecture seule.
+- Si tu étais déjà en « Accès complet » avant cette version, resélectionne-le une fois : l'isolation n'est retirée qu'après le nouvel avertissement.

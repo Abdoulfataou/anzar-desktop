@@ -29,14 +29,14 @@ import { fetchRechargeHistory, type RechargeEntry } from '@/lib/rechargeHistory'
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import type { Conversation, Project } from '@/types';
 import {
-  choiceKeepsSandbox, modeOfChoice, permissionChoiceOf,
+  modeOfChoice, permissionChoiceOf,
   type PermissionChoice,
 } from '@/services/agent/policy/permissions';
 import { installAppleDevTools, installCommand, installGitNow, platform, programsStatus, type ProgramInfo } from '@/services/runtime/programs';
 import { installNodeNow } from '@/services/runtime/nodeRuntime';
 import { applyCommandPolicy, type PolicySettings } from '@/services/runtime/commandPolicy';
 import { SUPPORT_EMAIL, siteUrl } from '@/lib/siteLinks';
-import { FULL_ACCESS_UNCONFINED_WARNING, FULL_ACCESS_WARNING } from '@/lib/fullAccess';
+import { FULL_ACCESS_WARNING } from '@/lib/fullAccess';
 
 type SectionId = 'general' | 'appearance' | 'personalization' | 'programs' | 'account' | 'usage' | 'data' | 'about';
 
@@ -260,19 +260,18 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
   const [advanced, setAdvanced] = useState(false);
   const mode = useSettingsStore((s) => s.settings.permissionMode ?? 'auto');
   const errorReports = useSettingsStore((s) => s.settings.errorReports !== false);
-  const permissionChoice = isMac ? permissionChoiceOf(mode, sandbox) : mode;
+  const permissionChoice = permissionChoiceOf(mode, sandbox);
   const changePermissionChoice = async (next: PermissionChoice) => {
-    if (next === 'full-unconfined') {
-      if (!(await confirm(FULL_ACCESS_WARNING))) return;
-      if (!(await confirm(FULL_ACCESS_UNCONFINED_WARNING))) return;
+    if (next === 'full') {
+      if (mode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
       useSettingsStore.getState().updateSettings({ permissionMode: 'full' });
       if (!(await changeSecurity({ sandboxCommands: false }))) return;
       return;
     }
-    if (choiceKeepsSandbox(next) && !sandbox) {
+    // Tout autre mode réactive l'isolation si elle avait été retirée par Accès complet.
+    if (!sandbox) {
       if (!(await changeSecurity({ sandboxCommands: true }))) return;
     }
-    if (next === 'full' && mode !== 'full' && !(await confirm(FULL_ACCESS_WARNING))) return;
     useSettingsStore.getState().updateSettings({ permissionMode: modeOfChoice(next) });
   };
   // Réglages de sécurité des commandes : enregistrés par le cœur Rust, qui demande une
@@ -409,8 +408,7 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
           <option value="ask">Demander avant de modifier (isolé)</option>
           <option value="auto">Auto : demander seulement les risques (isolé)</option>
           <option value="plan">Plan : lecture seule (isolé)</option>
-          <option value="full">Accès complet (isolé)</option>
-          {isMac && <option value="full-unconfined">Accès complet sans isolation (déconseillé)</option>}
+          <option value="full">Accès complet (sans isolation)</option>
         </select>
       </Row>
       <Row

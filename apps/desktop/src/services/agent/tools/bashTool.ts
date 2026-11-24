@@ -5,7 +5,8 @@
  * redirections), un `cd` local à la commande, ou un travail en arrière-plan. La frontière
  * n'est pas une liste blanche de programmes : c'est le bac à sable du système, appliqué
  * par Rust (`tool_spawn` avec `shell: true`). Sur une machine sans isolation disponible,
- * l'outil n'est pas proposé et Rust refuse de lancer un shell nu.
+ * l'outil n'est pas proposé. En Accès complet, l'utilisateur a explicitement retiré
+ * l'isolation : le shell tourne alors sans profil, et le prompt le lui rappelle.
  *
  * Adapté de `packages/shell/tool-bash` de DeepSeek Harness (MIT) : description du contrat,
  * marqueurs de résultat, promotion en arrière-plan. Voir THIRD_PARTY_NOTICES.

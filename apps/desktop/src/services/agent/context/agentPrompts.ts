@@ -128,7 +128,7 @@ const PERMISSION_FACT: Record<NonNullable<RuntimeFacts['permissionMode']>, strin
   ask: "un accord est demandé avant chaque écriture et chaque commande.",
   auto: "les fichiers sont modifiés sans demander ; seules les actions risquées (installation, git, programme inconnu) demandent un accord.",
   plan: "lecture seule : explore et propose_plan, aucune modification.",
-  full: "accès complet : aucune demande, sauf un connecteur réglé « toujours demander » et une action après un contenu externe suspect.",
+  full: "accès complet : aucune demande et aucune isolation système. Les écritures hors projet et la lecture des dossiers de secrets deviennent possibles ; reste dans le projet et ne lis pas les secrets. Seules exceptions : un connecteur réglé « toujours demander » et une action après un contenu externe suspect.",
 };
 
 export function runtimeFactsSection(facts: RuntimeFacts): string {

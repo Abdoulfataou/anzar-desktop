@@ -25,26 +25,22 @@ export function needsApproval(mode: PermissionMode, tool: string): boolean {
 
 /**
  * Choix unique de l'utilisateur : le mode d'accord et l'isolation des commandes
- * ensemble. `full-unconfined` est le seul choix qui désactive Seatbelt ; il n'est
- * proposé que sur macOS, avec deux avertissements.
+ * ensemble. « Accès complet » est le `danger-full-access` de Harness : il retire
+ * l'isolation système, après un avertissement unique accepté.
  */
-export type PermissionChoice = PermissionMode | 'full-unconfined';
+export type PermissionChoice = PermissionMode;
 
-export const PERMISSION_CHOICES: readonly PermissionChoice[] = [
-  'ask', 'auto', 'plan', 'full', 'full-unconfined',
-];
-
-/** Ce que le sélecteur doit afficher pour l'état courant (mode + isolation). */
-export function permissionChoiceOf(mode: PermissionMode, sandbox: boolean): PermissionChoice {
-  return mode === 'full' && !sandbox ? 'full-unconfined' : mode;
+/** Ce que le sélecteur doit afficher pour l'état courant. */
+export function permissionChoiceOf(mode: PermissionMode, _sandbox: boolean): PermissionChoice {
+  return mode;
 }
 
 /** Mode d'accord correspondant au choix. */
 export function modeOfChoice(choice: PermissionChoice): PermissionMode {
-  return choice === 'full-unconfined' ? 'full' : choice;
+  return choice;
 }
 
-/** Le choix garde-t-il l'isolation des commandes ? */
+/** Le choix garde-t-il l'isolation des commandes ? Seul « Accès complet » la retire. */
 export function choiceKeepsSandbox(choice: PermissionChoice): boolean {
-  return choice !== 'full-unconfined';
+  return choice !== 'full';
 }
