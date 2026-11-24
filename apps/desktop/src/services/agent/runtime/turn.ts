@@ -72,25 +72,6 @@ const MAX_TOOL_OUTPUT_DISPLAY = 600;
 /** Demande une animation ou une vidéo : l'export doit toujours être livré. */
 const MOTION_DELIVERABLE = /vid[ée]o|animation|motion|\bpub\b|publicit|reel|story|format (mp4|gif)|export/i;
 
-// Conversations où l'utilisateur a déjà autorisé l'exécution du code écrit par
-// l'agent dans l'espace ANZAR : UN accord par conversation, persistant entre
-// les remontées de vue et les redémarrages de l'app.
-const TRUSTED_CONVS_KEY = 'anzar.trustedConvs';
-function loadTrustedConvs(): Set<string> {
-  try {
-    const raw = localStorage.getItem(TRUSTED_CONVS_KEY);
-    return new Set(raw ? JSON.parse(raw) : []);
-  } catch { return new Set(); }
-}
-const trustedConvs = loadTrustedConvs();
-function trustConversation(id: string) {
-  trustedConvs.add(id);
-  try {
-    const arr = [...trustedConvs].slice(-300); // borne mémoire
-    localStorage.setItem(TRUSTED_CONVS_KEY, JSON.stringify(arr));
-  } catch { /* stockage indisponible */ }
-}
-
 /** Déroule un tour complet. Renvoie `null` si un tour est déjà en cours. */
 export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentChatResult | null> {
   const { content, resumeFrom } = input;
@@ -170,7 +151,6 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         get mode(): PermissionMode { return host.mode; },
         background,
         personalSpace,
-        get trusted(): boolean { return trustedConvs.has(convId); },
         signal: controller.signal,
         skills,
         events,
@@ -185,7 +165,6 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         updateMessage,
         assistantId,
         onFileChanged,
-        onTrustConversation: () => trustConversation(convId),
         beforeFirstWrite: async () => {
           await verifier.ensureBaseline();
         },

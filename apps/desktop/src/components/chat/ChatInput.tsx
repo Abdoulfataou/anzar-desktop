@@ -421,7 +421,7 @@ export type PermissionMode = 'ask' | 'auto' | 'plan' | 'full';
 
 const PERMISSIONS: { id: PermissionMode; label: string; hint: string }[] = [
   { id: 'ask',  label: 'Demander avant de modifier', hint: "Chaque modification et chaque commande attend ton accord" },
-  { id: 'auto', label: 'Modifier automatiquement',   hint: "Les fichiers sont modifiés sans demander ; les commandes attendent ton accord" },
+  { id: 'auto', label: 'Modifier automatiquement',   hint: "Les fichiers sont modifiés sans demander ; seules les actions risquées (installation, git, programme inconnu) demandent ton accord" },
   { id: 'plan', label: 'Mode plan',                  hint: "L'agent lit et propose un plan, sans rien modifier" },
   { id: 'full', label: 'Accès complet',              hint: "L'agent modifie, installe et exécute sans rien demander" },
 ];

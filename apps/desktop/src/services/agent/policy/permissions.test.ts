@@ -16,10 +16,10 @@ describe('permissions', () => {
     expect(needsApproval('ask', 'read_file')).toBe(false);
   });
 
-  it('mode auto : seules les commandes demandent un accord', () => {
+  it('mode auto : aucune demande générique (les risques sont traités à part)', () => {
     expect(needsApproval('auto', 'write_file')).toBe(false);
-    expect(needsApproval('auto', 'run_command')).toBe(true);
-    expect(needsApproval('auto', 'spawn_subagents')).toBe(true);
+    expect(needsApproval('auto', 'run_command')).toBe(false);
+    expect(needsApproval('auto', 'spawn_subagents')).toBe(false);
   });
 
   it('modes plan/full : pas d’accord générique (plan est gardé ailleurs)', () => {

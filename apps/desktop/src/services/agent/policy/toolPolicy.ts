@@ -16,8 +16,6 @@ export interface ApprovalDecisionInput {
   /** Risque calculé par commandGuard, null si aucun. */
   risk: { reason: string } | null;
   personalSpace: boolean;
-  /** L'utilisateur a déjà autorisé le code de l'agent dans cette conversation. */
-  trusted: boolean;
   /** Outil de connecteur qui agit (pas une simple lecture déclarée). */
   mcpAction?: boolean;
   /** Un contenu externe (web, connecteur) a été lu dans cette tâche. */
@@ -34,14 +32,19 @@ export interface ApprovalDecision {
 const PLAN_ALWAYS_ALLOWED = new Set(['task_done', 'propose_plan', 'load_skill', 'ask_user']);
 
 export function approvalDecision(input: ApprovalDecisionInput): ApprovalDecision {
-  const { mode, tool, mcpReadOnly, mcpAsk, mcpName, background, risk, personalSpace, trusted, mcpAction, external } = input;
+  const { mode, tool, mcpReadOnly, mcpAsk, mcpName, background, risk, personalSpace, mcpAction, external } = input;
   // Après lecture d'un contenu externe, une commande ou une action de connecteur
   // peut venir d'une consigne cachée dans ce contenu : accord demandé (en Full, seulement
   // si une tournure d'injection est repérée).
   const afterExternal = !!external && (COMMAND_TOOLS.has(tool) || !!mcpAction);
 
   if (mode === 'plan' && !READ_ONLY_TOOLS.has(tool) && !mcpReadOnly && !PLAN_ALWAYS_ALLOWED.has(tool)) {
-    return { allowed: false, ask: false };
+    return {
+      allowed: false,
+      ask: false,
+      refusal: 'Refusé : le mode plan est en lecture seule. Tu peux lire, chercher, lister, poser une question '
+        + 'et appeler propose_plan ; termine par propose_plan, sans modifier ni exécuter.',
+    };
   }
   if (mcpAsk && background) {
     return {
@@ -77,8 +80,6 @@ export function approvalDecision(input: ApprovalDecisionInput): ApprovalDecision
       || !!risk
       || mcpAsk
       || (afterExternal && !background);
-  // `trusted` ne couvre plus les risques réseau/installation : un accord de code
-  // dans l'espace ANZAR ne doit pas autoriser un push ou un npm install silencieux.
   if (ask && background) {
     return {
       allowed: false,

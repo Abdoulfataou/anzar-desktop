@@ -16,7 +16,9 @@ export const READ_ONLY_TOOLS = new Set([
 ]);
 
 export function needsApproval(mode: PermissionMode, tool: string): boolean {
+  // `ask` : chaque écriture et chaque commande. `auto` : aucune demande générique —
+  // seuls les risques (installation, programme inconnu, git, contenu externe) et les
+  // connecteurs « toujours demander » passent par une carte. `full` : rien.
   if (mode === 'ask') return EDIT_TOOLS.has(tool) || COMMAND_TOOLS.has(tool);
-  if (mode === 'auto') return COMMAND_TOOLS.has(tool);
   return false;
 }

@@ -14,6 +14,7 @@ import type { PermissionMode } from '../policy/permissions';
 import type { AgentToolOutcome } from '../engine/agentSession';
 import { approvalDecision } from '../policy/toolPolicy';
 import { commandRisk, noteAgentWrite } from '../policy/commandGuard';
+import { precheckCommand } from '../tools/shellTools';
 import { externalReason, type ExternalSource } from '../policy/untrusted';
 import { executeGenericTool } from '../tools/toolExecution';
 import { summarizeArgs, toolDelta, toolFilePath } from '../tools/toolDisplay';
@@ -84,8 +85,6 @@ export interface ToolRunContext {
   mode: PermissionMode;
   background: boolean;
   personalSpace: boolean;
-  /** L'utilisateur a déjà autorisé le code de l'agent dans cette conversation. */
-  trusted: boolean;
   signal: AbortSignal;
   skills: Skill[];
   events: ToolEvent[];
@@ -110,8 +109,6 @@ export interface ToolRunContext {
   /** Enveloppe de budget pour un sous-agent (fraction du budget restant). */
   childBudget?: (share: number, capFcfa?: number) => import('../engine/budget').BudgetLedger;
   onFileChanged?: (relativePath: string, action: 'create' | 'edit' | 'delete') => void;
-  /** Mémorise que l'utilisateur a autorisé le code de l'agent dans cette conversation. */
-  onTrustConversation: () => void;
   /**
    * Juste avant la première écriture du tour : capture de l'état de vérification du projet.
    * Un échec ici ne doit jamais empêcher l'écriture.
@@ -131,6 +128,19 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
 
   let args: Record<string, any> = {};
   try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
+
+  // Pré-contrôle statique AVANT la carte d'accord : inutile de demander à l'utilisateur
+  // une commande que la politique refusera de toute façon (git push, bash, chemin absolu…).
+  if (call.function.name === 'run_command') {
+    const refused = precheckCommand(String(args.command || ''));
+    if (refused) {
+      const output = `La commande n'a pas été exécutée.\n${refused}`;
+      ev.status = 'error';
+      ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
+      ctx.flush();
+      return { output, isError: true };
+    }
+  }
 
   // Commande qui exécute du code écrit par l'agent, installation, script npm sensible :
   // accord demandé hors « Accès complet » (garde S3, voir approvalDecision)
@@ -160,7 +170,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     background: ctx.background,
     risk,
     personalSpace: ctx.personalSpace,
-    trusted: ctx.trusted,
     mcpAction: !!mcpRef && !mcpReadOnly,
     external: ctx.externalSources.length ? { suspicious: ctx.externalSources.some((x) => x.suspicious) } : null,
   });
@@ -181,7 +190,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
       scope,
       trustProgram: risk?.unknownProgram,
     });
-    if (allowed && ctx.personalSpace && risk) ctx.onTrustConversation();
   }
   // Installation acceptée : Rust ne la lance qu'avec cet accord (usage unique)
   if (allowed && risk && call.function.name === 'run_command') terminalService.grantInstall(riskCommand);

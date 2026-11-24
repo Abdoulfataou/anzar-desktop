@@ -48,6 +48,18 @@
         {
           "args": "filter-branch",
           "reason": "réécrit l'historique en exécutant du shell"
+        },
+        {
+          "args": "push",
+          "reason": "envoie le code sur un dépôt distant ; c'est l'utilisateur qui pousse, pas l'agent"
+        },
+        {
+          "args": "remote add",
+          "reason": "configure un dépôt distant ; laisse l'utilisateur le faire"
+        },
+        {
+          "args": "config",
+          "reason": "modifie la configuration git (hooks, fsmonitor) ; l'utilisateur la change lui-même"
         }
       ]
     },

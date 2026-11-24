@@ -298,6 +298,46 @@ fn resolve_with_exts(program: &str, path: &str, exts: &[&str]) -> Option<std::pa
     })
 }
 
+/// Opérations que le shell ne doit pas exécuter, même en Accès complet : elles engagent
+/// le dépôt de l'utilisateur ou élèvent les droits. La liste reste volontairement courte ;
+/// le reste est borné par Seatbelt et par les règles du prompt.
+fn forbidden_shell_operation(command: &str) -> Option<&'static str> {
+    let tokens: Vec<&str> = command
+        .split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')' | '`'))
+        .filter(|t| !t.is_empty())
+        .collect();
+    if tokens.iter().any(|t| *t == "sudo") {
+        return Some("« sudo » est interdit à l'agent : ne cherche pas à élever tes droits.");
+    }
+    for (i, token) in tokens.iter().enumerate() {
+        if *token != "git" && !token.ends_with("/git") {
+            continue;
+        }
+        // Premier mot qui n'est pas une option = la sous-commande git.
+        let mut j = i + 1;
+        while j < tokens.len() && tokens[j].starts_with('-') {
+            // Options qui prennent une valeur : -C <dir>, -c <clé=valeur>, --git-dir <dir>…
+            j += if matches!(tokens[j], "-C" | "-c" | "--git-dir" | "--work-tree" | "--namespace") { 2 } else { 1 };
+        }
+        let Some(sub) = tokens.get(j).copied() else { continue };
+        let next = tokens.get(j + 1).copied().unwrap_or("");
+        match sub {
+            "push" => return Some("« git push » est réservé à l'utilisateur : ne pousse pas le code, dis-lui de le faire."),
+            "remote" if next == "add" => {
+                return Some("« git remote add » configure un dépôt distant : laisse l'utilisateur le faire.");
+            }
+            "reset" if next == "--hard" => {
+                return Some("« git reset --hard » efface le travail non commité : utilise git status puis git checkout <fichier>.");
+            }
+            "clean" if next.starts_with('-') && next.contains('f') => {
+                return Some("« git clean -f » supprime les fichiers non suivis : demande-le à l'utilisateur.");
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Une commande de shell mentionne-t-elle un port local réservé aux connecteurs ?
 /// Heuristique de défense en profondeur : Seatbelt ne peut pas exprimer « localhost sauf ces
 /// ports » sans couper le proxy (voir `sandbox::wrap`).
@@ -472,6 +512,9 @@ pub fn tool_spawn(
         }
         if trimmed.contains('\0') {
             return Err("Commande invalide (caractère NUL).".into());
+        }
+        if let Some(reason) = forbidden_shell_operation(trimmed) {
+            return Err(reason.into());
         }
         if mentions_blocked_local_app(trimmed) {
             return Err(
@@ -724,6 +767,16 @@ mod security_tests {
         assert!(!shell_git_init_allowed("cd sous && git init", &dir, &dir));
         assert!(!shell_git_init_allowed("git status", &dir, &dir));
         assert!(!shell_git_init_allowed("git init --separate-git-dir=.gitstore", &dir, &dir));
+        assert!(forbidden_shell_operation("git push origin main").is_some());
+        assert!(forbidden_shell_operation("git -C . push").is_some());
+        assert!(forbidden_shell_operation("git remote add origin x").is_some());
+        assert!(forbidden_shell_operation("sudo ls").is_some());
+        assert!(forbidden_shell_operation("git reset --hard HEAD").is_some());
+        assert!(forbidden_shell_operation("git clean -fd").is_some());
+        assert!(forbidden_shell_operation("git commit -m 'fix push'").is_none());
+        assert!(forbidden_shell_operation("git log --grep push").is_none());
+        assert!(forbidden_shell_operation("npm test").is_none());
+        assert!(forbidden_shell_operation("git status").is_none());
         assert!(mentions_blocked_local_app("nc 127.0.0.1 9876"));
         assert!(mentions_blocked_local_app("curl http://localhost:9877/x"));
         assert!(mentions_blocked_local_app("cat /tmp/audacity_script_pipe.to.x"));

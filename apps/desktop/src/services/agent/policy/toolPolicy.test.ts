@@ -9,7 +9,6 @@ const base = {
   background: false,
   risk: null,
   personalSpace: false,
-  trusted: false,
 };
 
 describe('approvalDecision', () => {
@@ -24,23 +23,26 @@ describe('approvalDecision', () => {
     expect(approvalDecision({ ...base, mode: 'ask', tool: 'read_file' }).ask).toBe(false);
   });
 
-  it('mode auto : demande pour une commande, pas pour une écriture', () => {
-    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command' }).ask).toBe(true);
+  it('mode auto : aucune demande générique, mais le risque demande', () => {
+    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command' }).ask).toBe(false);
     expect(approvalDecision({ ...base, mode: 'auto', tool: 'write_file' }).ask).toBe(false);
+    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command', risk: { reason: 'installe du code' } }).ask).toBe(true);
   });
 
-  it('espace ANZAR : pas d’accord pour écrire, sauf risque non encore autorisé', () => {
+  it('espace ANZAR : pas d’accord pour écrire, sauf risque', () => {
     expect(approvalDecision({ ...base, mode: 'ask', tool: 'write_file', personalSpace: true }).ask).toBe(false);
-    expect(approvalDecision({ ...base, mode: 'ask', tool: 'run_command', personalSpace: true, risk: { reason: 'script modifié' }, trusted: false }).ask).toBe(true);
-    // Un accord de code dans l'espace ANZAR ne couvre plus un risque réseau/installation.
-    expect(approvalDecision({ ...base, mode: 'ask', tool: 'run_command', personalSpace: true, risk: { reason: 'script modifié' }, trusted: true }).ask).toBe(true);
+    // Un accord de code ne couvre pas un risque réseau/installation.
+    expect(approvalDecision({ ...base, mode: 'ask', tool: 'run_command', personalSpace: true, risk: { reason: 'script modifié' } }).ask).toBe(true);
   });
 
   it('automatisation : refuse toute action qui demanderait une approbation', () => {
-    const auto = approvalDecision({ ...base, mode: 'auto', background: true, tool: 'run_command' });
-    expect(auto.allowed).toBe(false);
-    expect(auto.ask).toBe(false);
-    expect(auto.refusal).toContain('personne');
+    const ask = approvalDecision({ ...base, mode: 'ask', background: true, tool: 'run_command' });
+    expect(ask.allowed).toBe(false);
+    expect(ask.ask).toBe(false);
+    expect(ask.refusal).toContain('personne');
+
+    // En Auto, une commande ordinaire ne demande rien : elle passe même sans personne.
+    expect(approvalDecision({ ...base, mode: 'auto', background: true, tool: 'run_command' }).allowed).toBe(true);
 
     const write = approvalDecision({ ...base, mode: 'ask', background: true, tool: 'write_file' });
     expect(write.allowed).toBe(false);
