@@ -7,6 +7,24 @@ import { useAuthStore } from '@/stores/authStore'
 
 export type Role = 'owner' | 'admin' | 'support' | 'readonly'
 
+export type ErrorStatus = 'new' | 'analysed' | 'fixed' | 'ignored'
+export type ErrorGroup = {
+  id: number
+  kind: 'command' | 'update' | 'tool' | 'crash'
+  title: string
+  sample: string
+  count: number
+  users: number
+  last_version: string
+  last_os: string
+  status: ErrorStatus
+  analysis: string
+  issue_url: string
+  fixed_in: string
+  first_seen: string | null
+  last_seen: string | null
+}
+
 export type Credits = { balance_fcfa: number; total_recharged?: number; total_used?: number }
 
 export type AdminLoginResponse = {
@@ -286,6 +304,12 @@ export const api = {
   // Journal d'audit
   audit: (p: { admin_email?: string; action?: string; target?: string; limit?: number; offset?: number }) =>
     apiFetch<{ entries: AuditEntry[]; total: number }>(`/api/admin/audit${qs(p)}`),
+
+  // Erreurs remontées par l'app (suivi automatique DeepSeek Harness)
+  errors: (p: { status?: ErrorStatus; limit?: number }) =>
+    apiFetch<{ groups: ErrorGroup[]; counts: Record<ErrorStatus, number> }>(`/api/admin/errors${qs(p)}`),
+  updateError: (id: number, data: { status?: ErrorStatus; fixed_in?: string }) =>
+    apiFetch<ErrorGroup>(`/api/admin/errors/${id}`, patch(data)),
 
   // Comptes admin (owner)
   admins: () => apiFetch<{ admins: AdminAccount[] }>('/api/admin/admins'),

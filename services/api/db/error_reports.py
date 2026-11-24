@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from db.base import get_sessionmaker, _utcnow
@@ -110,3 +110,13 @@ async def update_group(group_id: int, *, status: Optional[str] = None, analysis:
             group.fixed_in = fixed_in[:32]
         await session.commit()
         return _to_dict(group)
+
+
+async def status_counts() -> dict[str, int]:
+    """Nombre de problèmes par statut (onglets de l'admin)."""
+    async_session = get_sessionmaker()
+    async with async_session() as session:
+        rows = (await session.execute(select(ErrorGroup.status, func.count()).group_by(ErrorGroup.status))).all()
+    counts = {s: 0 for s in STATUSES}
+    counts.update({status: int(n) for status, n in rows})
+    return counts

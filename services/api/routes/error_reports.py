@@ -16,7 +16,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 from config import settings
-from db.error_reports import STATUSES, list_groups, record_reports, update_group
+from db.error_reports import STATUSES, list_groups, record_reports, status_counts, update_group
 from routes.admin import require_admin_role
 from security import get_current_user, rate_limiter
 
@@ -59,7 +59,7 @@ async def admin_list_errors(
     limit: int = Query(100, ge=1, le=500),
     admin: dict = Depends(require_admin_role("owner", "admin", "support", "readonly")),
 ):
-    return {"groups": await list_groups(status, limit), "statuses": list(STATUSES)}
+    return {"groups": await list_groups(status, limit), "statuses": list(STATUSES), "counts": await status_counts()}
 
 
 @router.patch("/api/admin/errors/{group_id}")

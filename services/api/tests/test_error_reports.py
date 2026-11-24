@@ -37,7 +37,9 @@ def test_envoi_regroupement_et_suivi_admin(client, user_and_token, admin_headers
     assert r.status_code == 200, r.text
     assert r.json()["groups"] == 1
 
-    groups = client.get("/api/admin/errors", headers=admin_headers).json()["groups"]
+    listing = client.get("/api/admin/errors", headers=admin_headers).json()
+    assert listing["counts"]["new"] >= 1 and set(listing["counts"]) == {"new", "analysed", "fixed", "ignored"}
+    groups = listing["groups"]
     g = next(x for x in groups if x["title"] == "flutter pub get → code 69")
     assert g["count"] >= 2 and g["users"] >= 1 and g["status"] == "new"
     assert g["last_version"] == "2.1.7"

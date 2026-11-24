@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
 import {
-  Activity, ChevronLeft, ChevronRight, Coins, CreditCard, LayoutDashboard, LogOut, ScrollText, Settings, ShieldCheck, Users, Wallet,
+  Activity, Bug, ChevronLeft, ChevronRight, Coins, CreditCard, LayoutDashboard, LogOut, ScrollText, Settings, ShieldCheck, Users, Wallet,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { api } from '@/api/backend'
@@ -17,6 +17,7 @@ const navigation: { name: string; href: string; icon: typeof Users; roles?: Role
   { name: 'Paiements', href: '/payments', icon: CreditCard },
   { name: 'Devises et prix', href: '/currencies', icon: Coins },
   { name: 'Consommation', href: '/usage', icon: Activity },
+  { name: 'Erreurs', href: '/errors', icon: Bug },
   { name: "Journal d'audit", href: '/audit', icon: ScrollText, roles: ['owner', 'admin'] },
   { name: 'Administrateurs', href: '/admins', icon: ShieldCheck, roles: ['owner'] },
   { name: 'Paramètres', href: '/settings', icon: Settings },
