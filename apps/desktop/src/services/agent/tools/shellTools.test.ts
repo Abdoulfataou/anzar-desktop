@@ -37,6 +37,7 @@ describe('execRunCommand — contrat de résultat', () => {
     const result = await execRunCommand({ command: 'npm test' }, ctx);
 
     expect(result.isError).toBe(false);
+    expect(result.failed).toBe(true);
     expect(result.output).toContain('exit_code: 1');
     expect(result.output).toContain('résultat partiel');
     expect(result.output).toContain('[stderr]');

@@ -25,6 +25,8 @@ export type AgentStopReason =
 export interface AgentToolOutcome {
   output: string;
   isError?: boolean;
+  /** Commande exécutée avec un code de sortie non nul (affichage en échec, pas en panne). */
+  failed?: boolean;
   isDone?: boolean;
   /** Interrompt la session après avoir répondu à l'appel (mode plan). */
   stop?: 'plan';

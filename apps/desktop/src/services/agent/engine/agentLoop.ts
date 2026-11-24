@@ -210,6 +210,7 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
       return {
         output: r.output,
         isError: r.isError,
+        failed: r.failed,
         isDone: r.isDone,
         images: r.images,
         media: r.media,

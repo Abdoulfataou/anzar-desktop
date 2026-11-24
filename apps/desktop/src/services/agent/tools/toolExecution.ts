@@ -14,6 +14,7 @@ import { PERSONAL_SPACE_TOOLS } from '@/services/workspace/personalSpace';
 export interface GenericToolResult {
   output: string;
   isError?: boolean;
+  failed?: boolean;
   isDone?: boolean;
   costFCFA?: number;
   images?: { label: string; dataUrl: string }[];

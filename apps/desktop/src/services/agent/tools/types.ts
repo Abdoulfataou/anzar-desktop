@@ -55,6 +55,8 @@ export interface ToolResult {
   isDone?: boolean;
   /** True si l'exécution a échoué (l'agent verra l'erreur et pourra corriger) */
   isError?: boolean;
+  /** La commande a tourné mais son code de sortie est non nul : échec visible, pas panne d'outil. */
+  failed?: boolean;
   /** Coût des appels au modèle faits par l'outil (explorateurs), ajouté à celui de la réponse */
   costFCFA?: number;
   /** Captures d'écran à montrer au modèle juste après le résultat (capture_page) */

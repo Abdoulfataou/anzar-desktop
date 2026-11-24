@@ -36,6 +36,7 @@ describe('execBash', () => {
     const result = await execBash({ command: 'npm test' }, ctx);
 
     expect(result.isError).toBe(false);
+    expect(result.failed).toBe(true);
     expect(result.output).toContain('exit_code: 1');
     expect(result.output).toContain('[stderr]');
     expect(result.output).toContain('boom');

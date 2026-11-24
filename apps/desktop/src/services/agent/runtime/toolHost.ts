@@ -322,6 +322,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   let result: {
     output: string;
     isError?: boolean;
+    failed?: boolean;
     isDone?: boolean;
     costFCFA?: number;
     images?: { label: string; dataUrl: string }[];
@@ -398,7 +399,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   const delta = toolDelta(call.function.name, args, result.isError);
   if (delta) ev.delta = delta;
 
-  ev.status = result.isError ? 'error' : 'ok';
+  ev.status = result.isError || result.failed ? 'error' : 'ok';
   if (!result.isError && result.media) ev.media = result.media;
   // Mode Auto : quatre échecs d'outils dans la même demande → un cran au-dessus (deux fois au plus)
   if (allowed && result.isError) ctx.onToolFailure?.();
@@ -411,6 +412,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   return {
     output: result.output || '(vide)',
     isError: result.isError,
+    failed: result.failed,
     isDone: result.isDone,
     images: result.images,
     media: result.media,

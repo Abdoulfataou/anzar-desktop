@@ -144,7 +144,7 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
     await new Promise<void>((r) => setTimeout(r, 250));
     const job = terminalService.getJob(jobId);
     if (!job) return { output: `Erreur: le travail ${jobId} n'a pas pu être lancé.`, isError: true };
-    return { output: renderJob(job, jobId), isError: job.status === 'failed' };
+    return { output: renderJob(job, jobId), isError: job.status === 'failed', failed: job.status === 'failed' };
   }
 
   const result = await terminalService.execShell(command, { cwd, timeout, signal: ctx.signal, escalated, escalationReason });
@@ -154,7 +154,11 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
       isError: true,
     };
   }
-  return { output: renderFinished(result, workdirArg, timeout), isError: result.denied === true };
+  return {
+    output: renderFinished(result, workdirArg, timeout),
+    isError: result.denied === true,
+    failed: result.exitCode !== 0,
+  };
 }
 
 export async function execJobOutput(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
@@ -163,7 +167,7 @@ export async function execJobOutput(args: Record<string, any>, ctx: ToolExecutio
   const waitMs = Math.min(Math.max(0, Number(args.wait_ms) || 0), 300_000);
   const job = await terminalService.waitForJob(id, waitMs, ctx.signal);
   if (!job) return { output: `Erreur: travail inconnu « ${id} ».`, isError: true };
-  return { output: renderJob(job, id), isError: job.status === 'failed' };
+  return { output: renderJob(job, id), isError: job.status === 'failed', failed: job.status === 'failed' };
 }
 
 export async function execJobKill(args: Record<string, any>): Promise<ToolResult> {

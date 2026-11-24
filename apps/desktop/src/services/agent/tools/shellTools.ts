@@ -68,7 +68,11 @@ export async function execRunCommand(args: any, ctx: ToolExecutionContext): Prom
 
   // Un code non nul est un fait à lire, pas une panne d'outil : le modèle décide s'il
   // corrige, relance ou explique. Seul un refus de l'isolation reste une erreur d'action.
-  return { output: parts.join('\n\n'), isError: result.denied === true };
+  return {
+    output: parts.join('\n\n'),
+    isError: result.denied === true,
+    failed: result.exitCode !== 0,
+  };
 }
 
 export async function execInstallTool(args: Record<string, any>): Promise<ToolResult> {
