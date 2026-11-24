@@ -90,6 +90,19 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
   return result
 }
 
+/** Explique l'échec d'une installation avec la raison réelle, en mots simples. */
+export function updateErrorMessage(e: unknown): string {
+  const brut = (e instanceof Error ? e.message : String(e ?? '')).trim()
+  const m = brut.toLowerCase()
+  if (/signature|minisign|key id|identifier|pubkey|public key/.test(m))
+    return "Cette mise à jour n'est pas signée avec la clé attendue. Télécharge la dernière version sur getanzar.com."
+  if (/read-only|read only|permission denied|operation not permitted|access is denied|apptranslocation/.test(m))
+    return "ANZAR ne peut pas se remplacer : place l'app dans le dossier Applications, puis réessaie."
+  if (/network|timed? ?out|connection|dns|request|status code|404|403|500/.test(m))
+    return 'Téléchargement interrompu. Vérifie ta connexion et réessaie.'
+  return brut ? `L'installation n'a pas abouti : ${brut.slice(0, 160)}` : "L'installation n'a pas abouti. Réessaie plus tard."
+}
+
 export async function installUpdateAndRelaunch(): Promise<void> {
   if (!isTauri()) return
 
@@ -117,7 +130,7 @@ export async function installUpdateAndRelaunch(): Promise<void> {
       }
     })
   } catch (e) {
-    useUpdateStore.setState({ phase: 'error', progress: null, error: "L'installation n'a pas abouti. Réessaie plus tard." })
+    useUpdateStore.setState({ phase: 'error', progress: null, error: updateErrorMessage(e) })
     throw e
   } finally {
     await pendingUpdate?.close().catch(() => {})

@@ -19,7 +19,7 @@ import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { authService } from '@/services/infra/auth';
 import { openExternalUrl } from '@/services/infra/externalLinks';
-import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch } from '@/services/infra/updateService';
+import { checkForUpdates, getCachedUpdateResult, getLastUpdateCheckMs, installUpdateAndRelaunch, updateErrorMessage } from '@/services/infra/updateService';
 import { loadPersonalInstructions, savePersonalInstructions, MAX_INSTRUCTIONS_CHARS } from '@/services/workspace/personalInstructions';
 import { storeRoot } from '@/lib/fileStore';
 import RechargeModal from '@/components/billing/RechargeModal';
@@ -834,7 +834,7 @@ function AboutSection() {
   };
   const install = async () => {
     setSt((s) => ({ ...s, installing: true, error: undefined }));
-    try { await installUpdateAndRelaunch(); } catch { setSt((s) => ({ ...s, installing: false, error: "Installation impossible." })); }
+    try { await installUpdateAndRelaunch(); } catch (e) { setSt((s) => ({ ...s, installing: false, error: updateErrorMessage(e) })); }
   };
   const status = st.error
     ? st.error

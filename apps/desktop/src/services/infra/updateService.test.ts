@@ -15,7 +15,7 @@ vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn(async () => disponib
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn(async () => {}) }));
 vi.mock('@/lib/utils', async (orig) => ({ ...(await orig<object>()), isTauri: () => true }));
 
-import { checkForUpdates, dismissUpdate, installUpdateAndRelaunch, useUpdateStore } from './updateService';
+import { checkForUpdates, dismissUpdate, installUpdateAndRelaunch, updateErrorMessage, useUpdateStore } from './updateService';
 
 describe('mises à jour dans l’app', () => {
   beforeEach(() => { disponible = fausseMaj; useUpdateStore.setState({ phase: 'idle', progress: null, dismissedVersion: undefined }); });
@@ -41,5 +41,15 @@ describe('mises à jour dans l’app', () => {
     disponible = null;
     await checkForUpdates();
     expect(useUpdateStore.getState().phase).toBe('idle');
+  });
+});
+
+describe('raison d’un échec de mise à jour', () => {
+  it('nomme la clé de signature, le dossier Applications ou le réseau', () => {
+    expect(updateErrorMessage(new Error('signature verification failed: incompatible key identifiers'))).toMatch(/clé attendue/);
+    expect(updateErrorMessage(new Error('Read-only file system (os error 30)'))).toMatch(/dossier Applications/);
+    expect(updateErrorMessage(new Error('error sending request: connection reset'))).toMatch(/connexion/);
+    expect(updateErrorMessage(new Error('boom'))).toBe("L'installation n'a pas abouti : boom");
+    expect(updateErrorMessage(undefined)).toMatch(/Réessaie plus tard/);
   });
 });
