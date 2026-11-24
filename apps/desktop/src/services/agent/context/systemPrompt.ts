@@ -7,7 +7,7 @@
 import { UNTRUSTED_PROMPT_RULE } from '../policy/untrusted';
 import type { APIMessage } from '@/types';
 import {
-  buildAgentSystemPrompt, memorySection,
+  buildAgentSystemPrompt, memorySection, runtimeFactsSection,
   CONNECTORS_GUIDE, FORMATTING_GUIDE, VISUALS_GUIDE,
 } from './agentPrompts';
 import { replyLanguageRule } from '@/services/agent/context/replyLanguage';
@@ -34,6 +34,12 @@ export interface SessionPromptInput {
   platform: 'windows' | 'macos' | 'linux' | string;
   /** Contexte de l'espace ANZAR (déjà formaté), ou ''. */
   personalSpaceContext?: string;
+  /** Mode de permission courant, pour les faits d'exécution envoyés dans la demande. */
+  permissionMode?: 'ask' | 'auto' | 'plan' | 'full';
+  /** Un shell confiné est proposé sur cette plateforme. */
+  shellAvailable?: boolean;
+  /** Le réseau des commandes est ouvert (filtré par le proxy). */
+  networkOpen?: boolean;
 }
 
 export interface SessionPromptBundle {
@@ -103,5 +109,13 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
   }
 
   if (input.personalSpaceContext) turnContext += input.personalSpaceContext;
+  // Faits d'exécution : dans la demande, pas dans le prompt système (cache du préfixe).
+  turnContext += runtimeFactsSection({
+    projectRoot: input.workspacePath || '',
+    platform: input.platform,
+    permissionMode: input.permissionMode,
+    shellAvailable: input.shellAvailable,
+    networkOpen: input.networkOpen,
+  });
   return { system, systemHead, systemRefresh, turnContext };
 }

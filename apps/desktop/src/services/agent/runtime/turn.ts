@@ -24,6 +24,7 @@ import { mcpAgentTools, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, type Skill } from '@/services/skills';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildSessionSystemPrompt } from '@/services/agent/context/systemPrompt';
+import { commandNetworkOpen } from '@/services/runtime/terminal';
 import { withAttachments } from '@/services/agent/context/attachments';
 import { resolveAgentRoot } from '@/services/agent/context/agentRoot';
 import { buildAgentContext } from '@/services/agent/context/agentContext';
@@ -119,6 +120,7 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         const ctx = workspacePath
           ? await buildAgentContext(workspacePath, content).catch(() => null)
           : null;
+        const isWindows = navigator.platform.toLowerCase().includes('win');
         const bundle = buildSessionSystemPrompt({
           workspacePath,
           workspaceName,
@@ -130,8 +132,11 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
           memory: ctx?.memory,
           codeMap: ctx?.codeMap,
           taskHints: ctx?.taskHints,
-          platform: navigator.platform.toLowerCase().includes('win') ? 'windows' : 'macos',
+          platform: isWindows ? 'windows' : 'macos',
           personalSpaceContext: personalSpace && agentRoot ? personalSpaceContext(agentRoot) : '',
+          permissionMode: host.mode,
+          shellAvailable: !isWindows,
+          networkOpen: commandNetworkOpen(),
         });
         setupNewTurn({
           apiHistory: host.apiHistory,

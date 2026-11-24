@@ -10,6 +10,7 @@ const base = {
   personal: 'Instructions personnelles',
   skillsSection: '',
   platform: 'macos',
+  permissionMode: 'auto' as const,
 };
 
 describe('buildSessionSystemPrompt', () => {
@@ -20,7 +21,10 @@ describe('buildSessionSystemPrompt', () => {
     expect(String(bundle.system.content)).toContain('Instructions personnelles');
     expect(bundle.systemHead.endsWith('Instructions personnelles')).toBe(false);
     expect(bundle.systemRefresh).toBe('Instructions personnelles');
-    expect(bundle.turnContext).toBe('');
+    // Les faits d'environnement vivent dans la demande du tour, jamais dans le prompt système.
+    expect(bundle.turnContext).toContain("État de l'environnement");
+    expect(bundle.turnContext).toContain('Permissions');
+    expect(String(bundle.system.content)).not.toContain("État de l'environnement");
   });
 
   it('ajoute la recherche web quand elle est activée', () => {

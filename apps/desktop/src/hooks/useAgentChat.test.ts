@@ -19,6 +19,7 @@ vi.mock('@/services/agent/tools/webTools', () => ({
 }));
 vi.mock('@/services/agent/context/agentPrompts', () => ({
   buildAgentSystemPrompt: () => 'SYSTEM',
+  runtimeFactsSection: () => '',
   memorySection: () => '',
   FORMATTING_GUIDE: '',
   VISUALS_GUIDE: '',
