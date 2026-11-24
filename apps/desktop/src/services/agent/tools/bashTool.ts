@@ -38,10 +38,12 @@ function renderFinished(result: {
   stdout: string;
   stderr: string;
   durationMs: number;
-}, workdir: string): string {
+  timedOut?: boolean;
+}, workdir: string, timeoutMs: number): string {
   const parts = [
     `cwd: ${workdir}`,
     `exit_code: ${result.exitCode} (${result.durationMs}ms)`,
+    result.timedOut ? `[délai dépassé] la commande a été arrêtée après ${Math.round(timeoutMs / 1000)} s ; découpe-la ou relance avec un timeoutMs plus grand.` : '',
     result.stdout ? `stdout:\n${truncate(result.stdout, MAX_COMMAND_OUTPUT_CHARS, 'stdout')}` : '',
     result.stderr ? `[stderr]\n${truncate(result.stderr, MAX_COMMAND_OUTPUT_CHARS, 'stderr')}` : '',
   ].filter(Boolean);
@@ -98,7 +100,7 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
       isError: true,
     };
   }
-  return { output: renderFinished(result, workdirArg), isError: result.denied === true };
+  return { output: renderFinished(result, workdirArg, timeout), isError: result.denied === true };
 }
 
 export async function execJobOutput(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {

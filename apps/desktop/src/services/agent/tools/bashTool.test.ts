@@ -42,6 +42,16 @@ describe('execBash', () => {
     expect(shell.execShell).toHaveBeenCalledWith('npm test', expect.objectContaining({ timeout: 120_000 }));
   });
 
+  it('dit clairement qu’une commande a dépassé son délai', async () => {
+    shell.execShell.mockResolvedValue({
+      success: false, exitCode: 130, stdout: '', stderr: '', durationMs: 5_000, ran: true, timedOut: true,
+    });
+    const result = await execBash({ command: 'sleep 10', timeoutMs: 5_000 }, ctx);
+    expect(result.isError).toBe(false);
+    expect(result.output).toContain('[délai dépassé]');
+    expect(result.output).toContain('5 s');
+  });
+
   it('marque une commande non lancée comme erreur', async () => {
     shell.execShell.mockResolvedValue({
       success: false, exitCode: 1, stdout: '', stderr: '⛔ refus', durationMs: 0, ran: false,

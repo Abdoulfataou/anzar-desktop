@@ -59,6 +59,7 @@ export async function execRunCommand(args: any, ctx: ToolExecutionContext): Prom
 
   const parts = [
     `exit_code: ${result.exitCode} (${result.durationMs}ms)`,
+    result.timedOut ? `[délai dépassé] la commande a été arrêtée après ${Math.round(COMMAND_TIMEOUT_MS / 1000)} s ; découpe-la ou utilise bash avec un timeout plus long.` : '',
     result.stdout ? `stdout:\n${truncate(result.stdout, MAX_COMMAND_OUTPUT_CHARS, 'stdout')}` : '',
     result.stderr ? `[stderr]\n${truncate(result.stderr, MAX_COMMAND_OUTPUT_CHARS, 'stderr')}` : '',
   ].filter(Boolean);

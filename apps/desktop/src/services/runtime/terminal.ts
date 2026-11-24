@@ -108,6 +108,8 @@ export interface CommandResult {
   ran?: boolean;
   /** L'isolation a bloqué une écriture, une lecture ou une connexion : l'action a échoué. */
   denied?: boolean;
+  /** La commande a été arrêtée parce qu'elle a dépassé son délai. */
+  timedOut?: boolean;
 }
 
 export interface DependencyInfo {
@@ -341,9 +343,9 @@ class TerminalService {
     timeout?: number,
     signal?: AbortSignal,
     shellCommand?: string,
-  ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number }> {
+  ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
     const start = Date.now();
-    if (signal?.aborted) return { code: 130, stdout: '', stderr: STOPPED_MESSAGE, durationMs: 0 };
+    if (signal?.aborted) return { code: 130, stdout: '', stderr: STOPPED_MESSAGE, durationMs: 0, timedOut: false };
     await this.ensureToolEvents();
     await invoke('tool_spawn', {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
@@ -352,7 +354,13 @@ class TerminalService {
       shell: shellCommand !== undefined, shellCommand: shellCommand ?? null,
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
-    if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
+    let timedOut = false;
+    if (timeout) {
+      timer = setTimeout(() => {
+        timedOut = true;
+        void invoke('tool_kill', { id }).catch(() => {});
+      }, timeout);
+    }
     // Bouton Stop : la commande (et tout ce qu'elle a lancé) est arrêtée tout de suite,
     // sinon la tâche attendait sa fin, jusqu'à 2 minutes.
     const onAbort = () => { void invoke('tool_kill', { id }).catch(() => {}); };
@@ -360,9 +368,9 @@ class TerminalService {
     try {
       const result = await invoke<{ code: number; stdout: string; stderr: string }>('tool_wait', { id });
       if (signal?.aborted) {
-        return { ...result, code: 130, stderr: `${result.stderr}\n${STOPPED_MESSAGE}`.trim(), durationMs: Date.now() - start };
+        return { ...result, code: 130, stderr: `${result.stderr}\n${STOPPED_MESSAGE}`.trim(), durationMs: Date.now() - start, timedOut };
       }
-      return { ...result, stderr: withSandboxHint(result.code, result.stderr), durationMs: Date.now() - start };
+      return { ...result, stderr: withSandboxHint(result.code, result.stderr), durationMs: Date.now() - start, timedOut };
     } finally {
       if (timer) clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
@@ -501,6 +509,7 @@ class TerminalService {
         stderr: r.stderr.trim(),
         durationMs: r.durationMs,
         ran: true,
+        timedOut: r.timedOut || undefined,
       };
     } catch (error: any) {
       return { success: false, exitCode: 1, stdout: '', stderr: error?.message || String(error), durationMs: 0, ran: false };
@@ -542,6 +551,7 @@ class TerminalService {
         durationMs: Date.now() - startTime,
         ran: true,
         denied: isSandboxDenial(stderr) || undefined,
+        timedOut: r.timedOut || undefined,
       };
     } catch (error: any) {
       return {
@@ -584,6 +594,7 @@ class TerminalService {
         durationMs: Date.now() - startTime,
         ran: true,
         denied: isSandboxDenial(stderr) || undefined,
+        timedOut: r.timedOut || undefined,
       };
     } catch (error: any) {
       return {
@@ -704,6 +715,7 @@ class TerminalService {
         stdout: r.stdout.replace(/\n$/, ''),
         stderr: r.stderr.trim(),
         durationMs: Date.now() - startTime,
+        timedOut: r.timedOut || undefined,
       };
     } catch (error: any) {
       return fail(error?.message || String(error));

@@ -43,6 +43,24 @@ describe('execRunCommand — contrat de résultat', () => {
     expect(result.output).toContain('AssertionError');
   });
 
+  it('dit clairement qu’une commande a dépassé son délai', async () => {
+    exec.mockResolvedValue({
+      success: false,
+      ran: true,
+      timedOut: true,
+      exitCode: 130,
+      stdout: '',
+      stderr: '',
+      durationMs: 120_000,
+    });
+
+    const result = await execRunCommand({ command: 'npm run build' }, ctx);
+
+    expect(result.isError).toBe(false);
+    expect(result.output).toContain('[délai dépassé]');
+    expect(result.output).toContain('120 s');
+  });
+
   it('marque une commande non lancée comme erreur, avec le motif', async () => {
     exec.mockResolvedValue({
       success: false,
