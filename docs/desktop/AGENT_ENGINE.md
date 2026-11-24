@@ -74,6 +74,11 @@ Règles :
   n'arrête jamais la session : le modèle relit le résultat et décide. Le budget du tour reste
   le seul plafond ; une répétition légitime (relancer le même test après une correction) est
   donc permise.
+- **Sous-agents vivants** : `subagents/live.ts` tient un registre par conversation
+  (8 actifs au plus, profondeur 1). Un enfant garde son historique, reçoit des messages
+  (`send_message`), peut être attendu (`wait_agent`) et listé (`list_agents`) ; il reprend
+  après un message au lieu de repartir de zéro. Le registre est en mémoire : il survit aux
+  tours, pas au redémarrage de l'app.
 - **Accords à quatre issues** : `requestApproval` renvoie `allowed-once`, `rejected`,
   `cancelled` ou `unavailable` (vocabulaire de Harness). Le refus affiché au modèle distingue
   « l'utilisateur a refusé », « la demande a été annulée » et « aucun canal n'est disponible ».

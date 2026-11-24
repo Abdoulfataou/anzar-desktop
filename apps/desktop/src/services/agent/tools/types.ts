@@ -32,6 +32,8 @@ export interface ToolExecutionContext {
   signal?: AbortSignal;
   /** Élévation approuvée à usage unique pour CET appel (Seatbelt désactivé). */
   escalated?: boolean;
+  /** Conversation qui a lancé l'appel : les sous-agents vivants y sont rattachés. */
+  convId?: string;
   /** Callback appelé quand un fichier est écrit/modifié (pour rafraîchir l'UI) */
   onFileChanged?: (relativePath: string, content: string, action: 'create' | 'edit' | 'delete') => void;
   /** Progression en direct des sous-agents (spawn_subagents) pour l'UI */

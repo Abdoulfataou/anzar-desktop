@@ -32,6 +32,7 @@ export interface GenericToolOptions {
   permissionMode?: ToolExecutionContext['permissionMode'];
   childBudget?: ToolExecutionContext['childBudget'];
   escalated?: boolean;
+  convId?: string;
 }
 
 export async function executeGenericTool(
@@ -57,6 +58,7 @@ export async function executeGenericTool(
       onSubagentProgress: call.function.name === 'spawn_subagents' ? options.onSubagentProgress : undefined,
       permissionMode: options.permissionMode,
       escalated: options.escalated,
+      convId: options.convId,
       runSubagent: runAgentSession,
       childBudget: options.childBudget,
     });

@@ -23,6 +23,9 @@ describe('buildToolsForStep', () => {
   it('donne tous les outils de l’agent hors mode plan', () => {
     const list = names(buildToolsForStep(base));
     expect(list).toContain('write_file');
+    expect(list).toContain('spawn_agent');
+    expect(list).toContain('wait_agent');
+    expect(list).toContain('list_agents');
     // Selon la plateforme : shell confiné (macOS) ou run_command (Windows).
     expect(list.some((n) => n === 'bash' || n === 'run_command')).toBe(true);
     expect(list).toContain('ask_user');

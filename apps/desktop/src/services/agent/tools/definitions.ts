@@ -353,6 +353,69 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
+      name: 'spawn_agent',
+      description:
+        "Lance UN sous-agent en arrière-plan et rend son nom immédiatement. Il garde son historique : tu peux lui envoyer une suite (send_message), attendre son résultat (wait_agent) ou voir son état (list_agents). " +
+        "Utilise-le pour une tâche indépendante et longue (exploration, module isolé, variante visuelle) pendant que tu continues. " +
+        "Hors Accès complet il est en lecture seule ; en Accès complet il peut écrire et lancer des commandes. Ne conclus pas avant d'avoir attendu les sous-agents dont ton travail dépend.",
+      parameters: {
+        type: 'object',
+        properties: {
+          task: { type: 'string', description: 'La tâche complète et autonome du sous-agent (fichiers et critère de réussite inclus).' },
+          role: { type: 'string', enum: SUBAGENT_ROLES, description: 'Rôle du profil (dev par défaut, explorer, motion-designer, redaction).' },
+          name: { type: 'string', description: 'Nom court optionnel (minuscules, chiffres, tirets) pour le retrouver.' },
+        },
+        required: ['task'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'send_message',
+      description:
+        "Envoie un message à un sous-agent vivant. S'il travaille, le message attend la fin du travail en cours ; s'il est au repos, il reprend avec son historique. " +
+        "Utilise-le pour préciser une suite, corriger une consigne ou demander une seconde passe.",
+      parameters: {
+        type: 'object',
+        properties: {
+          agent: { type: 'string', description: 'Nom (ou id) du sous-agent.' },
+          message: { type: 'string', description: 'Le message ou la nouvelle consigne.' },
+        },
+        required: ['agent', 'message'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'wait_agent',
+      description:
+        "Attend la fin du travail en cours d'un sous-agent (ou le délai demandé) et rend son dernier résumé. " +
+        "Utilise-le quand tu as besoin de son résultat pour continuer ; ne boucle pas avec list_agents.",
+      parameters: {
+        type: 'object',
+        properties: {
+          agent: { type: 'string', description: 'Nom (ou id) du sous-agent.' },
+          timeout_ms: { type: 'number', description: 'Délai maximal en millisecondes (défaut 120 000, plafond 300 000).' },
+        },
+        required: ['agent'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_agents',
+      description:
+        "Liste les sous-agents vivants de cette conversation : nom, rôle, état, nombre d'étapes et tâche. " +
+        "Sert à savoir qui travaille encore, qui est au repos et qui a échoué.",
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'install_tool',
       description:
         "Installe un outil binaire du catalogue vérifié d'ANZAR (avec l'accord de l'utilisateur, une seule fois) : " +

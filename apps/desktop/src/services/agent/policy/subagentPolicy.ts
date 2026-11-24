@@ -7,6 +7,10 @@ import type { Capability } from '../profiles';
  */
 export const SUBAGENT_EXCLUDED_TOOLS = new Set([
   'spawn_subagents',
+  'spawn_agent',
+  'send_message',
+  'wait_agent',
+  'list_agents',
   'run_command',
   'start_dev_server',
   'export_animation',

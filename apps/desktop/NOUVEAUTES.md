@@ -11,7 +11,7 @@
 - Bouton Stop : il arrête aussi les travaux lancés en arrière-plan par l'agent (serveur de développement, build long).
 - Agent : il peut terminer par une réponse normale, sans appeler `task_done` ; la vérification (lint, build, tests) se lance quand même et les erreurs lui sont renvoyées s'il y en a.
 - Paramètres : un seul sélecteur « Permissions » règle à la fois ce que l'agent peut faire sans demander et l'isolation des commandes. « Accès complet » est le seul choix qui retire la protection système, avec un avertissement unique (comme le danger-full-access de Harness).
-- Sous-agents : en Accès complet, ils peuvent aussi lancer des commandes (shell sans isolation, comme le parent), en séquence, pour vérifier leur travail ; hors Accès complet, ils restent en lecture seule.
+- Sous-agents : nouvelle couche de sous-agents vivants (`spawn_agent`, `send_message`, `wait_agent`, `list_agents`) : un enfant garde son historique, peut reprendre après un message, et le parent peut attendre ou vaquer à autre chose. 8 actifs au plus, profondeur 1. En Accès complet, ils peuvent écrire et lancer des commandes ; hors Accès complet, ils restent en lecture seule.
 - Si tu étais déjà en « Accès complet » avant cette version, resélectionne-le une fois : l'isolation n'est retirée qu'après le nouvel avertissement.
 - Agent : il lit plusieurs fichiers et lance plusieurs recherches en parallèle (10 appels sûrs au plus) ; les écritures et commandes restent seules, dans l'ordre.
 - Agent : un refus, une annulation et l'absence de canal d'accord sont maintenant trois faits distincts ; il ne réessaie plus quand personne ne peut répondre.

@@ -78,6 +78,13 @@ export function summarizeArgs(name: string, args: Record<string, any>): string {
       return (args.questions || []).length ? `${(args.questions || []).length} question${(args.questions || []).length > 1 ? 's' : ''} en parallèle` : '';
     case 'spawn_subagents':
       return (args.tasks || []).length ? `${(args.tasks || []).length} sous-tâches` : '';
+    case 'spawn_agent':
+      return String(args.name || args.task || '').slice(0, 100);
+    case 'send_message':
+    case 'wait_agent':
+      return args.agent || args.name || '';
+    case 'list_agents':
+      return '';
     case 'remember':
       return String(args.content || '').slice(0, 80);
     case 'ask_user':

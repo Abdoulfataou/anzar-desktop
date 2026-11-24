@@ -51,7 +51,8 @@ version `0.2.3-alpha.2` (commit `4b399c3`, 22 novembre 2026) :
 - l'élagage des résultats d'outils et la structure du résumé de compaction
   (`packages/compaction/compaction-basic`) ;
 - les outils `glob` et `apply_patch` (`packages/fs/tool-fs`,
-  `packages/fs/tool-fs-search`).
+  `packages/fs/tool-fs-search`) ;
+- la couche de sous-agents vivants (`packages/subagent`), réécrite sans Cordis.
 
 Ces éléments ont été réécrits pour ANZAR (TypeScript/Rust, messages en français,
 serveur de crédits, connecteurs MCP, isolation Seatbelt) ; ils ne sont pas
