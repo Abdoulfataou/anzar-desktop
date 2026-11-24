@@ -15,7 +15,7 @@ export const MODERN_PROTOCOL_VERSION = '2026-07-28';
 /** Version proposée à `initialize` aux serveurs historiques. */
 export const PROTOCOL_VERSION = '2025-11-25';
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'];
-const CLIENT_INFO = { name: 'anzar', title: 'ANZAR', version: '2.1.5' };
+const CLIENT_INFO = { name: 'anzar', title: 'ANZAR', version: '2.1.6' };
 /** Sonde server/discover : courte, un serveur historique peut ne jamais y répondre. */
 const DISCOVER_TIMEOUT_MS = 6_000;
 
