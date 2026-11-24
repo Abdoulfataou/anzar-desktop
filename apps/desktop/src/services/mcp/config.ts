@@ -126,6 +126,43 @@ export const MCP_PRESETS: McpPreset[] = [
       alwaysAsk: true, preset: 'inkscape',
     }),
   },
+  {
+    id: 'audacity',
+    name: 'Audacity',
+    description: "L'agent nettoie et améliore ton audio dans Audacity ouvert : bruit de fond, voix de podcast, volume, coupes, effets, chapitres, transcription.",
+    requirement: "Audacity 3.7 (pas la version 4, qui ne se pilote plus) et uv installés. Une seule fois, dans Audacity : Préférences → Modules → « mod-script-pipe » sur Activé, puis redémarre Audacity.",
+    link: 'https://github.com/xDarkzx/Audacity-MCP',
+    fields: [],
+    build: () => ({
+      // Ligne de commande exacte autorisée par Rust (mcp.rs, UVX_SERVERS) : la commande
+      // « audacity-mcp » du paquet audacity-mcp-server 0.1.23 relu. Enregistrement au micro refusé.
+      id: 'audacity', name: 'Audacity', transport: 'stdio', command: 'uvx',
+      args: ['--from', 'audacity-mcp-server==0.1.23', 'audacity-mcp'], env: {},
+      alwaysAsk: true, preset: 'audacity',
+    }),
+  },
+  {
+    id: 'obs',
+    name: 'OBS Studio',
+    description: "L'agent prépare et pilote OBS : scènes, sources, filtres, volume des micros, enregistrement et direct.",
+    requirement: "OBS Studio 28 ou plus récent et uv installés. Dans OBS : Outils → Paramètres du serveur WebSocket → Activer, puis « Afficher les informations de connexion » pour copier le mot de passe.",
+    link: 'https://pypi.org/project/obs-mcp/',
+    fields: [
+      { key: 'password', label: 'Mot de passe du serveur WebSocket OBS', placeholder: 'copié depuis OBS', secret: true,
+        help: 'Laisse vide seulement si tu as désactivé l’authentification dans OBS (déconseillé).' },
+      { key: 'port', label: 'Port (facultatif)', placeholder: '4455' },
+    ],
+    build: (v) => ({
+      // Version relue (mcp.rs, UVX_SERVERS) : la clé de diffusion n'est jamais lue ni
+      // modifiée, paramètres de profil et requêtes de plugins refusés.
+      id: 'obs', name: 'OBS Studio', transport: 'stdio', command: 'uvx', args: ['obs-mcp@0.2.0'],
+      env: {
+        ...(v.password ? { OBS_PASSWORD: String(v.password).trim() } : {}),
+        ...(String(v.port || '').trim() ? { OBS_PORT: String(v.port).trim() } : {}),
+      } as Record<string, string>,
+      alwaysAsk: true, preset: 'obs',
+    }),
+  },
 ];
 
 /**
@@ -136,11 +173,16 @@ export const MCP_PRESETS: McpPreset[] = [
 const HIDDEN_TOOLS: Record<string, string[]> = {
   'gimp3-mcp': ['call_api'],
   'mcp-for-blender': ['execute_blender_code', 'record_trajectory_feedback'],
+  'audacity-mcp-server': ['transport_record'],
+  'obs-mcp': ['get_stream_service_settings', 'set_stream_service_settings', 'get_profile_parameter',
+    'set_profile_parameter', 'call_vendor_request'],
 };
 
 export function deniedMcpTools(server: Pick<McpServerConfig, 'command' | 'args'>): string[] {
   if (server.command !== 'uvx') return [];
-  const pkg = (server.args?.[0] || '').split('@')[0];
+  const args = server.args || [];
+  const spec = args[0] === '--from' ? args[1] || '' : args[0] || '';
+  const pkg = spec.split(/@|==/)[0];
   return HIDDEN_TOOLS[pkg] ?? [];
 }
 

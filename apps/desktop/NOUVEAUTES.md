@@ -2,4 +2,4 @@
 - L'agent te répond dans la langue dans laquelle tu lui écris.
 - Paramètres → À propos : lien vers le site, les conditions et la confidentialité ; e-mail de support support@getanzar.com.
 - Retouche de photos : formats réseaux sociaux, logo ou texte sur l'image, compression, montage, icônes, tout un dossier d'un coup.
-- Nouveaux connecteurs GIMP, Blender et Inkscape : l'agent travaille directement dans ces logiciels (Connecteurs).
+- Nouveaux connecteurs GIMP, Blender, Inkscape, Audacity et OBS Studio : l'agent travaille directement dans ces logiciels (Connecteurs).

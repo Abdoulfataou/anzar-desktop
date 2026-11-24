@@ -48,3 +48,19 @@ describe('connecteurs Blender et Inkscape', () => {
     expect(deniedMcpTools(inkscape)).toEqual([]); // blocage par opération, fait par Rust
   });
 });
+
+describe('connecteurs Audacity et OBS', () => {
+  it('Audacity : commande exacte, enregistrement au micro masqué', () => {
+    const a = MCP_PRESETS.find((p) => p.id === 'audacity')!.build({});
+    expect(a).toMatchObject({ command: 'uvx', args: ['--from', 'audacity-mcp-server==0.1.23', 'audacity-mcp'], alwaysAsk: true });
+    expect(deniedMcpTools(a)).toEqual(['transport_record']);
+  });
+
+  it('OBS : mot de passe en variable, clé de diffusion jamais exposée', () => {
+    const o = MCP_PRESETS.find((p) => p.id === 'obs')!.build({ password: ' secret ', port: '' });
+    expect(o).toMatchObject({ command: 'uvx', args: ['obs-mcp@0.2.0'], env: { OBS_PASSWORD: 'secret' }, alwaysAsk: true });
+    expect(o.env).not.toHaveProperty('OBS_PORT');
+    expect(deniedMcpTools(o)).toContain('get_stream_service_settings');
+    expect(deniedMcpTools(o)).toContain('call_vendor_request');
+  });
+});

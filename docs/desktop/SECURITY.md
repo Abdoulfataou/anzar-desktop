@@ -287,3 +287,17 @@ accord avant chaque action (`alwaysAsk`).
   `org.inkscape.mcp.execute`. Pas de port réseau : le mode « fenêtre » passe par D-Bus.
 - Pour ajouter une version : lire le code, mettre à jour `UVX_SERVERS` et les tests
   `uvx_only_runs_pinned_reviewed_servers` / `code_execution_tools_are_blocked`.
+
+## Connecteurs Audacity (audacity-mcp-server) et OBS Studio (obs-mcp)
+
+- **Audacity 3 — `uvx --from audacity-mcp-server==0.1.23 audacity-mcp`** (ligne exacte) :
+  aucun outil de commande brute ni Nyquist ; `transport_record` (micro) est refusé. Le tube
+  `/tmp/audacity_script_pipe.*` accepte n'importe quelle commande Audacity : Seatbelt en
+  interdit la lecture et l'écriture aux commandes de l'agent. Les exports refusent les
+  dossiers système mais peuvent écrire ailleurs dans le dossier utilisateur : chaque action
+  est confirmée (`alwaysAsk`). Audacity 4 n'a plus d'interface de scripting : non pris en charge.
+- **OBS — `uvx obs-mcp@0.2.0`** : mot de passe obs-websocket stocké comme secret (masqué,
+  fusionné par Rust). Refusés : lecture et modification de la clé de diffusion
+  (`get/set_stream_service_settings`), paramètres de profil (`get/set_profile_parameter`),
+  requêtes de plugins arbitraires (`call_vendor_request`). Port 4455 interdit aux commandes
+  de l'agent. Le direct et l'enregistrement restent possibles, avec confirmation.

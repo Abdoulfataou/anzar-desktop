@@ -117,28 +117,29 @@ struct DeniedCall {
 
 const fn deny(tool: &'static str) -> DeniedCall { DeniedCall { tool, op: None, contains: None } }
 
-/// Serveur Python (uvx) autorisé : paquet ET version exacts (aucun autre argument), outils
+/// Serveur Python (uvx) autorisé : ligne de commande EXACTE (paquet et version, ou
+/// `--from paquet==version commande` quand la commande n'a pas le nom du paquet), outils
 /// refusés et variables d'environnement imposées. Toute nouvelle version passe par une
 /// relecture de son code (voir docs/desktop/SECURITY.md).
 struct UvxServer {
-    pkg: &'static str,
+    args: &'static [&'static str],
     denied: &'static [DeniedCall],
     env: &'static [(&'static str, &'static str)],
 }
 
 const UVX_SERVERS: &[UvxServer] = &[
     // GIMP : call_api exécute du Python arbitraire dans GIMP.
-    UvxServer { pkg: "gimp3-mcp@0.2.0", denied: &[deny("call_api")], env: &[] },
+    UvxServer { args: &["gimp3-mcp@0.2.0"], denied: &[deny("call_api")], env: &[] },
     // Blender : execute_blender_code exécute du Python arbitraire ; record_trajectory_feedback
     // envoie les phrases de l'utilisateur à l'éditeur du connecteur. Télémétrie coupée.
     UvxServer {
-        pkg: "mcp-for-blender@2.3.1",
+        args: &["mcp-for-blender@2.3.1"],
         denied: &[deny("execute_blender_code"), deny("record_trajectory_feedback")],
         env: &[("DISABLE_TELEMETRY", "true"), ("BLENDER_MCP_DISABLE_TELEMETRY", "true")],
     },
     // Inkscape : execute_inkex et l'extension org.inkscape.mcp.execute exécutent du Python.
     UvxServer {
-        pkg: "inkscape-mcp@2.0.0",
+        args: &["inkscape-mcp@2.0.0"],
         denied: &[
             DeniedCall { tool: "inkscape_live", op: Some("execute_inkex"), contains: None },
             DeniedCall { tool: "inkscape_system", op: None, contains: Some("mcp.execute") },
@@ -148,20 +149,35 @@ const UVX_SERVERS: &[UvxServer] = &[
         ],
         env: &[],
     },
+    // Audacity 3 (mod-script-pipe) : aucun outil de commande brute ; l'enregistrement au
+    // micro est refusé (l'agent ne doit pas enregistrer à l'insu de l'utilisateur).
+    UvxServer {
+        args: &["--from", "audacity-mcp-server==0.1.23", "audacity-mcp"],
+        denied: &[deny("transport_record")],
+        env: &[],
+    },
+    // OBS Studio (obs-websocket) : clé de diffusion jamais lue ni modifiée, paramètres de
+    // profil et requêtes de plugins (arbitraires) refusés.
+    UvxServer {
+        args: &["obs-mcp@0.2.0"],
+        denied: &[
+            deny("get_stream_service_settings"), deny("set_stream_service_settings"),
+            deny("get_profile_parameter"), deny("set_profile_parameter"),
+            deny("call_vendor_request"),
+        ],
+        env: &[],
+    },
 ];
 
 fn uvx_server(launcher: &str, args: &[String]) -> Option<&'static UvxServer> {
     if launcher != "uvx" { return None; }
-    match args {
-        [pkg] => UVX_SERVERS.iter().find(|s| s.pkg == pkg.as_str()),
-        _ => None,
-    }
+    UVX_SERVERS.iter().find(|s| s.args.len() == args.len() && s.args.iter().zip(args).all(|(a, b)| *a == b.as_str()))
 }
 
 fn validate_uvx_args(args: &[String]) -> Result<(), String> {
     uvx_server("uvx", args).map(|_| ()).ok_or_else(|| format!(
         "Serveur uvx non autorisé. Seuls ces paquets le sont : {}.",
-        UVX_SERVERS.iter().map(|s| s.pkg).collect::<Vec<_>>().join(", ")
+        UVX_SERVERS.iter().map(|s| s.args.join(" ")).collect::<Vec<_>>().join(", ")
     ))
 }
 
@@ -827,9 +843,15 @@ mod security_tests {
 
     #[test]
     fn uvx_only_runs_pinned_reviewed_servers() {
-        for ok in ["gimp3-mcp@0.2.0", "mcp-for-blender@2.3.1", "inkscape-mcp@2.0.0"] {
+        for ok in ["gimp3-mcp@0.2.0", "mcp-for-blender@2.3.1", "inkscape-mcp@2.0.0", "obs-mcp@0.2.0"] {
             assert!(validate_args("uvx", &[ok.into()]).is_ok(), "{ok}");
         }
+        let audacity: Vec<String> = ["--from", "audacity-mcp-server==0.1.23", "audacity-mcp"].iter().map(|s| s.to_string()).collect();
+        assert!(validate_args("uvx", &audacity).is_ok());
+        let autre_cmd: Vec<String> = ["--from", "audacity-mcp-server==0.1.23", "audacity-mcp-setup-gpu"].iter().map(|s| s.to_string()).collect();
+        assert!(validate_args("uvx", &autre_cmd).is_err());
+        let autre_version: Vec<String> = ["--from", "audacity-mcp-server==0.1.24", "audacity-mcp"].iter().map(|s| s.to_string()).collect();
+        assert!(validate_args("uvx", &autre_version).is_err());
         assert!(validate_args("uvx", &["gimp3-mcp".into()]).is_err());           // version non épinglée
         assert!(validate_args("uvx", &["mcp-for-blender@latest".into()]).is_err());
         assert!(validate_args("uvx", &["mcp-for-blender@2.3.2".into()]).is_err()); // version non relue
@@ -865,6 +887,17 @@ mod security_tests {
         // Échappement JSON (\u002e = « . ») : la forme canonique le voit quand même
         assert!(calls_denied_tool(&appel("inkscape_system", r#"{"operation":"execute_extension","extension_id":"org.inkscape.mcp\u002eexecute"}"#), ink));
         assert!(!calls_denied_tool(&appel("inkscape_extension", r#"{"operation":"run","extension_id":"org.inkscape.render.barcode.qrcode"}"#), ink));
+
+        let audacity: Vec<String> = ["--from", "audacity-mcp-server==0.1.23", "audacity-mcp"].iter().map(|s| s.to_string()).collect();
+        let aud = denied_tools("uvx", &audacity);
+        assert!(calls_denied_tool(&appel("transport_record", "{}"), aud));
+        assert!(!calls_denied_tool(&appel("noise_reduction", "{}"), aud));
+
+        let obs = denied_tools("uvx", &["obs-mcp@0.2.0".into()]);
+        for t in ["get_stream_service_settings", "set_stream_service_settings", "get_profile_parameter", "set_profile_parameter", "call_vendor_request"] {
+            assert!(calls_denied_tool(&appel(t, "{}"), obs), "{t}");
+        }
+        assert!(!calls_denied_tool(&appel("set_current_program_scene", r#"{"scene_name":"Live"}"#), obs));
 
         // Les serveurs npx ne sont pas concernés
         assert!(denied_tools("npx", &["-y".into(), "@playwright/mcp@0.0.85".into()]).is_empty());
