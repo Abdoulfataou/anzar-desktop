@@ -32,6 +32,9 @@ export const networkProxyEnabled = (): boolean => useSettingsStore.getState().se
 export const networkProxyHosts = (): string[] => useSettingsStore.getState().settings.networkAllowedHosts || [];
 
 /** Marqueur ajouté à la sortie quand l'isolation a coupé une connexion. */
+/** Sortie d'une commande arrêtée par le bouton Stop. */
+export const STOPPED_MESSAGE = '[ANZAR] Commande arrêtée par l’utilisateur.';
+
 export const NETWORK_BLOCKED_TAG = '[ANZAR] Réseau coupé';
 /** Diagnostics du relais réseau (Rust, netproxy::diagnose) : traités seuls par toolHost. */
 export const NETWORK_UNREACHABLE_TAG = '[ANZAR] Réseau injoignable';
@@ -312,8 +315,10 @@ class TerminalService {
     args: string[],
     cwd: string,
     timeout?: number,
+    signal?: AbortSignal,
   ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number }> {
     const start = Date.now();
+    if (signal?.aborted) return { code: 130, stdout: '', stderr: STOPPED_MESSAGE, durationMs: 0 };
     await this.ensureToolEvents();
     await invoke('tool_spawn', {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
@@ -322,11 +327,19 @@ class TerminalService {
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
+    // Bouton Stop : la commande (et tout ce qu'elle a lancé) est arrêtée tout de suite,
+    // sinon la tâche attendait sa fin, jusqu'à 2 minutes.
+    const onAbort = () => { void invoke('tool_kill', { id }).catch(() => {}); };
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
       const result = await invoke<{ code: number; stdout: string; stderr: string }>('tool_wait', { id });
+      if (signal?.aborted) {
+        return { ...result, code: 130, stderr: `${result.stderr}\n${STOPPED_MESSAGE}`.trim(), durationMs: Date.now() - start };
+      }
       return { ...result, stderr: withSandboxHint(result.code, result.stderr), durationMs: Date.now() - start };
     } finally {
       if (timer) clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
     }
   }
 
@@ -471,7 +484,7 @@ class TerminalService {
    */
   async exec(
     command: string,
-    options: { cwd?: string; timeout?: number; silent?: boolean } = {}
+    options: { cwd?: string; timeout?: number; silent?: boolean; signal?: AbortSignal } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
     const missing = await programGate(command.trim().split(/\s+/)[0] || '');
@@ -491,7 +504,7 @@ class TerminalService {
     const id = `exec-${++this.processCounter}-${Date.now()}`;
     const base = parsed.cmdName.replace(/-\d+$/, '');
     try {
-      const r = await this.runTool(id, base, parsed.args, options.cwd, options.timeout);
+      const r = await this.runTool(id, base, parsed.args, options.cwd, options.timeout, options.signal);
       return {
         success: r.code === 0,
         exitCode: r.code,
@@ -518,7 +531,7 @@ class TerminalService {
   async execArgs(
     program: keyof typeof COMMAND_NAME_MAP | string,
     args: string[],
-    options: { cwd?: string; timeout?: number } = {}
+    options: { cwd?: string; timeout?: number; signal?: AbortSignal } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
     const missing = await programGate(program, false);
@@ -531,7 +544,7 @@ class TerminalService {
     if (!options.cwd) return fail('⛔ Dossier de travail manquant');
     const id = `exec-${++this.processCounter}-${Date.now()}`;
     try {
-      const r = await this.runTool(id, base, args, options.cwd, options.timeout);
+      const r = await this.runTool(id, base, args, options.cwd, options.timeout, options.signal);
       return {
         success: r.code === 0,
         exitCode: r.code,

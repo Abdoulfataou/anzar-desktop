@@ -294,7 +294,12 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     const bypass = out.includes(NETWORK_BYPASS_TAG);
     if (bypass || out.includes(NETWORK_UNREACHABLE_TAG)) {
       if (bypass) terminalService.grantDirect(command);
-      else await new Promise((r) => setTimeout(r, 3000));
+      else {
+        await new Promise<void>((r) => {
+          const t = setTimeout(r, 3000);
+          ctx.signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true });
+        });
+      }
       if (risk) terminalService.grantInstall(riskCommand);
       if (!ctx.signal.aborted) {
         const retry = await runTool();

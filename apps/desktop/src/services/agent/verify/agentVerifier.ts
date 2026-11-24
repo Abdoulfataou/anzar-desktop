@@ -203,7 +203,9 @@ export async function runVerification(
       cwd: projectRoot,
       timeout: COMMAND_TIMEOUT_MS,
       silent: true,
+      signal: options.signal,
     });
+    if (options.signal?.aborted) break;
 
     // Commande bloquée par l'allowlist ou outil absent → skipped (ne fait pas échouer)
     const blocked = r.stderr.startsWith('⛔') || /command not found|introuvable|not recognized/i.test(r.stderr);

@@ -41,6 +41,7 @@ export async function execRunCommand(args: any, ctx: ToolExecutionContext): Prom
     cwd,
     timeout: COMMAND_TIMEOUT_MS,
     silent: false,
+    signal: ctx.signal,
   });
 
   const parts = [
