@@ -35,10 +35,10 @@ const MAX_TOOL_OUTPUT_DISPLAY = 600;
 /** Outils qui écrivent sur le disque (déclenchent la vérification au task_done). */
 const WRITE_TOOLS = ['write_file', 'edit_file', 'delete_file'];
 /** Outils susceptibles de modifier le projet : leurs commandes comptent dans la carte. */
-const MUTATING_TOOLS = new Set([...WRITE_TOOLS, 'run_command', 'start_dev_server']);
+const MUTATING_TOOLS = new Set([...WRITE_TOOLS, 'run_command', 'bash', 'start_dev_server']);
 
 /** Outils dont l'exécution passe par une commande (risque calculé par commandGuard). */
-const COMMAND_LIKE = ['run_command', 'spawn_subagents', 'start_dev_server'];
+const COMMAND_LIKE = ['run_command', 'bash', 'spawn_subagents', 'start_dev_server'];
 
 // ============================================================================
 // ÉVÉNEMENT D'OUTIL (affichage)
@@ -134,7 +134,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
 
   // Commande qui exécute du code écrit par l'agent, installation, script npm sensible :
   // accord demandé hors « Accès complet » (garde S3, voir approvalDecision)
-  const riskCommand = call.function.name === 'run_command'
+  const riskCommand = call.function.name === 'run_command' || call.function.name === 'bash'
     ? String(args.command || '')
     : call.function.name === 'start_dev_server' && ctx.workspacePath
     ? String(args.command || (await detectDevCommand(ctx.workspacePath).catch(() => null)) || '')

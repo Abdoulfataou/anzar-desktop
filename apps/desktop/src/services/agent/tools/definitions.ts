@@ -385,3 +385,76 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     },
   },
 ];
+
+/**
+ * Outils du shell confiné, proposés seulement là où l'isolation système existe
+ * (macOS aujourd'hui). `run_command` reste disponible comme repli et pour Windows.
+ */
+export const BASH_TOOLS: ToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'bash',
+      description:
+        "Exécute une commande dans un shell bash confiné (bash -c) et renvoie stdout/stderr, le code de sortie et le dossier. " +
+        "Chaque appel ouvre un shell neuf : passe workdir plutôt que d'enchaîner les cd. Les pipes, redirections, && et les scripts fonctionnent. " +
+        "La frontière est l'isolation du système (écriture limitée au projet, aux temporaires et aux caches) : une écriture refusée est un fait, " +
+        "ne la contourne pas par un autre outil. Pour un travail long, run_in_background rend un job_id, puis job_output lit la suite et job_kill l'arrête. " +
+        "Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer.",
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'La ligne de commande bash à exécuter.' },
+          description: {
+            type: 'string',
+            description: 'Description courte de ce que fait la commande (5 à 10 mots), affichée dans l’interface.',
+          },
+          workdir: {
+            type: 'string',
+            description: 'Dossier de travail, relatif au projet. Défaut : la racine du projet.',
+          },
+          timeoutMs: {
+            type: 'number',
+            description: 'Délai maximal en millisecondes (défaut 120 000, plafond 600 000).',
+          },
+          run_in_background: {
+            type: 'boolean',
+            description: 'Lance le travail en arrière-plan et rend un job_id immédiatement (à lire avec job_output, arrêter avec job_kill).',
+          },
+        },
+        required: ['command'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'job_output',
+      description:
+        "Lit l'état et la sortie d'un travail lancé par bash avec run_in_background. Avec wait_ms, attend la fin (ou le délai) avant de répondre. " +
+        "Utilise-le pour suivre un serveur de développement, un build long ou une installation.",
+      parameters: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Identifiant rendu par bash (job_id).' },
+          wait_ms: { type: 'number', description: 'Délai d’attente maximal en millisecondes (défaut 0, plafond 300 000).' },
+        },
+        required: ['job_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'job_kill',
+      description: "Arrête un travail lancé par bash avec run_in_background. Le groupe de processus est arrêté (pas seulement le shell).",
+      parameters: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Identifiant rendu par bash (job_id).' },
+        },
+        required: ['job_id'],
+      },
+    },
+  },
+];

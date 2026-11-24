@@ -122,6 +122,11 @@ pub const BLOCKED_LOCAL_PORTS: &str = r#"
 (deny network-outbound (remote ip "localhost:9877"))
 (deny network-outbound (remote ip "*:4455"))
 (deny network-outbound (remote ip "localhost:4455"))
+"#;
+
+/// Tube d'Audacity : accepte n'importe quelle commande, y compris quand le réseau est coupé.
+/// Règle de fichier, donc indépendante des règles réseau.
+pub const AUDACITY_PIPE: &str = r#"
 (deny file-read* file-write* (regex #"^/(private/)?tmp/audacity_script_pipe\."))
 "#;
 
@@ -248,9 +253,17 @@ pub fn wrap(program: &str, args: &[String], root: &Path, allow_network: bool, gi
     let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| PathBuf::from("/private/tmp"));
     let git = if git_init { "" } else { GIT_PROTECT };
     let profile = if allow_network {
-        format!("{PROFILE}{git}{BLOCKED_LOCAL_PORTS}")
+        // Réseau ouvert : les règles de ports s'appliquent normalement (elles sont après
+        // l'autorisation par défaut, sans autorisation `localhost:*` qui les annulerait).
+        format!("{PROFILE}{git}{BLOCKED_LOCAL_PORTS}{AUDACITY_PIPE}")
     } else {
-        format!("{PROFILE}{git}{NETWORK_RULES}{BLOCKED_LOCAL_PORTS}")
+        // Réseau coupé : Seatbelt ne sait pas exprimer « tout localhost sauf 9876/9877/4455 ».
+        // Une règle `deny` sur un port placée après `allow localhost:*` coupe *tout* localhost,
+        // y compris le proxy local et les serveurs de développement : les commandes échouaient
+        // par « socket error ». On autorise donc localhost en entier ici ; les ports des
+        // applications restent filtrés par les connecteurs Rust, et le mode réseau ouvert
+        // applique BLOCKED_LOCAL_PORTS.
+        format!("{PROFILE}{git}{NETWORK_RULES}{AUDACITY_PIPE}")
     };
     let mut out = vec!["-p".to_string(), profile];
     for (k, v) in profile_params(root, &home, &tmp) {
@@ -324,9 +337,15 @@ mod tests {
                 Command::new(&w.program).args(&w.args).status().unwrap().success()
             };
             assert!(essai(&port_ok), "un port local ordinaire doit rester joignable (réseau : {reseau})");
-            assert!(!essai("9877"), "le port de GIMP doit être bloqué (réseau : {reseau})");
-            assert!(!essai("9876"), "le port de Blender doit être bloqué (réseau : {reseau})");
-            assert!(!essai("4455"), "le port d'OBS doit être bloqué (réseau : {reseau})");
+            if reseau {
+                assert!(!essai("9877"), "le port de GIMP doit être bloqué (réseau ouvert)");
+                assert!(!essai("9876"), "le port de Blender doit être bloqué (réseau ouvert)");
+                assert!(!essai("4455"), "le port d'OBS doit être bloqué (réseau ouvert)");
+            } else {
+                // Réseau coupé : localhost doit rester joignable pour le proxy local et les
+                // serveurs de dev. La limitation est documentée dans SECURITY.md.
+                assert!(essai(&port_ok), "le proxy local doit rester joignable (réseau coupé)");
+            }
             // Tube d'Audacity : écriture interdite ; un fichier ordinaire de /tmp reste permis
             let touche = |chemin: &str| {
                 let w = wrap("/usr/bin/touch", &[chemin.to_string()], &root, reseau, false);
@@ -376,6 +395,33 @@ mod tests {
         std::fs::create_dir_all(dir.join(".git")).unwrap();
         assert!(!git_init_allowed("git", &a(&["init"]), &dir, &dir), "dépôt existant : protections gardées");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Vrai test Seatbelt (macOS) : un shell confiné peut écrire dans le projet, pas
+    /// dans le dossier personnel. C'est la frontière qui remplace la liste blanche.
+    #[test]
+    fn shell_confiné_écrit_dans_le_projet_pas_dans_le_home() {
+        use std::process::Command;
+        if !available() { return; }
+        let base = std::fs::canonicalize(std::env::temp_dir()).unwrap()
+            .join(format!("anzar-sbx-shell-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let inside = base.join("ok.txt");
+        let script = format!("echo ok > '{}'", inside.display());
+        let w = wrap("/bin/bash", &["-c".to_string(), script], &base, false, false);
+        assert!(Command::new(&w.program).args(&w.args).status().unwrap().success());
+        assert!(inside.exists(), "écriture dans le projet autorisée");
+
+        let home = dirs::home_dir().unwrap();
+        let outside = home.join(format!(".anzar-sbx-shell-{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&outside);
+        let script = format!("echo non > '{}'", outside.display());
+        let w = wrap("/bin/bash", &["-c".to_string(), script], &base, false, false);
+        let ok = Command::new(&w.program).args(&w.args).status().unwrap().success();
+        assert!(!ok, "écriture hors projet refusée");
+        assert!(!outside.exists(), "aucun fichier créé hors projet");
+        let _ = std::fs::remove_file(&outside);
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     #[test]

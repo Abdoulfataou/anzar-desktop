@@ -2,8 +2,10 @@
 //!
 //! La webview n'a plus accès au plugin shell : elle appelle `tool_spawn`,
 //! `tool_wait` et `tool_kill`. La politique (programme, arguments, cwd) est
-//! appliquée ici, avant tout `Command::new`, et aucun shell intermédiaire
-//! (`sh -c`, `cmd /C`) n'est utilisé.
+//! appliquée ici, avant tout `Command::new`. Deux chemins existent :
+//! - `run_command` : un programme de la liste, sans shell intermédiaire ;
+//! - `bash` : une ligne `bash -c`, acceptée seulement quand l'isolation système est
+//!   disponible (macOS). La frontière est alors le profil Seatbelt, pas une liste blanche.
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -296,6 +298,37 @@ fn resolve_with_exts(program: &str, path: &str, exts: &[&str]) -> Option<std::pa
     })
 }
 
+/// Une commande de shell mentionne-t-elle un port local réservé aux connecteurs ?
+/// Heuristique de défense en profondeur : Seatbelt ne peut pas exprimer « localhost sauf ces
+/// ports » sans couper le proxy (voir `sandbox::wrap`).
+fn mentions_blocked_local_app(command: &str) -> bool {
+    if command.contains("audacity_script_pipe") {
+        return true;
+    }
+    let tokens: Vec<&str> = command.split(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | '=' | '/' | ',' | ';' | '&' | '|')).collect();
+    tokens.iter().any(|t| {
+        let t = t.trim_matches(|c: char| !c.is_ascii_digit());
+        matches!(t, "9876" | "9877" | "4455") || t.ends_with(":9876") || t.ends_with(":9877") || t.ends_with(":4455")
+    })
+}
+
+/// `git init` simple lancé par le shell confiné : même exception que pour `run_command`,
+/// mais refusée dès que la ligne contient un enchaînement, un pipe ou une redirection.
+fn shell_git_init_allowed(command: &str, root: &std::path::Path, cwd: &std::path::Path) -> bool {
+    let trimmed = command.trim();
+    if trimmed.chars().any(|c| matches!(c, ';' | '&' | '|' | '>' | '<' | '\n' | '\r')) {
+        return false;
+    }
+    let parts: Vec<String> = trimmed
+        .split_whitespace()
+        .map(|s| s.trim_matches('"').trim_matches('\'').to_string())
+        .collect();
+    if parts.first().map(|s| s.as_str()) != Some("git") {
+        return false;
+    }
+    crate::sandbox::git_init_allowed("git", &parts[1..], root, cwd)
+}
+
 fn validate_dir(root: &str, cwd: &str) -> Result<(std::path::PathBuf, std::path::PathBuf), String> {
     let home = crate::roots::home()?;
     let root_p = std::fs::canonicalize(root).map_err(|_| "Dossier projet introuvable.".to_string())?;
@@ -412,34 +445,71 @@ pub fn tool_spawn(
     proxy: Option<bool>,
     proxy_hosts: Option<Vec<String>>,
     direct: Option<bool>,
+    shell: Option<bool>,
+    shell_command: Option<String>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
     // Les hôtes autorisés viennent des réglages gardés par Rust (command_policy), plus de
     // l'interface : une liste envoyée par la webview n'ouvre plus rien.
     let _ = proxy_hosts;
     let policy = crate::command_policy::current(&app);
-    let program = program.trim().to_lowercase();
-    if program.contains('/') || program.contains('\\') || !is_valid_program_name(&program) {
-        return Err("Programme non autorisé.".into());
-    }
-    if is_denied_program(&program) {
-        return Err(format!("« {program} » est interdit à l'agent, même avec ton accord."));
-    }
-    // macOS n'a que `python3` / `pip3` : l'agent écrit souvent `python` ou `pip`.
-    let program = python3_fallback(program, |p| find_in_path(p).is_some());
-    // Programme hors de la liste d'ANZAR : accepté seulement si l'utilisateur l'a autorisé
-    // définitivement (réglage gardé par Rust) ou pour cette commande (carte d'accord).
-    let known = is_allowed_program(&program);
-    if !known && !policy.trusted_programs.contains(&program) && !approved.unwrap_or(false) {
-        return Err(format!("« {program} » n'est pas dans la liste d'ANZAR : il faut ton accord (carte d'accord)."));
-    }
-    validate_args(&program, &args, approved.unwrap_or(false))?;
+    let use_shell = shell.unwrap_or(false);
+    let mut shell_text: Option<String> = None;
+    let (program, args) = if use_shell {
+        // Shell confiné : la frontière est l'isolation du système d'exploitation. Sans
+        // elle, un shell complet serait une porte ouverte : on refuse plutôt que de
+        // laisser croire que la commande est isolée.
+        if !crate::sandbox::available() {
+            return Err("Le shell confiné n'est pas disponible sur cet ordinateur : utilise run_command.".into());
+        }
+        let command = shell_command.unwrap_or_default();
+        let trimmed = command.trim();
+        if trimmed.is_empty() {
+            return Err("Commande vide.".into());
+        }
+        if trimmed.chars().count() > 20_000 {
+            return Err("Commande trop longue (max 20 000 caractères).".into());
+        }
+        if trimmed.contains('\0') {
+            return Err("Commande invalide (caractère NUL).".into());
+        }
+        if mentions_blocked_local_app(trimmed) {
+            return Err(
+                "Les ports locaux 9876 (Blender), 9877 (GIMP) et 4455 (OBS), ainsi que le tube \
+                 d'Audacity, sont réservés aux connecteurs d'ANZAR : une commande ne doit pas les utiliser."
+                    .into(),
+            );
+        }
+        if find_in_path("bash").is_none() && !std::path::Path::new("/bin/bash").exists() {
+            return Err("bash est introuvable sur cet ordinateur.".into());
+        }
+        shell_text = Some(trimmed.to_string());
+        ("bash".to_string(), vec!["-c".to_string(), command])
+    } else {
+        let program = program.trim().to_lowercase();
+        if program.contains('/') || program.contains('\\') || !is_valid_program_name(&program) {
+            return Err("Programme non autorisé.".into());
+        }
+        if is_denied_program(&program) {
+            return Err(format!("« {program} » est interdit à l'agent, même avec ton accord."));
+        }
+        // macOS n'a que `python3` / `pip3` : l'agent écrit souvent `python` ou `pip`.
+        let program = python3_fallback(program, |p| find_in_path(p).is_some());
+        // Programme hors de la liste d'ANZAR : accepté seulement si l'utilisateur l'a autorisé
+        // définitivement (réglage gardé par Rust) ou pour cette commande (carte d'accord).
+        let known = is_allowed_program(&program);
+        if !known && !policy.trusted_programs.contains(&program) && !approved.unwrap_or(false) {
+            return Err(format!("« {program} » n'est pas dans la liste d'ANZAR : il faut ton accord (carte d'accord)."));
+        }
+        validate_args(&program, &args, approved.unwrap_or(false))?;
+        (program, args)
+    };
     let (root_p, cwd_p) = validate_dir(&root, &cwd)?;
     if !crate::roots::is_allowed_root(&app, &root_p) {
         return Err("Dossier non autorisé : ouvre-le d'abord comme projet dans ANZAR.".into());
     }
     // `./gradlew` : script du projet, résolu dans le dossier de travail (jamais via le PATH).
-    let gradlew_path = if program == "gradlew" {
+    let gradlew_path = if !use_shell && program == "gradlew" {
         let file = cwd_p.join(if cfg!(windows) { "gradlew.bat" } else { "gradlew" });
         let real = std::fs::canonicalize(&file)
             .map_err(|_| "Pas de script gradlew dans ce dossier.".to_string())?;
@@ -453,7 +523,8 @@ pub fn tool_spawn(
 
     // Réseau décidé par Rust (téléchargement, installation acceptée) : seul cas où l'interface
     // peut demander de contourner le relais (outil qui l'ignore, diagnostic `TAG_BYPASS`).
-    let install_net = crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false));
+    let install_net = !use_shell
+        && crate::sandbox::network_allowed(&program, &args, approved.unwrap_or(false));
     let direct = direct.unwrap_or(false) && install_net;
     // Protection effective : l'interface peut en demander plus, jamais moins que les réglages.
     let eff = crate::command_policy::effective(&policy, sandbox, network, proxy, install_net);
@@ -464,18 +535,23 @@ pub fn tool_spawn(
     }
     // Programme réellement lancé : chemin du script gradlew, ou nom cherché dans le PATH.
     // Windows : `Command::new` n'ajoute que « .exe » ; npm, flutter, yarn… sont des .cmd/.bat.
-    let exe: String = match &gradlew_path {
-        Some(p) => p.to_string_lossy().into_owned(),
-        None => {
-            #[cfg(windows)]
-            {
-                resolve_with_exts(&program, &crate::mcp::enriched_path(), &[".exe", ".cmd", ".bat"])
-                    .map(|p| p.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| program.clone())
-            }
-            #[cfg(not(windows))]
-            {
-                program.clone()
+    let exe: String = if use_shell {
+        // Chemin absolu : le shell ne dépend pas d'un PATH modifié par l'utilisateur.
+        "/bin/bash".to_string()
+    } else {
+        match &gradlew_path {
+            Some(p) => p.to_string_lossy().into_owned(),
+            None => {
+                #[cfg(windows)]
+                {
+                    resolve_with_exts(&program, &crate::mcp::enriched_path(), &[".exe", ".cmd", ".bat"])
+                        .map(|p| p.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| program.clone())
+                }
+                #[cfg(not(windows))]
+                {
+                    program.clone()
+                }
             }
         }
     };
@@ -494,7 +570,11 @@ pub fn tool_spawn(
     };
     let allow_network = net && proxy_port.is_none();
     let wrapped = if isolated {
-        let git_init = crate::sandbox::git_init_allowed(&program, &args, &root_p, &cwd_p);
+        let git_init = if use_shell {
+            shell_text.as_deref().map(|c| shell_git_init_allowed(c, &root_p, &cwd_p)).unwrap_or(false)
+        } else {
+            crate::sandbox::git_init_allowed(&program, &args, &root_p, &cwd_p)
+        };
         crate::sandbox::wrap(&exe, &args, &root_p, allow_network, git_init)
     } else {
         crate::sandbox::Wrapped { program: exe.clone(), args: args.clone() }
@@ -630,6 +710,27 @@ mod security_tests {
     use super::*;
 
     fn args(v: &[&str]) -> Vec<String> { v.iter().map(|s| s.to_string()).collect() }
+
+    #[test]
+    fn shell_only_allows_simple_git_init() {
+        let dir = std::env::temp_dir().join(format!("anzar-shell-gitinit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(shell_git_init_allowed("git init", &dir, &dir));
+        assert!(shell_git_init_allowed("git init -b main", &dir, &dir));
+        assert!(shell_git_init_allowed("  git init --initial-branch=main  ", &dir, &dir));
+        assert!(!shell_git_init_allowed("git init && rm -rf .", &dir, &dir));
+        assert!(!shell_git_init_allowed("git init | cat", &dir, &dir));
+        assert!(!shell_git_init_allowed("git init > log", &dir, &dir));
+        assert!(!shell_git_init_allowed("cd sous && git init", &dir, &dir));
+        assert!(!shell_git_init_allowed("git status", &dir, &dir));
+        assert!(!shell_git_init_allowed("git init --separate-git-dir=.gitstore", &dir, &dir));
+        assert!(mentions_blocked_local_app("nc 127.0.0.1 9876"));
+        assert!(mentions_blocked_local_app("curl http://localhost:9877/x"));
+        assert!(mentions_blocked_local_app("cat /tmp/audacity_script_pipe.to.x"));
+        assert!(!mentions_blocked_local_app("npm test -- --run"));
+        assert!(!mentions_blocked_local_app("echo 44550"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn refuses_inline_code_and_git_config() {

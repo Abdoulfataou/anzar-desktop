@@ -340,6 +340,7 @@ class TerminalService {
     cwd: string,
     timeout?: number,
     signal?: AbortSignal,
+    shellCommand?: string,
   ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number }> {
     const start = Date.now();
     if (signal?.aborted) return { code: 130, stdout: '', stderr: STOPPED_MESSAGE, durationMs: 0 };
@@ -348,6 +349,7 @@ class TerminalService {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
       approved: this.takeInstallGrant(program, args), network: this.networkFor(program, args),
       proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(), direct: this.takeDirect(program, args),
+      shell: shellCommand !== undefined, shellCommand: shellCommand ?? null,
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (timeout) timer = setTimeout(() => { void invoke('tool_kill', { id }).catch(() => {}); }, timeout);
@@ -553,7 +555,128 @@ class TerminalService {
   }
 
   /**
-   * Exécute un programme autorisé avec ses arguments tels quels (pas de découpage d'une
+   * Exécute une ligne de shell confinée (macOS). La frontière est l'isolation Seatbelt,
+   * pas une liste blanche : pipes, redirections, `&&` et `cd` fonctionnent. Refusé par
+   * Rust si l'isolation n'est pas disponible sur la machine.
+   */
+  async execShell(
+    command: string,
+    options: { cwd?: string; timeout?: number; signal?: AbortSignal } = {}
+  ): Promise<CommandResult> {
+    const startTime = Date.now();
+    const trimmed = String(command || '').trim();
+    if (!trimmed) {
+      return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Commande vide', durationMs: 0, ran: false };
+    }
+    if (!options.cwd) {
+      return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Dossier de travail manquant', durationMs: 0, ran: false };
+    }
+    const id = `shell-${++this.processCounter}-${Date.now()}`;
+    try {
+      const r = await this.runTool(id, 'bash', [], options.cwd, options.timeout, options.signal, trimmed);
+      const stderr = r.stderr.trim();
+      return {
+        success: r.code === 0,
+        exitCode: r.code,
+        stdout: r.stdout.trim(),
+        stderr,
+        durationMs: Date.now() - startTime,
+        ran: true,
+        denied: isSandboxDenial(stderr) || undefined,
+      };
+    } catch (error: any) {
+      return {
+        success: false,
+        exitCode: 1,
+        stdout: '',
+        stderr: explainSpawnError(error, trimmed),
+        durationMs: Date.now() - startTime,
+        ran: false,
+      };
+    }
+  }
+
+  /**
+   * Lance une ligne de shell en arrière-plan et rend son identifiant tout de suite.
+   * La sortie est lue par `jobOutput` / attendue par `waitForJob` ; `killProcess` l'arrête.
+   */
+  async runShell(
+    command: string,
+    options: { cwd?: string; silent?: boolean; onProcessId?: (id: string) => void } = {}
+  ): Promise<string> {
+    const processId = `job-${++this.processCounter}-${Date.now()}`;
+    options.onProcessId?.(processId);
+    const trimmed = String(command || '').trim();
+    if (!trimmed || !options.cwd) {
+      this.emitOutput(processId, 'error', '⛔ Commande ou dossier manquant');
+      return processId;
+    }
+    const process: RunningProcess = {
+      id: processId,
+      command: 'bash',
+      args: [trimmed],
+      cwd: options.cwd,
+      startedAt: Date.now(),
+      status: 'running',
+    };
+    this.processes.set(processId, process);
+    this.outputHistory.set(processId, []);
+    if (!options.silent) this.emitOutput(processId, 'system', `$ ${trimmed}`);
+    this.eventBus.emit({ type: 'process-start', process });
+    try {
+      await this.ensureToolEvents();
+      const pid = await invoke<number>('tool_spawn', {
+        id: processId,
+        program: 'bash',
+        args: [],
+        cwd: options.cwd,
+        root: this.rootFor(options.cwd),
+        sandbox: sandboxEnabled(),
+        approved: false,
+        network: this.networkFor('bash', []),
+        proxy: networkProxyEnabled(),
+        proxyHosts: networkProxyHosts(),
+        direct: false,
+        shell: true,
+        shellCommand: trimmed,
+      });
+      process.pid = pid;
+    } catch (error: any) {
+      process.status = 'failed';
+      process.exitCode = 1;
+      this.emitOutput(processId, 'error', explainSpawnError(error, trimmed));
+    }
+    return processId;
+  }
+
+  /** État et sortie cumulée d'un travail lancé par `runShell`. */
+  getJob(id: string): { status: RunningProcess['status']; exitCode?: number; output: string; command: string } | null {
+    const process = this.processes.get(id);
+    if (!process) return null;
+    const output = (this.outputHistory.get(id) || [])
+      .filter((o) => o.type === 'stdout' || o.type === 'stderr')
+      .map((o) => o.content)
+      .join('\n');
+    return { status: process.status, exitCode: process.exitCode, output, command: process.args.join(' ') };
+  }
+
+  /**
+   * Attend la fin d'un travail, ou le délai demandé. Ne bloque jamais indéfiniment :
+   * au-delà du délai, rend l'état courant et la sortie déjà produite.
+   */
+  async waitForJob(id: string, timeoutMs: number, signal?: AbortSignal): Promise<ReturnType<TerminalService['getJob']>> {
+    const deadline = Date.now() + Math.max(0, timeoutMs);
+    for (;;) {
+      const job = this.getJob(id);
+      if (!job || job.status !== 'running' || Date.now() >= deadline || signal?.aborted) return job;
+      await new Promise<void>((resolve) => {
+        const t = setTimeout(resolve, 150);
+        signal?.addEventListener('abort', () => { clearTimeout(t); resolve(); }, { once: true });
+      });
+    }
+  }
+
+  /** Exécute un programme autorisé avec ses arguments tels quels (pas de découpage d'une
    * chaîne : un message de commit avec guillemets ou apostrophes passe intact).
    * La sortie n'est pas « trim » au début : les espaces de `git status --porcelain` comptent.
    */

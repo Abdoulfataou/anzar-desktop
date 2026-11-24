@@ -187,7 +187,7 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
 | Écriture | Autorisée seulement dans le dossier du projet, le dossier git du dépôt (worktrees des tickets), les dossiers temporaires et les caches (`~/Library/Caches`, `~/.npm`, `~/.cache`, `~/.cargo`) |
 | Git | `.git/hooks` et `.git/config` en lecture seule, y compris pour une worktree |
 | Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials` illisibles |
-| Réseau | Filtré par un **proxy local avec liste d'hôtes autorisés** (`src-tauri/src/netproxy.rs`) : les commandes reçoivent `HTTP(S)_PROXY` et `npm_config_*_proxy`. Sur macOS, le profil Seatbelt n'autorise alors que localhost : le proxy est le **seul** chemin vers l'extérieur, et il refuse tout hôte absent de la liste (registres npm/pip/cargo, GitHub, Node.js par défaut, plus les hôtes ajoutés dans Paramètres → Réseau). Si l'utilisateur coupe le réseau, sortant refusé sauf localhost. Sur Windows et Linux, le même filtre s'applique mais n'est **coopératif** (variables d'environnement) : un programme qui ignore le proxy n'est pas arrêté |
+| Réseau | Filtré par un **proxy local avec liste d'hôtes autorisés** (`src-tauri/src/netproxy.rs`) : les commandes reçoivent `HTTP(S)_PROXY` et `npm_config_*_proxy`. Sur macOS, le profil Seatbelt refuse toute sortie hors localhost : le proxy est le **seul** chemin vers l'extérieur, et il refuse tout hôte absent de la liste (registres npm/pip/cargo, GitHub, Node.js par défaut, plus les hôtes ajoutés dans Paramètres → Réseau). Si l'utilisateur coupe le réseau, sortant refusé sauf localhost. Sur Windows et Linux, le même filtre s'applique mais n'est **coopératif** (variables d'environnement) : un programme qui ignore le proxy n'est pas arrêté |
 
 - Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
   commandes s'exécutent comme avant.
@@ -202,6 +202,14 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
   (`net_proxy_records`) donne les refus récents avec leur date.
 - Limite connue : le réglage est transmis par la webview ; l'isolation est une défense en
   profondeur, en plus de la politique de commandes et des accords.
+- Limite Seatbelt connue (ports des applications) : quand le réseau passe par le proxy,
+  Seatbelt doit autoriser `localhost:*` pour que le proxy et les serveurs de développement
+  restent joignables. Or une règle `deny` sur un port placé après cette autorisation coupe
+  **tout** localhost (vérifié : le proxy devenait injoignable, d'où des « socket error »).
+  Les ports 9876 (Blender), 9877 (GIMP) et 4455 (OBS) ne sont donc bloqués par Seatbelt
+  que lorsque le réseau des commandes est **ouvert** ; en mode proxy, ils restent refusés
+  par les connecteurs Rust, mais un programme lancé par l'agent pourrait s'y connecter.
+  C'est un compromis de défense en profondeur assumé pour ne pas casser le réseau.
 - Windows : chaque commande tourne dans un « job object » (`src-tauri/src/winjob.rs`).
   Arrêter la commande arrête toute son arborescence de processus, et fermer ANZAR tue ce qui
   reste. Le presse-papiers (lecture et écriture), l'arrêt de la session et les réglages système
@@ -279,8 +287,9 @@ accord avant chaque action (`alwaysAsk`).
 
 - **Blender 2.3.1** : `execute_blender_code` (Python arbitraire) et `record_trajectory_feedback`
   (envoie les phrases de l'utilisateur à l'éditeur du connecteur) sont refusés. Rust impose
-  `DISABLE_TELEMETRY=true`. L'add-on écoute sur `localhost:9876`, port interdit aux commandes
-  de l'agent par Seatbelt. Les autres outils envoient des scripts fixes du connecteur.
+  `DISABLE_TELEMETRY=true`. L'add-on écoute sur `localhost:9876` ; Seatbelt interdit ce port
+  aux commandes quand le réseau des commandes est ouvert (voir la limite Seatbelt ci-dessus
+  pour le mode proxy). Les autres outils envoient des scripts fixes du connecteur.
 - **Inkscape 2.0.0** : outils « fourre-tout » à opérations. Refusés : `inkscape_live` avec
   `operation = execute_inkex`, et tout appel à `inkscape_system` / `inkscape_extension` dont les
   arguments (forme JSON canonique, échappements compris) mentionnent l'extension

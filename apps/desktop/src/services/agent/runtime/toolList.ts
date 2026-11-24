@@ -7,7 +7,7 @@
  */
 import type { ToolDefinition } from '@/types';
 import { READ_ONLY_TOOLS, type PermissionMode } from '../policy/permissions';
-import { AGENT_TOOLS } from '../tools/definitions';
+import { AGENT_TOOLS, BASH_TOOLS } from '../tools/definitions';
 import { WEB_TOOLS } from '../tools/webTools';
 import { PERSONAL_SPACE_TOOLS } from '@/services/workspace/personalSpace';
 import { ASK_USER_TOOL, LOAD_SKILL_TOOL, PROPOSE_PLAN_TOOL } from '../tools/specialDefinitions';
@@ -26,6 +26,12 @@ export interface ToolListInput {
   mcpTools: ToolDefinition[];
 }
 
+/** Le shell confiné n'est proposé que là où l'isolation système existe (macOS aujourd'hui). */
+function shellToolAvailable(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /Mac|Darwin|Linux|X11/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+}
+
 /** Outils envoyés au modèle pour l'étape suivante. */
 export function buildToolsForStep(input: ToolListInput): ToolDefinition[] | undefined {
   const web = input.webEnabled ? WEB_TOOLS : [];
@@ -39,7 +45,9 @@ export function buildToolsForStep(input: ToolListInput): ToolDefinition[] | unde
     const tools = [...personalTools, ...web, ...ask, ...input.mcpTools];
     return tools.length ? tools : undefined;
   }
-  return input.mode === 'plan'
-    ? [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask]
-    : [...AGENT_TOOLS, ...web, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask, ...input.mcpTools];
+  if (input.mode === 'plan') {
+    return [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask];
+  }
+  const shell = shellToolAvailable() ? BASH_TOOLS : [];
+  return [...AGENT_TOOLS, ...shell, ...web, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask, ...input.mcpTools];
 }

@@ -36,7 +36,11 @@ export function summarizeArgs(name: string, args: Record<string, any>): string {
     case 'read_url':
       return args.url || '';
     case 'run_command':
+    case 'bash':
       return args.command || '';
+    case 'job_output':
+    case 'job_kill':
+      return args.job_id || args.id || '';
     case 'start_dev_server':
       return args.command || 'commande du projet';
     case 'check_page':

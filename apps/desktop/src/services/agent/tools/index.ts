@@ -11,10 +11,11 @@ import { execDeleteFile, execEditFile, execGetDiagnostics, execListDir, execRead
 import { execExportAnimation, execVendorLib } from './mediaTools';
 import { execExplore, execRemember, execTaskDone } from './metaTools';
 import { execInstallTool, execRunCommand } from './shellTools';
+import { execBash, execJobKill, execJobOutput } from './bashTool';
 import { execSpawnSubagents } from '../subagents/spawn';
 
 export type { SubagentProgress, ToolExecutionContext, ToolResult } from './types';
-export { AGENT_TOOLS } from './definitions';
+export { AGENT_TOOLS, BASH_TOOLS } from './definitions';
 export { resolvePath, isProtectedWritePath } from './shared';
 export { compileSearchPattern } from './fsTools';
 export { precheckCommand } from './shellTools';
@@ -40,6 +41,9 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   export_animation: execExportAnimation,
   page_action: execPageAction,
   run_command: execRunCommand,
+  bash: execBash,
+  job_output: execJobOutput,
+  job_kill: execJobKill,
   spawn_subagents: execSpawnSubagents,
   remember: execRemember,
   task_done: execTaskDone,

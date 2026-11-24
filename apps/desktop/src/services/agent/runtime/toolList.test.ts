@@ -28,6 +28,20 @@ describe('buildToolsForStep', () => {
     expect(list).not.toContain('propose_plan');
   });
 
+  it('propose le shell confiné et les travaux sur macOS', () => {
+    const original = navigator.platform;
+    Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true });
+    try {
+      const list = names(buildToolsForStep(base));
+      expect(list).toContain('bash');
+      expect(list).toContain('job_output');
+      expect(list).toContain('job_kill');
+      expect(names(buildToolsForStep({ ...base, mode: 'plan' }))).not.toContain('bash');
+    } finally {
+      Object.defineProperty(navigator, 'platform', { value: original, configurable: true });
+    }
+  });
+
   it('ne donne que des outils en lecture en mode plan, plus propose_plan', () => {
     const list = names(buildToolsForStep({ ...base, mode: 'plan' }));
     expect(list).toContain('read_file');
