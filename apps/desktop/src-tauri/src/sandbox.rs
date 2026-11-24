@@ -63,6 +63,21 @@ pub const PROFILE: &str = r#"(version 1)
   (literal (param "GITCRED")))
 "#;
 
+/// Profil d'une **élévation approuvée à usage unique** : écriture partout (comme un accès
+/// complet) sauf les secrets et les hooks/config Git, qui restent protégés. Le réseau reste
+/// filtré par le proxy quand il est actif. C'est plus large que le profil normal, mais ce
+/// n'est pas un abandon de l'isolation : les invariants 2 et 3 tiennent toujours.
+pub const ESCALATED_PROFILE: &str = r#"(version 1)
+(allow default)
+(deny file-read* file-write*
+  (subpath (param "SSH"))
+  (subpath (param "AWS"))
+  (subpath (param "GNUPG"))
+  (subpath (param "KUBE"))
+  (literal (param "NETRC"))
+  (literal (param "GITCRED")))
+"#;
+
 /// Hooks et configuration git du dépôt en lecture seule : un hook ou un `core.fsmonitor`
 /// écrit par l'agent s'exécuterait plus tard dans le git de l'utilisateur, hors isolation.
 /// Seule exception : un `git init` simple dans un projet sans dépôt (voir `git_init_allowed`).
@@ -275,6 +290,32 @@ pub fn wrap(program: &str, args: &[String], root: &Path, allow_network: bool, gi
     Wrapped { program: "/usr/bin/sandbox-exec".to_string(), args: out }
 }
 
+/// Enveloppe une commande avec le profil d'élévation (écriture élargie, secrets et Git
+/// protégés). `root` doit être canonicalisé.
+pub fn wrap_escalated(program: &str, args: &[String], root: &Path, allow_network: bool, git_init: bool) -> Wrapped {
+    if !available() {
+        return Wrapped { program: program.to_string(), args: args.to_vec() };
+    }
+    let home = dirs::home_dir()
+        .and_then(|h| std::fs::canonicalize(h).ok())
+        .unwrap_or_else(|| PathBuf::from("/var/empty"));
+    let tmp = std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| PathBuf::from("/private/tmp"));
+    let git = if git_init { "" } else { GIT_PROTECT };
+    let profile = if allow_network {
+        format!("{ESCALATED_PROFILE}{git}{BLOCKED_LOCAL_PORTS}{AUDACITY_PIPE}")
+    } else {
+        format!("{ESCALATED_PROFILE}{git}{NETWORK_RULES}{AUDACITY_PIPE}")
+    };
+    let mut out = vec!["-p".to_string(), profile];
+    for (k, v) in profile_params(root, &home, &tmp) {
+        out.push("-D".to_string());
+        out.push(format!("{k}={v}"));
+    }
+    out.push(program.to_string());
+    out.extend(args.iter().cloned());
+    Wrapped { program: "/usr/bin/sandbox-exec".to_string(), args: out }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -395,6 +436,32 @@ mod tests {
         std::fs::create_dir_all(dir.join(".git")).unwrap();
         assert!(!git_init_allowed("git", &a(&["init"]), &dir, &dir), "dépôt existant : protections gardées");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Vrai test Seatbelt (macOS) : une élévation élargit l'écriture hors du projet,
+    /// mais les hooks Git restent protégés.
+    #[test]
+    fn escalation_ecrit_hors_projet_mais_protege_les_hooks() {
+        use std::process::Command;
+        if !available() { return; }
+        let base = std::fs::canonicalize(std::env::temp_dir()).unwrap()
+            .join(format!("anzar-sbx-esc-{}", std::process::id()));
+        std::fs::create_dir_all(base.join(".git").join("hooks")).unwrap();
+        let home = dirs::home_dir().unwrap();
+        let outside = home.join(format!(".anzar-sbx-esc-{}.txt", std::process::id()));
+        let _ = std::fs::remove_file(&outside);
+        let script = format!("echo oui > '{}'", outside.display());
+        let w = wrap_escalated("/bin/bash", &["-c".to_string(), script], &base, false, false);
+        assert!(Command::new(&w.program).args(&w.args).status().unwrap().success());
+        assert!(outside.exists(), "l'élévation autorise l'écriture hors du projet");
+        let _ = std::fs::remove_file(&outside);
+
+        let hook = base.join(".git").join("hooks").join("pre-commit");
+        let script = format!("echo non > '{}'", hook.display());
+        let w = wrap_escalated("/bin/bash", &["-c".to_string(), script], &base, false, false);
+        assert!(!Command::new(&w.program).args(&w.args).status().unwrap().success());
+        assert!(!hook.exists(), "les hooks restent protégés pendant l'élévation");
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// Vrai test Seatbelt (macOS) : un shell confiné peut écrire dans le projet, pas

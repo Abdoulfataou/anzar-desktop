@@ -200,9 +200,10 @@ python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
 - Élévation à usage unique : après un refus d'écriture, le modèle peut relancer **la même
   commande** avec `sandbox_permissions: "danger-full-access"` et une justification. Hors
   Accès complet, une carte demande l'accord ; en Accès complet, l'accord est déjà donné.
-  L'élévation ne vaut que pour cet appel (aucun droit persistant) et ne contourne pas les
-  refus de politique : `git push`, `git config`, `git reset --hard`, `git clean -f`, `sudo`,
-  les secrets et les hooks/config Git restent refusés par Rust, même avec l'élévation.
+  L'élévation élargit l'écriture hors du projet pour cet appel seulement (aucun droit
+  persistant), mais **ne relâche ni les secrets, ni les hooks/config Git, ni le filtre
+  réseau** : le profil Seatbelt d'élévation garde ces règles, et Rust refuse toujours
+  `git push`, `git config`, `git reset --hard`, `git clean -f` et `sudo`.
 - Réglage : Paramètres → Général → « Isoler les commandes » (activé par défaut). Coupé, les
   commandes `run_command` s'exécutent comme avant ; le shell `bash` reste refusé.
 - Réglage « Réseau des commandes » (ouvert par défaut). La protection contre l'envoi de

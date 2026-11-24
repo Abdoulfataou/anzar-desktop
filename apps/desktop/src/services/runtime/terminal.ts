@@ -58,7 +58,8 @@ const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not 
 /** Indication d'escalade ajoutée après un refus d'isolation (une seule relance, approuvée). */
 export const ESCALATION_HINT =
   '[ANZAR] Si c\'est indispensable, relance la MÊME commande avec sandbox_permissions:"danger-full-access" et justification:"…" : '
-  + "l'utilisateur devra approuver (sauf en Accès complet), et l'accès complet ne vaut que pour cet appel.";
+  + "l'écriture sera élargie hors du projet pour cet appel (secrets, hooks/config Git et réseau restent protégés) ; "
+  + "l'utilisateur devra approuver, sauf en Accès complet.";
 
 /** Ajoute une explication quand l'isolation a bloqué une écriture ou une connexion. */
 export function withSandboxHint(code: number, stderr: string): string {

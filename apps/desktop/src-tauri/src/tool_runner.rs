@@ -618,9 +618,10 @@ pub fn tool_spawn(
     // Protection effective : l'interface peut en demander plus, jamais moins que les réglages.
     let eff = crate::command_policy::effective(&policy, sandbox, network, proxy, install_net);
     // Isolation (macOS) : activée sauf si le réglage « Isoler les commandes » est coupé.
-    // Une élévation approuvée à usage unique désactive Seatbelt pour CET appel seulement.
-    let isolated = eff.sandbox && crate::sandbox::available() && !escalated;
-    if use_shell && !isolated && !escalated {
+    // Une élévation approuvée à usage unique élargit l'écriture pour CET appel seulement,
+    // sans relâcher les secrets, les hooks Git ni le filtre réseau.
+    let isolated = eff.sandbox && crate::sandbox::available();
+    if use_shell && !isolated {
         return Err("Le shell confiné exige l'isolation des commandes : active-la dans les réglages ou utilise run_command.".into());
     }
     if isolated && gradlew_path.is_none() && find_in_path(&program).is_none() {
@@ -661,14 +662,18 @@ pub fn tool_spawn(
     } else {
         None
     };
-    let allow_network = net && proxy_port.is_none() && !escalated;
+    let allow_network = net && proxy_port.is_none();
     let wrapped = if isolated {
         let git_init = if use_shell {
             shell_text.as_deref().map(|c| shell_git_init_allowed(c, &root_p, &cwd_p)).unwrap_or(false)
         } else {
             crate::sandbox::git_init_allowed(&program, &args, &root_p, &cwd_p)
         };
-        crate::sandbox::wrap(&exe, &args, &root_p, allow_network, git_init)
+        if escalated {
+            crate::sandbox::wrap_escalated(&exe, &args, &root_p, allow_network, git_init)
+        } else {
+            crate::sandbox::wrap(&exe, &args, &root_p, allow_network, git_init)
+        }
     } else {
         crate::sandbox::Wrapped { program: exe.clone(), args: args.clone() }
     };

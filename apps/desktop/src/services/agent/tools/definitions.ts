@@ -313,7 +313,7 @@ export const AGENT_TOOLS: ToolDefinition[] = [
           sandbox_permissions: {
             type: 'string',
             enum: ['danger-full-access'],
-            description: "Après un refus d'isolation seulement : relance la MÊME commande avec ce champ pour un accès complet à usage unique. Hors Accès complet, l'utilisateur doit approuver.",
+            description: "Après un refus d'isolation seulement : relance la MÊME commande avec ce champ pour élargir l'écriture hors du projet, à usage unique. Secrets, hooks/config Git et réseau restent protégés ; hors Accès complet, l'utilisateur doit approuver.",
           },
           justification: {
             type: 'string',
@@ -466,7 +466,7 @@ export const BASH_TOOLS: ToolDefinition[] = [
           sandbox_permissions: {
             type: 'string',
             enum: ['danger-full-access'],
-            description: "Après un refus d'isolation seulement : relance la MÊME commande avec ce champ pour un accès complet à usage unique. Hors Accès complet, l'utilisateur doit approuver.",
+            description: "Après un refus d'isolation seulement : relance la MÊME commande avec ce champ pour élargir l'écriture hors du projet, à usage unique. Secrets, hooks/config Git et réseau restent protégés ; hors Accès complet, l'utilisateur doit approuver.",
           },
           justification: {
             type: 'string',
