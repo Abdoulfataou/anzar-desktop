@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Même harnais que useAgentChat.test.ts, mais on pilote AgentRunner directement :
 // c'est le contrat de l'adaptateur (et non le hook) que ce fichier verrouille.
@@ -256,6 +256,17 @@ describe('AgentRunner — vérification automatique', () => {
 });
 
 describe('AgentRunner — escalade à usage unique', () => {
+  const originalPlatform = navigator.platform;
+  const originalUserAgent = navigator.userAgent;
+  beforeAll(() => {
+    Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true });
+    Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', configurable: true });
+  });
+  afterAll(() => {
+    Object.defineProperty(navigator, 'platform', { value: originalPlatform, configurable: true });
+    Object.defineProperty(navigator, 'userAgent', { value: originalUserAgent, configurable: true });
+  });
+
   it('demande l’accord puis transmet escalated au shell', async () => {
     vi.mocked(aiService.chatStream)
       .mockReturnValueOnce(stream({ tool_calls: [toolCall('bash', {

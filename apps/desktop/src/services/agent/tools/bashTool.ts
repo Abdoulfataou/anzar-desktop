@@ -24,7 +24,8 @@ const BACKGROUND_SNAPSHOT_CHARS = 4_000;
 export function confinedShellAvailable(): boolean {
   if (typeof navigator === 'undefined') return false;
   const platform = `${navigator.platform || ''} ${navigator.userAgent || ''}`;
-  return /Mac|Darwin|Linux|X11/i.test(platform);
+  // Rust ne confine réellement que sous macOS (`sandbox::available`).
+  return /Mac|Darwin/i.test(platform);
 }
 
 function clampTimeout(value: unknown): number {

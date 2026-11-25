@@ -20,10 +20,28 @@ vi.mock('./shared', () => ({
 }));
 
 import { terminalService } from '@/services/runtime/terminal';
-import { execBash, execJobKill, execJobOutput } from './bashTool';
+import { confinedShellAvailable, execBash, execJobKill, execJobOutput } from './bashTool';
 
 const ctx = { projectRoot: '/tmp/projet' } as any;
 const shell = vi.mocked(terminalService);
+
+describe('disponibilité du shell confiné', () => {
+  it('ne le propose que là où Rust isole réellement (macOS)', () => {
+    const originalPlatform = navigator.platform;
+    const originalUserAgent = navigator.userAgent;
+    try {
+      Object.defineProperty(navigator, 'platform', { value: 'Linux x86_64', configurable: true });
+      Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (X11; Linux x86_64)', configurable: true });
+      expect(confinedShellAvailable()).toBe(false);
+      Object.defineProperty(navigator, 'platform', { value: 'MacIntel', configurable: true });
+      Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', configurable: true });
+      expect(confinedShellAvailable()).toBe(true);
+    } finally {
+      Object.defineProperty(navigator, 'platform', { value: originalPlatform, configurable: true });
+      Object.defineProperty(navigator, 'userAgent', { value: originalUserAgent, configurable: true });
+    }
+  });
+});
 
 describe('execBash', () => {
   beforeEach(() => vi.clearAllMocks());
