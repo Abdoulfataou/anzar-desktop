@@ -6,7 +6,7 @@
  * Module quasi pur (seule la liste des outils de l'espace ANZAR vient d'un service).
  */
 import type { ToolDefinition } from '@/types';
-import { READ_ONLY_TOOLS, type PermissionMode } from '../policy/permissions';
+import type { PermissionMode } from '../policy/permissions';
 import { AGENT_TOOLS, BASH_TOOLS } from '../tools/definitions';
 import { WEB_TOOLS } from '../tools/webTools';
 import { PERSONAL_SPACE_TOOLS } from '@/services/workspace/personalSpace';
@@ -38,15 +38,11 @@ export function buildToolsForStep(input: ToolListInput): ToolDefinition[] | unde
   // Sans personne devant l'écran (automatisations, tickets), pas de question possible
   const ask = input.background ? [] : [ASK_USER_TOOL];
   const personalTools = input.personalSpace
-    ? AGENT_TOOLS.filter((t) => PERSONAL_SPACE_TOOLS.has(t.function.name)
-        && (input.mode !== 'plan' || READ_ONLY_TOOLS.has(t.function.name)))
+    ? AGENT_TOOLS.filter((t) => PERSONAL_SPACE_TOOLS.has(t.function.name))
     : [];
   if (!input.workspacePath) {
     const tools = [...personalTools, ...web, ...ask, ...input.mcpTools];
     return tools.length ? tools : undefined;
-  }
-  if (input.mode === 'plan') {
-    return [...AGENT_TOOLS.filter((t) => READ_ONLY_TOOLS.has(t.function.name)), ...web, PROPOSE_PLAN_TOOL, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask];
   }
   const shellAvailable = shellToolAvailable();
   // Sur macOS, le shell confiné remplace run_command : une seule façon de lancer une
@@ -55,5 +51,6 @@ export function buildToolsForStep(input: ToolListInput): ToolDefinition[] | unde
     ? AGENT_TOOLS.filter((t) => t.function.name !== 'run_command')
     : AGENT_TOOLS;
   const shell = shellAvailable ? BASH_TOOLS : [];
-  return [...agentTools, ...shell, ...web, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask, ...input.mcpTools];
+  const plan = input.mode === 'plan' ? [PROPOSE_PLAN_TOOL] : [];
+  return [...agentTools, ...shell, ...web, ...plan, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask, ...input.mcpTools];
 }

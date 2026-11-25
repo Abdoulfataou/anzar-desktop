@@ -29,11 +29,6 @@ vi.mock('@/services/agent/context/agentPrompts', () => ({
 vi.mock('@/services/agent/context/agentContext', () => ({
   buildAgentContext: vi.fn().mockResolvedValue({ codeMap: '', taskHints: '', memory: undefined }),
 }));
-vi.mock('@/services/agent/policy/commandGuard', () => ({
-  commandRisk: vi.fn().mockResolvedValue(null),
-  noteAgentWrite: vi.fn(),
-  agentScriptSecretRisk: vi.fn().mockResolvedValue(null),
-}));
 vi.mock('@/services/workspace/personalInstructions', () => ({
   loadPersonalInstructions: vi.fn().mockResolvedValue(''),
   personalInstructionsSection: () => '',
@@ -85,7 +80,6 @@ vi.mock('@/services/agent/verify/agentVerifier', () => ({
 
 import { aiService } from '@/services/ai/ai';
 import { executeToolCall } from '@/services/agent/tools';
-import { commandRisk, noteAgentWrite } from '@/services/agent/policy/commandGuard';
 import { snapshotBeforeChange } from '@/services/agent/tools/fileChanges';
 import { runVerification } from '@/services/agent/verify/agentVerifier';
 import { resetBaselineCache } from '@/services/agent/verify/baseline';
@@ -138,8 +132,6 @@ beforeEach(() => {
   vi.mocked(refreshCredits).mockResolvedValue(0);
   vi.mocked(runVerification).mockResolvedValue(verifyReport() as any);
   resetBaselineCache();
-  vi.mocked(noteAgentWrite).mockResolvedValue(undefined);
-  vi.mocked(commandRisk).mockResolvedValue(null);
   // Comme la vraie fonction : elle enregistre le fichier touché dans la carte des snapshots.
   vi.mocked(snapshotBeforeChange).mockImplementation((async (snapshots: Map<string, unknown>, _root: string, rel?: string) => {
     if (rel) snapshots.set(rel, null);
@@ -263,39 +255,6 @@ describe('AgentRunner — vérification automatique', () => {
   });
 });
 
-describe('AgentRunner — approbations', () => {
-  it('n’exécute pas l’outil quand l’accord est refusé', async () => {
-    vi.mocked(aiService.chatStream)
-      .mockReturnValueOnce(stream({ tool_calls: [toolCall('write_file', { path: 'a.ts', content: 'x' })] }) as any)
-      .mockReturnValueOnce(stream({ content: 'Je propose autre chose' }) as any);
-    const runner = makeRunner('ask');
-
-    const pending = runner.sendMessage('Écris un fichier');
-    await vi.waitFor(() => expect(runner.getState().approval?.name).toBe('write_file'));
-    runner.resolveApproval(false);
-    const result = await pending;
-
-    expect(executeToolCall).not.toHaveBeenCalled();
-    expect(result?.content).toContain('Je propose autre chose');
-  });
-
-  it('transmet l’accord à l’exécution quand il est donné', async () => {
-    vi.mocked(aiService.chatStream)
-      .mockReturnValueOnce(stream({ tool_calls: [toolCall('write_file', { path: 'a.ts', content: 'x' })] }) as any)
-      .mockReturnValueOnce(stream({ content: 'Écrit' }) as any);
-    vi.mocked(executeToolCall).mockResolvedValue({ output: 'fichier écrit' } as any);
-    const runner = makeRunner('ask');
-
-    const pending = runner.sendMessage('Écris un fichier');
-    await vi.waitFor(() => expect(runner.getState().approval?.name).toBe('write_file'));
-    runner.resolveApproval(true);
-    const result = await pending;
-
-    expect(executeToolCall).toHaveBeenCalledTimes(1);
-    expect(result?.content).toContain('Écrit');
-  });
-});
-
 describe('AgentRunner — escalade à usage unique', () => {
   it('demande l’accord puis transmet escalated au shell', async () => {
     vi.mocked(aiService.chatStream)
@@ -306,7 +265,7 @@ describe('AgentRunner — escalade à usage unique', () => {
       })] }) as any)
       .mockReturnValueOnce(stream({ content: 'Fait' }) as any);
     vi.mocked(executeToolCall).mockResolvedValue({ output: 'fichier créé' } as any);
-    const runner = makeRunner('auto');
+    const runner = makeRunner('ask');
 
     const pending = runner.sendMessage('Crée le fichier de test');
     await vi.waitFor(() => expect(runner.getState().approval?.name).toBe('bash'));

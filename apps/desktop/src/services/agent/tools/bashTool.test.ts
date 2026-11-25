@@ -62,16 +62,6 @@ describe('execBash', () => {
     expect(result.output).toContain("n'a pas été exécutée");
   });
 
-  it('refuse git push et la lecture d’un secret sans appeler le shell', async () => {
-    const push = await execBash({ command: 'git push origin main' }, ctx);
-    expect(push.isError).toBe(true);
-    expect(push.output).toContain('réservé à l’utilisateur');
-    const env = await execBash({ command: 'cat .env' }, ctx);
-    expect(env.isError).toBe(true);
-    expect(env.output).toContain('secret');
-    expect(shell.execShell).not.toHaveBeenCalled();
-  });
-
   it('laisse passer un message de commit qui contient « push » et un .env.example', async () => {
     shell.execShell.mockResolvedValue({ success: true, exitCode: 0, stdout: 'ok', stderr: '', durationMs: 1, ran: true });
     await execBash({ command: 'git commit -m "fix push"' }, ctx);

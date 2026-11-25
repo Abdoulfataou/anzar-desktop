@@ -28,11 +28,6 @@ vi.mock('@/services/agent/context/agentPrompts', () => ({
 vi.mock('@/services/agent/context/agentContext', () => ({
   buildAgentContext: vi.fn().mockResolvedValue({ codeMap: '', taskHints: '', memory: undefined }),
 }));
-vi.mock('@/services/agent/policy/commandGuard', () => ({
-  commandRisk: vi.fn().mockResolvedValue(null),
-  noteAgentWrite: vi.fn(),
-  agentScriptSecretRisk: vi.fn().mockResolvedValue(null),
-}));
 vi.mock('@/services/workspace/personalInstructions', () => ({
   loadPersonalInstructions: vi.fn().mockResolvedValue(''),
   personalInstructionsSection: () => '',
@@ -81,7 +76,6 @@ vi.mock('@/lib/credits', () => ({
 
 import { aiService } from '@/services/ai/ai';
 import { copyAttachmentsToWorkspace } from '@/services/workspace/attachmentFiles';
-import { noteAgentWrite } from '@/services/agent/policy/commandGuard';
 import { ensurePersonalSpace } from '@/services/workspace/personalSpace';
 import { buildAgentContext } from '@/services/agent/context/agentContext';
 import { executeToolCall } from '@/services/agent/tools';
@@ -106,7 +100,6 @@ beforeEach(() => {
   vi.mocked(aiService.chatStream).mockReset();
   vi.mocked(executeToolCall).mockReset();
   vi.mocked(copyAttachmentsToWorkspace).mockResolvedValue([]);
-  vi.mocked(noteAgentWrite).mockResolvedValue(undefined);
   localStorage.clear();
   useChatStore.setState({ conversations: [], activeConversationId: null, isGenerating: false });
   const settings = useSettingsStore.getState().settings;
@@ -157,7 +150,7 @@ describe('useAgentChat — parcours agent', () => {
     expect(out!.assistantId).toBeTruthy();
   });
 
-  it('demande l’accord puis exécute write_file en mode ask', async () => {
+  it('exécute write_file en mode ask sans carte générique', async () => {
     vi.mocked(aiService.chatStream)
       .mockReturnValueOnce(stream({ tool_calls: [toolCall('write_file', { path: 'a.ts', content: 'x' })] }) as any)
       .mockReturnValueOnce(stream({ content: 'Terminé' }) as any);
@@ -167,10 +160,9 @@ describe('useAgentChat — parcours agent', () => {
     let send!: Promise<AgentChatResult | null>;
     act(() => { send = result.current.sendMessage('Écris un fichier'); });
 
-    await waitFor(() => expect(result.current.approval?.name).toBe('write_file'));
-    act(() => result.current.resolveApproval(true));
     await act(async () => { await send; });
 
+    expect(result.current.approval).toBeNull();
     expect(executeToolCall).toHaveBeenCalledTimes(1);
     const conversation = useChatStore.getState().getActiveConversation();
     expect(conversation?.messages.at(-1)?.content).toContain('Terminé');

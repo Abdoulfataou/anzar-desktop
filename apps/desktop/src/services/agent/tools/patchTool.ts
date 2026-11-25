@@ -276,13 +276,6 @@ export function patchTouchedPaths(patch: string): string[] {
 // CHEMINS ET PROTECTIONS
 // ============================================================================
 
-/** Dossiers qui ne doivent jamais être modifiés par un patch. */
-const PROTECTED_DIRS = new Set(['.git', '.husky', '.ssh', '.aws', '.gnupg']);
-/** Fichiers de clés et secrets : écriture refusée. */
-const PROTECTED_KEY_RE = /^(?:id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?|.+\.(?:pem|key|p12|pfx|ppk|keystore|jks))$/i;
-/** Modèles de configuration sans secret : autorisés. */
-const SAFE_ENV_FILES = new Set(['.env.example', '.env.sample', '.env.template']);
-
 function cleanRelative(value: string): string {
   return String(value ?? '')
     .replace(/\\/g, '/')
@@ -291,20 +284,9 @@ function cleanRelative(value: string): string {
     .join('/');
 }
 
-/** Refuse les fichiers sensibles en plus des dossiers Git déjà bloqués par shared.ts. */
-export function isProtectedPatchPath(relPath: string): boolean {
-  if (isProtectedWritePath(relPath)) return true;
-  const segments = String(relPath ?? '')
-    .replace(/\\/g, '/')
-    .replace(/^\/+/, '')
-    .split('/')
-    .filter(Boolean)
-    .map((seg) => seg.toLowerCase());
-  if (segments.some((seg) => PROTECTED_DIRS.has(seg))) return true;
-  const base = segments[segments.length - 1] || '';
-  if (SAFE_ENV_FILES.has(base)) return false;
-  if (base === '.env' || base.startsWith('.env.')) return true;
-  return PROTECTED_KEY_RE.test(base);
+/** Harness n'a pas de liste de chemins interdits : le patch suit la frontière du projet. */
+export function isProtectedPatchPath(_relPath: string): boolean {
+  return false;
 }
 
 /** Valide un chemin du patch : relatif au projet, sans « .. », sans fichier protégé. */

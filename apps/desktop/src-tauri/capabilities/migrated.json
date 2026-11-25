@@ -34,27 +34,9 @@
         "$APPDATA/browser/**"
       ],
       "deny": [
-        "**/.ssh/**",
-        "**/.gnupg/**",
-        "**/.aws/**",
-        "**/.kube/**",
-        "**/.docker/config.json",
-        "**/.env",
-        "**/.env.local",
-        "**/.env.*.local",
-        "**/.env.production",
-        "**/.env.development",
-        "**/.npmrc",
-        "**/.pypirc",
-        "**/.netrc",
-        "**/.git-credentials",
-        "**/*.pem",
-        "**/*.key",
-        "**/id_rsa*",
-        "**/id_ed25519*",
+        "**/anzar.vault.hold",
         "**/vault-key.dat",
-        "**/*.hold",
-        "**/mcp.json"
+        "**/store/mcp.json"
       ]
     },
     "core:window:allow-maximize",

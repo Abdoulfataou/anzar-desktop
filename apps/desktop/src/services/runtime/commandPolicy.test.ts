@@ -3,73 +3,43 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const invoke = vi.fn();
 vi.mock('@tauri-apps/api/core', () => ({ invoke: (cmd: string, a?: unknown) => invoke(cmd, a) }));
 
-import { applyCommandPolicy, policyFromSettings, pullCommandPolicy, settingsFromPolicy, trustProgram } from './commandPolicy';
+import { applyCommandPolicy, policyFromSettings, pullCommandPolicy, settingsFromPolicy } from './commandPolicy';
 import { useSettingsStore } from '@/stores/settingsStore';
 
 const asTauri = () => { (window as any).__TAURI_INTERNALS__ = {}; };
 
-describe('réglages de sécurité des commandes', () => {
+describe('réglage d’isolation des commandes', () => {
   beforeEach(() => {
     invoke.mockReset();
     delete (window as any).__TAURI_INTERNALS__;
-    useSettingsStore.getState().updateSettings({
-      sandboxCommands: true, commandNetwork: true, networkProxy: true, networkAllowedHosts: [], trustedPrograms: [],
-    });
+    useSettingsStore.getState().updateSettings({ sandboxCommands: true });
   });
 
-  it('convertit réglages ↔ politique Rust (valeurs absentes = protégé)', () => {
-    expect(policyFromSettings({})).toEqual({ sandbox: true, network: true, proxy: true, extraHosts: [], trustedPrograms: [] });
-    const p = { sandbox: false, network: false, proxy: true, extraHosts: ['api.x.com'], trustedPrograms: ['supabase'] };
-    expect(policyFromSettings(settingsFromPolicy(p))).toEqual(p);
-    expect(policyFromSettings({ networkAllowedHosts: [' a.com ', ''] }).extraHosts).toEqual(['a.com']);
+  it('convertit réglage ↔ politique Rust', () => {
+    expect(policyFromSettings({})).toEqual({ sandbox: true });
+    expect(settingsFromPolicy({ sandbox: false })).toEqual({ sandboxCommands: false });
   });
 
   it('enregistre ce que Rust a accepté', async () => {
     asTauri();
-    invoke.mockResolvedValueOnce({ sandbox: false, network: true, proxy: true, extraHosts: [], trustedPrograms: [] });
+    invoke.mockResolvedValueOnce({ sandbox: false });
     const r = await applyCommandPolicy({ sandboxCommands: false });
     expect(r.ok).toBe(true);
-    expect(invoke).toHaveBeenCalledWith('command_policy_set', {
-      policy: { sandbox: false, network: true, proxy: true, extraHosts: [], trustedPrograms: [] },
-    });
+    expect(invoke).toHaveBeenCalledWith('command_policy_set', { policy: { sandbox: false } });
     expect(useSettingsStore.getState().settings.sandboxCommands).toBe(false);
   });
 
-  it('garde la protection si l\'utilisateur annule la confirmation système', async () => {
+  it('garde la protection si l’utilisateur annule', async () => {
     asTauri();
-    invoke
-      .mockRejectedValueOnce('Changement annulé : la protection reste en place.')
-      .mockResolvedValueOnce({ sandbox: true, network: true, proxy: true, extraHosts: [], trustedPrograms: [] });
+    invoke.mockRejectedValueOnce('Changement annulé').mockResolvedValueOnce({ sandbox: true });
     const r = await applyCommandPolicy({ sandboxCommands: false });
     expect(r.ok).toBe(false);
-    expect(r.error).toContain('annulé');
     expect(useSettingsStore.getState().settings.sandboxCommands).toBe(true);
   });
 
-  it('au démarrage, reprend les réglages de Rust', async () => {
-    asTauri();
-    invoke.mockResolvedValueOnce({ sandbox: true, network: false, proxy: true, extraHosts: ['b.com'], trustedPrograms: [] });
-    await pullCommandPolicy();
-    const s = useSettingsStore.getState().settings;
-    expect(s.commandNetwork).toBe(false);
-    expect(s.networkAllowedHosts).toEqual(['b.com']);
-  });
-
-  it('hors Tauri (navigateur, tests), applique directement sans appeler Rust', async () => {
-    const r = await applyCommandPolicy({ networkProxy: false });
+  it('hors Tauri, applique directement', async () => {
+    const r = await applyCommandPolicy({ sandboxCommands: false });
     expect(r.ok).toBe(true);
     expect(invoke).not.toHaveBeenCalled();
-    expect(useSettingsStore.getState().settings.networkProxy).toBe(false);
-  });
-
-  it('« Toujours autoriser » passe par Rust (confirmation système)', async () => {
-    asTauri();
-    invoke.mockResolvedValueOnce({ sandbox: true, network: true, proxy: true, extraHosts: [], trustedPrograms: ['supabase'] });
-    const r = await trustProgram('Supabase');
-    expect(r.ok).toBe(true);
-    expect(invoke).toHaveBeenCalledWith('command_policy_set', {
-      policy: { sandbox: true, network: true, proxy: true, extraHosts: [], trustedPrograms: ['supabase'] },
-    });
-    expect(useSettingsStore.getState().settings.trustedPrograms).toEqual(['supabase']);
   });
 });

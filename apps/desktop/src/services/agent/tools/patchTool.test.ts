@@ -266,26 +266,24 @@ describe('apply_patch — validation avant écriture', () => {
   });
 });
 
-describe('apply_patch — chemins protégés', () => {
+describe('apply_patch — chemins du projet', () => {
   it.each(['.env', '.git/config', '.git/hooks/pre-commit', 'config/server.key'])(
-    'refuse le chemin protégé %s',
+    'autorise %s comme Harness, dans la frontière du projet',
     async (path) => {
       const result = await run([
         '*** Begin Patch',
         `*** Add File: ${path}`,
-        '+secret',
+        '+contenu',
         '*** End Patch',
       ].join('\n'));
 
-      expect(result.isError).toBe(true);
-      expect(result.output).toContain('protégé');
-      expect(disk.size).toBe(0);
-      expect(onFileChanged).not.toHaveBeenCalled();
+      expect(result.isError).toBeFalsy();
+      expect(disk.has(`/projet/${path}`)).toBe(true);
     },
   );
 
-  it('refuse .., un chemin absolu et le dossier .ssh', async () => {
-    for (const path of ['../secret.txt', '/etc/passwd', '.ssh/config']) {
+  it('refuse .. et un chemin absolu', async () => {
+    for (const path of ['../secret.txt', '/etc/passwd']) {
       const result = await run([
         '*** Begin Patch',
         `*** Add File: ${path}`,
@@ -316,14 +314,6 @@ describe('apply_patch — chemins protégés', () => {
     }
   });
 
-  it('classe les fichiers sensibles sans bloquer les modèles .env.example', () => {
-    expect(isProtectedPatchPath('.env')).toBe(true);
-    expect(isProtectedPatchPath('apps/.env.local')).toBe(true);
-    expect(isProtectedPatchPath('id_rsa')).toBe(true);
-    expect(isProtectedPatchPath('certs/tls.pem')).toBe(true);
-    expect(isProtectedPatchPath('.env.example')).toBe(false);
-    expect(isProtectedPatchPath('src/index.ts')).toBe(false);
-  });
 });
 
 describe('apply_patch — rollback', () => {

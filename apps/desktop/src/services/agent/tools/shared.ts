@@ -53,16 +53,12 @@ export async function resolvePath(root: string, relPath: string | undefined): Pr
   return realAbs;
 }
 
-/** Interdit les écritures dans les répertoires qui contrôlent Git (hooks/config). */
-export function isProtectedWritePath(relPath: string): boolean {
-  const segments = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '').split('/').map((s) => s.toLowerCase());
-  return segments.includes('.git') || segments.includes('.husky');
+/** Aucune protection de chemin propre à ANZAR : Harness laisse écrire dans le projet. */
+export function isProtectedWritePath(_relPath: string): boolean {
+  return false;
 }
 
 export async function resolveWritePath(root: string, relPath: string | undefined): Promise<string> {
-  if (isProtectedWritePath(String(relPath || ''))) {
-    throw new Error(`Écriture interdite dans un dossier de hooks Git: ${relPath}`);
-  }
   return resolvePath(root, relPath);
 }
 

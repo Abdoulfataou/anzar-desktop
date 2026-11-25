@@ -2,88 +2,28 @@ import { describe, expect, it } from 'vitest';
 import { approvalDecision } from './toolPolicy';
 
 const base = {
-  mode: 'full' as const,
-  tool: 'read_file',
+  mode: 'ask' as const,
+  tool: 'write_file',
   mcpReadOnly: false,
   mcpAsk: false,
   background: false,
-  risk: null,
-  personalSpace: false,
 };
 
 describe('approvalDecision', () => {
-  it('mode plan : refuse les outils d’écriture, autorise la lecture et propose_plan', () => {
-    expect(approvalDecision({ ...base, mode: 'plan', tool: 'write_file' }).allowed).toBe(false);
-    expect(approvalDecision({ ...base, mode: 'plan', tool: 'read_file' }).allowed).toBe(true);
-    expect(approvalDecision({ ...base, mode: 'plan', tool: 'propose_plan' }).allowed).toBe(true);
+  it('ne demande rien pour une écriture ou une commande ordinaire', () => {
+    expect(approvalDecision(base)).toEqual({ allowed: true, ask: false });
+    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command' })).toEqual({ allowed: true, ask: false });
+    expect(approvalDecision({ ...base, mode: 'full', tool: 'bash' })).toEqual({ allowed: true, ask: false });
   });
 
-  it('mode ask : demande pour écrire, pas pour lire', () => {
-    expect(approvalDecision({ ...base, mode: 'ask', tool: 'write_file' }).ask).toBe(true);
-    expect(approvalDecision({ ...base, mode: 'ask', tool: 'read_file' }).ask).toBe(false);
+  it('garde la demande des connecteurs réglés toujours demander', () => {
+    expect(approvalDecision({ ...base, tool: 'mcp__gimp__x', mcpAsk: true }).ask).toBe(true);
+    expect(approvalDecision({ ...base, mode: 'full', tool: 'mcp__obs__x', mcpAsk: true }).ask).toBe(true);
   });
 
-  it('mode auto : aucune demande générique, mais le risque demande', () => {
-    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command' }).ask).toBe(false);
-    expect(approvalDecision({ ...base, mode: 'auto', tool: 'write_file' }).ask).toBe(false);
-    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command', risk: { reason: 'installe du code' } }).ask).toBe(true);
-  });
-
-  it('espace ANZAR : pas d’accord pour écrire, sauf risque', () => {
-    expect(approvalDecision({ ...base, mode: 'ask', tool: 'write_file', personalSpace: true }).ask).toBe(false);
-    // Un accord de code ne couvre pas un risque réseau/installation.
-    expect(approvalDecision({ ...base, mode: 'ask', tool: 'run_command', personalSpace: true, risk: { reason: 'script modifié' } }).ask).toBe(true);
-  });
-
-  it('automatisation : refuse toute action qui demanderait une approbation', () => {
-    const ask = approvalDecision({ ...base, mode: 'ask', background: true, tool: 'run_command' });
-    expect(ask.allowed).toBe(false);
-    expect(ask.ask).toBe(false);
-    expect(ask.refusal).toContain('personne');
-
-    // En Auto, une commande ordinaire ne demande rien : elle passe même sans personne.
-    expect(approvalDecision({ ...base, mode: 'auto', background: true, tool: 'run_command' }).allowed).toBe(true);
-
-    const write = approvalDecision({ ...base, mode: 'ask', background: true, tool: 'write_file' });
-    expect(write.allowed).toBe(false);
-    expect(write.ask).toBe(false);
-  });
-
-  it('automatisation : refuse sans demander, avec une explication', () => {
-    const risk = approvalDecision({ ...base, background: true, risk: { reason: 'commande risquée' } });
-    expect(risk.allowed).toBe(false);
-    expect(risk.refusal).toContain('commande risquée');
-
-    const mcp = approvalDecision({ ...base, background: true, mcpAsk: true, mcpName: 'GitHub' });
-    expect(mcp.allowed).toBe(false);
-    expect(mcp.refusal).toContain('GitHub');
-  });
-
-  it('Accès complet accepté : installation ou commande risquée sans demande', () => {
-    const d = approvalDecision({ ...base, tool: 'run_command', risk: { reason: 'installe du code' } });
-    expect(d).toEqual({ allowed: true, ask: false });
-    // Hors Full, le risque demande toujours un accord
-    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command', risk: { reason: 'x' } }).ask).toBe(true);
-    // Connecteur réglé sur « toujours demander » : demande, même en Full
-    expect(approvalDecision({ ...base, tool: 'mcp__gimp__x', mcpAsk: true, mcpAction: true }).ask).toBe(true);
-  });
-
-  it('après un contenu externe : en Full, demande seulement si des consignes cachées sont repérées', () => {
-    const external = { suspicious: false };
-    expect(approvalDecision({ ...base, tool: 'run_command' }).ask).toBe(false);
-    expect(approvalDecision({ ...base, tool: 'run_command', external }).ask).toBe(false);
-    expect(approvalDecision({ ...base, tool: 'run_command', external: { suspicious: true } }).ask).toBe(true);
-    expect(approvalDecision({ ...base, tool: 'mcp__x__send', mcpAction: true, external: { suspicious: true } }).ask).toBe(true);
-    // Hors Full, tout contenu externe impose l'accord pour une commande
-    expect(approvalDecision({ ...base, mode: 'auto', tool: 'run_command', external }).ask).toBe(true);
-    // Écrire un fichier ou lire reste libre en Full
-    expect(approvalDecision({ ...base, tool: 'write_file', external }).ask).toBe(false);
-    expect(approvalDecision({ ...base, tool: 'read_file', external }).ask).toBe(false);
-  });
-
-  it('automatisation : contenu suspect → commande refusée, contenu normal → inchangé', () => {
-    const bg = { ...base, background: true, tool: 'run_command' };
-    expect(approvalDecision({ ...bg, external: { suspicious: true } }).allowed).toBe(false);
-    expect(approvalDecision({ ...bg, external: { suspicious: false } }).allowed).toBe(true);
+  it('refuse une action de connecteur en arrière-plan', () => {
+    const decision = approvalDecision({ ...base, background: true, mcpAsk: true, mcpName: 'GIMP', tool: 'mcp__gimp__x' });
+    expect(decision.allowed).toBe(false);
+    expect(decision.refusal).toContain('GIMP');
   });
 });

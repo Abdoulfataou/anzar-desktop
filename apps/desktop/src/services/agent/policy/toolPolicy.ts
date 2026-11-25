@@ -1,11 +1,13 @@
 /**
  * Décision d'approbation d'un outil, extraite du hook pour être testable.
  * Ne dépend ni de React ni de Tauri.
+ *
+ * Aligné sur Harness : une écriture ou une commande ordinaire ne demande rien.
+ * Seules les actions propres à ANZAR (connecteurs réglés « toujours demander »)
+ * passent par une carte ; l'élévation de sandbox est traitée dans toolHost.
  */
-import { COMMAND_TOOLS, needsApproval, READ_ONLY_TOOLS, type PermissionMode } from './permissions';
-
 export interface ApprovalDecisionInput {
-  mode: PermissionMode;
+  mode: 'ask' | 'auto' | 'plan' | 'full';
   tool: string;
   /** Annotation MCP readOnlyHint déclarée par le serveur. */
   mcpReadOnly: boolean;
@@ -13,13 +15,8 @@ export interface ApprovalDecisionInput {
   /** Nom lisible du connecteur, pour le message de refus. */
   mcpName?: string;
   background: boolean;
-  /** Risque calculé par commandGuard, null si aucun. */
-  risk: { reason: string } | null;
-  personalSpace: boolean;
   /** Outil de connecteur qui agit (pas une simple lecture déclarée). */
   mcpAction?: boolean;
-  /** Un contenu externe (web, connecteur) a été lu dans cette tâche. */
-  external?: { suspicious: boolean } | null;
 }
 
 export interface ApprovalDecision {
@@ -29,64 +26,16 @@ export interface ApprovalDecision {
   refusal?: string;
 }
 
-const PLAN_ALWAYS_ALLOWED = new Set(['task_done', 'propose_plan', 'load_skill', 'ask_user']);
-
 export function approvalDecision(input: ApprovalDecisionInput): ApprovalDecision {
-  const { mode, tool, mcpReadOnly, mcpAsk, mcpName, background, risk, personalSpace, mcpAction, external } = input;
-  // Après lecture d'un contenu externe, une commande ou une action de connecteur
-  // peut venir d'une consigne cachée dans ce contenu : accord demandé (en Full, seulement
-  // si une tournure d'injection est repérée).
-  const afterExternal = !!external && (COMMAND_TOOLS.has(tool) || !!mcpAction);
-
-  if (mode === 'plan' && !READ_ONLY_TOOLS.has(tool) && !mcpReadOnly && !PLAN_ALWAYS_ALLOWED.has(tool)) {
-    return {
-      allowed: false,
-      ask: false,
-      refusal: 'Refusé : le mode plan est en lecture seule. Tu peux lire, chercher, lister, poser une question '
-        + 'et appeler propose_plan ; termine par propose_plan, sans modifier ni exécuter.',
-    };
-  }
+  const { mcpAsk, mcpName, background } = input;
   if (mcpAsk && background) {
     return {
       allowed: false,
       ask: false,
-      refusal: `Refusé automatiquement : l'action « ${tool} » du connecteur ${mcpName || 'MCP'} demande un accord, et personne n'est là pendant une automatisation. Signale-le dans ta réponse.`,
+      refusal: `Refusé automatiquement : l'action « ${input.tool} » du connecteur ${mcpName || 'MCP'} demande un accord, et personne n'est là pendant une automatisation. Signale-le dans ta réponse.`,
     };
   }
-  if (risk && background) {
-    return {
-      allowed: false,
-      ask: false,
-      refusal: `Refusé automatiquement : ${risk.reason}. Personne n'est là pour valider pendant une automatisation. Ne contourne pas ce refus ; signale-le dans ta réponse.`,
-    };
-  }
-
-  if (afterExternal && external?.suspicious && background) {
-    return {
-      allowed: false,
-      ask: false,
-      refusal: "Refusé automatiquement : un contenu externe lu dans cette tâche ressemble à des consignes, et personne n'est là pour valider cette action. Ne contourne pas ce refus ; signale-le dans ta réponse.",
-    };
-  }
-
-  // « Accès complet » accepté par l'utilisateur (avertissement à l'activation) : plus aucune
-  // demande, installations et accès internet compris. Restent seulement les connecteurs
-  // réglés sur « toujours demander » et une action après un contenu externe qui
-  // ressemble à des consignes cachées (injection repérée).
-  const fullConsent = mode === 'full' && !background;
-  const ask = fullConsent
-    ? mcpAsk || (afterExternal && !!external?.suspicious)
-    : (!personalSpace && needsApproval(mode, tool))
-      || !!risk
-      || mcpAsk
-      || (afterExternal && !background);
-  if (ask && background) {
-    return {
-      allowed: false,
-      ask: false,
-      refusal: "Refusé automatiquement : cette action demande une approbation et personne n'est là pendant une automatisation. Signale-le dans ta réponse.",
-    };
-  }
-
-  return { allowed: true, ask };
+  // Pas de carte générique pour les écritures, installations ou commandes : le mode
+  // d'isolation décide, et l'élévation est le seul élargissement soumis à accord.
+  return { allowed: true, ask: mcpAsk };
 }

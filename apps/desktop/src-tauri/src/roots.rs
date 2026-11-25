@@ -14,9 +14,6 @@ use tauri_plugin_fs::FsExt;
 
 const REGISTRY_FILE: &str = "allowed_roots.json";
 const MAX_ROOTS: usize = 500;
-/// Premiers dossiers sous le dossier personnel qui ne peuvent pas être un projet.
-const SENSITIVE: &[&str] = &[".ssh", ".aws", ".gnupg", ".kube", ".docker", ".config", ".local", "Library", "AppData"];
-
 #[derive(Default)]
 pub struct RootsState {
     roots: Mutex<Vec<PathBuf>>,
@@ -32,12 +29,6 @@ pub fn validate_root(path: &Path, home: &Path) -> Result<PathBuf, String> {
     }
     if !p.starts_with(home) || p == home {
         return Err("Choisis un dossier à l'intérieur de ton dossier personnel (pas le dossier personnel lui-même).".into());
-    }
-    if let Some(first) = p.strip_prefix(home).ok().and_then(|r| r.components().next()) {
-        let name = first.as_os_str().to_string_lossy();
-        if SENSITIVE.iter().any(|s| name.eq_ignore_ascii_case(s)) {
-            return Err("Dossier système ou de secrets : il ne peut pas être ouvert comme projet.".into());
-        }
     }
     Ok(p)
 }
@@ -139,15 +130,10 @@ pub fn is_allowed_root(app: &AppHandle, root: &Path) -> bool {
 
 /// Fichiers déposés dans la fenêtre : lisibles par la webview (pièces jointes).
 pub fn allow_dropped(app: &AppHandle, paths: &[PathBuf]) {
-    let Ok(home) = home() else { return };
     let Some(scope) = app.try_fs_scope() else { return };
     for path in paths.iter().take(16) {
         let Ok(p) = std::fs::canonicalize(path) else { continue };
-        let sensitive = p.strip_prefix(&home).ok()
-            .and_then(|r| r.components().next())
-            .map(|c| SENSITIVE.iter().any(|s| c.as_os_str().to_string_lossy().eq_ignore_ascii_case(s)))
-            .unwrap_or(false);
-        if sensitive || !p.is_file() { continue; }
+        if !p.is_file() { continue; }
         let _ = scope.allow_file(&p);
     }
 }
@@ -224,15 +210,6 @@ mod tests {
     }
 
     #[test]
-    fn refuses_secret_and_system_dirs() {
-        let home = tmp_home();
-        for d in [".ssh/keys", "Library/Application Support", ".aws"] {
-            std::fs::create_dir_all(home.join(d)).unwrap();
-            assert!(validate_root(&home.join(d), &home).is_err(), "{d} devrait être refusé");
-        }
-    }
-
-    #[test]
     fn refuses_files_and_missing_paths() {
         let home = tmp_home();
         std::fs::write(home.join("note.txt"), "x").unwrap();
@@ -244,9 +221,9 @@ mod tests {
     #[test]
     fn symlink_is_resolved_before_checks() {
         let home = tmp_home();
-        std::fs::create_dir_all(home.join(".ssh")).unwrap();
-        std::os::unix::fs::symlink(home.join(".ssh"), home.join("projet")).unwrap();
-        assert!(validate_root(&home.join("projet"), &home).is_err());
+        std::fs::create_dir_all(home.join("reel")).unwrap();
+        std::os::unix::fs::symlink(home.join("reel"), home.join("projet")).unwrap();
+        assert_eq!(validate_root(&home.join("projet"), &home).unwrap(), std::fs::canonicalize(home.join("reel")).unwrap());
     }
 
     #[test]

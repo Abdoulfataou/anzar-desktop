@@ -51,6 +51,6 @@ describe('capacités Tauri', () => {
 
   it('garde les secrets du store hors de portée de la webview', () => {
     const scope = caps.permissions.find((p: any) => p?.identifier === 'fs:scope');
-    expect(scope.deny).toEqual(expect.arrayContaining(['**/mcp.json', '**/*.hold', '**/.env']));
+    expect(scope.deny).toEqual(expect.arrayContaining(['**/vault-key.dat']));
   });
 });

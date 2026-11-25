@@ -13,21 +13,15 @@ import type { Message, TimelineItem, ToolCall, ToolEvent } from '@/types';
 import type { PermissionMode } from '../policy/permissions';
 import type { AgentToolOutcome } from '../engine/agentSession';
 import { approvalDecision } from '../policy/toolPolicy';
-import { agentScriptSecretRisk, commandRisk, noteAgentWrite } from '../policy/commandGuard';
-import { precheckCommand } from '../tools/shellTools';
-import { shellRefusal } from '../tools/bashTool';
-import { externalReason, type ExternalSource } from '../policy/untrusted';
+import { type ExternalSource } from '../policy/untrusted';
 import { executeGenericTool } from '../tools/toolExecution';
 import { summarizeArgs, toolDelta, toolFilePath } from '../tools/toolDisplay';
 import { patchTouchedPaths, isProtectedPatchPath } from '../tools/patchTool';
 import { askUser, loadSkill, parsePlan } from '../tools/specialTools';
 import { type AgentQuestion, type QuestionAnswer } from '../tools/questions';
-import { detectDevCommand } from '../tools/devServer';
 import { snapshotBeforeChange, type Snapshots } from '../tools/fileChanges';
 import { isMcpTool, mcpNeedsApproval, mcpToolRef } from '@/services/mcp/manager';
-import { NETWORK_BLOCKED_TAG, NETWORK_BYPASS_TAG, NETWORK_UNREACHABLE_TAG, terminalService } from '@/services/runtime/terminal';
 import { commandTitle, isEnvironmentFailure, reportError } from '@/services/infra/errorReports';
-import { useSettingsStore } from '@/stores/settingsStore';
 import type { Skill } from '@/services/skills';
 import { recordSessionEvent } from './sessionStore';
 import type { ApprovalRequest, ApprovalOutcome } from './turnTypes';
@@ -39,9 +33,6 @@ const MAX_TOOL_OUTPUT_DISPLAY = 600;
 const WRITE_TOOLS = ['write_file', 'edit_file', 'apply_patch', 'delete_file', 'spawn_agent', 'send_message'];
 /** Outils susceptibles de modifier le projet : leurs commandes comptent dans la carte. */
 const MUTATING_TOOLS = new Set([...WRITE_TOOLS, 'run_command', 'bash', 'start_dev_server']);
-
-/** Outils dont l'exécution passe par une commande (risque calculé par commandGuard). */
-const COMMAND_LIKE = ['run_command', 'bash', 'spawn_subagents', 'spawn_agent', 'send_message', 'start_dev_server'];
 
 // ============================================================================
 // ÉVÉNEMENT D'OUTIL (affichage)
@@ -157,34 +148,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   let args: Record<string, any> = {};
   try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
 
-  // Pré-contrôle statique AVANT la carte d'accord : inutile de demander à l'utilisateur
-  // une commande que la politique refusera de toute façon (git push, bash, chemin absolu…).
-  if (call.function.name === 'run_command' || call.function.name === 'bash') {
-    const refused = call.function.name === 'run_command'
-      ? precheckCommand(String(args.command || ''))
-      : shellRefusal(String(args.command || ''));
-    if (refused) {
-      const output = `La commande n'a pas été exécutée.\n${refused}`;
-      ev.status = 'error';
-      ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
-      ctx.flush();
-      return { output, isError: true };
-    }
-  }
-
-  // Un script écrit pendant cette tâche ne doit pas lire .env ni les clés, même si
-  // l'isolation système l'autorise (le shell ne voit que le nom du script).
-  if ((call.function.name === 'bash' || call.function.name === 'run_command') && ctx.agentRoot) {
-    const secretScript = await agentScriptSecretRisk(ctx.convId, ctx.agentRoot, String(args.command || '')).catch(() => null);
-    if (secretScript) {
-      const output = `La commande n'a pas été exécutée : ${secretScript.reason}.\n${secretScript.detail || ''}`.trim();
-      ev.status = 'error';
-      ev.output = output.slice(0, MAX_TOOL_OUTPUT_DISPLAY);
-      ctx.flush();
-      return { output, isError: true };
-    }
-  }
-
   // Élévation à usage unique demandée par le modèle après un refus d'isolation.
   // Elle ne contourne jamais la politique statique (pré-contrôle ci-dessus) : elle ne
   // fait que désactiver Seatbelt pour CET appel, après accord explicite hors Full.
@@ -192,18 +155,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     && args.sandbox_permissions === 'danger-full-access';
   let escalated = false;
   if (wantsEscalation) {
-    if (ctx.mode === 'plan') {
-      return {
-        output: 'Le mode plan est en lecture seule : aucune commande, même avec élévation. Termine par propose_plan.',
-        isError: true,
-      };
-    }
-    if (!/Mac|Darwin/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`)) {
-      return {
-        output: "L'élévation n'est disponible que sur un système où l'isolation existe (macOS).",
-        isError: true,
-      };
-    }
     const justification = String(args.justification || '').trim();
     if (!justification) {
       return {
@@ -214,6 +165,13 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     if (ctx.background) {
       return {
         output: "Élévation refusée : personne ne peut l'approuver pendant une automatisation. Signale-le dans ta réponse.",
+        isError: true,
+      };
+    }
+    // Politique « never » (auto) : refus déterministe, sans carte, comme dans Harness.
+    if (ctx.mode === 'auto') {
+      return {
+        output: "Élévation refusée : ce mode n'ouvre aucune demande d'accord. Cette commande reste limitée au projet ; explique ce qui manque à l'utilisateur.",
         isError: true,
       };
     }
@@ -235,19 +193,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     escalated = true;
   }
 
-  // Commande qui exécute du code écrit par l'agent, installation, script npm sensible :
-  // accord demandé hors « Accès complet » (garde S3, voir approvalDecision)
-  const riskCommand = call.function.name === 'run_command' || call.function.name === 'bash'
-    ? String(args.command || '')
-    : call.function.name === 'start_dev_server' && ctx.workspacePath
-    ? String(args.command || (await detectDevCommand(ctx.workspacePath).catch(() => null)) || '')
-    : '';
-  const risk = riskCommand && ctx.agentRoot && ctx.mode !== 'plan'
-    ? await commandRisk(ctx.convId, ctx.agentRoot, riskCommand, {
-      trustedPrograms: useSettingsStore.getState().settings.trustedPrograms || [],
-    }).catch(() => null)
-    : null;
-
   // Connecteur MCP : lecture déclarée par le serveur, ou action à faire valider
   const mcpRef = isMcpTool(call.function.name) ? mcpToolRef(call.function.name) : undefined;
   const mcpReadOnly = !!mcpRef?.tool.annotations?.readOnlyHint;
@@ -261,25 +206,15 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     mcpAsk,
     mcpName: mcpRef?.serverName,
     background: ctx.background,
-    risk,
-    personalSpace: ctx.personalSpace,
     mcpAction: !!mcpRef && !mcpReadOnly,
-    external: ctx.externalSources.length ? { suspicious: ctx.externalSources.some((x) => x.suspicious) } : null,
   });
-  const afterExternal = ctx.externalSources.length > 0
-    && (COMMAND_LIKE.includes(call.function.name) || (!!mcpRef && !mcpReadOnly));
   let allowed = decision.allowed;
   const refusal = decision.refusal ?? "Refusé par l'utilisateur. N'insiste pas : propose une autre approche ou demande-lui ce qu'il préfère.";
   if (decision.ask && !escalated) {
-    const reason = [risk?.reason, afterExternal ? externalReason(ctx.externalSources) : '']
-      .filter(Boolean).join(' ; ') || undefined;
     const outcome = await askApproval(ctx, {
       id: call.id,
       name: call.function.name,
       summary: ev.argsSummary,
-      reason,
-      detail: risk?.detail,
-      trustProgram: risk?.unknownProgram,
     });
     allowed = outcome === 'allowed-once';
     if (!allowed) {
@@ -290,9 +225,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
       return { output, isError: true };
     }
   }
-  // Installation acceptée : Rust ne la lance qu'avec cet accord (usage unique)
-  if (allowed && risk && call.function.name === 'run_command') terminalService.grantInstall(riskCommand);
-
   // Point de départ des changements du tour : avant la première commande ou écriture, car
   // `npm install` peut modifier package.json avant que l'agent n'écrive quoi que ce soit.
   if (allowed && ctx.agentRoot && !ctx.turn.gitBaseline && MUTATING_TOOLS.has(call.function.name)) {
@@ -312,7 +244,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
       : [];
     const writePaths = [...new Set([...(directPath ? [String(directPath)] : []), ...patchPaths])];
     for (const rel of writePaths) {
-      await noteAgentWrite(ctx.convId, ctx.agentRoot, rel).catch(() => {});
       await snapshotBeforeChange(ctx.snapshots, ctx.agentRoot, rel);
     }
   }
@@ -379,57 +310,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   } = !allowed
     ? { output: refusal, isError: true }
     : await runTool();
-
-  // Réseau coupé par l'isolation : on demande ici, sans passer par les Paramètres,
-  // puis on relance la commande une fois avec internet.
-  if (allowed && !ctx.background && call.function.name === 'run_command' && result.isError
-    && (result.output || '').includes(NETWORK_BLOCKED_TAG) && !ctx.signal.aborted) {
-    const command = String(args.command || '');
-    // « Accès complet » accepté : internet accordé sans demander.
-    const outcome: ApprovalOutcome = ctx.mode === 'full'
-      ? 'allowed-once'
-      : await askApproval(ctx, {
-        id: call.id,
-        name: call.function.name,
-        summary: ev.argsSummary,
-        reason: "cette commande a besoin d'internet. Autoriser son accès réseau (cette commande uniquement, jusqu'à la fermeture d'ANZAR) ?",
-        detail: command,
-      });
-    if (outcome === 'allowed-once') {
-      terminalService.grantNetwork(command);
-      // L'accord d'installation est à usage unique : la relance en a encore besoin.
-      if (risk) terminalService.grantInstall(riskCommand);
-      result = await runTool();
-    } else {
-      result = { ...result, output: `${result.output}\n${approvalRefusal(outcome, "l'accès internet de cette commande")} Ne contourne pas : fais sans, ou explique-lui ce qui manque.` };
-    }
-  }
-
-  // Diagnostic réseau automatique (Rust) : traité ici, sans rien demander à l'utilisateur.
-  // - l'outil ignore le relais (Dart/Flutter, certains SDK) : relance une fois sans relais,
-  //   ce que Rust n'accepte que pour une commande à qui il donne déjà internet ;
-  // - hôte injoignable (connexion instable) : nouvel essai après une courte pause.
-  if (allowed && call.function.name === 'run_command' && result.isError && !ctx.signal.aborted) {
-    const command = String(args.command || '');
-    const out = result.output || '';
-    const bypass = out.includes(NETWORK_BYPASS_TAG);
-    if (bypass || out.includes(NETWORK_UNREACHABLE_TAG)) {
-      if (bypass) terminalService.grantDirect(command);
-      else {
-        await new Promise<void>((r) => {
-          const t = setTimeout(r, 3000);
-          ctx.signal.addEventListener('abort', () => { clearTimeout(t); r(); }, { once: true });
-        });
-      }
-      if (risk) terminalService.grantInstall(riskCommand);
-      if (!ctx.signal.aborted) {
-        const retry = await runTool();
-        result = retry.isError
-          ? { ...retry, output: `${retry.output}\n[ANZAR] Nouvel essai automatique déjà fait. Si c'est encore le réseau, dis-le simplement à l'utilisateur (connexion internet) au lieu de chercher un contournement.` }
-          : retry;
-      }
-    }
-  }
 
   // Suivi des erreurs : échec qui peut venir d'ANZAR (environnement, réseau, isolation),
   // pas une erreur du code du projet. Envoi nettoyé, par lots, coupable dans les Paramètres.

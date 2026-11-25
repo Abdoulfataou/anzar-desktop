@@ -97,12 +97,4 @@ describe('execRunCommand — contrat de résultat', () => {
     expect(result.output).toContain("l'isolation");
   });
 
-  it('refuse une commande interdite sans l’exécuter', async () => {
-    exec.mockClear();
-    const result = await execRunCommand({ command: 'bash -c "echo x"' }, ctx);
-
-    expect(result.isError).toBe(true);
-    expect(result.output).toContain("n'a pas été exécutée");
-    expect(exec).not.toHaveBeenCalled();
-  });
 });

@@ -426,10 +426,10 @@ async function extractFromPath(filePath: string): Promise<ChatAttachment> {
 export type PermissionMode = PolicyPermissionMode;
 
 const PERMISSIONS: { id: PermissionChoice; label: string; hint: string }[] = [
-  { id: 'ask',  label: 'Demander avant de modifier', hint: "Chaque modification et chaque commande attend ton accord ; les commandes restent isolées" },
-  { id: 'auto', label: 'Modifier automatiquement',   hint: "Les fichiers sont modifiés sans demander ; seules les actions risquées (installation, git, programme inconnu) demandent ton accord ; les commandes restent isolées" },
-  { id: 'plan', label: 'Mode plan',                  hint: "L'agent lit et propose un plan, sans rien modifier" },
-  { id: 'full', label: 'Accès complet', hint: "L'agent modifie, installe et exécute sans rien demander, et sans isolation : écritures hors projet et lecture des dossiers de secrets possibles" },
+  { id: 'ask',  label: 'Écriture projet · accord', hint: "L'agent écrit et exécute dans le projet sans demander ; seul un élargissement hors projet demande ton accord. Réseau et lectures libres" },
+  { id: 'auto', label: 'Écriture projet · sans accord', hint: "Comme le mode précédent, mais aucun élargissement n'est proposé : ce qui sort du projet est refusé. Les connecteurs « toujours demander » restent" },
+  { id: 'plan', label: 'Plan guidé', hint: "L'agent explore, propose un plan, puis garde tous ses outils : ce n'est pas une restriction" },
+  { id: 'full', label: 'Accès complet', hint: "Aucune isolation et aucune demande : écritures partout, réseau direct, secrets et hooks Git accessibles ; seuls les connecteurs « toujours demander » demandent" },
 ];
 
 const MODELS: { id: AIModel; label: string; hint: string }[] = [

@@ -40,17 +40,6 @@ export interface Settings {
 
   /** Commandes de l'agent isolées par le système (macOS) : écriture limitée au projet */
   sandboxCommands?: boolean;
-  /** Commandes isolées : accès à internet. Ouvert par défaut ; coupé = localhost et téléchargements seulement. */
-  commandNetwork?: boolean;
-  /**
-   * Filtrage réseau : les commandes passent par un proxy local qui n'ouvre que les hôtes
-   * autorisés. Sur macOS, le profil d'isolation ne laisse alors sortir que vers ce proxy.
-   */
-  networkProxy?: boolean;
-  /** Hôtes autorisés en plus des valeurs par défaut (registres, GitHub, Node.js). */
-  networkAllowedHosts?: string[];
-  /** Programmes hors liste autorisés définitivement (copie du réglage gardé par Rust). */
-  trustedPrograms?: string[];
 
   // Interface
   theme: 'light' | 'dark' | 'system';
@@ -136,9 +125,6 @@ const defaultSettings: Settings = {
   ],
   permissionMode: initialPermissionMode(),
   commandExecutionMode: 'manual',
-  // Le filtrage réseau est le seul contrôle qui protège aussi Windows et Linux.
-  networkProxy: true,
-  networkAllowedHosts: [],
   autoVerifyAfterApply: true,
   errorReports: true,
   autoCleanFinishedCommands: true,
@@ -210,7 +196,6 @@ export const useSettingsStore = create<SettingsStore>()(
           webTools: state.settings.webTools,
           codeDiagnostics: state.settings.codeDiagnostics,
           sandboxCommands: state.settings.sandboxCommands,
-          commandNetwork: state.settings.commandNetwork,
           provider: state.settings.provider,
           backendUrl: state.settings.backendUrl,
           theme: state.settings.theme,

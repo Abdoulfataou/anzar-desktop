@@ -2,14 +2,12 @@
  * Outils web locaux : serveur de développement, vérification et capture de pages, actions.
  */
 import { resolvePath } from './shared';
-import { precheckCommand } from './shellTools';
 import { ToolExecutionContext, ToolResult } from './types';
 
 // ── Vérification web : serveur de développement et navigateur intégré ──
 export async function execStartDevServer(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   const { startDevServer } = await import('./devServer');
   const command = typeof args.command === 'string' && args.command.trim() ? args.command.trim() : undefined;
-  if (command && precheckCommand(command)) return { output: precheckCommand(command)!, isError: true };
   const r = await startDevServer(ctx.projectRoot, command);
   return { output: r.output, isError: r.isError };
 }

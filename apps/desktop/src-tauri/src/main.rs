@@ -7,7 +7,6 @@ mod tool_runtime;
 mod programs;
 mod tool_runner;
 mod sandbox;
-mod netproxy;
 mod command_policy;
 mod roots;
 #[cfg(windows)]
@@ -50,7 +49,7 @@ fn main() {
         .manage(tool_runner::ToolState::default())
         .manage(roots::RootsState::default())
         .manage(command_policy::PolicyState::default())
-        .invoke_handler(tauri::generate_handler![reveal_path, net_proxy_records, secret_get, secret_set, secret_delete, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, command_policy::command_policy_get, command_policy::command_policy_set, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
+        .invoke_handler(tauri::generate_handler![reveal_path, secret_get, secret_set, secret_delete, secure_app_secrets, mcp::mcp_spawn, mcp::mcp_send, mcp::mcp_stop, mcp::mcp_http, mcp::mcp_config_load, mcp::mcp_config_save, fs_realpath, tool_runner::tool_spawn, command_policy::command_policy_get, command_policy::command_policy_set, tool_runner::tool_wait, tool_runner::tool_kill, roots::project_pick_folder, roots::project_create_folder, roots::project_import_roots, open_personal_space, node_runtime::node_status, node_runtime::node_install, programs::programs_status, programs::apple_dev_tools_install, programs::git_install, tool_runtime::tools_catalog, tool_runtime::tool_install])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
@@ -127,12 +126,6 @@ fn reveal_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
     cmd.arg(&real);
     cmd.spawn().map_err(|e| e.to_string())?;
     Ok(())
-}
-
-/// Journal récent du filtre réseau (diagnostic : « pourquoi cet hôte est-il bloqué ? »).
-#[tauri::command]
-fn net_proxy_records() -> Vec<netproxy::Record> {
-    netproxy::recent_records()
 }
 
 #[tauri::command]

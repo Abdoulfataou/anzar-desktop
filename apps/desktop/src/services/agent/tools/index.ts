@@ -23,7 +23,6 @@ export { resolvePath, isProtectedWritePath } from './shared';
 export { compileSearchPattern } from './fsTools';
 export { execGlob, globToRegExp, globToRegExpSource } from './globTool';
 export { applyHunks, execApplyPatch, isProtectedPatchPath, parsePatch, patchTouchedPaths, validatePatchPath } from './patchTool';
-export { precheckCommand } from './shellTools';
 
 type ToolExecutor = (args: any, ctx: ToolExecutionContext) => Promise<ToolResult>;
 

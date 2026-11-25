@@ -14,7 +14,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { isTauri } from '@/lib/utils'
 import { useSettingsStore } from '@/stores/settingsStore'
-import { COMMAND_NAME_MAP, MAX_ARGS, parseExecutable, validateCommand } from '@/services/agent/policy/commandPolicy';
+import { parseExecutable } from '@/services/agent/policy/commandPolicy';
 import { isPathWithin } from '@/lib/pathGuard';
 import { ensureNode, manualNodeHelp, needsNode } from '@/services/runtime/nodeRuntime';
 import { checkPython, ensureGit, isPython } from '@/services/runtime/programs';
@@ -22,58 +22,25 @@ import { checkPython, ensureGit, isPython } from '@/services/runtime/programs';
 /** Isolation des commandes (macOS) : activée sauf si coupée dans les Paramètres. */
 export const sandboxEnabled = (): boolean => useSettingsStore.getState().settings.sandboxCommands !== false;
 
-/** Réseau des commandes isolées : ouvert par défaut. Coupé seulement si l'utilisateur
- *  le choisit (Réglages avancés) : localhost et téléchargements restent alors permis. */
-export const commandNetworkOpen = (): boolean => useSettingsStore.getState().settings.commandNetwork !== false;
-
-/** Filtrage réseau des commandes : proxy local avec liste d'hôtes autorisés. */
-export const networkProxyEnabled = (): boolean => useSettingsStore.getState().settings.networkProxy !== false;
-/** Hôtes autorisés en plus des valeurs par défaut. */
-export const networkProxyHosts = (): string[] => useSettingsStore.getState().settings.networkAllowedHosts || [];
-
 /** Marqueur ajouté à la sortie quand l'isolation a coupé une connexion. */
 /** Sortie d'une commande arrêtée par le bouton Stop. */
 export const STOPPED_MESSAGE = '[ANZAR] Commande arrêtée par l’utilisateur.';
 
-export const NETWORK_BLOCKED_TAG = '[ANZAR] Réseau coupé';
-/** Diagnostics du relais réseau (Rust, netproxy::diagnose) : traités seuls par toolHost. */
-export const NETWORK_UNREACHABLE_TAG = '[ANZAR] Réseau injoignable';
-export const NETWORK_BYPASS_TAG = '[ANZAR] Relais réseau ignoré';
-
 const SANDBOX_DENIED = /operation not permitted|EPERM|sandbox.*deny|deny.*file-write/i;
-
-/** Marqueurs ajoutés par `withSandboxHint` : le résultat n'est plus une simple sortie. */
-export const SANDBOX_HINT_MARKERS = [
-  '[ANZAR] Bloqué par l\'isolation des commandes',
-  '[ANZAR] Réseau coupé',
-  '[ANZAR] Les hooks et la configuration Git du projet sont protégés',
-];
-
-/** L'échec vient-il d'un refus de l'isolation (et non du code du projet) ? */
-export function isSandboxDenial(stderr: string): boolean {
-  return SANDBOX_HINT_MARKERS.some((marker) => stderr.includes(marker));
-}
-const NETWORK_DENIED = /ENOTFOUND|EAI_AGAIN|getaddrinfo|connect EPERM|Could not resolve host|Network is unreachable|Temporary failure in name resolution|NewConnectionError|fetch failed|ECONNRESET.*registry|socket error|SocketException|Failed host lookup|UnknownHostException|Could not GET|Connection failed \(OS Error: Operation not permitted/i;
 
 /** Indication d'escalade ajoutée après un refus d'isolation (une seule relance, approuvée). */
 export const ESCALATION_HINT =
-  '[ANZAR] Si c\'est indispensable, relance la MÊME commande avec sandbox_permissions:"danger-full-access" et justification:"…" : '
-  + "l'écriture sera élargie hors du projet pour cet appel (secrets, hooks/config Git et réseau restent protégés) ; "
-  + "l'utilisateur devra approuver, sauf en Accès complet.";
+  "[sandbox: escalation available — retry this exact command once with sandbox_permissions (\"danger-full-access\") + justification; the approval prompt asks the user]";
 
-/** Ajoute une explication quand l'isolation a bloqué une écriture ou une connexion. */
+/** Ajoute le marqueur de refus de l'isolation, comme Harness, sans règle propre à ANZAR. */
+export function isSandboxDenial(stderr: string): boolean {
+  return SANDBOX_DENIED.test(stderr);
+}
+
 export function withSandboxHint(code: number, stderr: string): string {
   if (code === 0 || !sandboxEnabled()) return stderr;
-  // Diagnostic déjà posé par le relais (Rust) : traité automatiquement, pas de carte d'accord.
-  if (stderr.includes(NETWORK_BYPASS_TAG) || stderr.includes(NETWORK_UNREACHABLE_TAG)) return stderr;
-  if (!commandNetworkOpen() && NETWORK_DENIED.test(stderr)) {
-    return `${stderr}\n${NETWORK_BLOCKED_TAG} par l'isolation des commandes : seules les connexions vers localhost, les installations acceptées (npm/pip install) et les téléchargements de cargo et git sont permis. ANZAR propose à l'utilisateur d'autoriser internet pour cette commande ; n'essaie pas de contourner (autre outil, autre script).`;
-  }
   if (!SANDBOX_DENIED.test(stderr)) return stderr;
-  if (/\.git\/(hooks|config)|hooks\/|could not lock config file/i.test(stderr)) {
-    return `${stderr}\n[ANZAR] Les hooks et la configuration Git du projet sont protégés (un hook s'exécuterait plus tard dans le Git de l'utilisateur). Ne contourne pas : pas d'autre dossier .git, pas de --separate-git-dir, pas d'écriture à la main dans .git. Pour créer un dépôt, lance seulement « git init » (ou « git init -b main ») à la racine du projet. Sinon, explique à l'utilisateur ce qu'il doit faire lui-même.`;
-  }
-  return `${stderr}\n[ANZAR] Bloqué par l'isolation des commandes : une commande ne peut écrire que dans le dossier du projet, les dossiers temporaires et les caches (npm, cargo). Écris le fichier dans le projet (ou dans un dossier temporaire) ; si c'est impossible, explique à l'utilisateur ce qui est bloqué.\n${ESCALATION_HINT}`;
+  return `${stderr}\n[sandbox: file access denied under workspace-write mode]\n${ESCALATION_HINT}`;
 }
 
 // ============================================================================
@@ -276,87 +243,6 @@ class TerminalService {
     return this.toolEventsReady;
   }
 
-  /**
-   * Accords donnés par l'utilisateur pour une commande exacte. Un seul registre porte
-   * les trois usages (installation, réseau, contournement du relais) ; chaque accord
-   * garde sa durée de vie : installation 10 min et usage unique, réseau jusqu'à la
-   * fermeture, relais une seule relance.
-   */
-  private grants = new Map<string, { installUntil?: number; network?: boolean; direct?: boolean }>();
-
-  private static grantKey(program: string, args: string[]): string {
-    return [program.toLowerCase().replace(/\.(cmd|exe)$/, ''), ...args].join(' ');
-  }
-
-  /** Clé d'accord d'une commande, ou null si elle ne peut pas être découpée. */
-  private static keyFor(command: string): string | null {
-    const parsed = parseExecutable(String(command || '').trim());
-    if (!parsed) return null;
-    return TerminalService.grantKey(parsed.cmdName.replace(/-\d+$/, ''), parsed.args);
-  }
-
-  private grantOf(key: string): { installUntil?: number; network?: boolean; direct?: boolean } {
-    let grant = this.grants.get(key);
-    if (!grant) {
-      grant = {};
-      this.grants.set(key, grant);
-    }
-    return grant;
-  }
-
-  /** Supprime l'entrée quand aucun accord ne reste : la carte ne garde pas de commandes vides. */
-  private dropIfEmpty(key: string, grant: { installUntil?: number; network?: boolean; direct?: boolean }): void {
-    if (grant.installUntil === undefined && !grant.network && !grant.direct) this.grants.delete(key);
-  }
-
-  /** Enregistre l'accord de l'utilisateur pour CETTE commande d'installation. */
-  grantInstall(command: string): void {
-    const key = TerminalService.keyFor(command);
-    if (!key) return;
-    this.grantOf(key).installUntil = Date.now() + 10 * 60_000;
-  }
-
-  /** Commandes autorisées à utiliser internet (accord de l'utilisateur), jusqu'à la fermeture. */
-  grantNetwork(command: string): void {
-    const key = TerminalService.keyFor(command);
-    if (!key) return;
-    this.grantOf(key).network = true;
-  }
-
-  /**
-   * Relances sans le relais réseau, à usage unique : l'outil l'ignore (diagnostic Rust).
-   * Rust ne l'accepte que pour une commande à qui il donne lui-même internet.
-   */
-  grantDirect(command: string): void {
-    const key = TerminalService.keyFor(command);
-    if (!key) return;
-    this.grantOf(key).direct = true;
-  }
-
-  private takeDirect(program: string, args: string[]): boolean {
-    const key = TerminalService.grantKey(program, args);
-    const grant = this.grants.get(key);
-    if (!grant?.direct) return false;
-    grant.direct = false;
-    this.dropIfEmpty(key, grant);
-    return true;
-  }
-
-  private networkFor(program: string, args: string[]): boolean {
-    return commandNetworkOpen() || this.grants.get(TerminalService.grantKey(program, args))?.network === true;
-  }
-
-  /** Consomme l'accord d'installation, s'il existe et n'a pas expiré. */
-  private takeInstallGrant(program: string, args: string[]): boolean {
-    const key = TerminalService.grantKey(program, args);
-    const grant = this.grants.get(key);
-    if (grant?.installUntil === undefined) return false;
-    const valid = grant.installUntil > Date.now();
-    grant.installUntil = undefined;
-    this.dropIfEmpty(key, grant);
-    return valid;
-  }
-
   private rootFor(cwd: string): string {
     const normalized = cwd.replace(/\\/g, '/').replace(/\/+$/, '');
     const root = Array.from(this.allowedProjectPaths).find((p) => isPathWithin(normalized, p));
@@ -380,8 +266,8 @@ class TerminalService {
     await this.ensureToolEvents();
     await invoke('tool_spawn', {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
-      approved: this.takeInstallGrant(program, args), network: this.networkFor(program, args),
-      proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(), direct: this.takeDirect(program, args),
+      approved: false, network: true,
+      proxy: false, proxyHosts: [], direct: false,
       shell: shellCommand !== undefined, shellCommand: shellCommand ?? null,
       escalated, escalationReason: escalationReason ?? null,
     });
@@ -442,13 +328,6 @@ class TerminalService {
       return processId;
     }
 
-    const validation = validateCommand(command);
-    if (!validation.safe) {
-      this.emitOutput(processId, 'error', `⛔ ${validation.reason}`);
-      this.eventBus.emit({ type: 'process-error', processId, error: validation.reason || 'Commande bloquée' });
-      return processId;
-    }
-
     const parsed = parseExecutable(command);
     if (!parsed) {
       const msg = 'Commande non autorisée (programme interdit ou nom invalide).';
@@ -497,10 +376,8 @@ class TerminalService {
         cwd: options.cwd,
         root: this.rootFor(options.cwd),
         sandbox: sandboxEnabled(),
-        approved: this.takeInstallGrant(displayName, parsed.args),
-        network: this.networkFor(displayName, parsed.args),
-        proxy: networkProxyEnabled(), proxyHosts: networkProxyHosts(),
-        direct: this.takeDirect(displayName, parsed.args),
+        approved: false, network: true,
+        proxy: false, proxyHosts: [], direct: false,
         shell: false, shellCommand: null, escalated: false, escalationReason: null,
       });
       process.pid = pid;
@@ -559,10 +436,6 @@ class TerminalService {
     const missing = await programGate(command.trim().split(/\s+/)[0] || '');
     if (missing) return { success: false, exitCode: 1, stdout: '', stderr: missing, durationMs: 0, ran: false };
 
-    const validation = validateCommand(command);
-    if (!validation.safe) {
-      return { success: false, exitCode: 1, stdout: '', stderr: `⛔ ${validation.reason}`, durationMs: 0, ran: false };
-    }
     const parsed = parseExecutable(command);
     if (!parsed) {
       return { success: false, exitCode: 1, stdout: '', stderr: '⛔ Commande non autorisée (exécutable non allowlisté)', durationMs: 0, ran: false };
@@ -677,9 +550,9 @@ class TerminalService {
         root: this.rootFor(options.cwd),
         sandbox: sandboxEnabled(),
         approved: false,
-        network: this.networkFor('bash', []),
-        proxy: networkProxyEnabled(),
-        proxyHosts: networkProxyHosts(),
+        network: true,
+        proxy: false,
+        proxyHosts: [],
         direct: false,
         shell: true,
         shellCommand: trimmed,
@@ -727,18 +600,16 @@ class TerminalService {
    * La sortie n'est pas « trim » au début : les espaces de `git status --porcelain` comptent.
    */
   async execArgs(
-    program: keyof typeof COMMAND_NAME_MAP | string,
+    program: string,
     args: string[],
     options: { cwd?: string; timeout?: number; signal?: AbortSignal } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
     const missing = await programGate(program, false);
     if (missing) return { success: false, exitCode: 1, stdout: '', stderr: missing, durationMs: 0 };
-    const base = COMMAND_NAME_MAP[program.toLowerCase()];
+    const base = program;
     const fail = (stderr: string): CommandResult => ({ success: false, exitCode: 1, stdout: '', stderr, durationMs: Date.now() - startTime });
-    if (!base) return fail('⛔ Commande non autorisée (exécutable non allowlisté)');
-    if (args.length > MAX_ARGS) return fail(`⛔ Trop d'arguments (max ${MAX_ARGS})`);
-    if (args.some((a) => /[\r\n]/.test(a) || a.length > 400)) return fail('⛔ Argument invalide (retour à la ligne ou plus de 400 caractères)');
+    if (args.some((a) => /[\r\n]/.test(a))) return fail('⛔ Argument invalide (retour à la ligne)');
     if (!options.cwd) return fail('⛔ Dossier de travail manquant');
     const id = `exec-${++this.processCounter}-${Date.now()}`;
     try {

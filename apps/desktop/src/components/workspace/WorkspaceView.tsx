@@ -16,7 +16,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Folder, FolderOpen, FolderPlus, FileEdit, GitBranch, AlertTriangle } from 'lucide-react';
 import { conversationUsesPersonalSpace, openPersonalSpace } from '@/services/workspace/personalSpace';
 import toast from 'react-hot-toast';
-import { trustProgram } from '@/services/runtime/commandPolicy';
 import { cn } from '@/lib/utils';
 import { useAgentChat, type PermissionMode } from '@/hooks/useAgentChat';
 import { useAccountStore } from '@/stores/accountStore';
@@ -443,22 +442,6 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                 >
                   Refuser
                 </button>
-                {approval.trustProgram && (
-                  <button
-                    onClick={() => {
-                      const name = approval.trustProgram!;
-                      // Rust affiche une confirmation système avant d'enregistrer l'autorisation.
-                      void trustProgram(name).then((r) => {
-                        if (r.ok) resolveApproval('allowed-once');
-                        else toast.error(r.error || 'Autorisation définitive annulée');
-                      });
-                    }}
-                    title={`Ne plus demander pour « ${approval.trustProgram} »`}
-                    className="h-7 px-3 rounded-lg text-ui-caption text-text-secondary hover:bg-surface-hover transition-colors whitespace-nowrap"
-                  >
-                    Toujours autoriser
-                  </button>
-                )}
                 <button
                   onClick={() => resolveApproval('allowed-once')}
                   className="h-7 px-3 rounded-lg text-ui-caption font-medium bg-primary-btn text-primary-btn-fg hover:opacity-90 transition-opacity"

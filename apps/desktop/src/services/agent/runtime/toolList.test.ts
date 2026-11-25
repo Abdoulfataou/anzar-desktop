@@ -42,29 +42,20 @@ describe('buildToolsForStep', () => {
       expect(list).toContain('job_kill');
       // Le shell remplace run_command sur macOS : une seule façon de lancer une commande.
       expect(list).not.toContain('run_command');
-      expect(names(buildToolsForStep({ ...base, mode: 'plan' }))).not.toContain('bash');
+      expect(names(buildToolsForStep({ ...base, mode: 'plan' }))).toContain('bash');
     } finally {
       Object.defineProperty(navigator, 'platform', { value: original, configurable: true });
     }
   });
 
-  it('ne donne que des outils en lecture en mode plan, plus propose_plan', () => {
+  it('le mode plan guide mais ne retire aucun outil', () => {
     const list = names(buildToolsForStep({ ...base, mode: 'plan' }));
     expect(list).toContain('read_file');
     expect(list).toContain('propose_plan');
-    expect(list).not.toContain('write_file');
-    expect(list).not.toContain('run_command');
-    expect(list).not.toContain('spawn_subagents');
-  });
-
-  it('propose glob en mode normal et en mode plan, apply_patch seulement en normal', () => {
-    const normal = names(buildToolsForStep(base));
-    expect(normal).toContain('glob');
-    expect(normal).toContain('apply_patch');
-
-    const plan = names(buildToolsForStep({ ...base, mode: 'plan' }));
-    expect(plan).toContain('glob');
-    expect(plan).not.toContain('apply_patch');
+    expect(list).toContain('write_file');
+    expect(list.some((n) => n === 'bash' || n === 'run_command')).toBe(true);
+    expect(list).toContain('spawn_subagents');
+    expect(list).toContain('apply_patch');
   });
 
   it('ne propose pas ask_user quand personne n’est devant l’écran', () => {
@@ -94,6 +85,6 @@ describe('buildToolsForStep', () => {
   it('ajoute les outils des connecteurs hors mode plan', () => {
     const mcp = [{ type: 'function' as const, function: { name: 'mcp__github__issue', description: '', parameters: {} } }];
     expect(names(buildToolsForStep({ ...base, mcpTools: mcp }))).toContain('mcp__github__issue');
-    expect(names(buildToolsForStep({ ...base, mode: 'plan', mcpTools: mcp }))).not.toContain('mcp__github__issue');
+    expect(names(buildToolsForStep({ ...base, mode: 'plan', mcpTools: mcp }))).toContain('mcp__github__issue');
   });
 });

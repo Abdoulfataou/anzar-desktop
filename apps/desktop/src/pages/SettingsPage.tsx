@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Settings2, Palette, User, BarChart3, Database, Info, Monitor, Moon, Sun,
   Zap, Sparkles, Brain, LogOut, Download, Upload, Trash2, ExternalLink, Mail, MessageCircle, Copy, Wallet,
-  Wrench, CheckCircle2, XCircle, RefreshCw,
+  Wrench, CheckCircle2, RefreshCw, XCircle,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, isTauri } from '@/lib/utils';
@@ -251,11 +251,6 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
   const codeDiagnostics = useSettingsStore((s) => s.settings.codeDiagnostics !== false);
   const autoVerify = useSettingsStore((s) => s.settings.autoVerifyAfterApply !== false);
   const sandbox = useSettingsStore((s) => s.settings.sandboxCommands !== false);
-  const commandNetwork = useSettingsStore((s) => s.settings.commandNetwork !== false);
-  const networkProxy = useSettingsStore((s) => s.settings.networkProxy !== false);
-  const trustedPrograms = useSettingsStore((s) => s.settings.trustedPrograms) || [];
-  const [extraHosts, setExtraHosts] = useState(() =>
-    (useSettingsStore.getState().settings.networkAllowedHosts || []).join('\n'));
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
   const [advanced, setAdvanced] = useState(false);
   const mode = useSettingsStore((s) => s.settings.permissionMode ?? 'auto');
@@ -279,7 +274,6 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
   const changeSecurity = async (patch: Partial<PolicySettings>): Promise<boolean> => {
     const r = await applyCommandPolicy(patch);
     if (!r.ok) toast.error(r.error || 'Changement annulé');
-    setExtraHosts((useSettingsStore.getState().settings.networkAllowedHosts || []).join('\n'));
     return r.ok;
   };
   return (
@@ -322,7 +316,7 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
           </Row>
           <Row
             label="Vérification automatique"
-            description="Quand l'agent a modifié le projet, il lance lint, build et tests avant d'annoncer qu'il a fini. Si ça échoue, il corrige (3 essais au plus). Une commande qui exécute du code qu'il a modifié te demande d'abord ton accord."
+            description="Quand l'agent a modifié le projet, il lance lint, build et tests avant d'annoncer qu'il a fini. Si ça échoue, il corrige (3 essais au plus). Les commandes de vérification sont lancées automatiquement, comme dans Harness."
           >
             <Segmented
               value={autoVerify ? 'on' : 'off'}
@@ -330,73 +324,6 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
               options={[{ id: 'on', label: 'Activée' }, { id: 'off', label: 'Désactivée' }]}
             />
           </Row>
-          {commandNetwork && (
-            <>
-              <Row
-                label="Filtrer le réseau des commandes"
-                description="Les commandes passent par un proxy local qui n'ouvre que les hôtes autorisés (registres npm, pip et cargo, GitHub, Node.js). Sur macOS, le système bloque en plus toute sortie directe : le proxy est alors le seul chemin. Windows et Linux ne peuvent pas imposer cette contrainte au niveau système."
-              >
-                <Segmented
-                  value={networkProxy ? 'on' : 'off'}
-                  onChange={(v) => void changeSecurity({ networkProxy: v === 'on' })}
-                  options={[{ id: 'on', label: 'Activé' }, { id: 'off', label: 'Désactivé' }]}
-                />
-              </Row>
-              {networkProxy && (
-                <Row
-                  label="Hôtes autorisés en plus"
-                  description="Un par ligne (ex. api.monservice.com). Les sous-domaines d'une entrée sont autorisés. Utile quand une commande doit joindre un service qui n'est pas un registre de paquets."
-                >
-                  <textarea
-                    value={extraHosts}
-                    onChange={(e) => setExtraHosts(e.target.value)}
-                    onBlur={() => void changeSecurity({
-                      networkAllowedHosts: extraHosts.split('\n').map((h) => h.trim()).filter(Boolean),
-                    })}
-                    rows={3}
-                    placeholder="api.monservice.com"
-                    className="w-full px-3 py-2 rounded-lg bg-input border border-input-border text-ui-base text-text-primary outline-none focus:border-input-border-hover resize-y"
-                  />
-                </Row>
-              )}
-            </>
-          )}
-          <Row
-            label="Programmes autorisés définitivement"
-            description="Programmes hors de la liste d'ANZAR que tu as autorisés avec « Toujours autoriser ». Les autres demandent ton accord à chaque fois ; les shells, sudo et les outils réseau bruts restent toujours interdits."
-          >
-            {trustedPrograms.length === 0 ? (
-              <span className="text-ui-sm text-text-muted">Aucun</span>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {trustedPrograms.map((name) => (
-                  <span key={name} className="inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md bg-hover-fill font-mono text-ui-sm text-text-primary">
-                    {name}
-                    <button
-                      type="button"
-                      aria-label={`Retirer ${name}`}
-                      onClick={() => void changeSecurity({ trustedPrograms: trustedPrograms.filter((p) => p !== name) })}
-                      className="p-0.5 rounded text-text-muted hover:text-text-primary hover:bg-surface-hover"
-                    >
-                      <XCircle size={12} />
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </Row>
-          {isMac && (
-            <Row
-              label="Réseau des commandes"
-              description="Ouvert par défaut. Coupé : les commandes de l'agent ne joignent que localhost (serveurs de dev), les installations que tu acceptes et les téléchargements de cargo et git ; ANZAR te demande alors avant toute autre connexion."
-            >
-              <Segmented
-                value={commandNetwork ? 'on' : 'off'}
-                onChange={(v) => void changeSecurity({ commandNetwork: v === 'on' })}
-                options={[{ id: 'on', label: 'Ouvert' }, { id: 'off', label: 'Coupé' }]}
-              />
-            </Row>
-          )}
         </>
       )}
       {!isMac && (
@@ -413,10 +340,10 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
           onChange={(e) => void changePermissionChoice(e.target.value as PermissionChoice)}
           className="h-8 px-2 rounded-lg bg-input border border-input-border text-ui-base text-text-primary outline-none"
         >
-          <option value="ask">Demander avant de modifier (isolé)</option>
-          <option value="auto">Auto : demander seulement les risques (isolé)</option>
-          <option value="plan">Plan : lecture seule (isolé)</option>
-          <option value="full">Accès complet (sans isolation)</option>
+          <option value="ask">Écriture projet · accord pour élargir</option>
+          <option value="auto">Écriture projet · sans accord</option>
+          <option value="plan">Plan guidé · tous les outils</option>
+          <option value="full">Accès complet · sans isolation</option>
         </select>
       </Row>
       <Row
