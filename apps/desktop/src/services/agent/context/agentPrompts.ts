@@ -118,7 +118,6 @@ export interface RuntimeFacts {
   platform?: string;
   permissionMode?: 'ask' | 'auto' | 'plan' | 'full';
   shellAvailable?: boolean;
-  networkOpen?: boolean;
   /** L'isolation des commandes est active (false = choix « sans isolation »). */
   sandboxed?: boolean;
 }
@@ -139,9 +138,7 @@ export function runtimeFactsSection(facts: RuntimeFacts): string {
         ? "Commandes : bash disponible, mais l'isolation est désactivée : le système ne confine plus les commandes."
         : 'Commandes : bash confiné disponible (pipes, &&, redirections, arrière-plan).')
       : 'Commandes : run_command seul (un programme par appel, sans pipe ni enchaînement).',
-    facts.networkOpen
-      ? "Réseau : ouvert pour les commandes, filtré par ANZAR (liste d'hôtes autorisés)."
-      : "Réseau : coupé pour les commandes, sauf localhost et les installations acceptées.",
+    "Réseau : aucun filtrage ; les commandes peuvent sortir directement (comme dans Harness).",
     facts.permissionMode ? `Permissions : ${PERMISSION_FACT[facts.permissionMode]}` : '',
     // Invariant 7 : ne jamais laisser croire que Windows est confiné.
     facts.platform === 'windows'

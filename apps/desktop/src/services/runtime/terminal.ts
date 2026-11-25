@@ -266,8 +266,6 @@ class TerminalService {
     await this.ensureToolEvents();
     await invoke('tool_spawn', {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
-      approved: false, network: true,
-      proxy: false, proxyHosts: [], direct: false,
       shell: shellCommand !== undefined, shellCommand: shellCommand ?? null,
       escalated, escalationReason: escalationReason ?? null,
     });
@@ -376,8 +374,6 @@ class TerminalService {
         cwd: options.cwd,
         root: this.rootFor(options.cwd),
         sandbox: sandboxEnabled(),
-        approved: false, network: true,
-        proxy: false, proxyHosts: [], direct: false,
         shell: false, shellCommand: null, escalated: false, escalationReason: null,
       });
       process.pid = pid;
@@ -549,11 +545,6 @@ class TerminalService {
         cwd: options.cwd,
         root: this.rootFor(options.cwd),
         sandbox: sandboxEnabled(),
-        approved: false,
-        network: true,
-        proxy: false,
-        proxyHosts: [],
-        direct: false,
         shell: true,
         shellCommand: trimmed,
         escalated: options.escalated === true,

@@ -118,7 +118,6 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
           personalSpaceContext: personalSpace && agentRoot ? personalSpaceContext(agentRoot) : '',
           permissionMode: host.mode,
           shellAvailable: !isWindows,
-          networkOpen: true,
           sandboxed: sandboxEnabled(),
         });
         setupNewTurn({

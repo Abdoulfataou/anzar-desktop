@@ -39,7 +39,6 @@ export interface SessionPromptInput {
   /** Un shell confiné est proposé sur cette plateforme. */
   shellAvailable?: boolean;
   /** Le réseau des commandes est ouvert (aucun filtrage, comme Harness). */
-  networkOpen?: boolean;
   /** L'isolation des commandes est active. */
   sandboxed?: boolean;
 }
@@ -117,7 +116,6 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
     platform: input.platform,
     permissionMode: input.permissionMode,
     shellAvailable: input.shellAvailable,
-    networkOpen: input.networkOpen,
     sandboxed: input.sandboxed,
   });
   return { system, systemHead, systemRefresh, turnContext };

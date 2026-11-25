@@ -4,7 +4,7 @@
  * Deux responsabilités, sorties de l'adaptateur pour être lisibles et testables :
  * - composer la liste d'outils envoyée au modèle selon le mode, le projet et les skills ;
  * - exécuter un appel d'outil : décision d'approbation, garde des commandes, connecteurs
- *   MCP, outils spéciaux (ask_user, load_skill, propose_plan), reprise réseau, journal.
+ *   MCP, outils spéciaux (ask_user, load_skill, propose_plan), journal.
  *
  * Aucune dépendance à React ni aux stores : l'état mutable du tour et les effets d'UI
  * sont fournis par l'appelant (`ToolRunContext`).
@@ -311,7 +311,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     ? { output: refusal, isError: true }
     : await runTool();
 
-  // Suivi des erreurs : échec qui peut venir d'ANZAR (environnement, réseau, isolation),
+  // Suivi des erreurs : échec qui peut venir d'ANZAR (environnement, isolation),
   // pas une erreur du code du projet. Envoi nettoyé, par lots, coupable dans les Paramètres.
   if (allowed && (call.function.name === 'run_command' || call.function.name === 'bash') && result.isError && !ctx.signal.aborted) {
     const out = result.output || '';

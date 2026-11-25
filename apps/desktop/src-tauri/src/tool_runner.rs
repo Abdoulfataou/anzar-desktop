@@ -63,7 +63,7 @@ fn resolve_with_exts(program: &str, path: &str, exts: &[&str]) -> Option<std::pa
 
 /// Une commande de shell mentionne-t-elle un port local réservé aux connecteurs ?
 /// Heuristique de défense en profondeur : Seatbelt ne peut pas exprimer « localhost sauf ces
-/// ports » sans couper le proxy (voir `sandbox::wrap`).
+/// ports » sans couper le reste du réseau.
 fn mentions_blocked_local_app(command: &str) -> bool {
     if command.contains("audacity_script_pipe") {
         return true;
@@ -107,7 +107,7 @@ fn find_in_path(program: &str) -> Option<std::path::PathBuf> {
     std::env::split_paths(&path).map(|dir| dir.join(program)).find(|p| p.is_file())
 }
 
-/// Fait passer les outils par le proxy local (npm, pip, cargo, git respectent ces variables).
+/// Environnement de base des commandes (pas de proxy : réseau libre comme Harness).
 fn apply_base_env(cmd: &mut Command) {
     cmd.env_clear();
     for key in ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "LANG", "LC_ALL", "TERM", "TZ",
@@ -165,11 +165,6 @@ pub fn tool_spawn(
     cwd: String,
     root: String,
     sandbox: Option<bool>,
-    _approved: Option<bool>,
-    _network: Option<bool>,
-    _proxy: Option<bool>,
-    _proxy_hosts: Option<Vec<String>>,
-    _direct: Option<bool>,
     shell: Option<bool>,
     shell_command: Option<String>,
     escalated: Option<bool>,
