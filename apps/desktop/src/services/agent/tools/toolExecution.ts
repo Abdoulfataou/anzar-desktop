@@ -10,6 +10,8 @@ import { executeWebTool, WEB_TOOL_NAMES } from './webTools';
 import { callMcpTool, isMcpTool } from '@/services/mcp/manager';
 import type { ExternalSource } from '../policy/untrusted';
 import { PERSONAL_SPACE_TOOLS } from '@/services/workspace/personalSpace';
+import { fileConflict, noteFileRead, noteFileWrite } from '../policy/fileConflicts';
+import { readPathForTool, writePathsForTool } from './filePaths';
 
 export interface GenericToolResult {
   output: string;
@@ -33,6 +35,7 @@ export interface GenericToolOptions {
   childBudget?: ToolExecutionContext['childBudget'];
   escalated?: boolean;
   convId?: string;
+  agentId?: string;
 }
 
 export async function executeGenericTool(
@@ -49,7 +52,14 @@ export async function executeGenericTool(
   }
 
   if (options.agentRoot && (options.workspacePath || PERSONAL_SPACE_TOOLS.has(call.function.name))) {
-    return executeToolCall(call, {
+    const paths = writePathsForTool(call.function.name, args);
+    if (options.convId && options.agentId) {
+      for (const path of paths) {
+        const conflict = fileConflict(options.convId, options.agentId, path);
+        if (conflict) return { output: conflict, isError: true };
+      }
+    }
+    const result = await executeToolCall(call, {
       projectRoot: options.agentRoot,
       signal: options.signal,
       onFileChanged: (rel, _c, action) => {
@@ -59,9 +69,16 @@ export async function executeGenericTool(
       permissionMode: options.permissionMode,
       escalated: options.escalated,
       convId: options.convId,
+      agentId: options.agentId,
       runSubagent: runAgentSession,
       childBudget: options.childBudget,
     });
+    if (!result.isError && options.convId && options.agentId) {
+      const readPath = readPathForTool(call.function.name, args);
+      if (readPath) noteFileRead(options.convId, options.agentId, readPath);
+      for (const path of paths) noteFileWrite(options.convId, options.agentId, path);
+    }
+    return result;
   }
 
   return { output: 'Aucun dossier de travail ouvert.', isError: true };

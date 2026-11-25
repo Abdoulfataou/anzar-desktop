@@ -17,6 +17,8 @@ import { APIMessage, AIModel, AIProvider, ReasoningEffort } from '@/types';
 import { aiService } from '@/services/ai/ai';
 import { terminalService } from '@/services/runtime/terminal';
 import { AGENT_TOOLS, BASH_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from '../tools';
+import { fileConflict, noteFileRead, noteFileWrite } from '../policy/fileConflicts';
+import { readPathForTool, writePathsForTool } from '../tools/filePaths';
 import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from '../context/agentPrompts';
 import { runVerification, VerifyCommandResult } from '../verify/agentVerifier';
 import { buildAgentContext } from '../context/agentContext';
@@ -74,6 +76,10 @@ export interface AgentLoopOptions {
   allowedTools?: Set<string>;
   /** Profondeur de récursion des sous-agents (0 = agent principal). */
   subagentDepth?: number;
+  /** Identité de l'agent (parent ou enfant) pour détecter les conflits d'écriture. */
+  agentId?: string;
+  /** Conversation parente (partagée par les sous-agents). */
+  convId?: string;
   /** Budget du sous-agent (enveloppe dérivée du parent). */
   budget?: BudgetLedger;
   /** Callback événements (UI) */
@@ -139,6 +145,7 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     signal,
     onFileChanged,
     subagentDepth,
+    agentId,
   } = options;
 
   const emit = (e: AgentEvent) => onEvent?.(e);
@@ -148,6 +155,8 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     projectRoot: prompt.projectRoot,
     signal,
     subagentDepth,
+    agentId,
+    convId: options.convId,
     runSubagent: runAgentSession,
     onFileChanged: (path, content, action) => {
       filesChanged.add(path);
@@ -210,7 +219,21 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
       model, provider, tools, signal, ...(reasoningEffort ? { reasoningEffort } : {}),
     }),
     executeTool: async (call) => {
+      let args: Record<string, any> = {};
+      try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
+      const paths = writePathsForTool(call.function.name, args);
+      if (toolCtx.convId && toolCtx.agentId) {
+        for (const path of paths) {
+          const conflict = fileConflict(toolCtx.convId, toolCtx.agentId, path);
+          if (conflict) return { output: conflict, isError: true };
+        }
+      }
       const r: ToolResult = await executeToolCall(call, toolCtx);
+      if (!r.isError && toolCtx.convId && toolCtx.agentId) {
+        const readPath = readPathForTool(call.function.name, args);
+        if (readPath) noteFileRead(toolCtx.convId, toolCtx.agentId, readPath);
+        for (const path of paths) noteFileWrite(toolCtx.convId, toolCtx.agentId, path);
+      }
       return {
         output: r.output,
         isError: r.isError,

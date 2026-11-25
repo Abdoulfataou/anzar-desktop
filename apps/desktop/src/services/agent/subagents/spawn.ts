@@ -80,6 +80,8 @@ export async function execSpawnSubagents(args: any, ctx: ToolExecutionContext): 
         autoVerify: false,      // le parent vérifie après consolidation
         allowedTools,
         subagentDepth: depth + 1,
+        convId: ctx.convId,
+        agentId: `${ctx.convId || 'conv'}:sub:${i + 1}`,
         signal: ctx.signal,
         onFileChanged: ctx.onFileChanged,
         onEvent: (ev) => {

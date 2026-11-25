@@ -71,6 +71,8 @@ export interface TurnToolState {
 
 export interface ToolRunContext {
   convId: string;
+  /** Identité de l'agent principal ; les sous-agents ont la leur. */
+  agentId: string;
   /** Dossier où l'agent peut agir (projet ou espace ANZAR). */
   agentRoot: string | null;
   /** Projet ouvert, s'il y en a un. */
@@ -293,6 +295,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     childBudget: ctx.childBudget,
     escalated,
     convId: ctx.convId,
+    agentId: ctx.agentId,
     onFileChanged: (rel, action) => { if (ctx.workspacePath) ctx.onFileChanged?.(rel, action); },
     onSubagentProgress: call.function.name === 'spawn_subagents'
       ? (progress) => { ev.subagents = progress; ctx.flush(''); }

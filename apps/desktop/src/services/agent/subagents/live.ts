@@ -431,6 +431,8 @@ function startLoop(agent: LiveAgent, ctx: ToolExecutionContext): void {
             autoVerify: false,
             allowedTools: agent.allowedTools,
             subagentDepth: 1,
+            convId: ctx.convId,
+            agentId: agent.id,
             signal: controller.signal,
             onFileChanged: ctx.onFileChanged,
             onEvent: (ev) => {

@@ -34,6 +34,8 @@ export interface ToolExecutionContext {
   escalated?: boolean;
   /** Conversation qui a lancé l'appel : les sous-agents vivants y sont rattachés. */
   convId?: string;
+  /** Identité de l'agent qui exécute l'outil (conflits d'écriture entre agents). */
+  agentId?: string;
   /** Callback appelé quand un fichier est écrit/modifié (pour rafraîchir l'UI) */
   onFileChanged?: (relativePath: string, content: string, action: 'create' | 'edit' | 'delete') => void;
   /** Progression en direct des sous-agents (spawn_subagents) pour l'UI */

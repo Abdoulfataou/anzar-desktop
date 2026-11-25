@@ -147,6 +147,7 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
       // Hôte d'outils : le mode est lu à chaque appel (il peut changer en cours de tour).
       const toolCtx: ToolRunContext = {
         convId,
+        agentId: 'lead',
         agentRoot,
         workspacePath,
         get mode(): PermissionMode { return host.mode; },
