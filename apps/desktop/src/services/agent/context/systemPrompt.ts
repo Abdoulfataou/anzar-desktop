@@ -38,7 +38,7 @@ export interface SessionPromptInput {
   permissionMode?: 'ask' | 'auto' | 'plan' | 'full';
   /** Un shell confiné est proposé sur cette plateforme. */
   shellAvailable?: boolean;
-  /** Le réseau des commandes est ouvert (filtré par le proxy). */
+  /** Le réseau des commandes est ouvert (aucun filtrage, comme Harness). */
   networkOpen?: boolean;
   /** L'isolation des commandes est active. */
   sandboxed?: boolean;

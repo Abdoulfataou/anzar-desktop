@@ -12,8 +12,6 @@ export const SUBAGENT_EXCLUDED_TOOLS = new Set([
   'stop_agent',
   'wait_agent',
   'list_agents',
-  'run_command',
-  'start_dev_server',
   'export_animation',
 ]);
 
@@ -41,17 +39,13 @@ export interface SubagentPolicyInput {
 }
 
 /**
- * Outils d'un sous-agent = politique du mode ∩ déclaration du profil.
- *
- * Hors Full : lecture seule. En Full : tout sauf les outils exclus (le parent garde la main
- * sur les commandes, l'export et la récursion). Un profil ne peut que **réduire** ce
- * périmètre, jamais l'élargir.
+ * Outils d'un sous-agent = tous les outils du parent, moins la récursion et les fonctions
+ * propres à l'app. Comme Harness, l'enfant hérite de la frontière d'écriture du parent ;
+ * il n'est pas mis en lecture seule.
  */
 export function subagentAllowedTools(input: SubagentPolicyInput): Set<string> {
-  const { allToolNames, mode, readOnlyTools, profileTools } = input;
-  const base = mode !== 'full'
-    ? new Set([...readOnlyTools, 'load_skill', ...ALWAYS_ALLOWED])
-    : new Set([...allToolNames].filter((name) => !SUBAGENT_EXCLUDED_TOOLS.has(name)));
+  const { allToolNames, profileTools } = input;
+  const base = new Set([...allToolNames].filter((name) => !SUBAGENT_EXCLUDED_TOOLS.has(name)));
 
   const denied = new Set(
     (input.deny ?? []).flatMap((c) => CAPABILITY_TOOLS[c as Capability] ?? []),

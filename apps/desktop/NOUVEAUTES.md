@@ -1,20 +1,47 @@
-- Agent : sur Mac, il utilise désormais un vrai shell (commandes enchaînées, pipes, redirections, travail en arrière-plan). Il reste enfermé dans le dossier du projet, les dossiers temporaires et les caches ; il ne peut pas pousser ton code, changer la config git ni accéder aux dossiers de secrets.
-- Agent : les refus expliquent maintenant ce qui est permis et quoi faire à la place, au lieu de laisser l'agent essayer une variante puis s'arrêter. Les actions demandées sont pré-contrôlées : plus de carte d'accord pour une commande qui sera refusée de toute façon.
-- Agent : si une commande a vraiment besoin d'écrire hors du projet, il peut demander une autorisation ponctuelle (une seule commande, approuvée par toi) au lieu de contourner l'isolation.
-- Agent : un test qui échoue deux fois pendant une correction n'est plus pris pour une boucle. Un simple rappel arrive après trois répétitions identiques, sans couper la tâche.
-- Agent : « Modifier automatiquement » ne demande plus une carte pour chaque commande ordinaire ; seules les actions risquées (installation, git, programme inconnu), les connecteurs « toujours demander » et un contenu externe suspect demandent encore.
-- Agent : nouveaux outils pour trouver des fichiers par motif (`glob`) et modifier plusieurs fichiers en une fois (`apply_patch`), utiles pour les renommages et les refactorings.
-- Agent : le prompt est plus court et les faits utiles (dossier, plateforme, réseau, permissions) sont renvoyés à chaque demande ; le contexte long est élagué puis résumé avec les chemins et les erreurs.
-- Réseau : corrige les erreurs « socket error » quand le proxy local était bloqué par l'isolation. `flutter pub get` et les installations passent à nouveau.
-- Accès complet : comme dans Harness, il n'y a plus d'isolation ni de demande. L'avertissement dit exactement ce que cela ouvre : écritures hors projet, lecture des dossiers de secrets, réseau direct. Les refus de police d'ANZAR (git push, git config, sudo, secrets cités) restent, mais un script peut les contourner.
-- Git : « git init » fonctionne dans un nouveau projet, et les hooks Git restent protégés quoi que tente l'agent.
-- Bouton Stop : il arrête aussi les travaux lancés en arrière-plan par l'agent (serveur de développement, build long).
-- Agent : il peut terminer par une réponse normale, sans appeler `task_done` ; la vérification (lint, build, tests) se lance quand même et les erreurs lui sont renvoyées s'il y en a.
-- Paramètres : un seul sélecteur « Permissions » règle à la fois ce que l'agent peut faire sans demander et l'isolation des commandes. « Accès complet » est le seul choix qui retire la protection système, avec un avertissement unique (comme le danger-full-access de Harness).
-- Sous-agents : nouvelle couche de sous-agents vivants (`spawn_agent`, `send_message`, `wait_agent`, `list_agents`, `stop_agent`) : un enfant garde son historique, peut reprendre après un message, et le parent est prévenu quand il a fini. 8 actifs au plus, profondeur 1 ; un panneau au-dessus de la saisie montre qui travaille. Les enfants au repos sont restaurés au redémarrage. En Accès complet, ils peuvent écrire et lancer des commandes ; hors Accès complet, ils restent en lecture seule.
-- Si tu étais déjà en « Accès complet » avant cette version, resélectionne-le une fois : l'isolation n'est retirée qu'après le nouvel avertissement.
-- Agent : il lit plusieurs fichiers et lance plusieurs recherches en parallèle (10 appels sûrs au plus) ; les écritures et commandes restent seules, dans l'ordre.
-- Sous-agents : `spawn_agent` accepte un `output_schema` ; le résultat JSON est validé (types, `enum`, `oneOf`/`anyOf`/`allOf`, tableaux, champs requis) et rendu par `wait_agent`.
-- Agent : un refus, une annulation et l'absence de canal d'accord sont maintenant trois faits distincts ; il ne réessaie plus quand personne ne peut répondre.
-- Agent : un script écrit pendant la tâche qui lit `.env`, `~/.ssh` ou une clé est refusé avant exécution ; les outils fichiers gardent leur liste d'interdiction.
-- Windows : un avertissement visible dans les Paramètres rappelle que l'isolation des écritures n'est pas garantie hors macOS ; l'agent est prévenu dans son contexte.
+# Nouveautés
+
+## Permissions alignées sur DeepSeek Harness
+
+- **Un seul sélecteur** : « Écriture projet · accord », « Écriture projet · sans accord »,
+  « Plan guidé » et « Accès complet ».
+- **Écriture projet** : l'agent écrit et exécute dans le projet, les dossiers temporaires et
+  les caches sans demander. Le réseau et les lectures sont libres. Seule une écriture hors
+  projet est refusée ; avec « accord », l'agent peut demander une élévation à usage unique.
+- **Accès complet** : plus d'isolation et plus aucune demande. Écritures partout, lectures
+  de `.env`, des clés et de `~/.ssh`, réseau direct, hooks et configuration Git modifiables.
+  Un seul avertissement, puis la confirmation native de Rust.
+- **Plan guidé** : l'agent explore et propose un plan, mais garde **tous** ses outils. Le
+  mode plan est une consigne, pas une restriction.
+- **Supprimé** : liste blanche de programmes, refus de `git push`, `git config`, `sudo`,
+  `reset --hard`, `clean -f`, refus des secrets dans les commandes, protection Git,
+  proxy réseau, liste d'hôtes, accords d'installation, cartes pour un programme inconnu ou
+  un script écrit. Ces règles n'existent pas dans Harness.
+- **Conservé** : les ports 9876 (Blender), 9877 (GIMP), 4455 (OBS) et le tube Audacity sont
+  bloqués pour les commandes ; les connecteurs gardent leurs outils refusés et
+  « toujours demander ». Les fichiers propres à l'app restent protégés.
+- **Élévation** : une commande refusée hors projet peut être relancée une fois avec
+  `sandbox_permissions: "danger-full-access"` et une justification. En « accord » et
+  « plan », une carte demande l'accord ; en « sans accord », c'est refusé ; en « Accès
+  complet », l'isolation est déjà retirée.
+- **Windows** : les écritures ne sont pas confinées. Un avertissement visible dans les
+  Paramètres et dans le prompt le dit ; aucune protection de secrets, de Git ou du réseau
+  n'est promise.
+
+## Agent
+
+- Vrai shell `bash` sur macOS (enchaînements, pipes, redirections), travaux en arrière-plan,
+  `job_output`, `job_kill` et bouton Stop qui arrête l'arborescence.
+- `glob`, `apply_patch`, appels d'outils sûrs en parallèle (10 au plus), fin de tour
+  naturelle sans `task_done` obligatoire, vérification lint/build/tests après modification.
+- Prompt plus court avec les faits du tour (dossier, plateforme, permissions, réseau),
+  compaction du contexte long, rappel de boucle non bloquant.
+- Sous-agents vivants : `spawn_agent`, `send_message`, `wait_agent`, `list_agents`,
+  `stop_agent` ; historique repris, 8 actifs, profondeur 1, panneau au-dessus de la saisie,
+  notifications, persistance des enfants au repos, sortie JSON validée.
+- Accords à quatre issues (`allowed-once`, `rejected`, `cancelled`, `unavailable`) : le
+  modèle distingue un refus, une annulation et l'absence de canal.
+
+## Si tu étais déjà en « Accès complet »
+
+Resélectionne-le une fois : l'isolation n'est retirée qu'après le nouvel avertissement et
+la confirmation native.

@@ -176,78 +176,61 @@ redémarrage (session restaurée depuis le trousseau), ouverture de dossier, éd
 et arrêt de processus, connecteurs MCP, mise à jour signée, installeur NSIS.
 Voir `MIGRATION_TAURI2.md`.
 
-## Isolation des commandes (novembre 2026)
+## Permissions et isolation (aligné sur Harness, novembre 2026)
 
-Sur macOS, chaque commande lancée pour l'agent (`tool_spawn` : npm, node, git, cargo,
-python, ffmpeg, rg) passe par `/usr/bin/sandbox-exec` avec le profil Seatbelt de
-`src-tauri/src/sandbox.rs` :
+ANZAR reprend le modèle de permissions de DeepSeek Harness : le mode d'isolation et la
+politique d'accord sont deux réglages, regroupés dans un seul sélecteur.
 
-| Règle | Effet |
-|---|---|
-| Écriture | Autorisée seulement dans le dossier du projet, le dossier git du dépôt (worktrees des tickets), les dossiers temporaires et les caches (`~/Library/Caches`, `~/.npm`, `~/.cache`, `~/.cargo`) — sauf en Accès complet |
-| Git | `.git/hooks` et `.git/config` en lecture seule, y compris pour une worktree — sauf en Accès complet, où un script peut les modifier |
-| Secrets | `~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials` illisibles — sauf en Accès complet, qui retire l'isolation |
-| Réseau | Filtré par un **proxy local avec liste d'hôtes autorisés** (sauf en Accès complet, où un programme peut l'ignorer) (`src-tauri/src/netproxy.rs`) : les commandes reçoivent `HTTP(S)_PROXY` et `npm_config_*_proxy`. Sur macOS, le profil Seatbelt refuse toute sortie hors localhost : le proxy est le **seul** chemin vers l'extérieur, et il refuse tout hôte absent de la liste (registres npm/pip/cargo, GitHub, Node.js par défaut, plus les hôtes ajoutés dans Paramètres → Réseau). Si l'utilisateur coupe le réseau, sortant refusé sauf localhost. Sur Windows et Linux, le même filtre s'applique mais n'est **coopératif** (variables d'environnement) : un programme qui ignore le proxy n'est pas arrêté |
+### Les quatre choix d'ANZAR
 
-- Shell `bash` (macOS) : l'outil `bash` exécute une ligne `bash -c`. Par défaut, il tourne
-  sous Seatbelt (écriture projet/temporaires/caches, secrets illisibles, réseau via le proxy).
-  Si l'utilisateur choisit « Accès complet », il tourne sans profil, après un avertissement
-  et la confirmation native ; les règles de police restent appliquées. Rust refuse en plus
-  les opérations réservées à l'utilisateur (`git push`, `git remote add`,
-  `git reset --hard`, `git clean -f`, `sudo`) et les mentions évidentes de secrets (`.env`,
-  clés, `~/.ssh`), avec un message qui dit quoi faire à la place. Les travaux d'arrière-plan se lisent avec `job_output` et s'arrêtent avec
-  `job_kill` ; le bouton Stop arrête aussi ceux lancés pendant le tour courant.
-- Élévation à usage unique : après un refus d'écriture, le modèle peut relancer **la même
-  commande** avec `sandbox_permissions: "danger-full-access"` et une justification. Hors
-  Accès complet, une carte demande l'accord ; en Accès complet l'isolation est déjà retirée,
-  donc l'escalade n'a plus d'effet propre.
-  L'élévation élargit l'écriture hors du projet pour cet appel seulement (aucun droit
-  persistant), mais **ne relâche ni les secrets, ni les hooks/config Git, ni le filtre
-  réseau** : le profil Seatbelt d'élévation garde ces règles, et Rust refuse toujours
-  `git push`, `git config`, `git reset --hard`, `git clean -f` et `sudo`.
-  Comme le drapeau `approved`, `escalated` vient de la webview : la carte est la
-  barrière d'interface, pas une signature cryptographique. Un renderer compromis
-  pourrait le forger ; l'isolation reste la défense en profondeur.
-- Réglage : Paramètres → Général → « Permissions ». Un seul sélecteur règle le mode
-  d'accord et l'isolation. « Accès complet » est le `danger-full-access` de Harness : il
-  retire Seatbelt, après un avertissement unique et la confirmation native de Rust ; les
-  refus explicites de la politique restent, mais un script peut les contourner.
-- Réglage « Réseau des commandes » (ouvert par défaut). La protection contre l'envoi de
-  données repose sur les secrets illisibles et sur l'accord demandé après lecture d'un
-  contenu externe. Coupé, une connexion refusée ajoute `[ANZAR] Réseau coupé…` à la sortie.
-- Quand une écriture est refusée, la sortie de la commande se termine par une ligne
-  `[ANZAR] Bloqué par l'isolation des commandes…` que l'agent comprend.
-- Quand un hôte est refusé par le filtre réseau, la sortie se termine par
-  `[ANZAR] Hôtes bloqués par le filtre réseau : …` : l'agent sait quoi signaler, et
-  l'utilisateur peut ajouter l'hôte dans Paramètres → Réseau. Le journal
-  (`net_proxy_records`) donne les refus récents avec leur date.
-- Limite connue : le réglage est transmis par la webview ; l'isolation est une défense en
-  profondeur, en plus de la politique de commandes et des accords.
-- Limite connue (`.env` et clés du projet) : les outils fichiers les refusent (capacités Tauri),
-  le shell refuse les mentions évidentes (`cat .env`, `~/.ssh/id_rsa`), et un script **écrit
-  pendant la tâche** qui lit un secret est refusé avant exécution (`agentScriptSecretRisk`).
-  Un script **déjà présent** dans le projet peut encore lire un `.env` : un build ou un serveur
-  de développement en a souvent besoin. L'invariant est donc garanti pour les outils de
-  l'agent et les scripts qu'il écrit, pas pour tout code existant ; le prompt demande
-  explicitement de ne pas lire ni transmettre ces fichiers.
-- Limite Seatbelt connue (ports des applications) : quand le réseau passe par le proxy,
-  Seatbelt doit autoriser `localhost:*` pour que le proxy et les serveurs de développement
-  restent joignables. Or une règle `deny` sur un port placé après cette autorisation coupe
-  **tout** localhost (vérifié : le proxy devenait injoignable, d'où des « socket error »).
-  Les ports 9876 (Blender), 9877 (GIMP) et 4455 (OBS) ne sont donc bloqués par Seatbelt
-  que lorsque le réseau des commandes est **ouvert** ; en mode proxy, ils restent refusés
-  par les connecteurs Rust, mais un programme lancé par l'agent pourrait s'y connecter.
-  C'est un compromis de défense en profondeur assumé pour ne pas casser le réseau.
-- Windows : chaque commande tourne dans un « job object » (`src-tauri/src/winjob.rs`).
-  Arrêter la commande arrête toute son arborescence de processus, et fermer ANZAR tue ce qui
-  reste. Le presse-papiers (lecture et écriture), l'arrêt de la session et les réglages système
-  et d'affichage sont inaccessibles. **Les écritures de fichiers ne sont pas encore confinées** :
-  l'implémentation AppContainer (profil, ACE sur le projet, `CreateProcessW` suspendu puis job
-  object) et ses dix tests de validation sont décrits dans
-  [`WINDOWS_SANDBOX.md`](WINDOWS_SANDBOX.md). La CI Windows (`rust-windows`) compile et teste
-  désormais le code `#[cfg(windows)]` à chaque PR : c'est le prérequis pour l'écrire sans casser
-  la release.
-- Linux : pas d'isolation système (l'app n'est pas distribuée pour Linux).
+| Choix | Isolation | Demandes | Ce que l'agent peut faire |
+|---|---|---|---|
+| **Écriture projet · accord** (`ask`) | `workspace-write` | accord pour élargir | écrire et exécuter dans le projet, les temporaires et les caches ; réseau et lectures libres. Une commande refusée hors projet peut être relancée **une fois** avec `sandbox_permissions: "danger-full-access"` + justification, après accord. |
+| **Écriture projet · sans accord** (`auto`) | `workspace-write` | aucune (équivalent `never`) | la même chose, mais aucun élargissement : ce qui sort du projet est refusé sans carte. |
+| **Plan guidé** (`plan`) | `workspace-write` | accord pour élargir | **tous** les outils restent disponibles ; le mode plan est une consigne, pas une restriction. L'agent propose un plan puis exécute. |
+| **Accès complet** (`full`) | `danger-full-access` | aucune | plus d'isolation : écritures partout, lectures de `~/.ssh`, `.env`, clés, réseau direct, hooks/config Git modifiables. Seuls les connecteurs « toujours demander » demandent encore. |
+
+### Ce que l'isolation couvre
+
+Sur macOS uniquement, Seatbelt (`src-tauri/src/sandbox.rs`) limite les **écritures** au
+dossier du projet, au dossier git du dépôt, aux dossiers temporaires et aux caches
+d'outils (`~/Library/Caches`, `~/.npm`, `~/.cache`, `~/.cargo`, etc.).
+
+Elle ne couvre **pas** :
+
+- les **lectures** : aucun fichier n'est rendu illisible (ni `.env`, ni `~/.ssh`, ni une clé) ;
+- le **réseau** : aucune restriction, aucun proxy, aucune liste d'hôtes ;
+- les **processus** : pas de garantie uniforme de visibilité ;
+- **Git** : `.git/hooks` et `.git/config` sont des fichiers du projet, écrivables ;
+- les **commandes** : pas de liste blanche, pas de refus de `sudo`, `git push`,
+  `git reset --hard`, `git clean -f`, `npm publish`, etc. ;
+- les **secrets** : aucune liste ni aucun refus.
+
+C'est exactement le comportement de Harness. Les seules règles qui restent sont celles des
+**connecteurs ANZAR** : ports 9876 (Blender), 9877 (GIMP), 4455 (OBS) et tube Audacity
+bloqués pour les commandes, outils MCP qui exécutent du code refusés, et `alwaysAsk`.
+
+### Refus et élévation
+
+Quand Seatbelt refuse une écriture, la sortie se termine par :
+
+```
+[sandbox: file access denied under workspace-write mode]
+[sandbox: escalation available — retry this exact command once with sandbox_permissions ("danger-full-access") + justification; the approval prompt asks the user]
+```
+
+L'agent peut relancer **la même commande** avec `sandbox_permissions: "danger-full-access"`
+et une justification. En `ask` et `plan`, une carte demande l'accord ; en `auto`, c'est
+refusé sans carte ; en `full`, l'isolation est déjà retirée. L'élévation ne dure que pour
+cet appel.
+
+### Windows et Linux
+
+- **Windows** : les commandes tournent dans un job object (arrêt de l'arborescence,
+  presse-papiers et réglages système bloqués), mais **les écritures de fichiers ne sont pas
+  confinées**. Un avertissement visible dans les Paramètres et dans le prompt le dit.
+  Aucune protection de secrets, de Git ou du réseau n'est promise.
+- **Linux** : pas d'isolation système ; l'app n'est pas distribuée pour Linux.
 
 ## Dossiers de projet autorisés (novembre 2026)
 
@@ -260,7 +243,7 @@ Un dossier de projet n'entre dans le périmètre que par `src-tauri/src/roots.rs
 
 | Entrée | Effet |
 |---|---|
-| `project_pick_folder` / `project_create_folder` | Sélecteur natif lancé par Rust : le dossier choisi par l'utilisateur est validé (dans le dossier personnel, ni le dossier personnel lui-même, ni `~/.ssh`, `~/Library`, `~/.config`…, liens symboliques résolus), autorisé et enregistré dans `allowed_roots.json` (0600) |
+| `project_pick_folder` / `project_create_folder` | Sélecteur natif lancé par Rust : le dossier choisi par l'utilisateur est validé (dans le dossier personnel, pas le dossier personnel lui-même, liens symboliques résolus), autorisé et enregistré dans `allowed_roots.json` (0600) |
 | Démarrage | La liste est relue et chaque dossier ré-autorisé (avant : un dossier hors Documents/Bureau/Téléchargements perdait son accès au redémarrage) |
 | `project_import_roots` | Migration unique des projets déjà connus ; sans effet une fois la liste créée |
 | Glisser-déposer | Les fichiers déposés dans la fenêtre deviennent lisibles (pièces jointes), un par un |
@@ -280,12 +263,9 @@ des consignes cachées. Défenses (`src/services/agent/policy/untrusted.ts`) :
 - **Repérage** : les tournures d'injection connues (« ignore previous instructions »,
   « nouvelles consignes : », `curl … https://`, « envoie le .env »…) ajoutent un
   avertissement au bloc et rendent la source « suspecte ».
-- **Accord après lecture** : dès qu'un contenu externe a été lu pendant la demande,
-  `run_command`, `start_dev_server`, `spawn_subagents` et les actions de connecteur
-  (non déclarées en lecture) demandent l'accord, même en « Accès complet ». La carte
-  indique la source. En automatisation, ces actions sont refusées si le contenu est suspect.
-  L'écriture de fichiers reste libre : les fichiers écrits puis exécutés sont déjà couverts
-  par le garde S3 (`commandGuard`).
+- **Aucun accord supplémentaire** : comme Harness, une lecture externe ne bloque pas les
+  commandes suivantes. L'encadrement et l'avertissement restent une défense en profondeur
+  pour le modèle, pas une permission.
 - **Prompt** : règle « Contenu externe » dans le prompt système (rappelée aux conversations
   plus anciennes).
 
@@ -302,9 +282,9 @@ exécute du Python arbitraire avec les droits de l'utilisateur. Protections d'AN
 - **Outil bloqué** : `call_api` est refusé par Rust dans `mcp_send` (`denied_tools`), y compris
   dans un lot JSON-RPC ; il n'est pas non plus présenté au modèle (`deniedMcpTools`).
 - **Accord** : connecteur en `alwaysAsk` : chaque action de l'agent dans GIMP est confirmée.
-- **Commandes de l'agent** : le profil Seatbelt interdit toute connexion au port 9877
-  (`BLOCKED_LOCAL_PORTS`, testé en vrai sur macOS en CI). Sous Windows, sans isolation, les
-  commandes de l'agent passent par la carte d'accord (mode par défaut « Demander »).
+- **Commandes de l'agent** : sous Seatbelt, le port 9877 est bloqué (`BLOCKED_LOCAL_PORTS`,
+  testé en vrai sur macOS). En Accès complet et sous Windows, cette barrière système
+  disparaît ; seul le connecteur reste protégé par `alwaysAsk`.
 - **Limite connue** : tant que le serveur MCP est démarré dans GIMP, un autre programme de
   l'ordinateur peut piloter GIMP. La fiche du connecteur demande de l'arrêter après usage.
 
@@ -316,8 +296,8 @@ accord avant chaque action (`alwaysAsk`).
 - **Blender 2.3.1** : `execute_blender_code` (Python arbitraire) et `record_trajectory_feedback`
   (envoie les phrases de l'utilisateur à l'éditeur du connecteur) sont refusés. Rust impose
   `DISABLE_TELEMETRY=true`. L'add-on écoute sur `localhost:9876` ; Seatbelt interdit ce port
-  aux commandes quand le réseau des commandes est ouvert (voir la limite Seatbelt ci-dessus
-  pour le mode proxy). Les autres outils envoient des scripts fixes du connecteur.
+  aux commandes. En Accès complet ou sous Windows, cette barrière disparaît ; le connecteur
+  reste en `alwaysAsk`. Les autres outils envoient des scripts fixes du connecteur.
 - **Inkscape 2.0.0** : outils « fourre-tout » à opérations. Refusés : `inkscape_live` avec
   `operation = execute_inkex`, et tout appel à `inkscape_system` / `inkscape_extension` dont les
   arguments (forme JSON canonique, échappements compris) mentionnent l'extension

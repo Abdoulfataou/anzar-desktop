@@ -6,56 +6,33 @@ const all = ['read_file', 'write_file', 'run_command', 'bash', 'job_output', 'jo
 const base = { allToolNames: all, readOnlyTools: READ_ONLY_TOOLS };
 
 describe('subagentAllowedTools', () => {
-  it('en Full : écriture et shell autorisés, run_command/spawn/export interdits', () => {
-    const tools = subagentAllowedTools({ ...base, mode: 'full' });
-    expect(tools.has('write_file')).toBe(true);
-    expect(tools.has('read_file')).toBe(true);
-    expect(tools.has('run_command')).toBe(false);
-    expect(tools.has('bash')).toBe(true);
-    expect(tools.has('job_output')).toBe(true);
-    expect(tools.has('spawn_agent')).toBe(false);
-    expect(tools.has('send_message')).toBe(false);
-    expect(tools.has('start_dev_server')).toBe(false);
-    expect(tools.has('spawn_subagents')).toBe(false);
-    expect(tools.has('export_animation')).toBe(false);
-  });
-
-  it('hors Full : lecture seule stricte', () => {
-    const tools = subagentAllowedTools({ ...base, mode: 'auto' });
-    expect(tools.has('read_file')).toBe(true);
-    expect(tools.has('write_file')).toBe(false);
-    expect(tools.has('run_command')).toBe(false);
-    expect(tools.has('bash')).toBe(false);
-    expect(tools.has('spawn_subagents')).toBe(false);
-    expect(tools.has('task_done')).toBe(true);
+  it('hérite de l’écriture et du shell du parent, sans récursion ni fonctions de l’app', () => {
+    for (const mode of ['ask', 'auto', 'plan', 'full'] as const) {
+      const tools = subagentAllowedTools({ ...base, mode });
+      expect(tools.has('write_file'), mode).toBe(true);
+      expect(tools.has('bash'), mode).toBe(true);
+      expect(tools.has('run_command'), mode).toBe(true);
+      expect(tools.has('job_output'), mode).toBe(true);
+      expect(tools.has('spawn_agent'), mode).toBe(false);
+      expect(tools.has('send_message'), mode).toBe(false);
+      expect(tools.has('spawn_subagents'), mode).toBe(false);
+      expect(tools.has('export_animation'), mode).toBe(false);
+      expect(tools.has('task_done'), mode).toBe(true);
+    }
   });
 
   it('un profil réduit encore le périmètre', () => {
-    const tools = subagentAllowedTools({
-      ...base, mode: 'full',
-      profileTools: ['read_file', 'write_file', 'capture_page', 'export_animation', 'run_command'],
-    });
-    expect(tools.has('write_file')).toBe(true);
+    const tools = subagentAllowedTools({ ...base, mode: 'auto', profileTools: ['read_file', 'capture_page'] });
+    expect(tools.has('read_file')).toBe(true);
     expect(tools.has('capture_page')).toBe(true);
-    // Exclusions de la politique des sous-agents : un profil ne les rouvre pas.
-    expect(tools.has('export_animation')).toBe(false);
-    expect(tools.has('run_command')).toBe(false);
-    // task_done termine le sous-agent : toujours là.
+    expect(tools.has('write_file')).toBe(false);
     expect(tools.has('task_done')).toBe(true);
   });
 
-  it('un profil ne peut pas élargir hors Full', () => {
-    const tools = subagentAllowedTools({
-      ...base, mode: 'auto',
-      profileTools: ['write_file', 'run_command', 'read_file'],
-    });
-    expect(tools.has('write_file')).toBe(false);
-    expect(tools.has('run_command')).toBe(false);
-    expect(tools.has('read_file')).toBe(true);
-  });
-
-  it('sans déclaration, la politique du mode s’applique seule', () => {
-    expect(subagentAllowedTools({ ...base, mode: 'full', profileTools: [] }).has('write_file')).toBe(true);
+  it('sans déclaration, tous les outils non exclus sont là', () => {
+    const tools = subagentAllowedTools({ ...base, mode: 'auto', profileTools: [] });
+    expect(tools.has('write_file')).toBe(true);
+    expect(tools.has('bash')).toBe(true);
   });
 
   it('refuse les outils des capacités déclarées (deny)', () => {
@@ -68,9 +45,7 @@ describe('subagentAllowedTools', () => {
     expect(tools.has('apply_patch')).toBe(false);
     expect(tools.has('web_search')).toBe(false);
     expect(tools.has('read_url')).toBe(false);
-    // Les lectures restent, et task_done ne peut jamais être refusé.
     expect(tools.has('read_file')).toBe(true);
-    // capture_page passe par le navigateur : refusé avec `network`.
     expect(tools.has('capture_page')).toBe(false);
     expect(tools.has('task_done')).toBe(true);
   });
@@ -81,10 +56,4 @@ describe('subagentAllowedTools', () => {
     expect(CAPABILITY_TOOLS['fs.write']).toContain('write_file');
     expect(CAPABILITY_TOOLS['fs.write']).toContain('apply_patch');
   });
-
-  it('deny ne rouvre pas ce que la politique exclut', () => {
-    const tools = subagentAllowedTools({ ...base, mode: 'full', deny: [] });
-    expect(tools.has('run_command')).toBe(false);
-  });
-
 });

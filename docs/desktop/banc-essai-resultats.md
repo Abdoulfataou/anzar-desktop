@@ -16,7 +16,7 @@ Ce fichier consigne les résultats du banc décrit dans
 | Commit ANZAR mesuré | `main` après la refonte de l'agent (24/11/2026) |
 | Modèle | DeepSeek V4 (non lancé ici) |
 | Machine | Mac Apple Silicon, macOS |
-| Vérifications | `tsc --noEmit` 0 erreur ; `vitest run` 475 tests / 72 fichiers ; `cargo test` 46 tests ; `cargo clippy --all-targets -- -D warnings` 0 avertissement ; `check-security.mjs` OK |
+| Vérifications | `tsc --noEmit` 0 erreur ; `vitest run` 422 tests / 67 fichiers ; `cargo test` 22 tests ; `cargo clippy --all-targets -- -D warnings` 0 avertissement ; `check-security.mjs` OK |
 | Banc scripté | 14 tâches, 36 appels modèle simulés, 31 commandes, 36 FCFA simulés — 15 tests OK |
 | Banc réel | **non exécuté** : il faut l'application, une session modèle et des crédits |
 

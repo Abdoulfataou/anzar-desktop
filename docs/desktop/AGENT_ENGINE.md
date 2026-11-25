@@ -53,21 +53,19 @@ Règles :
   200 FCFA / 15 min, surchargeable par automatisation (`budgetFCFA`, `maxMinutes`) et par
   ticket (`budgetFCFA`, `maxMinutes`). Le compteur FCFA du tour s'affiche sous la zone de
   saisie (`components/chat/BudgetBadge.tsx`).
-- **Deux chemins de commande** : `policy/commands.json` reste la source de la liste blanche
-  de `run_command` (TypeScript et Rust l'incluent), et le pré-contrôle TypeScript refuse avant
-  la carte d'accord. Sur macOS, `bash` exécute une ligne `bash -c` sous Seatbelt : pas de liste
-  blanche, mais l'écriture reste confinée au projet, aux temporaires et aux caches ; les
-  opérations réservées à l'utilisateur (git push, reset --hard, clean -f, sudo) et les secrets
-  évidents sont refusés par Rust. Windows et Linux gardent `run_command` et sa liste.
+- **Commandes** : `bash` (macOS) exécute une ligne `bash -c` sous Seatbelt ; Windows garde
+  `run_command`. Aucune liste blanche, aucun refus de commande (`git push`, `sudo`,
+  `reset --hard`, `clean -f`, secrets) : c'est Harness. L'écriture est confinée au projet,
+  aux temporaires et aux caches ; le réseau et les lectures sont libres.
   Après un refus de Seatbelt, l'agent peut demander une **élévation à usage unique**
-  (`sandbox_permissions: "danger-full-access"` + justification) : l'écriture est élargie hors
-  du projet pour cet appel, tandis que secrets, hooks/config Git et réseau restent protégés ;
-  une carte l'approuve hors Accès complet, l'appel suivant retrouve la politique normale.
+  (`sandbox_permissions: "danger-full-access"` + justification) : elle lance la commande
+  sans Seatbelt pour cet appel, exactement comme `danger-full-access`.
+  Une carte l'approuve en mode « accord » ou « plan » ; elle est refusée sans carte en
+  « sans accord » ; en Accès complet, l'isolation est déjà retirée.
 - **Un seul sélecteur de permissions** : « Permissions » règle ensemble le mode d'accord et
   l'isolation. « Accès complet » est le `danger-full-access` de Harness : il retire Seatbelt
   et les demandes, après un avertissement unique et la confirmation native de Rust. Tout
-  autre mode réactive l'isolation. L'élévation ponctuelle reste disponible hors Accès
-  complet pour élargir une seule écriture sans changer de mode.
+  autre mode réactive l'isolation. Le mode plan guide sans retirer d'outil.
 - **Rappel de boucle** : `engine/loopGuard.ts`. Après chaque appel, la signature
   `(outil, arguments normalisés)` est comparée au précédent : aux seuils 3, 5 et 8 appels
   identiques consécutifs, un rappel est ajouté après le lot d'outils. Il ne bloque rien et
@@ -181,8 +179,8 @@ partagées :
 | `src/services/agent/agentSession.ts` | moteur générique : streaming, assemblage, boucle, erreurs, vérification, nudges |
 | `src/services/agent/toolCallAssembler.ts` | assemble les tool_calls fragmentés du SSE |
 | `src/services/agent/history.ts` | compaction compatible cache, taille d'historique, réparation des tool_calls orphelins |
-| `src/services/agent/permissions.ts` | `PermissionMode`, catégories d'outils, `needsApproval` |
-| `src/services/agent/toolPolicy.ts` | décision d'approbation (plan, ask, auto, MCP, risque, automatisation) |
+| `src/services/agent/policy/permissions.ts` | `PermissionMode`, catégories d'outils, choix d'isolation |
+| `src/services/agent/policy/toolPolicy.ts` | décision d'approbation (connecteurs, automatisations) |
 | `src/services/agent/toolExecution.ts` | dispatch web / MCP / outil local |
 | `src/services/agent/toolDisplay.ts` | résumé, chemin cliquable et delta de lignes |
 | `src/services/agent/chatSession.ts` | timeline sérialisable, estimation de tokens et calcul du coût FCFA |
@@ -215,10 +213,10 @@ Couverture actuelle (121 tests) :
 - `toolCallAssembler.test.ts` : fragments, multi-appels, id généré ;
 - `history.test.ts` : `shrinkText`, compaction, protection des résultats récents,
   arguments longs, tool_calls orphelins, taille ;
-- `permissions.test.ts` : modes `ask` / `auto` / `plan` / `full` ;
+- `permissions.test.ts` : choix d’isolation `ask` / `auto` / `plan` / `full` ;
 - `autoRouter.test.ts` : routage fast/thinking/max/pro, mode plan, escalade ;
 - `agentSession.test.ts` : réponse finale, outil, plan, vérification, nudge, retry, budget, annulation ;
-- `toolPolicy.test.ts` : refus en mode plan, approbations ask/auto, espace ANZAR, automatisations ;
+- `toolPolicy.test.ts` : aucune carte générique, connecteurs `alwaysAsk`, automatisations ;
 - `toolExecution.test.ts` : dispatch web, MCP, outil local, absence de projet ;
 - `toolDisplay.test.ts` : résumés, chemins, deltas ;
 - `questions.test.ts` : normalisation des questions et formatage des réponses ;
@@ -228,7 +226,6 @@ Couverture actuelle (121 tests) :
 - `agentRoot.test.ts` : projet, création ANZAR, fichier joint, arrière-plan ;
 - `systemPrompt.test.ts` : prompt avec/sans projet, cache, mode plan, espace ANZAR.
 - `useAgentChat.test.ts` : hook réel avec mocks — réponse finale, approbation, `ask_user`, plan, annulation, reprise après erreur, images `capture_page`, escalade Auto, espace ANZAR, `task_done` ;
-- `commandGuard.test.ts` : `npx` refusé, installations/push risqués, capacités shell ;
 - `webTools.test.ts` : refus loopback/privé/metadata ;
 - `manager.test.ts` : `alwaysAsk` prioritaire, annotations MCP non fiables ;
 - `VisualBlock.test.ts` : Mermaid filtré (scripts/foreignObject/onclick) ;

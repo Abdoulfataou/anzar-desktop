@@ -38,12 +38,12 @@ describe('spawn_subagents — profils', () => {
     expect(redaction.allowedTools.has('task_done')).toBe(true);
   });
 
-  it('respecte la politique hors Full même si le profil demande plus', async () => {
+  it('hérite de l’écriture du parent, dans la limite du profil', async () => {
     const runSubagent = vi.fn().mockResolvedValue(result);
     await execSpawnSubagents({ tasks }, makeCtx('auto', runSubagent) as any);
 
     const [motion] = runSubagent.mock.calls.map((c) => c[0]);
-    expect(motion.allowedTools.has('write_file')).toBe(false);
+    expect(motion.allowedTools.has('write_file')).toBe(true);
     expect(motion.allowedTools.has('read_file')).toBe(true);
   });
 

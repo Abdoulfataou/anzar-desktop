@@ -215,6 +215,13 @@ pub fn tool_spawn(
         let program = python3_fallback(program.trim().to_lowercase(), |p| find_in_path(p).is_some());
         (program, args)
     };
+    if !use_shell && mentions_blocked_local_app(&format!("{program} {}", args.join(" "))) {
+        return Err(
+            "Les ports locaux 9876 (Blender), 9877 (GIMP) et 4455 (OBS), ainsi que le tube \
+             d'Audacity, sont réservés aux connecteurs d'ANZAR : une commande ne doit pas les utiliser."
+                .into(),
+        );
+    }
     let (root_p, cwd_p) = validate_dir(&root, &cwd)?;
     if !crate::roots::is_allowed_root(&app, &root_p) {
         return Err("Dossier non autorisé : ouvre-le d'abord comme projet dans ANZAR.".into());
