@@ -48,6 +48,21 @@ describe('buildToolsForStep', () => {
     }
   });
 
+  it('Windows : run_command seul, jamais bash absent', () => {
+    const platform = navigator.platform;
+    const ua = navigator.userAgent;
+    Object.defineProperty(navigator, 'platform', { value: 'Win32', configurable: true });
+    Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', configurable: true });
+    try {
+      const list = names(buildToolsForStep(base));
+      expect(list).toContain('run_command');
+      expect(list).not.toContain('bash');
+    } finally {
+      Object.defineProperty(navigator, 'platform', { value: platform, configurable: true });
+      Object.defineProperty(navigator, 'userAgent', { value: ua, configurable: true });
+    }
+  });
+
   it('le mode plan guide mais ne retire aucun outil', () => {
     const list = names(buildToolsForStep({ ...base, mode: 'plan' }));
     expect(list).toContain('read_file');

@@ -60,11 +60,15 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
   let turnContext = '';
 
   if (input.workspacePath) {
+    const bashAvailable = input.shellAvailable !== false && !input.personalSpaceContext;
+    const runCommandAvailable = !bashAvailable;
     const promptCtx = {
       projectName: input.workspaceName || input.workspacePath.split('/').pop() || 'projet',
       projectRoot: input.workspacePath,
       memory: input.memory,
       platform: input.platform,
+      bashAvailable,
+      runCommandAvailable,
     };
     system = {
       role: 'system',

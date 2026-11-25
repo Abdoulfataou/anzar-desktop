@@ -71,6 +71,16 @@ describe('buildSessionSystemPrompt', () => {
     expect(bundle.turnContext).toContain(PLAN_MODE_PROMPT.trim());
   });
 
+  it('ne décrit que l’outil de commande réellement proposé', () => {
+    const win = buildSessionSystemPrompt({ ...base, workspacePath: '/tmp/projet', shellAvailable: false });
+    expect(String(win.system.content)).toContain('- run_command');
+    expect(String(win.system.content)).not.toContain('- bash :');
+
+    const mac = buildSessionSystemPrompt({ ...base, workspacePath: '/tmp/projet', shellAvailable: true });
+    expect(String(mac.system.content)).toContain('- bash :');
+    expect(String(mac.system.content)).not.toContain('- run_command');
+  });
+
   it('ajoute le contexte de l’espace ANZAR', () => {
     const bundle = buildSessionSystemPrompt({ ...base, personalSpaceContext: '\n\n# Espace ANZAR' });
     expect(bundle.turnContext).toContain('Espace ANZAR');

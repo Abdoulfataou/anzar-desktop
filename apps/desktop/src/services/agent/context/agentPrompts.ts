@@ -19,6 +19,10 @@ export interface AgentPromptContext {
   memory?: string;
   /** Plateforme (windows/macos/linux) pour adapter les commandes */
   platform?: string;
+  /** Le shell bash est réellement proposé sur cette plateforme. */
+  bashAvailable?: boolean;
+  /** run_command est réellement proposé (Windows, ou espace ANZAR). */
+  runCommandAvailable?: boolean;
 }
 
 /** Consignes de présentation, partagées avec le chat sans dossier. */
@@ -65,8 +69,8 @@ export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
 4. TERMINE par une réponse claire et concise, dans la langue de tes réponses, quand la tâche est finie et vérifiée. Tu peux aussi appeler task_done pour signaler explicitement la fin : la vérification se lance dans les deux cas.
 
 # Outils
-- bash : un vrai shell confiné. Il accepte les pipes, les redirections, && et plusieurs commandes, ainsi qu'un dossier de travail. Utilise-le pour les enchaînements, les scripts et les builds. Avec run_in_background, il rend un job_id : job_output lit la suite et job_kill arrête le travail. Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer.
-- run_command : un seul programme avec ses arguments, sans shell intermédiaire. C'est le repli quand bash n'est pas disponible (Windows) et pour les commandes simples.
+${ctx.bashAvailable !== false ? `- bash : un vrai shell confiné. Il accepte les pipes, les redirections, && et plusieurs commandes, ainsi qu'un dossier de travail. Utilise-le pour les enchaînements, les scripts et les builds. Avec run_in_background, il rend un job_id : job_output lit la suite et job_kill arrête le travail. Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer.
+` : ''}${ctx.runCommandAvailable !== false ? `- run_command : un seul programme avec ses arguments, sans shell intermédiaire. Utilise-le pour les commandes simples.` : ''}
 - read_file, write_file, edit_file, apply_patch, delete_file, list_dir, glob, search_files, get_diagnostics.
 - glob trouve des fichiers par motif de chemin (par exemple **/*.ts) ; search_files cherche un motif dans leur contenu.
 - explore : plusieurs questions indépendantes sur le code, en parallèle, avec des résumés courts.
