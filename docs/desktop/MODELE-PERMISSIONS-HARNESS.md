@@ -154,3 +154,45 @@ sans accord, réseau et lectures libres, aucun refus de commande, aucune protect
 ou de secrets. La seule restriction est l'écriture hors du workspace (et hors temp),
 avec une élévation approuvée à usage unique. Le profil `danger-full-access` ne garde
 rien. C'est ce modèle qu'il faut reprendre, pas une version plus prudente.
+
+---
+
+# Inventaire des restrictions d'ANZAR
+
+Chaque ligne part d'un comportement d'ANZAR, le compare à Harness, puis tranche :
+**SUPPRIMER** (absent de Harness), **ALIGNER** (présent mais différent) ou **GARDER**
+(seulement pour les fonctions propres à ANZAR ou ses fichiers d'application).
+
+| # | Restriction d'ANZAR | Où | Harness ? | Décision |
+|---|---|---|---|---|
+| 1 | Liste blanche de programmes (`commands.json`), programmes interdits (shells, sudo, curl…), plafonds d'arguments | `policy/commands.json`, `policy/commandPolicy.ts`, `src-tauri/src/tool_runner.rs` (`is_allowed_program`, `is_denied_program`, `validate_args`) | Non : le shell accepte n'importe quel argv | **SUPPRIMER** |
+| 2 | Refus de `node -e`, `python -c`, `bash -c`, pipes/enchaînements/redirections, curl/wget, sudo, su, `rm -rf`, `git push`, `git config`, `git reset --hard`, `git clean -f` | `policy/commands.json` (`blocked`), `commandPolicy.validateCommand`, `tool_runner.validate_args` | Non : aucun filtre de commande | **SUPPRIMER** |
+| 3 | Refus shell de `sudo`, hooks/config Git, `.env`, clés, `git push/remote add/config/reset/clean` | `tools/bashTool.ts` (`shellRefusal`) | Non | **SUPPRIMER** |
+| 4 | Mêmes refus côté Rust, y compris après élévation | `tool_runner.rs` (`forbidden_shell_operation`) | Non | **SUPPRIMER** |
+| 5 | Cartes d'accord pour installation, programme inconnu, script écrit par l'agent, script de build modifié, sortie réseau Git | `policy/commandGuard.ts`, `runtime/toolHost.ts` | Non : aucun accord générique ; l'écriture dans le workspace passe | **SUPPRIMER** |
+| 6 | Le mode `ask` demande un accord pour **chaque** écriture et **chaque** commande | `policy/permissions.ts` (`needsApproval`), `policy/toolPolicy.ts` | Non : `workspace-write` écrit sans demande | **ALIGNER** : `ask` = workspace-write + accord seulement pour l'élévation/MCP |
+| 7 | Le mode `plan` retire les outils d'écriture et de commande | `runtime/toolList.ts`, `toolPolicy.ts` | Non : le mode plan de Harness guide, tous les outils restent disponibles | **ALIGNER** : plan = consigne, pas de filtrage d'outils |
+| 8 | Accord après lecture d'un contenu externe, même non suspect | `policy/toolPolicy.ts`, `policy/untrusted.ts` | Non | **SUPPRIMER** (garder l'encadrement du contenu comme donnée, sans carte) |
+| 9 | Secrets illisibles sous Seatbelt (`~/.ssh`, `~/.aws`, `~/.gnupg`, `~/.kube`, `~/.netrc`, `~/.git-credentials`) | `src-tauri/src/sandbox.rs` (`PROFILE`) | Non : lectures non confinées | **SUPPRIMER** |
+| 10 | Hooks et config Git en lecture seule (`GIT_PROTECT`), exception `git init` | `src-tauri/src/sandbox.rs`, `tool_runner.rs` | Non : `.git` est un fichier du workspace | **SUPPRIMER** |
+| 11 | Réseau coupé par défaut, proxy local obligatoire, liste d'hôtes, accords réseau/installation | `sandbox.rs` (`NETWORK_RULES`, `network_allowed`), `netproxy.rs`, `command_policy.rs`, `terminal.ts` (`grant*`) | Non : réseau non restreint | **SUPPRIMER** |
+| 12 | Profil d'élévation qui garde secrets/Git/réseau | `sandbox.rs` (`ESCALATED_PROFILE`, `wrap_escalated`) | Non : `danger-full-access` contourne totalement le provider | **ALIGNER** : l'élévation approuvée lance sans Seatbelt |
+| 13 | Refus de `.env`, clés, `.ssh`… dans les outils fichiers et la portée Tauri | `src-tauri/capabilities/migrated.json` (`deny`), tests `shell.test.ts` | Non : lectures/écritures dans la frontière du mode | **SUPPRIMER** pour les fichiers du projet ; **GARDER** les fichiers propres à l'app (`store/vault-key.dat`, `store/mcp.json`, `*.hold`) |
+| 14 | Un script écrit pendant la tâche qui lit `.env`/une clé est refusé | `policy/commandGuard.ts` (`agentScriptSecretRisk`), `toolHost.ts` | Non | **SUPPRIMER** |
+| 15 | Ports 9876 (Blender), 9877 (GIMP), 4455 (OBS) et tube Audacity bloqués pour les commandes | `sandbox.rs` (`BLOCKED_LOCAL_PORTS`, `AUDACITY_PIPE`), `tool_runner.rs` (`mentions_blocked_local_app`) | Non | **GARDER** : protège les connecteurs ANZAR (GIMP, Blender, OBS, Audacity) |
+| 16 | Outils MCP qui exécutent du code refusés, `alwaysAsk` sur les connecteurs | `src-tauri/src/mcp.rs`, `services/mcp/config.ts`, `policy/toolPolicy.ts` | Non | **GARDER** : les connecteurs sont une fonction d'ANZAR ; garder les refus et `alwaysAsk` |
+| 17 | « Espace ANZAR » limité à `Documents/ANZAR` et à une liste d'outils | `services/workspace/personalSpace.ts`, `runtime/toolList.ts` | Non | **GARDER** : cet espace et ses fichiers appartiennent à l'app ; ce n'est pas un projet utilisateur |
+| 18 | Un projet ne peut être ouvert que sous le home et hors dossiers de secrets/système | `src-tauri/src/roots.rs` | Non : la racine est le cwd de la session | **GARDER** le registre de projets de l'app (fichiers de l'app), **SUPPRIMER** le refus des dossiers de secrets comme projet |
+| 19 | Accord impossible en arrière-plan (automatisations, tickets) | `toolPolicy.ts`, `toolHost.ts` | Oui, équivalent `approval: never` (refus déterministe) | **ALIGNER** : conserver le refus, le nommer « politique never » |
+| 20 | Windows : pas d'isolation des écritures, seulement un avertissement | `sandbox.rs`, `SettingsPage.tsx`, prompt | Oui, mais backend ACL `partial` | **ALIGNER** : signaler honnêtement ; le backend ACL complet reste non porté |
+
+## Ce qui est explicitement conservé comme fonction, pas comme permission
+
+- le bouton Stop et l'arrêt des processus ;
+- les rapports d'erreurs ;
+- la langue de réponse ;
+- la facturation en crédits ;
+- les connecteurs GIMP, Blender, Inkscape, Audacity, OBS et leurs outils/ports ;
+- la vérification lint/build/tests après modification ;
+- l'encadrement du contenu externe comme **donnée** (sans carte d'accord) ;
+- l'espace ANZAR et ses fichiers.
