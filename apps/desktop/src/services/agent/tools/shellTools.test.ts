@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/services/runtime/terminal', () => ({
   terminalService: { exec: vi.fn() },
+  ESCALATION_HINT: '[sandbox: escalation available]',
 }));
 vi.mock('@/services/runtime/toolsRuntime', () => ({
   toolsCatalog: vi.fn().mockResolvedValue([]),
@@ -97,4 +98,23 @@ describe('execRunCommand — contrat de résultat', () => {
     expect(result.output).toContain("l'isolation");
   });
 
+
+  it('Windows hors Accès complet : la commande ne part pas sans élévation', async () => {
+    const platform = navigator.platform;
+    const ua = navigator.userAgent;
+    Object.defineProperty(navigator, 'platform', { value: 'Win32', configurable: true });
+    Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', configurable: true });
+    try {
+      exec.mockClear();
+      const ask = await execRunCommand({ command: 'npm test' }, { projectRoot: '/p', permissionMode: 'ask' } as any);
+      expect(ask.isError).toBe(true);
+      expect(ask.output).toContain('[sandbox: unavailable');
+      const auto = await execRunCommand({ command: 'npm test' }, { projectRoot: '/p', permissionMode: 'auto' } as any);
+      expect(auto.output).toContain('Refusé');
+      expect(exec).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(navigator, 'platform', { value: platform, configurable: true });
+      Object.defineProperty(navigator, 'userAgent', { value: ua, configurable: true });
+    }
+  });
 });

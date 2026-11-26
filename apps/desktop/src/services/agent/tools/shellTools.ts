@@ -5,8 +5,12 @@ import { terminalService } from '@/services/runtime/terminal';
 import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/runtime/toolsRuntime';
 import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_CHARS, resolvePath, truncate } from './shared';
 import { ToolExecutionContext, ToolResult } from './types';
+import { unconfinedCommandRefusal } from '../policy/isolation';
 
 export async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  // Windows : pas d'isolation, donc pas de lancement silencieux hors Accès complet.
+  const unconfined = unconfinedCommandRefusal(ctx.permissionMode, ctx.escalated === true);
+  if (unconfined) return { output: unconfined, isError: true };
   const cwd = await resolvePath(ctx.projectRoot, args.cwd);
   const result = await terminalService.exec(args.command, {
     cwd,

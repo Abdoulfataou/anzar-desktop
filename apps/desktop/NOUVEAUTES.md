@@ -23,9 +23,10 @@
   `sandbox_permissions: "danger-full-access"` et une justification. En « accord » et
   « plan », une carte demande l'accord ; en « sans accord », c'est refusé ; en « Accès
   complet », l'isolation est déjà retirée.
-- **Windows** : les écritures ne sont pas confinées. Un avertissement visible dans les
-  Paramètres et dans le prompt le dit ; aucune protection de secrets, de Git ou du réseau
-  n'est promise.
+- **Windows** : les commandes ne peuvent pas encore être isolées dans le projet. Elles ne
+  partent donc jamais toutes seules hors Accès complet : en « Demander », chaque commande
+  demande ton accord ; en « Modifier automatiquement », elles sont refusées ; en « Accès
+  complet », elles partent sans limite, comme l'avertissement le dit.
 
 ## Agent
 

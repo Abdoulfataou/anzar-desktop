@@ -33,6 +33,7 @@ import type { TurnSink } from './turnFallbacks';
 import { newServerCost, type ServerCost } from './turnAccounting';
 import type { TurnHost, TurnInput } from './turnTypes';
 import { createTurnVerifier, type TurnVerifier } from './turnVerify';
+import { autoVerifyAllowed } from '../policy/isolation';
 
 /** Ce qui évolue pendant le tour et doit être lu par les fermetures de la préparation. */
 export interface TurnProgress {
@@ -306,7 +307,9 @@ export async function startTurn(host: TurnHost, input: TurnInput): Promise<TurnS
     // Vérification : référence avant la première écriture, contrôle ciblé au task_done.
     const verifier = createTurnVerifier({
       enabled: !!workspacePath && !!agentRoot
-        && useSettingsStore.getState().settings.autoVerifyAfterApply !== false,
+        && useSettingsStore.getState().settings.autoVerifyAfterApply !== false
+        // Référence prise avant la première écriture : elle lance aussi des commandes.
+        && autoVerifyAllowed(host.mode),
       convId,
       agentRoot,
       background,

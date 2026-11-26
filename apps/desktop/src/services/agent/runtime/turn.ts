@@ -25,6 +25,7 @@ import { listSkills, skillsPromptSection, type Skill } from '@/services/skills';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildSessionSystemPrompt } from '@/services/agent/context/systemPrompt';
 import { sandboxEnabled } from '@/services/runtime/terminal';
+import { autoVerifyAllowed } from '../policy/isolation';
 import { takeLiveNotifications } from '@/services/agent/subagents/live';
 import { withAttachments } from '@/services/agent/context/attachments';
 import { resolveAgentRoot } from '@/services/agent/context/agentRoot';
@@ -318,7 +319,8 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         // À la fin du tour (réponse naturelle ou task_done), si l'agent a modifié le
         // projet : lint / build / tests détectés. En cas d'échec, les erreurs sont
         // renvoyées à l'agent et le tour continue.
-        shouldVerify: () => turn.filesWritten > 0 && verifier.enabled && host.mode !== 'plan',
+        // Windows sans Accès complet : pas d'isolation, donc pas de lint/build/tests lancés seuls.
+        shouldVerify: () => turn.filesWritten > 0 && verifier.enabled && host.mode !== 'plan' && autoVerifyAllowed(host.mode),
         maxVerifyAttempts: 3,
         verify: () => verifier.verify(),
         onToolCall: handleToolCall,

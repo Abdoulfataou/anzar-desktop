@@ -3,9 +3,12 @@
  */
 import { resolvePath } from './shared';
 import { ToolExecutionContext, ToolResult } from './types';
+import { unconfinedCommandRefusal } from '../policy/isolation';
 
 // ── Vérification web : serveur de développement et navigateur intégré ──
 export async function execStartDevServer(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const unconfined = unconfinedCommandRefusal(ctx.permissionMode, false, 'start_dev_server');
+  if (unconfined) return { output: unconfined, isError: true };
   const { startDevServer } = await import('./devServer');
   const command = typeof args.command === 'string' && args.command.trim() ? args.command.trim() : undefined;
   const r = await startDevServer(ctx.projectRoot, command);

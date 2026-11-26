@@ -227,9 +227,16 @@ cet appel.
 ### Windows et Linux
 
 - **Windows** : les commandes tournent dans un job object (arrêt de l'arborescence,
-  presse-papiers et réglages système bloqués), mais **les écritures de fichiers ne sont pas
-  confinées**. Un avertissement visible dans les Paramètres et dans le prompt le dit.
-  Aucune protection de secrets, de Git ou du réseau n'est promise.
+  presse-papiers et réglages système bloqués), mais **elles ne peuvent pas être confinées au
+  projet**. Comme Harness quand l'isolation manque (fail-closed), ANZAR ne les lance donc
+  jamais en silence hors Accès complet (`policy/isolation.ts`) :
+  - « Demander » et plan : chaque commande (et le serveur de dev) passe par l'élévation à
+    usage unique, donc par une carte d'accord ;
+  - « Modifier automatiquement » : la commande est refusée, avec la marche à suivre ;
+  - « Accès complet » : les commandes partent sans confinement, comme l'avertissement le dit ;
+  - les vérifications automatiques (lint, build, tests) ne tournent qu'en Accès complet.
+  Cette règle est appliquée par l'app (TypeScript), pas par le système : la vraie
+  isolation Windows (jeton restreint et ACL de Harness) reste à faire.
 - **Linux** : pas d'isolation système ; l'app n'est pas distribuée pour Linux.
 
 ## Dossiers de projet autorisés (novembre 2026)

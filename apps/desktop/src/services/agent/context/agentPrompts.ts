@@ -146,7 +146,11 @@ export function runtimeFactsSection(facts: RuntimeFacts): string {
     facts.permissionMode ? `Permissions : ${PERMISSION_FACT[facts.permissionMode]}` : '',
     // Invariant 7 : ne jamais laisser croire que Windows est confiné.
     facts.platform === 'windows'
-      ? "Isolation : non garantie sous Windows ; les écritures hors projet ne sont pas confinées par le système. Reste dans le projet et signale-le si une action l'exige."
+      ? (facts.permissionMode === 'full'
+        ? "Isolation : aucune sous Windows ; en Accès complet, les commandes s'exécutent sans confinement."
+        : facts.permissionMode === 'auto'
+          ? "Isolation : indisponible sous Windows ; dans ce mode, les commandes sont refusées. Si une commande est indispensable, dis à l'utilisateur de passer en « Demander » ou en « Accès complet »."
+          : "Isolation : indisponible sous Windows ; chaque commande passe par une élévation (sandbox_permissions \"danger-full-access\" + justification), donc par une carte d'accord. Regroupe le travail en peu de commandes.")
       : '',
   ].filter(Boolean);
   return `\n\n---\n# État de l'environnement (à cet instant)\n${lines.map((l) => `- ${l}`).join('\n')}`;
