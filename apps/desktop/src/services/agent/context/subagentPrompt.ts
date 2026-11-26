@@ -68,11 +68,19 @@ export function commandsFact(tools: Set<string>, mode: PermissionMode | undefine
     : 'Tes commandes sont confinées au projet (plus les dossiers temporaires et les caches). Sers-t’en pour lire et vérifier (tests, lint, build), jamais pour modifier un fichier.';
 }
 
+/** Taille maximale d'une skill injectée d'office (une skill de projet peut être longue). */
+const MAX_ROLE_SKILL_CHARS = 20_000;
+
 /** Skills : consignes obligatoires du rôle, puis la liste des autres à charger au besoin. */
 export function skillsSections(profile: AgentProfile | undefined, skills: Skill[], canLoad: boolean): string[] {
   const out: string[] = [];
+  // Skill du projet ou personnelle du même nom d'abord (elle remplace celle d'ANZAR), puis le pack.
   const mandatory = (profile?.skills ?? [])
-    .map((name) => BUILTIN_SKILLS.find((s) => s.name === name)?.markdown)
+    .map((name) => {
+      const own = skills.find((s) => s.name === name && s.body.trim());
+      if (own) return `---\nname: ${own.name}\ndescription: ${own.description}\n---\n\n${own.body.slice(0, MAX_ROLE_SKILL_CHARS)}`;
+      return BUILTIN_SKILLS.find((s) => s.name === name)?.markdown;
+    })
     .filter((md): md is string => !!md);
   if (mandatory.length) {
     out.push(`# Skills de ton rôle (applique-les à la lettre)\n${mandatory.join('\n\n---\n\n')}`);

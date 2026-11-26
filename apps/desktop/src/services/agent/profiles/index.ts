@@ -99,13 +99,17 @@ export const isSubagentRole = (v: unknown): v is SubagentRole =>
  * Devine un rôle depuis l'énoncé de la tâche, en comptant les mots-clés déclarés par chaque
  * profil. Sans correspondance : `dev` s'il existe, sinon le premier rôle déclaré.
  */
-export function detectSubagentRole(task: string): SubagentRole {
+export function detectSubagentRole(task: string, custom: readonly AgentProfile[] = []): SubagentRole {
   const text = String(task || '').toLowerCase();
+  // Agents personnalisés d'abord : à égalité de mots-clés, ils l'emportent sur les intégrés.
+  const candidates: AgentProfile[] = [
+    ...custom,
+    ...SUBAGENT_ROLES.map((r) => AGENT_PROFILES[r]).filter((p) => !custom.some((c) => c.name === p.name)),
+  ];
   let best: { role: SubagentRole; score: number } | null = null;
-  for (const role of SUBAGENT_ROLES) {
-    const score = (AGENT_PROFILES[role]?.keywords || [])
-      .filter((k) => k && text.includes(k.toLowerCase())).length;
-    if (score > 0 && (!best || score > best.score)) best = { role, score };
+  for (const profile of candidates) {
+    const score = (profile.keywords || []).filter((k) => k && text.includes(k.toLowerCase())).length;
+    if (score > 0 && (!best || score > best.score)) best = { role: profile.name, score };
   }
   if (best) return best.role;
   return SUBAGENT_ROLES.includes('dev') ? 'dev' : SUBAGENT_ROLES[0] || 'dev';

@@ -21,7 +21,7 @@ import { fileConflict, noteFileRead, noteFileWrite } from '../policy/fileConflic
 import { readPathForTool, writePathsForTool } from '../tools/filePaths';
 import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from '../context/agentPrompts';
 import { buildSubagentSystemPrompt } from '../context/subagentPrompt';
-import { AGENT_PROFILES } from '../profiles';
+import { AGENT_PROFILES, type AgentProfile } from '../profiles';
 import type { PermissionMode } from '../policy/permissions';
 import { LOAD_SKILL_TOOL } from '../tools/specialDefinitions';
 import { loadSkill } from '../tools/specialTools';
@@ -84,6 +84,8 @@ export interface AgentLoopOptions {
    * (services/agent/context/subagentPrompt.ts) au lieu de celles de l'agent principal.
    */
   subagentRole?: string;
+  /** Profil du rôle (intégré ou agent personnalisé). Absent : retrouvé parmi les rôles intégrés. */
+  subagentProfile?: AgentProfile;
   /** Mode de permission hérité du parent (isolation, commandes sous Windows). */
   permissionMode?: PermissionMode;
   /** Skills disponibles : leur liste va dans le prompt et load_skill est proposé. */
@@ -226,7 +228,7 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
   const systemPrompt = options.subagentRole !== undefined
     ? buildSubagentSystemPrompt({
         project: effectivePrompt,
-        profile: AGENT_PROFILES[options.subagentRole],
+        profile: options.subagentProfile ?? AGENT_PROFILES[options.subagentRole],
         tools: sessionToolNames,
         permissionMode: options.permissionMode,
         windows,

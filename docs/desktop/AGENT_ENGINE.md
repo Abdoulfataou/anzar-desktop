@@ -167,6 +167,11 @@ Règles :
   rôles livrés : `dev`, `revue` (lecture seule), `redaction`, `motion-designer` (seul à
   recevoir `export_animation`). La mémoire du projet (`remember`) reste à l'agent principal.
 
+  Agents personnalisés : `profiles/custom.ts` lit `.anzar/agents` et `.claude/agents` du projet,
+  les agents personnels (page Agents, `~/.claude/agents`) et les présente à l'agent principal
+  (« Agents du projet et personnels »). `resolveRole` donne la priorité au personnalisé sur
+  l'intégré du même nom. Voir `docs/desktop/AGENTS-PERSONNALISES.md`.
+
 Les chemins de la section suivante sont ceux d'avant cette réorganisation.
 
 ## 1. Ce qui a été consolidé

@@ -22,6 +22,7 @@ import { loadPersonalInstructions, personalInstructionsSection } from '@/service
 import { aiService, markSlowNetwork } from '@/services/ai/ai';
 import { mcpAgentTools, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, skillsPromptSection, type Skill } from '@/services/skills';
+import { customAgentsPromptSection } from '../profiles/custom';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { buildSessionSystemPrompt } from '@/services/agent/context/systemPrompt';
 import { sandboxEnabled } from '@/services/runtime/terminal';
@@ -85,7 +86,7 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
     convId, agentRoot, workspacePath, workspaceName, model, background, personalSpace,
     attachments, apiContent, userMsg, assistantId, controller, onFileChanged,
     budget, balanceBefore, cost, startedAt: t0, events, timeline, snapshots,
-    externalSources, turn, toolEvents, skills, personal, webEnabled, mcpTools,
+    externalSources, turn, toolEvents, skills, customAgents, personal, webEnabled, mcpTools,
     verifier, flush, flushLive, appendContent, sink, persist, offBudget, callModel,
   } = s;
 
@@ -111,7 +112,7 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
           planMode: host.mode === 'plan',
           webEnabled,
           personal,
-          skillsSection: skillsPromptSection(skills),
+          skillsSection: skillsPromptSection(skills) + customAgentsPromptSection(customAgents),
           memory: ctx?.memory,
           codeMap: ctx?.codeMap,
           taskHints: ctx?.taskHints,
@@ -156,6 +157,7 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
         personalSpace,
         signal: controller.signal,
         skills,
+        customAgents,
         events,
         toolEvents,
         timeline,

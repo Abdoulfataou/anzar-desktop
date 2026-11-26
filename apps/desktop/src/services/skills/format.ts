@@ -16,7 +16,13 @@ export function slugifySkillName(raw: string): string {
 // FORMAT SKILL.md
 // ============================================================================
 
-const unquote = (v: string) => v.trim().replace(/^(["'])([\s\S]*)\1$/, '$2');
+/** Retire les guillemets YAML : « \" » et « \\ » entre doubles, « '' » entre simples. */
+const unquote = (v: string) => {
+  const t = v.trim();
+  const m = /^(["'])([\s\S]*)\1$/.exec(t);
+  if (!m) return t;
+  return m[1] === '"' ? m[2].replace(/\\(["\\])/g, '$1') : m[2].replace(/''/g, "'");
+};
 
 /**
  * Lit le frontmatter YAML des clés simples (name, description, license…), y compris
@@ -87,6 +93,6 @@ export function parseSkill(markdown: string, fallbackName: string): ParsedSkill 
 }
 
 export function serializeSkill(skill: { name: string; description: string; body: string }): string {
-  const desc = skill.description.replace(/\s+/g, ' ').trim().replace(/"/g, '\\"');
+  const desc = skill.description.replace(/\s+/g, ' ').trim().replace(/\\/g, '\\\\').replace(/"/g, '\\"');
   return `---\nname: ${skill.name}\ndescription: "${desc}"\n---\n\n${skill.body.trim()}\n`;
 }

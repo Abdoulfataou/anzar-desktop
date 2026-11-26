@@ -30,7 +30,7 @@ export default function AppLayout({ className }: AppLayoutProps) {
   const { isOnline, isSlowConnection } = useOffline();
   // L'espace de travail dessine ses propres panneaux ; les autres pages reçoivent un cadre unique.
   const { pathname } = useLocation();
-  const framed = pathname.startsWith('/settings') || pathname.startsWith('/skills') || pathname.startsWith('/automations') || pathname.startsWith('/connectors') || pathname.startsWith('/tickets');
+  const framed = pathname.startsWith('/settings') || pathname.startsWith('/skills') || pathname.startsWith('/agents') || pathname.startsWith('/automations') || pathname.startsWith('/connectors') || pathname.startsWith('/tickets');
 
   useEffect(() => {
     // Connecteurs MCP activés : démarrés en arrière-plan, prêts avant le premier message

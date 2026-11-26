@@ -13,7 +13,8 @@
  */
 import type { APIMessage } from '@/types';
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
-import { AGENT_PROFILES, detectSubagentRole, isSubagentRole, type SubagentRole } from '../profiles';
+import { detectSubagentRole, type AgentProfile, type SubagentRole } from '../profiles';
+import { availableRoles, resolveRole } from '../profiles/custom';
 import type { Skill } from '@/services/skills';
 import { READ_ONLY_TOOLS, type PermissionMode } from '../policy/permissions';
 import { subagentAllowedTools } from '../policy/subagentPolicy';
@@ -48,6 +49,13 @@ export interface LiveAgent {
   model?: AgentLoopOptions['model'];
   reasoningEffort?: AgentLoopOptions['reasoningEffort'];
   maxSteps: number;
+  /** Taille maximale du rapport rendu au parent (profil du rôle). */
+  outputMaxChars?: number;
+  /**
+   * Profil du rôle (intégré ou personnalisé), gardé en mémoire seulement : après un
+   * redémarrage, il est retrouvé par son nom dans les agents du contexte.
+   */
+  profile?: AgentProfile;
   /** Schéma JSON demandé pour la sortie structurée, s'il y en a un. */
   outputSchema?: unknown;
   /** Valeur validée, quand l'enfant a rendu un bloc ```json conforme. */
@@ -83,6 +91,7 @@ interface PersistedAgent {
   model?: AgentLoopOptions['model'];
   reasoningEffort?: AgentLoopOptions['reasoningEffort'];
   maxSteps: number;
+  outputMaxChars?: number;
   allowedTools: string[];
   outputSchema?: unknown;
   structured?: unknown;
@@ -139,6 +148,7 @@ function persist(key: string): void {
       model: a.model,
       reasoningEffort: a.reasoningEffort,
       maxSteps: a.maxSteps,
+      outputMaxChars: a.outputMaxChars,
       allowedTools: [...a.allowedTools],
       outputSchema: a.outputSchema,
       structured: a.structured,
@@ -179,6 +189,7 @@ function restore(key: string): LiveAgent[] {
         model: a.model,
         reasoningEffort: a.reasoningEffort,
         maxSteps: a.maxSteps || 15,
+        outputMaxChars: a.outputMaxChars,
         outputSchema: a.outputSchema,
         structured: a.structured,
         structuredError: a.structuredError,
@@ -459,6 +470,7 @@ function startLoop(agent: LiveAgent, ctx: ToolExecutionContext): void {
             task,
             history: agent.history,
             subagentRole: agent.role,
+            subagentProfile: agent.profile ?? resolveRole(agent.role, ctx.customAgents),
             permissionMode: ctx.permissionMode as PermissionMode | undefined,
             skills,
             systemPromptExtra: systemExtraFor(agent),
@@ -540,8 +552,14 @@ export function spawnLiveAgent(
   if (runningCount(reg) >= MAX_LIVE_AGENTS) {
     return { error: `Limite de ${MAX_LIVE_AGENTS} sous-agents actifs atteinte : attends-en un ou termine le travail toi-même.` };
   }
-  const role: SubagentRole = isSubagentRole(roleInput) ? roleInput : detectSubagentRole(text);
-  const profile = AGENT_PROFILES[role];
+  // Rôle demandé : intégré ou personnalisé. Un nom inconnu est une erreur explicite (faute de
+  // frappe, rôle supprimé) plutôt qu'un repli silencieux sur un autre rôle.
+  const requestedRole = typeof roleInput === 'string' ? roleInput.trim() : '';
+  if (requestedRole && !resolveRole(requestedRole, ctx.customAgents)) {
+    return { error: `Rôle inconnu « ${requestedRole} ». Rôles disponibles : ${availableRoles(ctx.customAgents).join(', ')}.` };
+  }
+  const role: SubagentRole = requestedRole || detectSubagentRole(text, ctx.customAgents);
+  const profile = resolveRole(role, ctx.customAgents);
   const requested = sanitizeName(nameInput);
   if (String(nameInput ?? '').trim() && !requested) {
     return { error: 'Nom de sous-agent invalide (1-32 caractères, minuscules, chiffres et tirets, « lead » réservé).' };
@@ -576,6 +594,8 @@ export function spawnLiveAgent(
     model: profile?.model,
     reasoningEffort: profile?.reasoningEffort,
     maxSteps: profile?.maxSteps ?? 15,
+    outputMaxChars: profile?.outputMaxChars,
+    profile,
     outputSchema,
   };
   reg.byName.set(name, agent);
@@ -598,7 +618,8 @@ export function sendToLiveAgent(
   const text = String(message || '').trim();
   if (!text) return { error: 'Le message est vide.' };
   // Après un redémarrage, la politique et le budget sont recalculés depuis le contexte.
-  const profile = AGENT_PROFILES[agent.role];
+  const profile = agent.profile ?? resolveRole(agent.role, ctx.customAgents);
+  if (profile && !agent.profile) agent.profile = profile;
   if (agent.allowedTools.size === 0) {
     const allNames = [...AGENT_TOOLS, ...BASH_TOOLS].map((t) => t.function.name);
     agent.allowedTools = subagentAllowedTools({

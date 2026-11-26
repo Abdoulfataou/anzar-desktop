@@ -7,7 +7,7 @@ import { useMemo, useState } from 'react';
 import { formatCredits } from '@/lib/money';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
-  SquarePen, Search, CalendarClock, Wand2, Plug, Ticket, Folder, FolderOpen, FolderPlus,
+  SquarePen, Search, CalendarClock, Wand2, Bot, Plug, Ticket, Folder, FolderOpen, FolderPlus,
   Hash, Settings, Sun, Moon, Trash2, Plus, X, PanelLeftClose, PanelLeft, Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -268,6 +268,7 @@ export default function Sidebar({ className }: { className?: string }) {
           <NavRow icon={Ticket} label="Tickets" onClick={() => { if (location.pathname !== '/tickets') navigate('/tickets'); }} />
           <NavRow icon={CalendarClock} label="Automatisations" onClick={() => { if (location.pathname !== '/automations') navigate('/automations'); }} />
           <NavRow icon={Wand2} label="Skills" onClick={() => { if (location.pathname !== '/skills') navigate('/skills'); }} />
+          <NavRow icon={Bot} label="Agents" onClick={() => { if (location.pathname !== '/agents') navigate('/agents'); }} />
           <NavRow icon={Plug} label="Connecteurs" onClick={() => { if (location.pathname !== '/connectors') navigate('/connectors'); }} />
         </div>
 

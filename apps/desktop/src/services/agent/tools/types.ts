@@ -3,6 +3,7 @@
  */
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
 import type { PermissionMode } from '../policy/permissions';
+import type { AgentProfile } from '../profiles';
 import type { BudgetLedger } from '../engine/budget';
 
 // ============================================================================
@@ -36,6 +37,8 @@ export interface ToolExecutionContext {
    * Absente : le sous-agent n'est borné que par ses étapes.
    */
   childBudget?: (share: number, capFcfa?: number) => BudgetLedger | undefined;
+  /** Agents personnalisés (projet et personnels) : rôles en plus des rôles intégrés. */
+  customAgents?: AgentProfile[];
 }
 
 export interface ToolResult {

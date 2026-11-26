@@ -32,6 +32,7 @@ export interface GenericToolOptions {
   onFileChanged?: (relativePath: string, action: 'create' | 'edit' | 'delete') => void;
   permissionMode?: ToolExecutionContext['permissionMode'];
   childBudget?: ToolExecutionContext['childBudget'];
+  customAgents?: ToolExecutionContext['customAgents'];
   escalated?: boolean;
   convId?: string;
   agentId?: string;
@@ -70,6 +71,7 @@ export async function executeGenericTool(
       agentId: options.agentId,
       runSubagent: runAgentSession,
       childBudget: options.childBudget,
+      customAgents: options.customAgents,
     });
     if (!result.isError && options.convId && options.agentId) {
       const readPath = readPathForTool(call.function.name, args);

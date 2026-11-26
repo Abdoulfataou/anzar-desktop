@@ -92,4 +92,13 @@ describe('prompt des sous-agents', () => {
       expect(AGENT_PROFILES[role]?.description.length, role).toBeGreaterThan(40);
     }
   });
+
+  it('une skill du projet citée par le rôle est injectée avec son contenu', () => {
+    const profile = { ...AGENT_PROFILES.dev, name: 'expert-paiement', skills: ['notre-api'] };
+    const own: Skill = { ...skill('notre-api', 'Conventions de notre API'), body: 'Toujours paginer par curseur.', source: 'project' };
+    const p = buildSubagentSystemPrompt({ project, profile, tools: devTools, windows: false, skills: [own], maxSteps: 20 });
+    expect(p).toContain('# Skills de ton rôle');
+    expect(p).toContain('Toujours paginer par curseur.');
+    expect(p).not.toContain('- notre-api :');
+  });
 });

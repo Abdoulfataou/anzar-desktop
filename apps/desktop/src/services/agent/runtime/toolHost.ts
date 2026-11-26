@@ -23,6 +23,7 @@ import { snapshotBeforeChange, type Snapshots } from '../tools/fileChanges';
 import { isMcpTool, mcpNeedsApproval, mcpToolRef } from '@/services/mcp/manager';
 import { commandTitle, isEnvironmentFailure, reportError } from '@/services/infra/errorReports';
 import type { Skill } from '@/services/skills';
+import type { AgentProfile } from '../profiles';
 import { recordSessionEvent } from './sessionStore';
 import type { ApprovalRequest, ApprovalOutcome } from './turnTypes';
 
@@ -82,6 +83,8 @@ export interface ToolRunContext {
   personalSpace: boolean;
   signal: AbortSignal;
   skills: Skill[];
+  /** Agents personnalisés : rôles supplémentaires pour spawn_agent. */
+  customAgents?: AgentProfile[];
   events: ToolEvent[];
   toolEvents: Map<string, ToolEvent>;
   timeline: TimelineItem[];
@@ -293,6 +296,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     signal: ctx.signal,
     permissionMode: ctx.mode,
     childBudget: ctx.childBudget,
+    customAgents: ctx.customAgents,
     escalated,
     convId: ctx.convId,
     agentId: ctx.agentId,

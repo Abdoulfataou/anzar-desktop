@@ -200,4 +200,30 @@ describe('sous-agents vivants', () => {
     const done = reportOf({ stopReason: 'task_done', summary: 'Fait.', steps: 3, messages: [], filesChanged: [] });
     expect(done).toBe('Fait.');
   });
+
+  it('lance un agent personnalisé avec son profil, et refuse un rôle inconnu', async () => {
+    const runSubagent = vi.fn(async (opts: AgentLoopOptions) => result(opts, 'ok'));
+    const custom = {
+      name: 'expert-flutter', description: 'Expert Flutter', kind: 'subagent' as const, tools: ['read_file', 'edit_file'],
+      maxSteps: 22, skills: [], keywords: ['flutter'], deny: [], prompt: 'Riverpod partout.', outputMaxChars: 900,
+    };
+    const ctx = { ...context(runSubagent), customAgents: [custom] };
+    const agent = spawnLiveAgent(ctx, 'écran de profil', 'expert-flutter').agent!;
+    await waitForLiveAgent(agent, 1_000);
+    const opts = runSubagent.mock.calls[0][0];
+    expect(opts.subagentRole).toBe('expert-flutter');
+    expect(opts.subagentProfile?.prompt).toBe('Riverpod partout.');
+    expect(opts.maxSteps).toBe(22);
+    expect([...(opts.allowedTools ?? [])].sort()).toEqual(['edit_file', 'read_file', 'task_done']);
+    expect(agent.outputMaxChars).toBe(900);
+
+    // Sans rôle, les mots-clés de l'agent personnalisé le désignent
+    const guessed = spawnLiveAgent(ctx, 'corrige le widget flutter').agent!;
+    expect(guessed.role).toBe('expert-flutter');
+    await waitForLiveAgent(guessed, 1_000);
+
+    const bad = spawnLiveAgent(ctx, 'tâche', 'explorer');
+    expect(bad.error).toMatch(/Rôle inconnu « explorer »/);
+    expect(bad.error).toContain('expert-flutter');
+  });
 });

@@ -36,6 +36,7 @@ function storesHydrated(): Promise<void> {
 const ChatPage = lazy(() => import('@/pages/ChatPage'));
 const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
 const SkillsPage = lazy(() => import('@/pages/SkillsPage'));
+const AgentsPage = lazy(() => import('@/pages/AgentsPage'));
 const ConnectorsPage = lazy(() => import('@/pages/ConnectorsPage'));
 const TicketsPage = lazy(() => import('@/pages/TicketsPage'));
 const AutomationsPage = lazy(() => import('@/pages/AutomationsPage'));
@@ -120,6 +121,7 @@ export default function App() {
               {/* Paramètres */}
               <Route path="settings" element={<SettingsPage />} />
               <Route path="skills" element={<SkillsPage />} />
+              <Route path="agents" element={<AgentsPage />} />
               <Route path="connectors" element={<ConnectorsPage />} />
               <Route path="tickets" element={<TicketsPage />} />
               <Route path="automations" element={<AutomationsPage />} />

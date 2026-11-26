@@ -14,6 +14,7 @@ import { loadSession, recordSessionEvent, saveSession } from './sessionStore';
 import { loadPersonalInstructions, personalInstructionsSection } from '@/services/workspace/personalInstructions';
 import { mcpAgentTools, setMcpRoots } from '@/services/mcp/manager';
 import { listSkills, type Skill } from '@/services/skills';
+import { listCustomAgents, type CustomAgent } from '../profiles/custom';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { withAttachments } from '@/services/agent/context/attachments';
 import { resolveAgentRoot } from '@/services/agent/context/agentRoot';
@@ -79,6 +80,8 @@ export interface TurnSession {
   turn: TurnToolState;
   toolEvents: Map<string, ToolEvent>;
   skills: Skill[];
+  /** Agents personnalisés (projet et personnels) que l'agent peut lancer en sous-agents. */
+  customAgents: CustomAgent[];
   personal: string;
   webEnabled: boolean;
   mcpTools: ToolDefinition[];
@@ -267,7 +270,9 @@ export async function startTurn(host: TurnHost, input: TurnInput): Promise<TurnS
     };
 
     // Skills du projet et personnelles : la liste va dans le prompt, le contenu via load_skill
-    const skills: Skill[] = workspacePath ? await listSkills(workspacePath).catch(() => []) : [];
+    const [skills, customAgents]: [Skill[], CustomAgent[]] = workspacePath
+      ? await Promise.all([listSkills(workspacePath).catch(() => []), listCustomAgents(workspacePath).catch(() => [])])
+      : [[], []];
     const personal = personalInstructionsSection(await loadPersonalInstructions().catch(() => ''));
     // Recherche web (Search / Fetch DeepSeek) : désactivable dans les Paramètres
     const webEnabled = useSettingsStore.getState().settings.webTools !== false;
@@ -328,7 +333,7 @@ export async function startTurn(host: TurnHost, input: TurnInput): Promise<TurnS
       convId, agentRoot, workspacePath, workspaceName, model, background, personalSpace,
       attachments, apiContent, userMsg, assistantId, controller, onFileChanged,
       budget, balanceBefore, cost, startedAt: t0, events, timeline, snapshots,
-      externalSources, turn, toolEvents, skills, personal, webEnabled, mcpTools,
+      externalSources, turn, toolEvents, skills, customAgents, personal, webEnabled, mcpTools,
       verifier, flush, flushLive, appendContent, sink, persist, offBudget, callModel,
     },
     progress: p,
