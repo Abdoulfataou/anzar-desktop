@@ -63,10 +63,20 @@ export interface QueueSettings {
   /** Plage horaire de travail (heure locale « HH:MM ») ; vide = à toute heure */
   windowStart?: string;
   windowEnd?: string;
+  /** Tickets traités en même temps (chacun dans sa worktree) ; défaut 2, de 1 à 4 */
+  maxParallel?: number;
 }
 
 export const DEFAULT_BUDGET_FCFA = 500;
 export const DEFAULT_MAX_MINUTES = 30;
+export const DEFAULT_MAX_PARALLEL = 2;
+export const MAX_PARALLEL_LIMIT = 4;
+
+/** Nombre de tickets à traiter en même temps, borné. */
+export function maxParallelOf(s: QueueSettings): number {
+  const n = Math.round(Number(s.maxParallel ?? DEFAULT_MAX_PARALLEL));
+  return Number.isFinite(n) ? Math.min(MAX_PARALLEL_LIMIT, Math.max(1, n)) : DEFAULT_MAX_PARALLEL;
+}
 const PRIORITY_ORDER: Record<TicketPriority, number> = { high: 0, normal: 1, low: 2 };
 
 /** La plage horaire permet-elle de lancer un ticket maintenant ? */
@@ -92,8 +102,8 @@ export function nextTicket(tickets: Ticket[]): Ticket | undefined {
 interface TicketState {
   tickets: Ticket[];
   settings: QueueSettings;
-  /** Ticket en cours (non sauvegardé) */
-  runningId: string | null;
+  /** Tickets en cours (non sauvegardé) */
+  runningIds: string[];
 
   addTicket: (input: TicketInput) => Ticket;
   updateTicket: (id: string, patch: Partial<Ticket>) => void;
@@ -102,7 +112,8 @@ interface TicketState {
   cancel: (id: string) => void;
   requestStop: (id: string) => void;
   setSettings: (patch: Partial<QueueSettings>) => void;
-  setRunning: (id: string | null) => void;
+  markRunning: (id: string) => void;
+  markStopped: (id: string) => void;
   /** Au démarrage : un ticket resté « en cours » a été interrompu par la fermeture de l'app */
   recoverInterrupted: () => void;
 }
@@ -112,7 +123,7 @@ export const useTicketStore = create<TicketState>()(
     (set) => ({
       tickets: [],
       settings: { paused: false },
-      runningId: null,
+      runningIds: [],
 
       addTicket: (input) => {
         const t: Ticket = {
@@ -142,9 +153,10 @@ export const useTicketStore = create<TicketState>()(
       })),
       requestStop: (id) => set((s) => ({ tickets: s.tickets.map((t) => (t.id === id && t.status === 'running' ? { ...t, stopRequested: true } : t)) })),
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
-      setRunning: (id) => set({ runningId: id }),
+      markRunning: (id) => set((s) => (s.runningIds.includes(id) ? s : { runningIds: [...s.runningIds, id] })),
+      markStopped: (id) => set((s) => ({ runningIds: s.runningIds.filter((x) => x !== id) })),
       recoverInterrupted: () => set((s) => ({
-        tickets: s.tickets.map((t) => (t.status === 'running' && s.runningId !== t.id
+        tickets: s.tickets.map((t) => (t.status === 'running' && !s.runningIds.includes(t.id)
           ? { ...t, status: 'failed', error: "Interrompu : l'app a été fermée pendant le travail. Relance-le.", finishedAt: Date.now() }
           : t)),
       })),

@@ -14,10 +14,7 @@ import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import { useChatStore } from '@/stores/chatStore';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
-import {
-  useTicketStore, DEFAULT_BUDGET_FCFA, DEFAULT_MAX_MINUTES, inWorkWindow,
-  type Ticket, type TicketPriority, type TicketStatus,
-} from '@/stores/ticketStore';
+import { useTicketStore, DEFAULT_BUDGET_FCFA, DEFAULT_MAX_MINUTES, inWorkWindow, type Ticket, type TicketPriority, type TicketStatus, maxParallelOf, MAX_PARALLEL_LIMIT } from '@/stores/ticketStore';
 import { splitIntoTickets, type ProposedTicket } from '@/services/superagent/router';
 import { cleanupMerged, discardTicket, mergeTicket, ticketDiff } from '@/services/superagent/ticketGit';
 import { buildAgentContext } from '@/services/agent/context/agentContext';
@@ -57,7 +54,7 @@ export default function TicketsPage() {
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const tickets = useTicketStore((s) => s.tickets);
   const settings = useTicketStore((s) => s.settings);
-  const runningId = useTicketStore((s) => s.runningId);
+  const runningCount = useTicketStore((s) => s.runningIds.length);
   const [form, setForm] = useState<'ticket' | 'split' | null>(null);
   const [projectFilter, setProjectFilter] = useState<string>('all');
   const [, force] = useState(0);
@@ -82,7 +79,7 @@ export default function TicketsPage() {
           <div className="flex-1">
             <h1 className="text-ui-xl font-semibold text-text-primary">Tickets</h1>
             <p className="text-ui-base text-text-secondary mt-1">
-              Confie des tâches au super-agent : chacune est faite seule, dans une copie isolée du projet (branche git), avec un budget.
+              Confie des tâches au super-agent : chacune est faite dans sa propre copie isolée du projet (branche git), avec un budget, et plusieurs peuvent avancer en même temps.
               Ton dossier n'est touché que quand tu valides. Il travaille tant qu'ANZAR reste ouvert, même la nuit.
             </p>
           </div>
@@ -91,12 +88,19 @@ export default function TicketsPage() {
         {/* File */}
         <div className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-border-medium bg-surface-default px-4 py-3">
           <span className={cn('flex items-center gap-1.5 text-ui-sm', settings.paused ? 'text-accent-warning' : 'text-text-secondary')}>
-            {runningId ? <Loader2 size={14} className="animate-spin" /> : settings.paused ? <Pause size={14} /> : <Clock size={14} />}
-            {runningId ? 'Un ticket est en cours' : settings.paused ? 'File en pause' : !windowOk ? 'En attente de la plage horaire' : queuedCount ? `${queuedCount} en file` : 'File vide'}
+            {runningCount ? <Loader2 size={14} className="animate-spin" /> : settings.paused ? <Pause size={14} /> : <Clock size={14} />}
+            {runningCount ? `${runningCount} ticket${runningCount > 1 ? 's' : ''} en cours${queuedCount ? ` · ${queuedCount} en file` : ''}` : settings.paused ? 'File en pause' : !windowOk ? 'En attente de la plage horaire' : queuedCount ? `${queuedCount} en file` : 'File vide'}
           </span>
           <button onClick={() => useTicketStore.getState().setSettings({ paused: !settings.paused })} className={btnGhost}>
             {settings.paused ? <><Play size={14} /> Reprendre</> : <><Pause size={14} /> Mettre en pause</>}
           </button>
+          <label className="flex items-center gap-1 text-ui-sm text-text-muted" title="Nombre de tickets traités en même temps. Chacun a sa copie du projet ; deux tickets qui touchent les mêmes fichiers peuvent demander plus de soin à la validation.">
+            En même temps
+            <select value={maxParallelOf(settings)} onChange={(e) => useTicketStore.getState().setSettings({ maxParallel: Number(e.target.value) })}
+              className="h-7 px-1 rounded bg-input border border-input-border text-ui-sm text-text-primary">
+              {Array.from({ length: MAX_PARALLEL_LIMIT }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
           <span className="flex items-center gap-1 text-ui-sm text-text-muted ml-auto" title="Les tickets ne démarrent que dans cette plage (heure de ton ordinateur). Vide : à toute heure.">
             Travailler de
             <input type="time" value={settings.windowStart || ''} onChange={(e) => useTicketStore.getState().setSettings({ windowStart: e.target.value })}

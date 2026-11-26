@@ -1,14 +1,15 @@
 /**
- * File du super-agent, sans React. Prend le prochain ticket, le fait traiter par un
- * AgentRunner dans une worktree isolée et le surveille : budget en FCFA, durée maximale,
- * absence d'activité, demande d'arrêt. À la fin, le travail est commité sur la branche du
- * ticket et attend la validation. Un ticket à la fois.
+ * File du super-agent, sans React. Prend les prochains tickets, les fait traiter chacun par
+ * un AgentRunner dans sa propre worktree isolée et les surveille : budget en FCFA, durée
+ * maximale, absence d'activité, demande d'arrêt. À la fin, le travail est commité sur la
+ * branche du ticket et attend la validation. Plusieurs tickets en même temps (réglage
+ * « En même temps », 2 par défaut) ; les opérations git d'un même dépôt restent une à une.
  *
  * Démarrée une fois par startBackgroundQueues() : un ticket en cours ne dépend d'aucun
  * composant à l'écran.
  */
 import toast from 'react-hot-toast';
-import { useTicketStore, inWorkWindow, nextTicket, type Ticket } from '@/stores/ticketStore';
+import { useTicketStore, inWorkWindow, maxParallelOf, nextTicket, type Ticket } from '@/stores/ticketStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useChatStore } from '@/stores/chatStore';
 import { AgentRunner, type AgentChatResult } from '@/services/agent/runtime/agentRunner';
@@ -35,8 +36,22 @@ ${t.feedback ? `\n## Remarques de l'utilisateur après la tentative précédente
 - Termine par task_done avec : ce qui a été fait, comment tu l'as vérifié, les choix faits et ce qui reste éventuellement.`;
 }
 
-/** Exécutant en cours (un seul ticket à la fois). */
-let current: { ticketId: string; runner: AgentRunner | null } | null = null;
+/** Exécutants en cours, par ticket (le runner arrive après la préparation). */
+const active = new Map<string, AgentRunner | null>();
+
+/**
+ * Opérations git d'un même dépôt une à une : deux tickets qui créent leur worktree ou
+ * commitent au même moment se disputeraient les verrous de .git.
+ */
+const repoLocks = new Map<string, Promise<unknown>>();
+export function withRepoLock<T>(repo: string, fn: () => Promise<T>): Promise<T> {
+  const prev = repoLocks.get(repo) ?? Promise.resolve();
+  const run = prev.catch(() => undefined).then(fn);
+  const tail = run.catch(() => undefined);
+  repoLocks.set(repo, tail);
+  void tail.then(() => { if (repoLocks.get(repo) === tail) repoLocks.delete(repo); });
+  return run;
+}
 
 /** Traite un ticket de bout en bout. Ne lève jamais : tout échec est écrit sur le ticket. */
 export async function runTicket(ticket: Ticket): Promise<void> {
@@ -64,7 +79,7 @@ export async function runTicket(ticket: Ticket): Promise<void> {
     let branch = ticket.branch;
     // Nouvelle tentative : on repart du travail précédent s'il existe encore
     if (!path || !(await fileSystemService.exists(path).catch(() => false))) {
-      ({ path, branch } = await prepareWorktree(repo, ticket));
+      ({ path, branch } = await withRepoLock(repo, () => prepareWorktree(repo, ticket)));
     }
     const conv = ticket.conversationId && useChatStore.getState().conversations.some((c) => c.id === ticket.conversationId)
       ? ticket.conversationId
@@ -90,7 +105,7 @@ export async function runTicket(ticket: Ticket): Promise<void> {
     budget: { fcfa: t.budgetFCFA, wallMs: t.maxMinutes * 60_000 },
     onProgress: ({ costFCFA }) => { progress.costFCFA = costFCFA; progress.lastActivity = Date.now(); },
   });
-  if (current) current.runner = runner;
+  if (active.has(ticket.id)) active.set(ticket.id, runner);
   const startedAt = Date.now();
   const watch = setInterval(() => {
     const cur = useTicketStore.getState().tickets.find((x) => x.id === ticket.id);
@@ -121,7 +136,7 @@ export async function runTicket(ticket: Ticket): Promise<void> {
   // Le travail est toujours commité, même interrompu : rien n'est perdu
   let diffStat: string | null = null;
   try {
-    diffStat = await commitAll(worktree, `ANZAR ticket : ${t.title}`);
+    diffStat = await withRepoLock(repo, () => commitAll(worktree, `ANZAR ticket : ${t.title}`));
   } catch (e: any) {
     update({ status: 'failed', error: `commit impossible — ${e?.message || e}`, costFCFA: (t.costFCFA || 0) + cost, report, finishedAt: Date.now() });
     toast.error(`Ticket « ${t.title} » : commit impossible`);
@@ -149,20 +164,23 @@ export async function runTicket(ticket: Ticket): Promise<void> {
   }
 }
 
-/** Regarde s'il y a un ticket à lancer ; n'en lance qu'un à la fois. */
+/** Lance des tickets tant qu'il reste de la place (réglage « En même temps »). */
 export function checkTicketQueue(): void {
-  const store = useTicketStore.getState();
   if (!useTicketStore.persist.hasHydrated()) return;
-  if (current || store.runningId || store.settings.paused || !inWorkWindow(store.settings)) return;
-  const next = nextTicket(store.tickets);
-  if (!next) return;
-  store.setRunning(next.id);
-  current = { ticketId: next.id, runner: null };
-  void runTicket(next).finally(() => {
-    current = null;
-    useTicketStore.getState().setRunning(null);
-    checkTicketQueue();
-  });
+  for (;;) {
+    const store = useTicketStore.getState();
+    if (store.settings.paused || !inWorkWindow(store.settings)) return;
+    if (store.runningIds.length >= maxParallelOf(store.settings)) return;
+    const next = nextTicket(store.tickets.filter((t) => !store.runningIds.includes(t.id) && !active.has(t.id)));
+    if (!next) return;
+    store.markRunning(next.id);
+    active.set(next.id, null);
+    void runTicket(next).finally(() => {
+      active.delete(next.id);
+      useTicketStore.getState().markStopped(next.id);
+      checkTicketQueue();
+    });
+  }
 }
 
 let started = false;
@@ -186,6 +204,6 @@ export function startTicketQueue(): () => void {
     clearInterval(timer);
     unsubStore();
     unsubHydrate();
-    current?.runner?.stop();
+    for (const runner of active.values()) runner?.stop();
   };
 }

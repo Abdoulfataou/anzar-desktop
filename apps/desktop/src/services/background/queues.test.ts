@@ -33,12 +33,15 @@ const ticketStore = {
   get tickets() { return tickets; },
   updateTicket: vi.fn((id: string, patch: any) => { tickets = tickets.map((t) => (t.id === id ? { ...t, ...patch } : t)); }),
   setSettings: vi.fn(),
-  setRunning: vi.fn(),
+  markRunning: vi.fn(),
+  markStopped: vi.fn(),
+  runningIds: [] as string[],
   settings: { paused: false },
 };
 vi.mock('@/stores/ticketStore', () => ({
   useTicketStore: { getState: () => ticketStore, persist: { hasHydrated: () => true } },
   inWorkWindow: () => true,
+  maxParallelOf: () => 1,
   nextTicket: (list: any[]) => list.find((t) => t.status === 'queued'),
 }));
 vi.mock('@/lib/credits', () => ({ refreshCredits: vi.fn(async () => 1000) }));
