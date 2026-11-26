@@ -230,9 +230,9 @@ cet appel.
   presse-papiers et réglages système bloqués), mais **elles ne peuvent pas être confinées au
   projet**. Comme Harness quand l'isolation manque (fail-closed), ANZAR ne les lance donc
   jamais en silence hors Accès complet (`policy/isolation.ts`) :
-  - « Demander » et plan : chaque commande (et le serveur de dev) passe par l'élévation à
+  - « Écriture projet · accord » et plan : chaque commande (et le serveur de dev) passe par l'élévation à
     usage unique, donc par une carte d'accord ;
-  - « Modifier automatiquement » : la commande est refusée, avec la marche à suivre ;
+  - « Écriture projet · sans accord » : la commande est refusée, avec la marche à suivre ;
   - « Accès complet » : les commandes partent sans confinement, comme l'avertissement le dit ;
   - les vérifications automatiques (lint, build, tests) ne tournent qu'en Accès complet.
   Cette règle est appliquée par l'app (TypeScript), pas par le système : la vraie

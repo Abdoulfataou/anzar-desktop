@@ -5,9 +5,9 @@
  * Windows, cette isolation n'existe pas encore : lancer la commande quand même reviendrait
  * à un Accès complet que l'utilisateur n'a pas choisi. Harness refuse dans ce cas plutôt que
  * de lancer sans protection ; ANZAR fait pareil :
- *   - « Demander » (et plan) : la commande passe par l'élévation à usage unique, donc par
+ *   - « Écriture projet · accord » (et plan) : la commande passe par l'élévation à usage unique, donc par
  *     une carte d'accord ;
- *   - « Modifier automatiquement » : refus, avec la marche à suivre pour l'utilisateur ;
+ *   - « Écriture projet · sans accord » : refus, avec la marche à suivre pour l'utilisateur ;
  *   - « Accès complet » : rien ne change, l'utilisateur a accepté l'absence d'isolation.
  * Linux n'est pas distribué : seule la plateforme Windows est concernée.
  */
@@ -28,8 +28,8 @@ export function unconfinedCommandRefusal(
   if (escalated || mode === 'full' || !isWindowsPlatform()) return null;
   if (mode === 'auto') {
     return "Refusé : sur cet ordinateur (Windows), les commandes ne peuvent pas être isolées dans le projet, "
-      + "et le mode « Modifier automatiquement » n'ouvre aucune demande d'accord. Dis à l'utilisateur de passer en "
-      + "« Demander » (un accord pour chaque commande) ou en « Accès complet ». Ne cherche pas à contourner.";
+      + "et le mode « Écriture projet · sans accord » n'ouvre aucune demande d'accord. Dis à l'utilisateur de passer en "
+      + "« Écriture projet · accord » (un accord pour chaque commande) ou en « Accès complet ». Ne cherche pas à contourner.";
   }
   if (tool === 'start_dev_server') {
     return "Refusé : sur cet ordinateur (Windows), un serveur de développement ne peut pas être isolé dans le projet. "
