@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   AGENT_PROFILES, detectSubagentRole, getProfile, isSubagentRole, parseProfile,
-  subagentSystemPrompt, SUBAGENT_ROLES,
+  SUBAGENT_ROLES,
 } from './index';
 import { AGENT_TOOLS } from '../tools/definitions';
 import { validateAllProfiles, validateProfile } from './validate';
 
 describe('profils d’agents', () => {
   it('charge un profil par fichier Markdown', () => {
-    expect(Object.keys(AGENT_PROFILES).sort()).toEqual(['dev', 'explorer', 'motion-designer', 'redaction']);
+    expect(Object.keys(AGENT_PROFILES).sort()).toEqual(['dev', 'explorer', 'motion-designer', 'redaction', 'revue']);
     for (const role of SUBAGENT_ROLES) expect(AGENT_PROFILES[role].kind).toBe('subagent');
   });
 
@@ -19,24 +19,28 @@ describe('profils d’agents', () => {
     expect(e.prompt).not.toContain('{{');
   });
 
-  it('motion-designer : consignes + skills obligatoires', () => {
-    const p = subagentSystemPrompt('motion-designer') || '';
-    expect(p).toContain('MOTION DESIGNER');
-    expect(p).toContain('# SKILLS OBLIGATOIRES');
+  it('motion-designer : consignes, skills obligatoires et export déclaré', () => {
+    const p = getProfile('motion-designer');
+    expect(p.prompt).toContain('export_animation');
+    expect(p.skills).toEqual(['motion-system', 'gsap-cookbook']);
+    expect(p.tools).toContain('export_animation');
   });
 
-  it('dev : aucune consigne en plus', () => {
-    expect(subagentSystemPrompt('dev')).toBeUndefined();
+  it('revue : lecture seule par capacité, skill de revue', () => {
+    const p = getProfile('revue');
+    expect(p.deny).toEqual(['fs.write']);
+    expect(p.skills).toEqual(['revue-de-code']);
   });
 
   it('détecte le rôle depuis la tâche', () => {
     expect(detectSubagentRole('Fais une pub animée')).toBe('motion-designer');
     expect(detectSubagentRole('Écris le slogan')).toBe('redaction');
     expect(detectSubagentRole('Corrige le bug du login')).toBe('dev');
+    expect(detectSubagentRole('Fais une revue du module paiement')).toBe('revue');
   });
 
   it('dérive les rôles des profils (kind: subagent), sans liste figée', () => {
-    expect(SUBAGENT_ROLES).toEqual(['dev', 'motion-designer', 'redaction']);
+    expect(SUBAGENT_ROLES).toEqual(['dev', 'motion-designer', 'redaction', 'revue']);
     expect(isSubagentRole('dev')).toBe(true);
     expect(isSubagentRole('explorer')).toBe(false);
     expect(isSubagentRole('inconnu')).toBe(false);
@@ -97,7 +101,7 @@ describe('profils d’agents', () => {
     expect(p.deny).toEqual(['fs.write', 'network']);
     expect(p.outputMaxChars).toBe(900);
     expect(getProfile('redaction').deny).toEqual(['shell.exec', 'network']);
-    expect(getProfile('redaction').outputMaxChars).toBe(800);
+    expect(getProfile('redaction').outputMaxChars).toBe(1200);
   });
 
   it('signale une capacité inconnue et un plafond hors bornes', () => {

@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Liste des skills du sous-agent : fixe en test (pas de disque ni de serveur).
+vi.mock('@/services/skills', () => ({
+  listSkills: async () => [{ name: 'tdd', description: 'Tests d’abord', body: '', source: 'builtin', origin: 'ANZAR', files: [], editable: false }],
+}));
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
 import {
   clearLiveAgents, listLiveAgents, parseStructuredOutput, resetLiveRegistryForTests, resolveLiveAgent,
-  sendToLiveAgent, spawnLiveAgent, stopLiveAgent, takeLiveNotifications, waitForLiveAgent,
+  reportOf, sendToLiveAgent, spawnLiveAgent, stopLiveAgent, takeLiveNotifications, waitForLiveAgent,
 } from './live';
 
 const result = (opts: AgentLoopOptions, summary: string): AgentSessionResult => ({
@@ -166,5 +171,33 @@ describe('sous-agents vivants', () => {
     expect(spawnLiveAgent({ ...ctx, subagentDepth: 1 }, 'x').error).toContain('Profondeur');
     expect(spawnLiveAgent(ctx, 'x', undefined, 'Lead').error).toContain('invalide');
     expect(spawnLiveAgent(ctx, 'x', undefined, 'bad name').error).toContain('invalide');
+  });
+
+  it('donne à l’enfant son rôle, le mode du parent et les skills', async () => {
+    const runSubagent = vi.fn(async (opts: AgentLoopOptions) => result(opts, 'ok'));
+    const agent = spawnLiveAgent(context(runSubagent), 'relis le module paiement', 'revue').agent!;
+    await waitForLiveAgent(agent, 1_000);
+    const opts = runSubagent.mock.calls[0][0];
+    expect(opts.subagentRole).toBe('revue');
+    expect(opts.permissionMode).toBe('full');
+    expect(opts.skills?.map((s) => s.name)).toEqual(['tdd']);
+    expect(opts.allowedTools?.has('write_file')).toBe(false);
+    expect(opts.systemPromptExtra).toBe('');
+  });
+
+  it('rapport : dernier message si l’enfant a été arrêté, et fichiers touchés relevés', () => {
+    const stopped = reportOf({
+      stopReason: 'max_steps',
+      summary: "Budget d'étapes épuisé (30).",
+      steps: 30,
+      messages: [{ role: 'assistant', content: 'Page panier faite, reste le test.' }] as any,
+      filesChanged: ['src/panier.tsx', 'src/panier.test.tsx'],
+    });
+    expect(stopped).toContain("Budget d'étapes épuisé");
+    expect(stopped).toContain('Page panier faite, reste le test.');
+    expect(stopped).toContain('Fichiers touchés (relevé ANZAR) : src/panier.tsx, src/panier.test.tsx');
+
+    const done = reportOf({ stopReason: 'task_done', summary: 'Fait.', steps: 3, messages: [], filesChanged: [] });
+    expect(done).toBe('Fait.');
   });
 });

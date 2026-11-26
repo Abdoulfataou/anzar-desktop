@@ -20,6 +20,13 @@ import { AGENT_TOOLS, BASH_TOOLS, executeToolCall, ToolExecutionContext, ToolRes
 import { fileConflict, noteFileRead, noteFileWrite } from '../policy/fileConflicts';
 import { readPathForTool, writePathsForTool } from '../tools/filePaths';
 import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from '../context/agentPrompts';
+import { buildSubagentSystemPrompt } from '../context/subagentPrompt';
+import { AGENT_PROFILES } from '../profiles';
+import type { PermissionMode } from '../policy/permissions';
+import { LOAD_SKILL_TOOL } from '../tools/specialDefinitions';
+import { loadSkill } from '../tools/specialTools';
+import type { Skill } from '@/services/skills';
+import { isWindowsPlatform } from '@/lib/platform';
 import { runVerification, VerifyCommandResult } from '../verify/agentVerifier';
 import { buildAgentContext } from '../context/agentContext';
 import { DEFAULT_MAX_STEPS, runAgentEngine, type AgentStopReason } from './agentSession';
@@ -70,8 +77,17 @@ export interface AgentLoopOptions {
   autoVerify?: boolean;
   /** Nombre max de cycles vérification-correction (défaut: 3) */
   maxVerifyAttempts?: number;
-  /** Prompt système additionnel (rôle du sous-agent, skills injectées…) */
+  /** Prompt système additionnel (sortie structurée demandée…) */
   systemPromptExtra?: string;
+  /**
+   * Rôle du sous-agent : la session reçoit alors les consignes d'un sous-agent
+   * (services/agent/context/subagentPrompt.ts) au lieu de celles de l'agent principal.
+   */
+  subagentRole?: string;
+  /** Mode de permission hérité du parent (isolation, commandes sous Windows). */
+  permissionMode?: PermissionMode;
+  /** Skills disponibles : leur liste va dans le prompt et load_skill est proposé. */
+  skills?: Skill[];
   /** Outils autorisés pour cette session (sous-agents hors Full). */
   allowedTools?: Set<string>;
   /** Profondeur de récursion des sous-agents (0 = agent principal). */
@@ -157,6 +173,7 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     subagentDepth,
     agentId,
     convId: options.convId,
+    permissionMode: options.permissionMode,
     runSubagent: runAgentSession,
     onFileChanged: (path, content, action) => {
       filesChanged.add(path);
@@ -189,23 +206,44 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     });
   }
 
+  // ─── Outils réellement proposés ───
+  // Sur macOS, le shell confiné (bash) existe ; ailleurs, seul run_command. Sous Windows hors
+  // Accès complet, les commandes d'une session sans écran d'accord sont toujours refusées
+  // (pas d'isolation) : on ne les propose pas, plutôt que de laisser l'agent s'y user.
+  const windows = isWindowsPlatform();
+  const sessionTools = (() => {
+    const shellAvailable = typeof navigator !== 'undefined' && /Mac|Darwin/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
+    const all = shellAvailable ? [...AGENT_TOOLS, ...BASH_TOOLS] : AGENT_TOOLS;
+    const noCommands = windows && options.permissionMode !== 'full';
+    const list = all.filter((t) =>
+      (!options.allowedTools || options.allowedTools.has(t.function.name))
+      && !(noCommands && (t.function.name === 'run_command' || t.function.name === 'start_dev_server')));
+    return options.skills?.length ? [...list, LOAD_SKILL_TOOL] : list;
+  })();
+  const sessionToolNames = new Set(sessionTools.map((t) => t.function.name));
+
   // ─── Construction des messages ───
+  const systemPrompt = options.subagentRole !== undefined
+    ? buildSubagentSystemPrompt({
+        project: effectivePrompt,
+        profile: AGENT_PROFILES[options.subagentRole],
+        tools: sessionToolNames,
+        permissionMode: options.permissionMode,
+        windows,
+        skills: options.skills,
+        maxSteps,
+      })
+    : buildAgentSystemPrompt(effectivePrompt);
   const messages: APIMessage[] = [
-    { role: 'system', content: buildAgentSystemPrompt(effectivePrompt) + (options.systemPromptExtra || '') },
+    { role: 'system', content: systemPrompt + (options.systemPromptExtra || '') },
     ...history,
     { role: 'user', content: task + taskHintsSection(effectivePrompt.taskHints) },
   ];
 
   const result = await runAgentEngine({
     messages,
-    tools: (() => {
-      // Sur macOS, les sous-agents en Accès complet peuvent aussi utiliser le shell
-      // confiné ; ailleurs, seul AGENT_TOOLS existe et la politique retire les commandes.
-      const shellAvailable = typeof navigator !== 'undefined' && /Mac|Darwin/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-      const all = shellAvailable ? [...AGENT_TOOLS, ...BASH_TOOLS] : AGENT_TOOLS;
-      return options.allowedTools ? all.filter((t) => options.allowedTools!.has(t.function.name)) : all;
-    })(),
-    allowedTools: options.allowedTools,
+    tools: sessionTools,
+    allowedTools: options.allowedTools ? sessionToolNames : undefined,
     maxSteps,
     budget,
     maxConsecutiveErrors: MAX_CONSECUTIVE_ERRORS,
@@ -221,6 +259,9 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
     executeTool: async (call) => {
       let args: Record<string, any> = {};
       try { args = JSON.parse(call.function.arguments || '{}'); } catch { /* garde */ }
+      if (call.function.name === 'load_skill') {
+        return loadSkill(args, options.skills ?? []);
+      }
       const paths = writePathsForTool(call.function.name, args);
       if (toolCtx.convId && toolCtx.agentId) {
         for (const path of paths) {

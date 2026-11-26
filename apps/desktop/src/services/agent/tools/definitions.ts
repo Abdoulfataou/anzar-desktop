@@ -335,8 +335,8 @@ export const AGENT_TOOLS: ToolDefinition[] = [
       parameters: {
         type: 'object',
         properties: {
-          task: { type: 'string', description: 'La tâche complète et autonome du sous-agent (fichiers et critère de réussite inclus).' },
-          role: { type: 'string', enum: SUBAGENT_ROLES, description: 'Rôle du profil (dev par défaut, explorer, motion-designer, redaction).' },
+          task: { type: 'string', description: 'La tâche complète et autonome : il ne voit pas la conversation. Objectif, fichiers à créer ou modifier (et à ne pas toucher), contraintes, critère de réussite.' },
+          role: { type: 'string', enum: SUBAGENT_ROLES, description: `Rôle du sous-agent (dev par défaut) : ${SUBAGENT_ROLES.join(', ')}. Voir « Déléguer à des sous-agents » pour choisir.` },
           name: { type: 'string', description: 'Nom court optionnel (minuscules, chiffres, tirets) pour le retrouver.' },
           output_schema: {
             type: 'object',

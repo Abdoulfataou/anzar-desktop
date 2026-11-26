@@ -1,7 +1,7 @@
 - Agent plus efficace : sur Mac, il travaille avec un vrai terminal (commandes enchaînées, tâches en arrière-plan), modifie plusieurs fichiers d'un coup et lit en parallèle. Il ne s'arrête plus quand il relance un test, et il termine sa réponse naturellement.
 - Moins d'interruptions : dans le projet, l'agent écrit, installe et lance ses commandes sans te demander. Il ne demande ton accord que pour sortir du projet.
 - Nouveau sélecteur de permissions : « Écriture projet · accord », « Écriture projet · sans accord », « Plan guidé » et « Accès complet ». En Accès complet, il n'y a plus aucune protection (fichiers, secrets, réseau) : lis bien l'avertissement avant de l'activer. Si tu étais déjà en Accès complet, resélectionne-le une fois.
-- Sous-agents : l'agent peut confier des parties d'une tâche à des assistants qui travaillent en même temps ; un panneau montre qui fait quoi.
+- Sous-agents : l'agent peut confier des parties d'une tâche à quatre spécialistes qui travaillent en même temps — développeur, relecteur, rédacteur et motion designer. Chacun connaît son rôle, utilise les skills utiles à sa tâche et rend un rapport clair (fichiers modifiés, vérifications faites, ce qui reste). Un panneau montre qui fait quoi.
 - Windows : les commandes ne peuvent pas encore être isolées dans le projet, donc elles ne partent jamais seules hors Accès complet. En « accord », chaque commande te demande la permission ; en « sans accord », elles sont refusées.
 - Le bouton Stop arrête aussi les tâches lancées en arrière-plan.
 - Tickets : plusieurs tickets peuvent maintenant avancer en même temps (2 par défaut, jusqu'à 4 : réglage « En même temps » sur la page Tickets). Chacun travaille sur sa propre branche.

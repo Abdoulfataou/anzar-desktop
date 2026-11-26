@@ -160,6 +160,13 @@ Règles :
   `SUBAGENT_ROLES` et l'énumération de l'outil `spawn_agent` sont **dérivées du dossier** :
   un fichier `kind: subagent` crée un rôle sélectionnable.
 
+  Un sous-agent ne reçoit pas le prompt de l'agent principal : `context/subagentPrompt.ts`
+  construit le sien (tâche unique, aucune question possible, périmètre, conflits d'écriture,
+  rapport final structuré), ne cite que les outils qu'il a réellement, ajoute les consignes
+  et skills obligatoires du rôle, puis la liste des skills du projet avec `load_skill`. Les
+  rôles livrés : `dev`, `revue` (lecture seule), `redaction`, `motion-designer` (seul à
+  recevoir `export_animation`). La mémoire du projet (`remember`) reste à l'agent principal.
+
 Les chemins de la section suivante sont ceux d'avant cette réorganisation.
 
 ## 1. Ce qui a été consolidé

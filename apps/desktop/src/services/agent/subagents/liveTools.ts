@@ -2,6 +2,7 @@
  * Outils modèles de la couche de sous-agents vivants : spawn, message, attente, liste.
  */
 import type { ToolExecutionContext, ToolResult } from '../tools/types';
+import { AGENT_PROFILES } from '../profiles';
 import {
   consumeLiveNotification, DEFAULT_WAIT_MS, listLiveAgents, resolveLiveAgent, sendToLiveAgent,
   spawnLiveAgent, stopLiveAgent, waitForLiveAgent, type LiveAgent,
@@ -16,10 +17,17 @@ function statusLabel(agent: LiveAgent): string {
   }
 }
 
-function summaryOf(agent: LiveAgent, max = 1_200): string {
+/** Taille du rapport rendu au parent : celle du profil, sinon assez pour un rapport complet. */
+const DEFAULT_REPORT_CHARS = 2_500;
+
+function summaryOf(agent: LiveAgent, max = AGENT_PROFILES[agent.role]?.outputMaxChars ?? DEFAULT_REPORT_CHARS): string {
   const text = (agent.summary || '').trim();
   if (!text) return '(pas encore de résumé)';
-  return text.length > max ? `${text.slice(0, max)}…` : text;
+  // Le relevé des fichiers touchés reste entier : c'est le fait le plus utile au parent.
+  const marker = text.lastIndexOf('\n\nFichiers touchés (relevé ANZAR)');
+  const body = marker >= 0 ? text.slice(0, marker) : text;
+  const files = marker >= 0 ? text.slice(marker) : '';
+  return (body.length > max ? `${body.slice(0, max)}…` : body) + files;
 }
 
 function describe(agent: LiveAgent): string {

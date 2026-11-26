@@ -8,7 +8,7 @@
 import { AGENT_PROFILES, CAPABILITIES, type AgentProfile } from './index';
 
 const MODELS = new Set(['auto', 'fast', 'thinking', 'max', 'pro']);
-const REASONING = new Set(['none', 'low', 'medium', 'high']);
+const REASONING = new Set(['none', 'low', 'high', 'max']);
 const KINDS = new Set(['subagent', 'explorer']);
 
 export interface ProfileIssue {

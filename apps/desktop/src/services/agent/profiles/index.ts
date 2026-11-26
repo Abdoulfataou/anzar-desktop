@@ -7,7 +7,6 @@
  * appliqués par `subagents/live.ts` (intersection avec la politique du mode).
  */
 import { parseFrontmatter } from '@/services/skills/format';
-import { BUILTIN_SKILLS } from '@/services/skills/pack';
 import type { AIModel, ReasoningEffort } from '@/types';
 
 /**
@@ -27,7 +26,7 @@ export interface AgentProfile {
   maxSteps: number;
   model?: AIModel;
   reasoningEffort?: ReasoningEffort;
-  /** Skills du pack intégré injectées dans le prompt système. */
+  /** Skills du pack intégré injectées dans le prompt du rôle (voir context/subagentPrompt.ts). */
   skills: string[];
   /** Mots-clés servant à deviner le rôle quand l'agent ne le précise pas. */
   keywords: string[];
@@ -110,17 +109,4 @@ export function detectSubagentRole(task: string): SubagentRole {
   }
   if (best) return best.role;
   return SUBAGENT_ROLES.includes('dev') ? 'dev' : SUBAGENT_ROLES[0] || 'dev';
-}
-
-/** Prompt additionnel d'un sous-agent : consignes du rôle + skills obligatoires du profil. */
-export function subagentSystemPrompt(role: SubagentRole): string | undefined {
-  const profile = AGENT_PROFILES[role];
-  if (!profile) return undefined;
-  const skills = profile.skills
-    .map((n) => BUILTIN_SKILLS.find((sk) => sk.name === n)?.markdown)
-    .filter(Boolean)
-    .join('\n\n---\n\n');
-  const parts = [profile.prompt, skills ? `# SKILLS OBLIGATOIRES (applique-les à la lettre)\n${skills}` : '']
-    .filter(Boolean);
-  return parts.length ? `\n\n${parts.join('\n\n')}` : undefined;
 }

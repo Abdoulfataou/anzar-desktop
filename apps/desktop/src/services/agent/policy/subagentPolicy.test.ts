@@ -56,4 +56,11 @@ describe('subagentAllowedTools', () => {
     expect(CAPABILITY_TOOLS['fs.write']).toContain('write_file');
     expect(CAPABILITY_TOOLS['fs.write']).toContain('apply_patch');
   });
+
+  it('export_animation seulement pour un rôle qui le déclare', () => {
+    expect(subagentAllowedTools({ ...base, mode: 'auto' }).has('export_animation')).toBe(false);
+    const motion = subagentAllowedTools({ ...base, mode: 'auto', profileTools: ['read_file', 'write_file', 'export_animation'] });
+    expect(motion.has('export_animation')).toBe(true);
+    expect(motion.has('spawn_agent')).toBe(false);
+  });
 });

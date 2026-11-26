@@ -13,7 +13,8 @@
  */
 import type { APIMessage } from '@/types';
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
-import { AGENT_PROFILES, detectSubagentRole, isSubagentRole, subagentSystemPrompt, type SubagentRole } from '../profiles';
+import { AGENT_PROFILES, detectSubagentRole, isSubagentRole, type SubagentRole } from '../profiles';
+import type { Skill } from '@/services/skills';
 import { READ_ONLY_TOOLS, type PermissionMode } from '../policy/permissions';
 import { subagentAllowedTools } from '../policy/subagentPolicy';
 import { AGENT_TOOLS, BASH_TOOLS } from '../tools/definitions';
@@ -266,11 +267,45 @@ function linkParentAbort(ctx: ToolExecutionContext, controller: AbortController)
   return () => ctx.signal?.removeEventListener('abort', onAbort);
 }
 
+/**
+ * Skills du projet, personnelles et intégrées, pour la liste du sous-agent. Une lecture lente
+ * (disque réseau, serveur de skills) ne retarde pas le départ de plus de quelques secondes.
+ */
+const SKILLS_WAIT_MS = 3_000;
+async function skillsFor(projectRoot: string): Promise<Skill[]> {
+  try {
+    const { listSkills } = await import('@/services/skills');
+    return await Promise.race([
+      listSkills(projectRoot),
+      new Promise<Skill[]>((resolve) => setTimeout(() => resolve([]), SKILLS_WAIT_MS)),
+    ]);
+  } catch {
+    return [];
+  }
+}
+
+/** Ajout au prompt du sous-agent : la sortie structurée demandée, s'il y en a une. */
 function systemExtraFor(agent: LiveAgent): string {
-  const base = subagentSystemPrompt(agent.role) || '';
-  if (!agent.outputSchema) return base;
-  return `${base}\n\n# Sortie structurée\nTermine par un unique bloc \`\`\`json … \`\`\` conforme à ce schéma JSON. ` +
+  if (!agent.outputSchema) return '';
+  return `\n\n# Sortie structurée\nTermine par un unique bloc \`\`\`json … \`\`\` conforme à ce schéma JSON. ` +
     `Aucun texte après le bloc. Si une valeur manque, écris null plutôt que d'inventer.\n${JSON.stringify(agent.outputSchema)}`;
+}
+
+/**
+ * Rapport rendu au parent : le résumé de l'enfant, complété de son dernier message quand il
+ * a été arrêté (étapes ou budget épuisés), et des fichiers réellement touchés relevés par
+ * ANZAR — un fait que le parent peut vérifier, même si le résumé l'oublie.
+ */
+export function reportOf(result: AgentSessionResult): string {
+  let text = (result.summary || '').trim();
+  if (result.stopReason === 'max_steps' || result.stopReason === 'budget_exhausted') {
+    const last = lastText(result.messages).trim();
+    if (last && !text.includes(last)) text = `${text}\n\nDernier point de l'agent avant l'arrêt :\n${last.slice(0, 1_500)}`;
+  }
+  if (result.filesChanged.length) {
+    text += `\n\nFichiers touchés (relevé ANZAR) : ${result.filesChanged.slice(0, 30).join(', ')}${result.filesChanged.length > 30 ? '…' : ''}`;
+  }
+  return text.trim();
 }
 
 function lastText(messages: APIMessage[]): string {
@@ -418,10 +453,14 @@ function startLoop(agent: LiveAgent, ctx: ToolExecutionContext): void {
         emit();
         const detach = linkParentAbort(ctx, controller);
         try {
+          const skills = await skillsFor(agent.projectRoot);
           const result: AgentSessionResult = await ctx.runSubagent!({
             prompt: { projectName: agent.projectName, projectRoot: agent.projectRoot },
             task,
             history: agent.history,
+            subagentRole: agent.role,
+            permissionMode: ctx.permissionMode as PermissionMode | undefined,
+            skills,
             systemPromptExtra: systemExtraFor(agent),
             maxSteps: agent.maxSteps,
             model: agent.model,
@@ -442,7 +481,7 @@ function startLoop(agent: LiveAgent, ctx: ToolExecutionContext): void {
           // L'historique de reprise ne contient pas le prompt système : il est reconstruit
           // au prochain tour avec les consignes du rôle.
           agent.history = result.messages.filter((m) => m.role !== 'system').slice(-MAX_PERSISTED_MESSAGES);
-          agent.summary = result.summary || '';
+          agent.summary = reportOf(result);
           agent.steps = result.steps;
           agent.status = result.stopReason === 'error' ? 'error' : (result.stopReason === 'aborted' ? 'stopped' : 'idle');
           if (result.stopReason === 'error') agent.error = result.summary;

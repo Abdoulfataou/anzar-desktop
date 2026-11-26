@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+
+// Liste des skills du sous-agent : fixe en test (pas de disque ni de serveur).
+vi.mock('@/services/skills', () => ({
+  listSkills: async () => [{ name: 'tdd', description: 'Tests d’abord', body: '', source: 'builtin', origin: 'ANZAR', files: [], editable: false }],
+}));
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
 import { clearLiveAgents, resetLiveRegistryForTests } from './live';
 import { execSpawnAgent, execWaitAgent } from './liveTools';
