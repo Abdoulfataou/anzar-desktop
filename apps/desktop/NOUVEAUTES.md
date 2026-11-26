@@ -4,3 +4,4 @@
 - Sous-agents : l'agent peut confier des parties d'une tâche à des assistants qui travaillent en même temps ; un panneau montre qui fait quoi.
 - Windows : les commandes ne peuvent pas encore être isolées dans le projet, donc elles ne partent jamais seules hors Accès complet. En « accord », chaque commande te demande la permission ; en « sans accord », elles sont refusées.
 - Le bouton Stop arrête aussi les tâches lancées en arrière-plan.
+- Tickets : plusieurs tickets peuvent maintenant avancer en même temps (2 par défaut, jusqu'à 4 : réglage « En même temps » sur la page Tickets). Chacun travaille sur sa propre branche.
