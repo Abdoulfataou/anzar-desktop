@@ -13,11 +13,9 @@
  */
 import type { PermissionMode } from './permissions';
 import { ESCALATION_HINT } from '@/services/runtime/terminal';
+import { isWindowsPlatform } from '@/lib/platform';
 
-export function isWindowsPlatform(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return /Win/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-}
+export { isWindowsPlatform };
 
 /** Refus à renvoyer au modèle, ou null si la commande peut partir. */
 export function unconfinedCommandRefusal(

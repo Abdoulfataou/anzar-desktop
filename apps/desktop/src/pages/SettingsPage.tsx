@@ -37,6 +37,7 @@ import { installNodeNow } from '@/services/runtime/nodeRuntime';
 import { applyCommandPolicy, type PolicySettings } from '@/services/runtime/commandPolicy';
 import { SUPPORT_EMAIL, siteUrl } from '@/lib/siteLinks';
 import { FULL_ACCESS_WARNING } from '@/lib/fullAccess';
+import { isWindowsPlatform } from '@/lib/platform';
 
 type SectionId = 'general' | 'appearance' | 'personalization' | 'programs' | 'account' | 'usage' | 'data' | 'about';
 
@@ -340,8 +341,8 @@ function GeneralSection({ confirm }: { confirm: Confirm }) {
           onChange={(e) => void changePermissionChoice(e.target.value as PermissionChoice)}
           className="h-8 px-2 rounded-lg bg-input border border-input-border text-ui-base text-text-primary outline-none"
         >
-          <option value="ask">Écriture projet · accord pour élargir</option>
-          <option value="auto">Écriture projet · sans accord</option>
+          <option value="ask">{isWindowsPlatform() ? 'Écriture projet · accord pour chaque commande' : 'Écriture projet · accord pour élargir'}</option>
+          <option value="auto">{isWindowsPlatform() ? 'Écriture projet · sans accord (pas de commandes)' : 'Écriture projet · sans accord'}</option>
           <option value="plan">Plan guidé · tous les outils</option>
           <option value="full">Accès complet · sans isolation</option>
         </select>

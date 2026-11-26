@@ -23,6 +23,7 @@ import { imageToDataUrl, imageMimeFromName } from '@/lib/imageAttach';
 import { readTextFile, readBinaryFile } from '@/lib/tauri/fs';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import { FULL_ACCESS_WARNING } from '@/lib/fullAccess';
+import { isWindowsPlatform } from '@/lib/platform';
 import { applyCommandPolicy } from '@/services/runtime/commandPolicy';
 import { useSettingsStore } from '@/stores/settingsStore';
 import {
@@ -425,12 +426,33 @@ async function extractFromPath(filePath: string): Promise<ChatAttachment> {
 /** Modes de permission de l'agent (qui décide avant d'agir). */
 export type PermissionMode = PolicyPermissionMode;
 
-const PERMISSIONS: { id: PermissionChoice; label: string; hint: string }[] = [
-  { id: 'ask',  label: 'Écriture projet · accord', hint: "L'agent écrit et exécute dans le projet sans demander ; seul un élargissement hors projet demande ton accord. Réseau et lectures libres" },
-  { id: 'auto', label: 'Écriture projet · sans accord', hint: "Comme le mode précédent, mais aucun élargissement n'est proposé : ce qui sort du projet est refusé. Les connecteurs « toujours demander » restent" },
-  { id: 'plan', label: 'Plan guidé', hint: "L'agent explore, propose un plan, puis garde tous ses outils : ce n'est pas une restriction" },
-  { id: 'full', label: 'Accès complet', hint: "Aucune isolation et aucune demande : écritures partout, réseau direct, secrets et hooks Git accessibles ; seuls les connecteurs « toujours demander » demandent" },
-];
+/**
+ * Modes de permission. Sous Windows, les commandes ne peuvent pas être isolées dans le
+ * projet : hors Accès complet, elles demandent un accord (ou sont refusées), et les
+ * explications le disent (voir services/agent/policy/isolation.ts).
+ */
+export function permissionOptions(windows: boolean): { id: PermissionChoice; label: string; hint: string }[] {
+  return [
+    {
+      id: 'ask',
+      label: 'Écriture projet · accord',
+      hint: windows
+        ? "L'agent écrit dans le projet sans demander. Sous Windows, chaque commande te demande ton accord, car elle ne peut pas être isolée dans le projet. Réseau et lectures libres"
+        : "L'agent écrit et exécute dans le projet sans demander ; seul un élargissement hors projet demande ton accord. Réseau et lectures libres",
+    },
+    {
+      id: 'auto',
+      label: 'Écriture projet · sans accord',
+      hint: windows
+        ? "L'agent écrit dans le projet sans demander. Sous Windows, il ne peut pas lancer de commandes dans ce mode : choisis « accord » ou « Accès complet » pour qu'il en lance"
+        : "Comme le mode précédent, mais aucun élargissement n'est proposé : ce qui sort du projet est refusé. Les connecteurs « toujours demander » restent",
+    },
+    { id: 'plan', label: 'Plan guidé', hint: "L'agent explore, propose un plan, puis garde tous ses outils : ce n'est pas une restriction" },
+    { id: 'full', label: 'Accès complet', hint: "Aucune isolation et aucune demande : écritures partout, réseau direct, secrets et hooks Git accessibles ; seuls les connecteurs « toujours demander » demandent" },
+  ];
+}
+
+const PERMISSIONS = permissionOptions(isWindowsPlatform());
 
 const MODELS: { id: AIModel; label: string; hint: string }[] = [
   { id: 'auto',     label: 'Auto',      hint: "ANZAR choisit pour chaque demande le réglage le moins cher qui suffit, et monte d'un cran si l'agent bute" },
