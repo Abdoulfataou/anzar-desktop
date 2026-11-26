@@ -5,20 +5,21 @@ Ce fichier consigne les résultats du banc décrit dans
 
 1. les vérifications automatiques, exécutées ici et maintenant ;
 2. le banc **scripté** du harnais (modèle simulé), qui vérifie la mécanique ;
-3. le banc **réel** (ANZAR et Harness avec le vrai modèle), qui reste à lancer
-   depuis l'application : il demande une session modèle, des crédits et le
-   parcours guidé ci-dessous.
+3. le banc **réel** (ANZAR et Harness avec le vrai modèle) : le lanceur est écrit et
+   validé (ci-dessous), les passages sont **en attente des deux secrets** — aucun
+   chiffre de mesure n'est inventé en attendant.
 
-## 1. État au 24/11/2026
+## 1. État au 25/11/2026
 
 | Élément | Valeur |
 |---|---|
-| Commit ANZAR mesuré | `main` après la refonte de l'agent (24/11/2026) |
-| Modèle | DeepSeek V4 (non lancé ici) |
+| Commit ANZAR mesuré | « avant » : `e058e56` (worktree `~/Desktop/banc/avant`) · « après » : `refonte-agent` |
+| Modèle | deepseek-flash, effort de réflexion **high** des deux côtés (vérifié, §3.2) |
 | Machine | Mac Apple Silicon, macOS |
 | Vérifications | `tsc --noEmit` 0 erreur ; `vitest run` 422 tests / 67 fichiers ; `cargo test` 22 tests ; `cargo clippy --all-targets -- -D warnings` 0 avertissement ; `check-security.mjs` OK |
 | Banc scripté | 14 tâches, 36 appels modèle simulés, 31 commandes, 36 FCFA simulés — 15 tests OK |
-| Banc réel | **non exécuté** : il faut l'application, une session modèle et des crédits |
+| Banc réel — lanceur | **Écrit et validé** : [`apps/desktop/bench/real/`](../../apps/desktop/bench/real/README.md), fumée sans crédit sur les deux variantes, 8 tests de fidélité OK |
+| Banc réel — passages | **Non exécutés** : `ANZAR_BENCH_TOKEN` absent côté ANZAR, `DEEPSEEK_API_KEY` absente côté dsh (voir §5.2) |
 
 Aucune mesure de crédits réelle n'est donc revendiquée ici. Les chiffres
 automatiques vérifient que le harnais ne casse pas ; ils ne mesurent pas la
