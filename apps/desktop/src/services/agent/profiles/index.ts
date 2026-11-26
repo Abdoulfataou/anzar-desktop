@@ -4,7 +4,7 @@
  *
  * Ajouter un rôle = ajouter un fichier : la liste des rôles de sous-agents est dérivée du
  * dossier (`kind: subagent`), et ses `tools` / `model` / `reasoning` sont réellement
- * appliqués par `subagents/spawn.ts` (intersection avec la politique du mode).
+ * appliqués par `subagents/live.ts` (intersection avec la politique du mode).
  */
 import { parseFrontmatter } from '@/services/skills/format';
 import { BUILTIN_SKILLS } from '@/services/skills/pack';
@@ -83,7 +83,7 @@ export function getProfile(name: string): AgentProfile {
   return p;
 }
 
-// ── Sous-agents spécialisés (spawn_subagents) ──
+// ── Sous-agents spécialisés (spawn_agent) ──
 // La liste vient des profils : un fichier `kind: subagent` suffit à créer un rôle.
 
 export type SubagentRole = string;

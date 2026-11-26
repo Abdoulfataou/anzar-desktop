@@ -69,7 +69,7 @@ describe('buildToolsForStep', () => {
     expect(list).toContain('propose_plan');
     expect(list).toContain('write_file');
     expect(list.some((n) => n === 'bash' || n === 'run_command')).toBe(true);
-    expect(list).toContain('spawn_subagents');
+    expect(list).toContain('spawn_agent');
     expect(list).toContain('apply_patch');
   });
 

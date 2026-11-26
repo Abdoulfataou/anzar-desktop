@@ -2,24 +2,12 @@
  * Types partagés par les outils de l'agent.
  */
 import type { AgentLoopOptions, AgentSessionResult } from '../engine/agentLoop';
-import type { SubagentRole } from '../profiles';
 import type { PermissionMode } from '../policy/permissions';
 import type { BudgetLedger } from '../engine/budget';
 
 // ============================================================================
 // TYPES
 // ============================================================================
-
-/** Progression en direct d'un sous-agent (affichée dans le chat pendant l'exécution). */
-export interface SubagentProgress {
-  task: string;
-  /** Spécialisation affichée dans l'UI (motion-designer, dev, redaction) */
-  role?: SubagentRole;
-  status: 'running' | 'done' | 'error';
-  /** Action en cours (dernier outil appelé) */
-  current?: string;
-  steps: number;
-}
 
 export interface ToolExecutionContext {
   /** Mode de permission du parent : les sous-agents héritent des restrictions. */
@@ -38,8 +26,6 @@ export interface ToolExecutionContext {
   agentId?: string;
   /** Callback appelé quand un fichier est écrit/modifié (pour rafraîchir l'UI) */
   onFileChanged?: (relativePath: string, content: string, action: 'create' | 'edit' | 'delete') => void;
-  /** Progression en direct des sous-agents (spawn_subagents) pour l'UI */
-  onSubagentProgress?: (progress: SubagentProgress[]) => void;
   /**
    * Lanceur de sous-agents, injecté par l'appelant (boucle ou chat). Les outils n'importent
    * jamais la boucle eux-mêmes : cela évite le cycle outils ↔ boucle.

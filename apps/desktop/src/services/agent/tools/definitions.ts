@@ -302,9 +302,9 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'run_command',
       description:
-        "Exécute UNE commande dans le projet. Outils de développement acceptés : npm, pnpm, yarn, bun, npx, deno, node, python, pip, uv, poetry, git, cargo, go, flutter, dart, ./gradlew, gradle, pod, xcodebuild, swift, dotnet, php, composer, ruby, gem, bundle, make, docker, ffmpeg (après install_tool), rg. Un programme absent de cette liste demande l'accord de l'utilisateur ; les installations (npm install, flutter pub get, go get…) aussi. Interdits même avec accord : bash/sh/powershell, sudo, curl, wget, ssh. Pas de grep, ls, cat, find, head, echo. " +
-        "Jamais node -e ni python -c (refusés) : pour un traitement, écris un fichier script (.mjs/.py) avec write_file puis lance-le. Interdits : |, ;, &&, ||, >, <, $(…) et chemins absolus. Pour chercher dans le code utilise search_files, pour lister list_dir, pour lire read_file. " +
-        "Sert à installer des dépendances, lancer build/lint/tests et VÉRIFIER ton travail. Renvoie stdout/stderr + code de sortie.",
+        "Exécute UN programme avec ses arguments dans le projet, sans shell intermédiaire : |, &&, ;, >, < et $(…) ne sont pas interprétés. " +
+        "Pour un enchaînement ou un traitement, écris un script (.mjs, .py…) avec write_file puis lance-le, ou utilise bash s'il est proposé. Pour chercher, lister ou lire, préfère search_files, list_dir et read_file. " +
+        "Sert à installer des dépendances, lancer build/lint/tests et VÉRIFIER ton travail. Renvoie stdout/stderr + code de sortie ; un code non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer.",
       parameters: {
         type: 'object',
         properties: {
@@ -327,37 +327,11 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   {
     type: 'function',
     function: {
-      name: 'spawn_subagents',
-      description:
-        "Lance 2 à 3 sous-agents pour des sous-tâches INDÉPENDANTES (fichiers différents, aucun chevauchement). Hors Accès complet, ils sont en lecture seule ; en Accès complet, ils peuvent écrire mais sont exécutés séquentiellement pour éviter les conflits. Chaque sous-agent a un budget réduit et pas de vérification finale — c'est TOI qui vérifies après consolidation. " +
-        "Précise le rôle de chacun : chaque rôle est un profil d'agent (services/agent/profiles) qui définit ses outils, son modèle et ses skills — 'motion-designer' (visuels/animations/vidéos), 'redaction' (textes), 'dev' (code, défaut). Idéal pour plusieurs variantes de visuels.",
-      parameters: {
-        type: 'object',
-        properties: {
-          tasks: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                task: { type: 'string', description: 'La sous-tâche complète et autonome (fichiers cibles inclus)' },
-                role: { type: 'string', enum: SUBAGENT_ROLES, description: 'Spécialisation déclarée par un profil (défaut : déduite de la tâche)' },
-              },
-              required: ['task'],
-            },
-          },
-        },
-        required: ['tasks'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
       name: 'spawn_agent',
       description:
         "Lance UN sous-agent en arrière-plan et rend son nom immédiatement. Il garde son historique : tu peux lui envoyer une suite (send_message), attendre son résultat (wait_agent) ou voir son état (list_agents). " +
-        "Utilise-le pour une tâche indépendante et longue (exploration, module isolé, variante visuelle) pendant que tu continues. " +
-        "Hors Accès complet il est en lecture seule ; en Accès complet il peut écrire et lancer des commandes. Ne conclus pas avant d'avoir attendu les sous-agents dont ton travail dépend.",
+        "Utilise-le pour une tâche indépendante et longue (exploration, module isolé, variante visuelle) pendant que tu continues. Pour plusieurs sous-tâches indépendantes, lance un sous-agent par sous-tâche (8 actifs au plus), sur des fichiers différents, puis attends-les ensemble avec wait_agent. " +
+        "Il a les mêmes droits que toi dans le mode choisi (écriture dans le projet, commandes) ; s'il a lu un fichier qu'un autre agent a modifié depuis, il doit le relire avant de l'écrire. Ne conclus pas avant d'avoir attendu les sous-agents dont ton travail dépend et vérifié l'ensemble.",
       parameters: {
         type: 'object',
         properties: {
@@ -395,15 +369,15 @@ export const AGENT_TOOLS: ToolDefinition[] = [
     function: {
       name: 'wait_agent',
       description:
-        "Attend la fin du travail en cours d'un sous-agent (ou le délai demandé) et rend son dernier résumé. " +
-        "Utilise-le quand tu as besoin de son résultat pour continuer ; ne boucle pas avec list_agents.",
+        "Attend la fin du travail en cours d'un ou de plusieurs sous-agents (ou le délai demandé) et rend leurs derniers résumés. " +
+        "Utilise-le quand tu as besoin de leur résultat pour continuer ; pour plusieurs sous-agents, passe-les tous dans agents en un seul appel. Ne boucle pas avec list_agents.",
       parameters: {
         type: 'object',
         properties: {
           agent: { type: 'string', description: 'Nom (ou id) du sous-agent.' },
+          agents: { type: 'array', items: { type: 'string' }, description: 'Plusieurs noms (ou ids) à attendre ensemble, à la place de agent.' },
           timeout_ms: { type: 'number', description: 'Délai maximal en millisecondes (défaut 120 000, plafond 300 000).' },
         },
-        required: ['agent'],
       },
     },
   },

@@ -118,7 +118,7 @@ export interface ToolEvent {
   delta?: [number, number];
   /** Chemin de fichier ouvrable en un clic (éditeur / visionneuse média) */
   filePath?: string;
-  /** Sous-agents en cours (spawn_subagents) — progression en direct */
+  /** Progression de l'ancien outil spawn_subagents : gardée pour afficher les conversations passées */
   subagents?: Array<{
     task: string;
     role?: string;

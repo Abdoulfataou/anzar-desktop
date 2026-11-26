@@ -74,8 +74,7 @@ ${ctx.bashAvailable !== false ? `- bash : un vrai shell confiné. Il accepte les
 - read_file, write_file, edit_file, apply_patch, delete_file, list_dir, glob, search_files, get_diagnostics.
 - glob trouve des fichiers par motif de chemin (par exemple **/*.ts) ; search_files cherche un motif dans leur contenu.
 - explore : plusieurs questions indépendantes sur le code, en parallèle, avec des résumés courts.
-- spawn_agent : un sous-agent vivant en arrière-plan, avec son historique ; il peut recevoir une suite (send_message), être attendu (wait_agent) et listé (list_agents). Utilise-le pour une tâche indépendante et longue, puis attends-le avant de conclure.
-- spawn_subagents : 2 à 3 sous-tâches vraiment indépendantes (fichiers disjoints), puis vérifie la cohérence toi-même.
+- spawn_agent : un sous-agent vivant en arrière-plan, avec son historique ; il peut recevoir une suite (send_message), être attendu (wait_agent) et listé (list_agents). Pour plusieurs sous-tâches indépendantes (fichiers disjoints), lance un spawn_agent par sous-tâche, attends-les tous avec un seul wait_agent (agents : [noms]), puis vérifie toi-même la cohérence de l'ensemble avant de conclure.
 - web_search et read_url pour une information récente ou une documentation.
 - ask_user pour une décision qui revient à l'utilisateur, avant un travail coûteux à refaire.
 

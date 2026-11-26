@@ -13,7 +13,7 @@ src/services/agent/
 ├── policy/      modes d'approbation, décision d'approbation, garde des commandes,
 │                politique des sous-agents
 ├── context/     prompts système, carte du code + ANZAR.md, pièces jointes, dossier de travail
-├── subagents/   explorateurs (lecture seule) et spawn_subagents
+├── subagents/   explorateurs (lecture seule) et sous-agents vivants (spawn_agent, wait_agent…)
 ├── verify/      détection et exécution lint / build / tests
 ├── runtime/     une conversation, sans React :
 │                agentRunner (session : état, accords, questions, reprise),
@@ -157,7 +157,7 @@ Règles :
   silencieusement ignoré. `deny` est appliqué **par capacité** (`CAPABILITY_TOOLS` dans
   `policy/subagentPolicy.ts`) : un rôle interdit l'écriture ou le réseau sans lister chaque
   outil, et `task_done` reste toujours autorisé. La liste
-  `SUBAGENT_ROLES` et l'énumération de l'outil `spawn_subagents` sont **dérivées du dossier** :
+  `SUBAGENT_ROLES` et l'énumération de l'outil `spawn_agent` sont **dérivées du dossier** :
   un fichier `kind: subagent` crée un rôle sélectionnable.
 
 Les chemins de la section suivante sont ceux d'avant cette réorganisation.
@@ -169,7 +169,8 @@ Le moteur existait sous deux formes :
 - `src/hooks/useAgentChat.ts` — boucle principale, très riche (approbations, MCP,
   skills, `ask_user`, plan, espace ANZAR, coûts, reprise) ;
 - `src/services/agent/agentLoop.ts` — boucle simplifiée utilisée par
-  `spawn_subagents` (sous-agents).
+  `spawn_subagents` (sous-agents, outil retiré depuis : les sous-agents passent tous par
+  `spawn_agent` / `wait_agent`, voir `subagents/live.ts`).
 
 Les briques purement techniques étaient dupliquées. Elles sont maintenant
 partagées :

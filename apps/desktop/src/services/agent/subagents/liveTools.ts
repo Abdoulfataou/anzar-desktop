@@ -53,28 +53,41 @@ export async function execSendMessage(args: Record<string, any>, ctx: ToolExecut
   };
 }
 
-export async function execWaitAgent(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
-  const ref = String(args.agent || args.name || args.id || '').trim();
-  if (!ref) return { output: 'Erreur: indique le nom du sous-agent (agent).', isError: true };
-  const agent = resolveLiveAgent(ctx.convId, ref);
-  if (!agent) return { output: `Sous-agent inconnu « ${ref} ». Utilise list_agents.`, isError: true };
-  const requested = Number(args.timeout_ms ?? args.timeoutMs);
-  const timeout = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 300_000) : DEFAULT_WAIT_MS;
-  const before = agent.status;
-  await waitForLiveAgent(agent, timeout, ctx.signal);
-  const timedOut = before === 'running' && agent.status === 'running';
-  consumeLiveNotification(ctx.convId, agent.name);
+function waitReport(agent: LiveAgent, timedOut: boolean, timeout: number): string {
   const structured = agent.structured !== undefined
     ? `\n\nRésultat structuré :\n${JSON.stringify(agent.structured, null, 2)}`
     : agent.structuredError
     ? `\n\nSortie structurée invalide : ${agent.structuredError}`
     : '';
+  return `${agent.name} — ${statusLabel(agent)}${timedOut ? ` (toujours en cours après ${Math.round(timeout / 1000)} s)` : ''}\n` +
+    `étape(s) : ${agent.steps}\n\nRésumé :\n${summaryOf(agent)}${structured}`;
+}
+
+export async function execWaitAgent(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const refs = (Array.isArray(args.agents) ? args.agents : [args.agent || args.name || args.id])
+    .map((r: unknown) => String(r ?? '').trim())
+    .filter(Boolean);
+  const unique: string[] = [...new Set<string>(refs)];
+  if (unique.length === 0) return { output: 'Erreur: indique le nom du sous-agent (agent), ou plusieurs noms (agents).', isError: true };
+  const agents: LiveAgent[] = [];
+  for (const ref of unique) {
+    const agent = resolveLiveAgent(ctx.convId, ref);
+    if (!agent) return { output: `Sous-agent inconnu « ${ref} ». Utilise list_agents.`, isError: true };
+    if (!agents.includes(agent)) agents.push(agent);
+  }
+  const requested = Number(args.timeout_ms ?? args.timeoutMs);
+  const timeout = Number.isFinite(requested) && requested > 0 ? Math.min(requested, 300_000) : DEFAULT_WAIT_MS;
+  const before = agents.map((a) => a.status);
+  // Une seule échéance pour tous : ils travaillent en parallèle.
+  await Promise.all(agents.map((a) => waitForLiveAgent(a, timeout, ctx.signal)));
+  for (const a of agents) consumeLiveNotification(ctx.convId, a.name);
+  const reports = agents.map((a, i) => waitReport(a, before[i] === 'running' && a.status === 'running', timeout));
+  const anyIdle = agents.some((a) => a.status === 'idle');
   return {
-    output:
-      `${agent.name} — ${statusLabel(agent)}${timedOut ? ` (toujours en cours après ${Math.round(timeout / 1000)} s)` : ''}\n` +
-      `étape(s) : ${agent.steps}\n\nRésumé :\n${summaryOf(agent)}${structured}` +
-      (agent.status === 'idle' ? '\n\nTu peux lui envoyer un autre message avec send_message si besoin.' : ''),
-    isError: agent.status === 'error',
+    output: reports.join('\n\n────────\n\n') +
+      (anyIdle ? `\n\nTu peux envoyer un autre message à un sous-agent au repos avec send_message si besoin.` : '') +
+      (agents.length > 1 ? `\n\n→ Vérifie maintenant la cohérence de l'ensemble (imports croisés, build) avant de conclure.` : ''),
+    isError: agents.every((a) => a.status === 'error'),
   };
 }
 

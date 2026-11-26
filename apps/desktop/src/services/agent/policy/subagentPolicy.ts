@@ -6,7 +6,6 @@ import type { Capability } from '../profiles';
  * spawn (récursion), commandes/processus et export vidéo (effets de bord lourds).
  */
 export const SUBAGENT_EXCLUDED_TOOLS = new Set([
-  'spawn_subagents',
   'spawn_agent',
   'send_message',
   'stop_agent',

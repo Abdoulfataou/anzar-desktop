@@ -297,9 +297,6 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
     convId: ctx.convId,
     agentId: ctx.agentId,
     onFileChanged: (rel, action) => { if (ctx.workspacePath) ctx.onFileChanged?.(rel, action); },
-    onSubagentProgress: call.function.name === 'spawn_subagents'
-      ? (progress) => { ev.subagents = progress; ctx.flush(''); }
-      : undefined,
   });
   let result: {
     output: string;

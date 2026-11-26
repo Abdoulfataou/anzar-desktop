@@ -2,7 +2,7 @@
  * Registre des outils de l'agent ANZAR : définitions envoyées au modèle et exécuteurs locaux.
  *
  * Chaque famille d'outils vit dans son propre fichier (fsTools, shellTools, browserTools,
- * mediaTools, metaTools) ; spawn_subagents est dans services/agent/subagents/spawn.ts.
+ * mediaTools, metaTools) ; les sous-agents (spawn_agent…) sont dans services/agent/subagents/liveTools.ts.
  */
 import type { ToolCall } from '@/types';
 import type { ToolExecutionContext, ToolResult } from './types';
@@ -14,10 +14,9 @@ import { execExportAnimation, execVendorLib } from './mediaTools';
 import { execExplore, execRemember, execTaskDone } from './metaTools';
 import { execInstallTool, execRunCommand } from './shellTools';
 import { execBash, execJobKill, execJobOutput } from './bashTool';
-import { execSpawnSubagents } from '../subagents/spawn';
 import { execListAgents, execSendMessage, execSpawnAgent, execStopAgent, execWaitAgent } from '../subagents/liveTools';
 
-export type { SubagentProgress, ToolExecutionContext, ToolResult } from './types';
+export type { ToolExecutionContext, ToolResult } from './types';
 export { AGENT_TOOLS, BASH_TOOLS } from './definitions';
 export { resolvePath, isProtectedWritePath } from './shared';
 export { compileSearchPattern } from './fsTools';
@@ -50,7 +49,6 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   bash: execBash,
   job_output: execJobOutput,
   job_kill: execJobKill,
-  spawn_subagents: execSpawnSubagents,
   spawn_agent: execSpawnAgent,
   send_message: execSendMessage,
   wait_agent: execWaitAgent,
