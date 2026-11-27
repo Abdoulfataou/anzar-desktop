@@ -10,7 +10,10 @@ vi.mock('@/services/agent/profiles/custom', () => ({
   deletePersonalAgent: vi.fn(),
 }));
 vi.mock('@/services/skills', () => ({
-  listSkills: async () => [{ name: 'tdd', description: 'Tests d’abord', body: '', source: 'builtin', origin: 'ANZAR', files: [], editable: false }],
+  listSkills: async () => [
+    { name: 'tdd', description: 'Tests d’abord', body: '', source: 'builtin', origin: 'ANZAR', files: [], editable: false },
+    { name: 'brainstorming', description: 'Questions', body: '', source: 'builtin', origin: 'ANZAR', files: [], editable: false },
+  ],
   slugifySkillName: (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
 }));
 vi.mock('@/stores/projectStore', () => ({
@@ -81,5 +84,14 @@ describe('page Agents', () => {
     expect(draft.deny).toEqual(['shell.exec', 'network']);
     expect(draft.budgetFCFA).toBe(30);
     expect(draft.outputMaxChars).toBe(1200);
+  });
+
+  it('grise les skills réservées à l’agent principal dans le formulaire', async () => {
+    render(createElement(AgentsPage));
+    fireEvent.click(await screen.findByText('Nouvel agent'));
+    const reserved = (await screen.findByText('brainstorming')).closest('button')!;
+    expect(reserved.disabled).toBe(true);
+    expect(reserved.title).toMatch(/Réservée à l'agent principal/);
+    expect((screen.getByText('tdd').closest('button') as HTMLButtonElement).disabled).toBe(false);
   });
 });

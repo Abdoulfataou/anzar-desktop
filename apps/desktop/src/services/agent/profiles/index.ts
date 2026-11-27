@@ -82,6 +82,16 @@ export function getProfile(name: string): AgentProfile {
   return p;
 }
 
+/**
+ * Skills réservées à l'agent principal, avec la raison : elles demandent de questionner
+ * l'utilisateur ou de lancer des sous-agents, ce qu'un sous-agent ne peut pas faire.
+ * Un sous-agent ne les voit jamais, même si son profil les impose.
+ */
+export const LEAD_ONLY_SKILLS: ReadonlyMap<string, string> = new Map([
+  ['brainstorming', "elle fait poser des questions à l'utilisateur"],
+  ['developpement-par-sous-agents', "elle fait lancer d'autres sous-agents"],
+]);
+
 // ── Sous-agents spécialisés (spawn_agent) ──
 // La liste vient des profils : un fichier `kind: subagent` suffit à créer un rôle.
 

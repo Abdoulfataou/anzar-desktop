@@ -20,7 +20,7 @@ import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { ensureDir, removeEntry, storeRoot, writeText } from '@/lib/fileStore';
 import { parseFrontmatter, parseToolList, slugifySkillName } from '@/services/skills/format';
 import { AGENT_TOOLS, BASH_TOOLS } from '../tools/definitions';
-import { AGENT_PROFILES, parseProfile, type AgentProfile } from './index';
+import { AGENT_PROFILES, LEAD_ONLY_SKILLS, parseProfile, type AgentProfile } from './index';
 import { validateProfile } from './validate';
 
 export type CustomAgentSource = 'project' | 'personal';
@@ -142,6 +142,13 @@ export function readCustomAgent(
     else if (alias) model = alias;
   }
 
+  // Skills imposées qu'un sous-agent ne peut pas suivre : retirées, et signalées.
+  const skills = base.skills.filter((skill) => {
+    const why = LEAD_ONLY_SKILLS.get(skill);
+    if (why) warnings.push(`skill « ${skill} » ignorée : réservée à l'agent principal (${why})`);
+    return !why;
+  });
+
   const prompt = base.prompt.length > MAX_PROMPT_CHARS ? `${base.prompt.slice(0, MAX_PROMPT_CHARS)}…` : base.prompt;
   // Le modèle brut du fichier (« sonnet »…) est remplacé par sa traduction.
   const { model: _raw, ...rest } = base;
@@ -152,6 +159,7 @@ export function readCustomAgent(
     description,
     kind: 'subagent',
     tools,
+    skills,
     prompt,
     ...(model ? { model } : {}),
   };

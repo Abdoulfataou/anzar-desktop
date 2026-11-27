@@ -161,4 +161,11 @@ describe('agents personnalisés', () => {
     // Ce que reçoit l'agent principal : les agents utilisables seulement
     expect((await listCustomAgents('/p')).map((a) => a.name)).toEqual(['testeur']);
   });
+
+  it('retire et signale les skills réservées à l’agent principal', () => {
+    const a = parseCustomAgent('---\nname: atelier\ndescription: Atelier de conception\nskills: brainstorming tdd developpement-par-sous-agents\n---\nx', 'atelier', where)!;
+    expect(a.skills).toEqual(['tdd']);
+    expect(a.warnings.join(' | ')).toContain("skill « brainstorming » ignorée : réservée à l'agent principal (elle fait poser des questions à l'utilisateur)");
+    expect(a.warnings.join(' | ')).toContain('skill « developpement-par-sous-agents » ignorée');
+  });
 });

@@ -109,4 +109,11 @@ describe('prompt des sous-agents', () => {
     expect(p).not.toContain('brainstorming');
     expect(p).not.toContain('developpement-par-sous-agents');
   });
+
+  it('une skill réservée imposée par un profil n’est jamais injectée', () => {
+    const profile = { ...AGENT_PROFILES.dev, name: 'atelier', skills: ['brainstorming', 'revue-de-code'] };
+    const p = buildSubagentSystemPrompt({ project, profile, tools: devTools, windows: false, skills: [], maxSteps: 20 });
+    expect(p).toContain('name: revue-de-code');
+    expect(p).not.toContain('brainstorming');
+  });
 });

@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
 import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import { markdownComponents } from '@/components/chat/markdownComponents';
-import { AGENT_PROFILES, type AgentProfile } from '@/services/agent/profiles';
+import { AGENT_PROFILES, LEAD_ONLY_SKILLS, type AgentProfile } from '@/services/agent/profiles';
 import {
   scanCustomAgents, savePersonalAgent, deletePersonalAgent, type AgentDraft, type CustomAgent, type IgnoredAgentFile,
 } from '@/services/agent/profiles/custom';
@@ -66,7 +66,7 @@ function formFrom(p: AgentProfile, editing: boolean): FormState {
     description: p.description,
     prompt: p.prompt,
     model: p.model ?? '',
-    skills: [...p.skills],
+    skills: p.skills.filter((s) => !LEAD_ONLY_SKILLS.has(s)),
     maxSteps: p.maxSteps,
     canWrite: !p.deny.includes('fs.write'),
     canRun: !p.deny.includes('shell.exec'),
@@ -356,13 +356,17 @@ function AgentForm({ form, setForm, skills, saving, onSave, onCancel }: {
         <div>
           <span className="text-ui-sm text-text-secondary">Skills appliquées d'office (les autres restent disponibles à la demande)</span>
           <div className="mt-1 flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
-            {skills.map((s) => (
-              <button key={s.name} type="button" onClick={() => toggleSkill(s.name)} title={s.description}
-                className={cn('px-2 h-7 rounded-md border text-ui-caption font-mono',
-                  form.skills.includes(s.name) ? 'border-primary-btn bg-primary-btn/10 text-text-primary' : 'border-border-medium text-text-muted hover:bg-hover-fill')}>
-                {s.name}
-              </button>
-            ))}
+            {skills.map((s) => {
+              const leadOnly = LEAD_ONLY_SKILLS.get(s.name);
+              return (
+                <button key={s.name} type="button" onClick={() => toggleSkill(s.name)} disabled={!!leadOnly}
+                  title={leadOnly ? `Réservée à l'agent principal : ${leadOnly}, ce qu'un sous-agent ne peut pas faire.` : s.description}
+                  className={cn('px-2 h-7 rounded-md border text-ui-caption font-mono disabled:opacity-40 disabled:cursor-not-allowed',
+                    form.skills.includes(s.name) ? 'border-primary-btn bg-primary-btn/10 text-text-primary' : 'border-border-medium text-text-muted hover:bg-hover-fill')}>
+                  {s.name}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

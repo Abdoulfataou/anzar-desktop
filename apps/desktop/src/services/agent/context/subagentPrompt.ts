@@ -10,7 +10,7 @@
  * autonome, périmètre strict, rapport final structuré.
  */
 import type { PermissionMode } from '../policy/permissions';
-import type { AgentProfile } from '../profiles';
+import { LEAD_ONLY_SKILLS, type AgentProfile } from '../profiles';
 import { BUILTIN_SKILLS } from '@/services/skills/pack';
 import type { Skill } from '@/services/skills';
 import { projectContextSections, type AgentPromptContext } from './agentPrompts';
@@ -68,12 +68,6 @@ export function commandsFact(tools: Set<string>, mode: PermissionMode | undefine
     : 'Tes commandes sont confinées au projet (plus les dossiers temporaires et les caches). Sers-t’en pour lire et vérifier (tests, lint, build), jamais pour modifier un fichier.';
 }
 
-/**
- * Skills réservées à l'agent principal : elles demandent de questionner l'utilisateur ou de
- * lancer des sous-agents, ce qu'un sous-agent ne peut pas faire.
- */
-export const LEAD_ONLY_SKILLS = new Set(['brainstorming', 'developpement-par-sous-agents']);
-
 /** Taille maximale d'une skill injectée d'office (une skill de projet peut être longue). */
 const MAX_ROLE_SKILL_CHARS = 20_000;
 
@@ -82,6 +76,7 @@ export function skillsSections(profile: AgentProfile | undefined, skills: Skill[
   const out: string[] = [];
   // Skill du projet ou personnelle du même nom d'abord (elle remplace celle d'ANZAR), puis le pack.
   const mandatory = (profile?.skills ?? [])
+    .filter((name) => !LEAD_ONLY_SKILLS.has(name))
     .map((name) => {
       const own = skills.find((s) => s.name === name && s.body.trim());
       if (own) return `---\nname: ${own.name}\ndescription: ${own.description}\n---\n\n${own.body.slice(0, MAX_ROLE_SKILL_CHARS)}`;
