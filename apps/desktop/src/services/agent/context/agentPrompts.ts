@@ -57,6 +57,7 @@ Délègue une partie indépendante et assez longue pour valoir un agent à part 
 - Choisis son rôle (role) :
 ${SUBAGENT_ROLES.map((r) => `  - ${r} : ${AGENT_PROFILES[r]?.description || ''}`).join('\n')}
   - ou un agent de la liste « Agents du projet et personnels », quand il y en a une et qu'il correspond mieux.
+- Pour exécuter un plan de plusieurs tâches, charge la skill developpement-par-sous-agents (lots, revue, corrections).
 - Lance-les, avance sur ta propre partie, puis attends-les ensemble avec un seul wait_agent (agents : [noms]).
 - Lis leurs rapports, vérifie l'ensemble toi-même (imports croisés, build, tests) et corrige avant de conclure. Ce qu'ils n'ont pas pu faire (accès hors projet, commande refusée), fais-le toi-même.
 - Un sous-agent au repos garde son historique : pour une correction ou une seconde passe, envoie-lui send_message plutôt que d'en lancer un nouveau.`;

@@ -54,6 +54,7 @@ Tâche qui touche plusieurs fichiers ou plusieurs couches (base de données, API
 ## Exécution
 - Suis le plan dans l'ordre ; vérifie chaque étape avant la suivante.
 - Si la réalité contredit le plan (fichier différent, dépendance absente), arrête-toi, explique l'écart et ajuste le plan au lieu d'improviser en silence.
+- Plan d'au moins 3 tâches sur des fichiers séparables : exécute-le avec la skill developpement-par-sous-agents.
 - En mode plan, soumets-le avec propose_plan.`;
 
 const tdd = `---
@@ -97,7 +98,9 @@ Erreur, crash, résultat faux, « ça ne marche pas », test qui échoue sans ra
 ## Signaux d'alerte
 - Trois corrections essayées sans succès : arrête, reprends à l'étape 1, l'hypothèse de départ est fausse.
 - « Ça marche chez moi » : compare les environnements (versions, variables, données).
-- Tu modifies du code que tu n'as pas lu : lis-le d'abord.`;
+- Tu modifies du code que tu n'as pas lu : lis-le d'abord.
+- L'erreur se voit loin de l'endroit où elle naît (valeur vide ou fausse) : skill cause-racine.
+- Un test passe une fois sur deux : skill attente-par-condition.`;
 
 const verify = `---
 name: verification-avant-de-conclure
@@ -623,11 +626,123 @@ for (const f of (await readdir('resultats')).sort()) {
   Si le connecteur GIMP est actif (Connecteurs), utilise ses outils ; sinon propose de l'activer.
 - Photos HEIC d'iPhone : sharp peut ne pas les lire. Demande de les exporter en JPEG (Photos → Exporter) si la lecture échoue.`;
 
+const subagentDriven = `---
+name: developpement-par-sous-agents
+description: Exécuter un plan de plusieurs tâches séparables en les confiant à des sous-agents — un dev par tâche, une revue après chaque lot — puis consolider et tout vérifier.
+---
+
+## Quand l'utiliser
+- Un plan validé (skill ecrire-un-plan) d'au moins 3 tâches qui touchent des fichiers différents.
+- Pas pour une correction ciblée, des tâches qui modifient les mêmes fichiers, ni un travail où chaque étape dépend du résultat exact de la précédente : fais-le toi-même.
+
+## Préparer
+1. Pour chaque tâche du plan : les fichiers touchés, le critère de réussite, ses dépendances (la tâche B a besoin de l'interface de A).
+2. **Fige d'abord ce qui est partagé** — types, interfaces, schéma de données, routes, noms de composants. Écris-le toi-même avant de déléguer, sinon chaque sous-agent invente le sien.
+3. Forme des **lots** : dans un lot, aucune tâche ne partage un fichier avec une autre ; un lot ne démarre que lorsque ceux dont il dépend sont validés.
+
+## La consigne d'un sous-agent
+Il ne voit pas la conversation. Appelle spawn_agent (role dev, ou un agent du projet plus adapté) avec :
+- l'objectif en une phrase et le critère de réussite vérifiable ;
+- les fichiers à créer ou modifier, et ceux à ne pas toucher ;
+- les interfaces figées à respecter (recopie-les), les conventions du projet, la skill à charger (tdd, securite-api…) ;
+- la vérification attendue (test ou commande précise) ;
+- un nom parlant (name : « api-commandes »).
+
+## Boucle par lot
+1. Lance le lot, puis attends-le en un seul wait_agent (agents : [noms]).
+2. Lis chaque rapport : fichiers, vérification, points ouverts. Un rapport sans vérification n'est pas une tâche finie.
+3. **Revue** : lance un sous-agent revue sur les fichiers du lot (un pour le lot, ou un par tâche sensible : paiement, sécurité, données). Donne-lui le critère de réussite et la liste des fichiers.
+4. **Corrections** : renvoie chaque remarque bloquante ou importante au sous-agent qui a fait la tâche, avec send_message (il garde son historique). Attends-le, puis fais relire si c'était bloquant. Deux allers-retours au plus ; au-delà, corrige toi-même.
+5. Passe au lot suivant.
+
+## Consolider
+- Vérifie l'ensemble toi-même : imports croisés, build, tous les tests, exécution réelle (skill verification-avant-de-conclure).
+- Relis le diff global : doublons entre tâches, styles divergents, fichiers modifiés hors du plan.
+- Résume à l'utilisateur : ce qui est fait par tâche, ce qui a été vérifié, ce qui reste.
+
+## À éviter
+- Déléguer avant d'avoir figé les interfaces partagées.
+- Deux sous-agents sur le même fichier.
+- Accepter « terminé » sans preuve, ou sauter la revue pour aller plus vite.
+- Plus de sous-agents simultanés que de tâches vraiment indépendantes : 3 ou 4 à la fois suffisent en général, et chacun consomme des crédits.`;
+
+const rootCause = `---
+name: cause-racine
+description: Remonter d'un symptôme (valeur fausse ou vide, erreur visible loin de sa source) jusqu'à l'endroit où le problème naît, corriger là, puis empêcher qu'il revienne.
+---
+
+## Quand l'utiliser
+- L'erreur se voit loin de l'endroit où elle naît : valeur vide ou fausse dans un écran, une base, un fichier, une réponse d'API.
+- Une correction locale « marche », mais personne ne sait pourquoi la valeur était fausse.
+Complète debogage-systematique : celle-ci sert quand la pile d'appels ne montre pas l'origine.
+
+## Remonter la chaîne
+1. Pars du symptôme précis : quelle valeur est fausse, où, et quelle valeur était attendue.
+2. Trouve qui produit cette valeur juste avant : l'appelant, la fonction, la requête, l'état (search_files sur la variable ou le champ).
+3. À chaque maillon, pose une seule question : la valeur est-elle déjà fausse en entrée ? Si oui, remonte d'un cran. Sinon, le problème naît ici.
+4. Quand la lecture ne suffit pas, instrumente : un log temporaire juste avant l'endroit suspect, qui affiche la valeur, le contexte et la provenance (\`console.error('[debug]', valeur, new Error().stack)\`). Lance, lis, puis retire-le.
+5. Arrête-toi au premier maillon où une entrée correcte donne une sortie fausse : c'est la cause racine.
+
+## Corriger
+- Corrige à la source, pas là où l'erreur se voit.
+- Ajoute ensuite une garde là où une mauvaise valeur ferait le plus de dégâts — validation à l'entrée d'une API, contrôle avant l'écriture en base, message d'erreur clair. C'est une défense en plus, jamais à la place de la correction.
+- Écris un test qui part de la source et vérifie le symptôme d'origine.
+
+## Signaux d'alerte
+- Tu ajoutes un \`if (!x) return\` là où l'erreur s'affiche : tu caches le symptôme.
+- La même mauvaise valeur arrive par plusieurs chemins : cherche la source commune (fonction partagée, valeur par défaut, migration).
+- Tu n'arrives pas à reproduire : note les conditions exactes (données, compte, heure, réseau, version) avant de formuler une hypothèse.`;
+
+const conditionWait = `---
+name: attente-par-condition
+description: Rendre fiables les tests et scripts asynchrones instables en attendant une condition observable plutôt qu'un délai fixe (sleep, setTimeout).
+---
+
+## Quand l'utiliser
+- Un test passe parfois et échoue parfois, surtout sur une machine lente ou en intégration continue.
+- Le code contient sleep, setTimeout, waitForTimeout ou un \`await delay(2000)\` pour « laisser le temps ».
+- Un script attend qu'un serveur, un fichier ou une base soit prêt.
+
+## Principe
+Un délai fixe parie sur la durée d'une opération : trop court, le test échoue ; trop long, tout ralentit. Attends plutôt la preuve que c'est prêt.
+
+## Méthode
+1. Identifie ce que le délai attend vraiment : un élément affiché, une réponse HTTP 200, un fichier créé, une ligne en base, un événement, un changement d'état.
+2. Remplace le délai par l'attente de cette condition, avec un délai maximum et un message clair :
+\`\`\`ts
+async function attendre<T>(
+  condition: () => T | Promise<T>,
+  { timeoutMs = 5_000, intervalMs = 50, quoi = 'la condition' } = {},
+): Promise<T> {
+  const fin = Date.now() + timeoutMs;
+  for (;;) {
+    const resultat = await condition();
+    if (resultat) return resultat;
+    if (Date.now() > fin) throw new Error(\`Délai dépassé (\${timeoutMs} ms) en attendant \${quoi}\`);
+    await new Promise((ok) => setTimeout(ok, intervalMs));
+  }
+}
+\`\`\`
+3. Préfère l'outil du framework quand il existe : \`waitFor\` et \`findBy…\` (Testing Library), \`vi.waitFor\` ou \`expect.poll\` (Vitest), \`await expect(locator).toBeVisible()\` (Playwright), \`pumpAndSettle\` (Flutter), un healthcheck pour un service Docker.
+4. Avec des minuteurs simulés (\`vi.useFakeTimers\`, fake timers de Jest), avance le temps explicitement au lieu d'attendre.
+5. Relance le test plusieurs fois d'affilée (par exemple 10) pour prouver qu'il est devenu stable.
+
+## Quand un délai reste juste
+Pour tester un comportement lié au temps lui-même (anti-rebond, expiration, nouvelle tentative après 2 s) : utilise des minuteurs simulés et explique en commentaire pourquoi.
+
+## À éviter
+- Augmenter le délai jusqu'à ce que « ça passe ».
+- Attendre sans délai maximum : un test bloqué est pire qu'un test qui échoue.
+- Masquer l'instabilité en relançant automatiquement les tests en échec.`;
+
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'brainstorming', markdown: brainstorming },
   { name: 'ecrire-un-plan', markdown: plan },
+  { name: 'developpement-par-sous-agents', markdown: subagentDriven },
   { name: 'tdd', markdown: tdd },
   { name: 'debogage-systematique', markdown: debug },
+  { name: 'cause-racine', markdown: rootCause },
+  { name: 'attente-par-condition', markdown: conditionWait },
   { name: 'verification-avant-de-conclure', markdown: verify },
   { name: 'verifier-une-app-web', markdown: verifyWeb },
   { name: 'revue-de-code', markdown: review },

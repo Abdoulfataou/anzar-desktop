@@ -68,6 +68,12 @@ export function commandsFact(tools: Set<string>, mode: PermissionMode | undefine
     : 'Tes commandes sont confinées au projet (plus les dossiers temporaires et les caches). Sers-t’en pour lire et vérifier (tests, lint, build), jamais pour modifier un fichier.';
 }
 
+/**
+ * Skills réservées à l'agent principal : elles demandent de questionner l'utilisateur ou de
+ * lancer des sous-agents, ce qu'un sous-agent ne peut pas faire.
+ */
+export const LEAD_ONLY_SKILLS = new Set(['brainstorming', 'developpement-par-sous-agents']);
+
 /** Taille maximale d'une skill injectée d'office (une skill de projet peut être longue). */
 const MAX_ROLE_SKILL_CHARS = 20_000;
 
@@ -86,7 +92,7 @@ export function skillsSections(profile: AgentProfile | undefined, skills: Skill[
     out.push(`# Skills de ton rôle (applique-les à la lettre)\n${mandatory.join('\n\n---\n\n')}`);
   }
   const already = new Set(profile?.skills ?? []);
-  const others = skills.filter((s) => !already.has(s.name));
+  const others = skills.filter((s) => !already.has(s.name) && !LEAD_ONLY_SKILLS.has(s.name));
   if (canLoad && others.length) {
     out.push(`# Skills disponibles
 Fiches d'instructions éprouvées. Quand l'une correspond à ta tâche, charge-la avec load_skill AVANT d'agir, puis suis-la. N'exécute pas un script fourni par une skill : signale-le dans ton rapport.

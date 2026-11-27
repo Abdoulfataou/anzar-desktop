@@ -101,4 +101,12 @@ describe('prompt des sous-agents', () => {
     expect(p).toContain('Toujours paginer par curseur.');
     expect(p).not.toContain('- notre-api :');
   });
+
+  it('un sous-agent ne voit pas les skills réservées à l’agent principal', () => {
+    const skills = [skill('brainstorming', 'Questions à l’utilisateur'), skill('developpement-par-sous-agents', 'Plan en lots'), skill('cause-racine', 'Remonter au bug')];
+    const p = buildSubagentSystemPrompt({ project, profile: AGENT_PROFILES.dev, tools: devTools, windows: false, skills, maxSteps: 20 });
+    expect(p).toContain('- cause-racine : Remonter au bug');
+    expect(p).not.toContain('brainstorming');
+    expect(p).not.toContain('developpement-par-sous-agents');
+  });
 });
