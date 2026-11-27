@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "2.2.0"
+version = "2.2.1"
 description = "ANZAR - Assistant IA de Vibecoding pour l'Afrique"
 authors = ["IssalanHub"]
 license = ""
