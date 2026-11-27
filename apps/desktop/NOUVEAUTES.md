@@ -1,1 +1,5 @@
-- Mac : après une mise à jour, ANZAR ne te renvoie plus à l'écran de connexion. Si ton Mac demande l'autorisation de lire ta session ANZAR, saisis le mot de passe de ta session et clique sur « Toujours autoriser » : ANZAR attend ta réponse, et ton Mac ne te le redemandera plus.
+- Commandes longues : quand une commande dépasse son délai (un build, des tests), ANZAR ne la coupe plus. Elle continue en arrière-plan et l'agent suit sa progression, au lieu de tout perdre et de recommencer.
+- Commandes bloquées : ANZAR repère les commandes qui ne s'arrêtent jamais (serveurs, mode « watch ») et les lance d'office en arrière-plan. Si une commande ne produit plus rien, l'agent le voit et l'arrête au lieu d'attendre.
+- Quand l'agent tourne en rond (mêmes tests qui échouent, délais dépassés), il fait un point d'étape : il note ce qu'il a essayé, change d'approche ou s'arrête proprement. En mode Auto, il passe aussi à un modèle plus puissant.
+- Les commandes ne restent plus bloquées sur une question invisible (mot de passe git, éditeur, confirmation d'installation).
+- Windows : ANZAR est désormais testé automatiquement sur un vrai Windows à chaque version, y compris l'ouverture de l'application.
