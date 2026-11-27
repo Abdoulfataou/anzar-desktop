@@ -68,7 +68,7 @@ fn base64(bytes: &[u8]) -> String {
 /// PowerShell 5.1, présent sur tous les Windows 10 et 11.
 #[cfg(windows)]
 pub fn interpreter(path: &str) -> Option<std::path::PathBuf> {
-    if let Some(p) = crate::tool_runner::resolve_with_exts("pwsh", &[".exe"]) {
+    if let Some(p) = crate::tool_runner::resolve_with_exts("pwsh", path, &[".exe"]) {
         return Some(p);
     }
     let root = std::env::var("SystemRoot").unwrap_or_else(|_| "C:\\Windows".into());
@@ -76,7 +76,7 @@ pub fn interpreter(path: &str) -> Option<std::path::PathBuf> {
     if builtin.is_file() {
         return Some(builtin);
     }
-    crate::tool_runner::resolve_with_exts("powershell", &[".exe"])
+    crate::tool_runner::resolve_with_exts("powershell", path, &[".exe"])
 }
 
 #[cfg(test)]
