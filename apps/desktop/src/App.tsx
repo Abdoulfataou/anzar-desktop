@@ -10,6 +10,7 @@ import AppLayout from '@/components/layout/AppLayout';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import { useAccountStore } from '@/stores/accountStore';
 import { authService } from '@/services/infra/auth';
+import { onKeychainWait } from '@/services/infra/secureTokenStore';
 import { startUpdateWatcher } from '@/services/infra/updateService';
 import { useChatStore } from '@/stores/chatStore';
 import { useProjectStore } from '@/stores/projectStore';
@@ -43,7 +44,15 @@ const AutomationsPage = lazy(() => import('@/pages/AutomationsPage'));
 const LoginPage = lazy(() => import('@/pages/LoginPage'));
 const WelcomePage = lazy(() => import('@/pages/WelcomePage'));
 
+/** macOS : la fenêtre d'autorisation du trousseau peut être cachée derrière l'app. */
+function useKeychainWaiting(): boolean {
+  const [waitingForKeychain, setWaitingForKeychain] = useState(false);
+  useEffect(() => onKeychainWait(setWaitingForKeychain), []);
+  return waitingForKeychain;
+}
+
 function LoadingFallback() {
+  const keychain = useKeychainWaiting();
   return (
     <div className="flex items-center justify-center h-full min-h-[200px] bg-bg-primary">
       <div className="text-center space-y-4">
@@ -51,7 +60,13 @@ function LoadingFallback() {
           <span className="text-white text-lg font-bold">A</span>
         </div>
         <Loader2 className="w-5 h-5 text-accent-primary animate-spin mx-auto" />
-        <p className="text-xs text-text-muted">Chargement...</p>
+        <p className="text-xs text-text-muted">{keychain ? 'Récupération de ta session…' : 'Chargement...'}</p>
+        {keychain && (
+          <p className="max-w-xs mx-auto text-xs text-text-secondary leading-relaxed">
+            Ton ordinateur demande l'autorisation de lire ta session ANZAR. Saisis le mot de passe de ta session
+            dans la fenêtre du système, puis clique sur « Toujours autoriser » : il ne te le redemandera plus.
+          </p>
+        )}
       </div>
     </div>
   );
