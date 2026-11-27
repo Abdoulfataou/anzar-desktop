@@ -61,3 +61,17 @@ copiés tels quels. Les en-têtes des fichiers concernés rappellent la source.
 Source : https://github.com/deepseek-ai/deepseek-harness
 Copyright (c) 2026 DeepSeek. Distribué sous licence MIT :
 https://opensource.org/licenses/MIT
+
+## diagram-design (Cathryn Lavery)
+
+La skill « diagrammes », servie par le serveur ANZAR
+(`services/api/agent_skills/diagrammes/`), est une adaptation française du projet
+diagram-design : principes éditoriaux, palette par défaut, règles de tracé des
+connecteurs et conventions des types de diagrammes. Les textes ont été réécrits et
+adaptés (polices système, exemples locaux, outils d'ANZAR à la place des scripts
+Python) ; ils ne sont pas copiés tels quels. Le texte complet de la licence est
+dans le dossier de la skill (`LICENSE`).
+
+Source : https://github.com/cathrynlavery/diagram-design
+Copyright (c) 2025 Cathryn Lavery. Distribué sous licence MIT :
+https://opensource.org/licenses/MIT
