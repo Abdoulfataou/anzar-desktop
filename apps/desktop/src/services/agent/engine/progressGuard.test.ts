@@ -79,4 +79,25 @@ describe('point d’étape', () => {
     const read = { id: 'r', type: 'function' as const, function: { name: 'read_file', arguments: '{"path":"a"}' } };
     expect(guard.after(read, failed, ALL)).toBeNull();
   });
+
+  it('commande rendue au délai : ni échec ni réussite ; arrêtée (job_kill) = délai dépassé, finie en échec = échec', () => {
+    const guard = new ProgressGuard();
+    const still = (id: string) => ({ output: `[toujours en cours] après 120 s, la commande continue en arrière-plan (job_id: ${id}). Elle n'a pas été arrêtée : ne la relance pas.` });
+    const job = (name: string, id: string) => ({ id: `${name}-${id}`, type: 'function' as const, function: { name, arguments: JSON.stringify({ job_id: id }) } });
+
+    // Un build légitime : rendu au délai puis fini avec succès → aucun point d'étape
+    expect(guard.after(bash('./gradlew assembleDebug'), still('job-1-1'), ALL)).toBeNull();
+    expect(guard.after(job('job_output', 'job-1-1'), { output: 'job_id: job-1-1\n\nétat: terminé (code 0)' }, ALL)).toBeNull();
+
+    // Le cas Key : tests bloqués, arrêtés deux fois → point d'étape
+    expect(guard.after(bash('flutter test a | tail -40'), still('job-2-1'), ALL)).toBeNull();
+    expect(guard.after(job('job_kill', 'job-2-1'), { output: 'Travail job-2-1 arrêté.' }, ALL)).toBeNull();
+    expect(guard.after(bash('flutter test b'), still('job-3-1'), ALL)).toBeNull();
+    const point = guard.after(job('job_kill', 'job-3-1'), { output: 'Travail job-3-1 arrêté.' }, ALL)!;
+    expect(point.family).toBe('flutter test');
+    expect(point.timeouts).toBe(2);
+
+    // Un travail inconnu (lancé exprès en arrière-plan) ne compte pas
+    expect(guard.after(job('job_kill', 'job-serveur'), { output: 'arrêté' }, ALL)).toBeNull();
+  });
 });

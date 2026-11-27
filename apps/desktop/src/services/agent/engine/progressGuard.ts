@@ -12,7 +12,7 @@
  * passer à un modèle plus fort (mode Auto).
  */
 import type { ToolCall } from '@/types';
-import { TIMEOUT_MARKER } from '../tools/commandHints';
+import { STILL_RUNNING_MARKER, TIMEOUT_MARKER } from '../tools/commandHints';
 
 /** Outils de commande suivis. */
 const COMMAND_TOOLS = new Set(['bash', 'run_command']);
@@ -115,6 +115,8 @@ export function progressMessage(point: Omit<ProgressPoint, 'message'>, tools: Re
 
 export class ProgressGuard {
   private readonly families = new Map<string, FamilyState>();
+  /** Travaux passés en arrière-plan après leur délai : identifiant → famille de la commande. */
+  private readonly jobs = new Map<string, string>();
   private readonly failureThresholds: [number, number];
   private readonly timeoutThreshold: number;
 
@@ -132,23 +134,51 @@ export class ProgressGuard {
     outcome: { output?: string; isError?: boolean; failed?: boolean },
     tools: ReadonlySet<string> = new Set(),
   ): ProgressPoint | null {
-    if (!COMMAND_TOOLS.has(call.function.name)) return null;
-    let command = '';
-    try { command = String(JSON.parse(call.function.arguments || '{}').command || ''); } catch { return null; }
-    const family = commandFamily(command);
-    if (!family) return null;
-    const timedOut = (outcome.output || '').includes(TIMEOUT_MARKER);
-    const state = this.families.get(family) ?? { failures: 0, timeouts: 0, levels: new Set() };
-    this.families.set(family, state);
+    let args: Record<string, unknown> = {};
+    try { args = JSON.parse(call.function.arguments || '{}'); } catch { return null; }
+    const output = outcome.output || '';
 
+    // Une commande qui a atteint son délai continue en arrière-plan : ce n'est pas encore un
+    // échec. Elle en devient un si l'agent doit l'arrêter (bloquée) ou si elle finit mal.
+    if (call.function.name === 'job_kill' || call.function.name === 'job_output') {
+      const jobId = String(args.job_id || args.id || '');
+      const jobFamily = this.jobs.get(jobId);
+      if (!jobFamily) return null;
+      if (call.function.name === 'job_kill') {
+        this.jobs.delete(jobId);
+        return this.record(jobFamily, { failed: true, timedOut: true }, tools);
+      }
+      const ended = /état: terminé \(code (-?\d+|inconnu)\)/.exec(output);
+      if (!ended) return null;
+      this.jobs.delete(jobId);
+      return this.record(jobFamily, { failed: ended[1] !== '0', timedOut: false }, tools);
+    }
+
+    if (!COMMAND_TOOLS.has(call.function.name)) return null;
+    const family = commandFamily(String(args.command || ''));
+    if (!family) return null;
+    if (output.includes(STILL_RUNNING_MARKER)) {
+      const jobId = /job_id: ([\w-]+)/.exec(output)?.[1];
+      if (jobId) this.jobs.set(jobId, family);
+      return null;
+    }
+    const timedOut = output.includes(TIMEOUT_MARKER);
+
+    // Commande non lancée (refus, introuvable) : ce n'est pas un essai sur le problème.
+    if (outcome.isError && !outcome.failed && !timedOut) return null;
+    return this.record(family, { failed: !!outcome.failed || !!outcome.isError || timedOut, timedOut }, tools);
+  }
+
+  /** Compte un essai d'une famille ; rend un point d'étape au franchissement d'un seuil. */
+  private record(family: string, attempt: { failed: boolean; timedOut: boolean }, tools: ReadonlySet<string>): ProgressPoint | null {
+    const state = this.families.get(family) ?? { failures: 0, timeouts: 0, levels: new Set<1 | 2>() };
+    this.families.set(family, state);
     // Une réussite remet la famille à zéro : le problème est réglé ou a changé.
-    if (!timedOut && !outcome.failed && !outcome.isError) {
+    if (!attempt.failed) {
       this.families.set(family, { failures: 0, timeouts: 0, levels: new Set() });
       return null;
     }
-    // Commande non lancée (refus, introuvable) : ce n'est pas un essai sur le problème.
-    if (outcome.isError && !outcome.failed && !timedOut) return null;
-
+    const timedOut = attempt.timedOut;
     state.failures += 1;
     if (timedOut) state.timeouts += 1;
 
@@ -166,5 +196,6 @@ export class ProgressGuard {
   /** Nouvelle demande de l'utilisateur : on repart de zéro. */
   reset(): void {
     this.families.clear();
+    this.jobs.clear();
   }
 }

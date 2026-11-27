@@ -519,10 +519,20 @@ class TerminalService {
   ): Promise<string> {
     const processId = `job-${++this.processCounter}-${Date.now()}`;
     options.onProcessId?.(processId);
+    await this.spawnJob(processId, command, options);
+    return processId;
+  }
+
+  /** Enregistre et démarre un travail shell ; un échec de lancement est inscrit sur le travail. */
+  private async spawnJob(
+    processId: string,
+    command: string,
+    options: { cwd?: string; silent?: boolean; escalated?: boolean; escalationReason?: string },
+  ): Promise<boolean> {
     const trimmed = String(command || '').trim();
     if (!trimmed || !options.cwd) {
       this.emitOutput(processId, 'error', '⛔ Commande ou dossier manquant');
-      return processId;
+      return false;
     }
     const process: RunningProcess = {
       id: processId,
@@ -551,12 +561,94 @@ class TerminalService {
         escalationReason: options.escalationReason ?? null,
       });
       process.pid = pid;
+      return true;
     } catch (error: any) {
       process.status = 'failed';
       process.exitCode = 1;
       this.emitOutput(processId, 'error', explainSpawnError(error, trimmed));
+      return false;
     }
-    return processId;
+  }
+
+  /**
+   * Commande au premier plan qui ne meurt pas à son délai (comme Codex et Claude Code) :
+   * elle tourne comme un travail d'arrière-plan ; si elle finit avant `yieldMs`, le résultat
+   * complet est rendu (codes et sorties exacts) et le travail est oublié. Sinon, l'appelant
+   * récupère la main avec l'identifiant et la sortie déjà produite : la commande continue,
+   * et l'agent décide de lire la suite (job_output) ou de l'arrêter (job_kill).
+   */
+  async execShellYield(
+    command: string,
+    options: { cwd?: string; yieldMs: number; signal?: AbortSignal; escalated?: boolean; escalationReason?: string },
+  ): Promise<
+    | { kind: 'finished'; result: CommandResult }
+    | { kind: 'running'; jobId: string; output: string; durationMs: number }
+  > {
+    const start = Date.now();
+    const trimmed = String(command || '').trim();
+    if (!trimmed) {
+      return { kind: 'finished', result: { success: false, exitCode: 1, stdout: '', stderr: '⛔ Commande vide', durationMs: 0, ran: false } };
+    }
+    if (!options.cwd) {
+      return { kind: 'finished', result: { success: false, exitCode: 1, stdout: '', stderr: '⛔ Dossier de travail manquant', durationMs: 0, ran: false } };
+    }
+    if (options.signal?.aborted) {
+      return { kind: 'finished', result: { success: false, exitCode: 130, stdout: '', stderr: STOPPED_MESSAGE, durationMs: 0, ran: true } };
+    }
+    const id = `job-${++this.processCounter}-${Date.now()}`;
+    const started = await this.spawnJob(id, trimmed, { cwd: options.cwd, silent: true, escalated: options.escalated, escalationReason: options.escalationReason });
+    if (!started) {
+      const job = this.getJob(id);
+      this.forgetJob(id);
+      return { kind: 'finished', result: { success: false, exitCode: 1, stdout: '', stderr: job?.output || 'Lancement impossible.', durationMs: Date.now() - start, ran: false } };
+    }
+    // Bouton Stop : arrêt immédiat, que la commande soit encore attendue ou déjà rendue.
+    const onAbort = () => { void this.killProcess(id); };
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
+    const exact = invoke<{ code: number; stdout: string; stderr: string }>('tool_wait', { id })
+      .catch((e: unknown) => ({ code: 1, stdout: '', stderr: `Attente impossible : ${e instanceof Error ? e.message : String(e)}` }));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const yielded = new Promise<'yield'>((resolve) => { timer = setTimeout(() => resolve('yield'), Math.max(0, options.yieldMs)); });
+    const outcome = await Promise.race([exact.then((r) => ({ r })), yielded]).finally(() => { if (timer) clearTimeout(timer); });
+
+    if (outcome === 'yield') {
+      // Toujours en cours : on rend la main. L'arrêt par Stop reste branché.
+      return { kind: 'running', jobId: id, output: this.getJob(id)?.output ?? '', durationMs: Date.now() - start };
+    }
+    options.signal?.removeEventListener('abort', onAbort);
+    const r = outcome.r;
+    // La fin peut arriver avant l'événement tool://exit : on la note ici pour pouvoir oublier.
+    const finished = this.processes.get(id);
+    if (finished && finished.status === 'running') {
+      finished.status = r.code === 0 ? 'completed' : 'failed';
+      finished.exitCode = r.code;
+    }
+    this.forgetJob(id);
+    if (options.signal?.aborted) {
+      return { kind: 'finished', result: { success: false, exitCode: 130, stdout: r.stdout.trim(), stderr: `${r.stderr}\n${STOPPED_MESSAGE}`.trim(), durationMs: Date.now() - start, ran: true } };
+    }
+    const stderr = withSandboxHint(r.code, r.stderr).trim();
+    return {
+      kind: 'finished',
+      result: {
+        success: r.code === 0,
+        exitCode: r.code,
+        stdout: r.stdout.trim(),
+        stderr,
+        durationMs: Date.now() - start,
+        ran: true,
+        denied: isSandboxDenial(stderr) || undefined,
+      },
+    };
+  }
+
+  /** Oublie un travail terminé (sa sortie a été rendue) : la mémoire ne grossit pas à chaque commande. */
+  forgetJob(id: string): void {
+    const process = this.processes.get(id);
+    if (process && process.status === 'running') return;
+    this.processes.delete(id);
+    this.outputHistory.delete(id);
   }
 
   /** État et sortie cumulée d'un travail lancé par `runShell`. */

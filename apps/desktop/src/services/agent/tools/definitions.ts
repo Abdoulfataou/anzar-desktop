@@ -501,7 +501,7 @@ export const BASH_TOOLS: ToolDefinition[] = [
         "Commande longue (suite de tests complète, build, installation) : arrière-plan + job_output pour voir la progression ; au premier plan, n'ajoute pas | tail ou | head, qui n'affichent rien avant la fin. " +
         "Avec un pipe, le code de sortie est celui du dernier programme : mets « set -o pipefail; » devant si tu dois savoir si le premier a échoué. " +
         "Pas d'invite interactive : passe les options qui évitent les questions (-y, --yes, -m pour git commit). " +
-        "Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer. Un délai dépassé signifie le plus souvent une commande bloquée : n'allonge pas le délai, cherche pourquoi.",
+        "Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer. Une commande qui atteint son délai continue en arrière-plan (job_id) : lis la suite avec job_output, ou arrête-la avec job_kill si elle est bloquée ; ne la relance pas.",
       parameters: {
         type: 'object',
         properties: {
@@ -516,7 +516,7 @@ export const BASH_TOOLS: ToolDefinition[] = [
           },
           timeoutMs: {
             type: 'number',
-            description: 'Délai maximal en millisecondes (défaut 120 000, plafond 600 000).',
+            description: 'Temps d’attente au premier plan en millisecondes (défaut 120 000, plafond 600 000). Au-delà, la commande n’est pas tuée : elle continue en arrière-plan et tu reçois son job_id.',
           },
           run_in_background: {
             type: 'boolean',
@@ -541,13 +541,14 @@ export const BASH_TOOLS: ToolDefinition[] = [
     function: {
       name: 'job_output',
       description:
-        "Lit l'état et la sortie d'un travail lancé par bash avec run_in_background. Avec wait_ms, attend la fin (ou le délai) avant de répondre. " +
-        "Utilise-le pour suivre un serveur de développement, un build long ou une installation.",
+        "Lit l'état et la sortie d'un travail bash en arrière-plan (lancé avec run_in_background, ou commande qui a atteint son délai et continue). " +
+        "Attend la fin, ou wait_ms (30 s par défaut), avant de répondre : inutile de le rappeler en boucle. " +
+        "S'il signale « aucune nouvelle sortie depuis N s » pour une commande qui devait finir, elle est probablement bloquée : job_kill, puis cherche pourquoi.",
       parameters: {
         type: 'object',
         properties: {
           job_id: { type: 'string', description: 'Identifiant rendu par bash (job_id).' },
-          wait_ms: { type: 'number', description: 'Délai d’attente maximal en millisecondes (défaut 0, plafond 300 000).' },
+          wait_ms: { type: 'number', description: 'Délai d’attente maximal en millisecondes (défaut 30 000, 0 pour lire tout de suite, plafond 300 000).' },
         },
         required: ['job_id'],
       },
@@ -557,7 +558,7 @@ export const BASH_TOOLS: ToolDefinition[] = [
     type: 'function',
     function: {
       name: 'job_kill',
-      description: "Arrête un travail lancé par bash avec run_in_background. Le groupe de processus est arrêté (pas seulement le shell).",
+      description: "Arrête un travail bash en arrière-plan (run_in_background, ou commande qui a atteint son délai). Le groupe de processus est arrêté (pas seulement le shell).",
       parameters: {
         type: 'object',
         properties: {

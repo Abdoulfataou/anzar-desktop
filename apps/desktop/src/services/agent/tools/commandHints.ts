@@ -98,6 +98,31 @@ export function timeoutAdvice(input: { command: string; timeoutMs: number; outpu
   return lines.join('\n');
 }
 
+/** Marqueur d'une commande qui a atteint son délai et continue en arrière-plan. */
+export const STILL_RUNNING_MARKER = '[toujours en cours]';
+
+/**
+ * Message rendu quand une commande au premier plan atteint son délai : elle n'est PAS tuée
+ * (un build légitime de 4 minutes ne doit pas être relancé), elle continue en arrière-plan.
+ */
+export function stillRunningAdvice(input: { command: string; seconds: number; output: string; jobId: string }): string {
+  const shown = lastLines(input.output);
+  const lines: string[] = [
+    `${STILL_RUNNING_MARKER} après ${input.seconds} s, la commande continue en arrière-plan (job_id: ${input.jobId}). Elle n'a pas été arrêtée : ne la relance pas.`,
+    '- Lis la suite avec job_output (il attend lui-même jusqu’à 30 s, ou wait_ms) ; arrête-la avec job_kill.',
+    '- Une commande qui devait finir (tests, build court) et dont la sortie n’avance plus est probablement bloquée : job_kill, puis cherche pourquoi au lieu de la relancer à l’identique.',
+  ];
+  const runner = testRunnerHint(input.command);
+  if (runner) {
+    lines.push(`- Tests : borne chaque test pour voir lequel bloque — ${runner}. Un test peut bloquer dans sa préparation ou son nettoyage, pas seulement dans son corps.`);
+  }
+  if (!shown && hidesProgress(input.command)) {
+    lines.push('- Aucune sortie visible : le filtre en fin de commande (| tail, | head, | grep…) n’affiche rien avant la fin. La prochaine fois, écris la sortie dans un fichier et lis-le.');
+  }
+  lines.push(shown ? `Dernières lignes :\n${shown}` : 'Aucune sortie pour le moment.');
+  return lines.join('\n');
+}
+
 /** Notice ajoutée quand une commande sans fin a été passée d'office en arrière-plan. */
 export function backgroundedNotice(label: string): string {
   return `[lancée en arrière-plan] cette commande ne s'arrête jamais seule (${label}) : au premier plan, elle aurait bloqué jusqu'au délai. ` +

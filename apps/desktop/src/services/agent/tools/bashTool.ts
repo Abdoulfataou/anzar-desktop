@@ -14,7 +14,7 @@
 import { terminalService } from '@/services/runtime/terminal';
 import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_CHARS, resolvePath, truncate } from './shared';
 import type { ToolExecutionContext, ToolResult } from './types';
-import { backgroundedNotice, neverEndingCommand, timeoutAdvice } from './commandHints';
+import { backgroundedNotice, neverEndingCommand, stillRunningAdvice, timeoutAdvice } from './commandHints';
 
 /** Durée maximale d'une commande au premier plan (le shell peut demander moins). */
 const MAX_TIMEOUT_MS = 600_000;
@@ -113,7 +113,17 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
     };
   }
 
-  const result = await terminalService.execShell(command, { cwd, timeout, signal: ctx.signal, escalated, escalationReason });
+  // Au délai, la commande n'est pas tuée : elle continue en arrière-plan et l'agent reprend
+  // la main avec son identifiant (comme Codex et Claude Code). Un build légitime de
+  // plusieurs minutes n'est jamais perdu ; une commande bloquée s'arrête avec job_kill.
+  const run = await terminalService.execShellYield(command, { cwd, yieldMs: timeout, signal: ctx.signal, escalated, escalationReason });
+  if (run.kind === 'running') {
+    noteJobOutput(run.jobId, run.output);
+    return {
+      output: stillRunningAdvice({ command, seconds: Math.round(timeout / 1000), output: run.output, jobId: run.jobId }),
+    };
+  }
+  const result = run.result;
   if (result.ran === false) {
     return {
       output: `La commande n'a pas été exécutée (refus ou lancement impossible).\n${result.stderr || '(sans détail)'}`,
@@ -127,13 +137,36 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
   };
 }
 
+/**
+ * Dernière sortie vue par l'agent pour chaque travail : permet de dire « rien de nouveau
+ * depuis N s », le signal le plus net d'une commande bloquée.
+ */
+const lastSeen = new Map<string, { length: number; at: number }>();
+function noteJobOutput(id: string, output: string): void {
+  const prev = lastSeen.get(id);
+  if (!prev || prev.length !== output.length) lastSeen.set(id, { length: output.length, at: Date.now() });
+}
+
+/** Sans wait_ms, job_output attend lui-même un peu : moins d'allers-retours avec le modèle. */
+export const DEFAULT_JOB_WAIT_MS = 30_000;
+
 export async function execJobOutput(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
   const id = String(args.job_id || args.id || '').trim();
   if (!id) return { output: 'Erreur: indique job_id (l’identifiant rendu par bash).', isError: true };
-  const waitMs = Math.min(Math.max(0, Number(args.wait_ms) || 0), 300_000);
+  const requested = Number(args.wait_ms);
+  const waitMs = Math.min(Math.max(0, Number.isFinite(requested) && args.wait_ms !== undefined ? requested : DEFAULT_JOB_WAIT_MS), 300_000);
   const job = await terminalService.waitForJob(id, waitMs, ctx.signal);
   if (!job) return { output: `Erreur: travail inconnu « ${id} ».`, isError: true };
-  return { output: renderJob(job, id), isError: job.status === 'failed', failed: job.status === 'failed' };
+  const before = lastSeen.get(id);
+  const silentFor = job.status === 'running' && before && before.length === job.output.length
+    ? Math.round((Date.now() - before.at) / 1000)
+    : 0;
+  noteJobOutput(id, job.output);
+  if (job.status !== 'running') lastSeen.delete(id);
+  const stalled = silentFor >= 20
+    ? `[aucune nouvelle sortie depuis ${silentFor} s] Si cette commande devait produire quelque chose ou se terminer, elle est probablement bloquée : arrête-la (job_kill) et cherche pourquoi plutôt que d'attendre encore.\n\n`
+    : '';
+  return { output: stalled + renderJob(job, id), isError: job.status === 'failed', failed: job.status === 'failed' };
 }
 
 export async function execJobKill(args: Record<string, any>): Promise<ToolResult> {
