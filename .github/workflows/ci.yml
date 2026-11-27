@@ -247,11 +247,32 @@ jobs:
       - name: Edge Driver assorti à WebView2
         run: ./e2e/scripts/prepare-edgedriver.ps1
 
+      # Les runners Windows de GitHub tournent en administrateur. Depuis WebView2 150, une
+      # application lancée en administrateur ignore WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS,
+      # la seule voie par laquelle msedgedriver ouvre le port de débogage : la session
+      # échoue alors avec « DevToolsActivePort file doesn't exist » (choix de Microsoft,
+      # MicrosoftEdge/WebView2Feedback#5645, suivi par tauri-apps/wry#1782). On lance donc
+      # les tests en utilisateur standard (intégrité « Medium ») avec gsudo, comme le projet
+      # WebdriverIO le fait pour ses propres tests Tauri. Aucun changement dans l'app.
+      - name: gsudo (tests sans droits administrateur)
+        run: |
+          choco install gsudo -y --no-progress
+          $exe = Get-ChildItem 'C:\ProgramData\chocolatey', 'C:\tools' -Recurse -Filter gsudo.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { throw 'gsudo.exe introuvable après installation.' }
+          $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
+          # Le processus non administrateur doit pouvoir écrire ses captures d'écran.
+          New-Item -ItemType Directory -Force -Path e2e/artefacts | Out-Null
+          icacls e2e/artefacts /grant "$($env:USERNAME):(OI)(CI)M" /Q
+
       - name: Tests de bout en bout (WebDriver)
         working-directory: apps/desktop/e2e
         run: |
           npm ci
-          npm test
+          $here = (Get-Location).Path
+          $cmd = "Set-Location '$here'; `$env:MSEDGEDRIVER = '$env:MSEDGEDRIVER'; " +
+                 "whoami /groups | Select-String 'Mandatory Label'; npm test; exit `$LASTEXITCODE"
+          gsudo --integrity Medium pwsh -NoProfile -Command $cmd
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Captures des tests ratés
         if: failure()
