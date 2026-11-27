@@ -93,7 +93,10 @@ export async function execWaitAgent(args: Record<string, any>, ctx: ToolExecutio
   return {
     output: reports.join('\n\n────────\n\n') +
       (anyIdle ? `\n\nTu peux envoyer un autre message à un sous-agent au repos avec send_message si besoin.` : '') +
-      (agents.length > 1 ? `\n\n→ Vérifie maintenant la cohérence de l'ensemble (imports croisés, build) avant de conclure.` : ''),
+      (agents.length > 1 ? `\n\n→ Vérifie maintenant la cohérence de l'ensemble (imports croisés, build) avant de conclure.` : '') +
+      (agents.some((a, i) => before[i] === 'running' && a.status === 'running')
+        ? "\n\nUn sous-agent encore en cours après ce délai : regarde ses étapes avec list_agents. S'il n'avance plus (souvent une commande bloquée), arrête-le avec stop_agent, puis fais la sous-tâche toi-même ou relance-le avec une consigne plus précise."
+        : ''),
     isError: agents.every((a) => a.status === 'error'),
   };
 }

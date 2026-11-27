@@ -2,6 +2,7 @@
  * Outils fichiers : lecture, écriture, édition, suppression, liste, recherche, diagnostics.
  */
 import { fileSystemService } from '@/services/filesystem/fileSystem';
+import { analyzerHint } from './commandHints';
 import { diagnoseChange, diagnoseFile, formatDiagnostics, languageOf, warmUp } from '@/services/lsp/manager';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { IGNORED_DIRS, MAX_COMMAND_OUTPUT_CHARS, MAX_FILE_READ_CHARS, MAX_LIST_ENTRIES, MAX_SEARCH_RESULTS, isTextFile, resolvePath, resolveWritePath, truncate } from './shared';
@@ -26,7 +27,11 @@ export async function execGetDiagnostics(args: any, ctx: ToolExecutionContext): 
   if (!paths.length) return { output: 'Erreur: indique au moins un fichier dans paths.', isError: true };
   const parts: string[] = [];
   for (const path of paths) {
-    if (!languageOf(path)) { parts.push(`${path} : langage non pris en charge (TypeScript, JavaScript, Python).`); continue; }
+    if (!languageOf(path)) {
+      const hint = analyzerHint(path);
+      parts.push(`${path} : pas de diagnostics intégrés pour ce langage (seulement TypeScript, JavaScript, Python).${hint ? ` Vérifie-le avec la commande : ${hint}.` : ''}`);
+      continue;
+    }
     const text = await fileSystemService.readFile(await resolvePath(ctx.projectRoot, path)).catch(() => null);
     if (text === null) { parts.push(`${path} : fichier introuvable.`); continue; }
     // Demande explicite : on laisse au serveur le temps de démarrer s'il ne tourne pas encore

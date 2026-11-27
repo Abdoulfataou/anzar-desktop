@@ -14,6 +14,7 @@
 import { terminalService } from '@/services/runtime/terminal';
 import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_CHARS, resolvePath, truncate } from './shared';
 import type { ToolExecutionContext, ToolResult } from './types';
+import { backgroundedNotice, neverEndingCommand, timeoutAdvice } from './commandHints';
 
 /** Durée maximale d'une commande au premier plan (le shell peut demander moins). */
 const MAX_TIMEOUT_MS = 600_000;
@@ -41,11 +42,13 @@ function renderFinished(result: {
   stderr: string;
   durationMs: number;
   timedOut?: boolean;
-}, workdir: string, timeoutMs: number): string {
+}, workdir: string, timeoutMs: number, command = ''): string {
   const parts = [
     `cwd: ${workdir}`,
     `exit_code: ${result.exitCode} (${result.durationMs}ms)`,
-    result.timedOut ? `[délai dépassé] la commande a été arrêtée après ${Math.round(timeoutMs / 1000)} s ; découpe-la ou relance avec un timeoutMs plus grand.` : '',
+    result.timedOut
+      ? timeoutAdvice({ command, timeoutMs, output: `${result.stdout}\n${result.stderr}`, backgroundAvailable: true })
+      : '',
     result.stdout ? `stdout:\n${truncate(result.stdout, MAX_COMMAND_OUTPUT_CHARS, 'stdout')}` : '',
     result.stderr ? `[stderr]\n${truncate(result.stderr, MAX_COMMAND_OUTPUT_CHARS, 'stderr')}` : '',
   ].filter(Boolean);
@@ -88,7 +91,11 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
   const escalated = ctx.escalated === true;
   const escalationReason = String(args.justification || '');
 
-  if (args.run_in_background === true) {
+  // Serveur, mode surveillance, tail -f : au premier plan, la commande bloquerait jusqu'au
+  // délai. Elle part d'office en arrière-plan, et l'agent garde la main.
+  const endless = args.run_in_background === true ? null : neverEndingCommand(command);
+
+  if (args.run_in_background === true || endless) {
     const jobId = await terminalService.runShell(command, { cwd, escalated, escalationReason });
     // Bouton Stop : un travail lancé par ce tour ne doit pas survivre à l'annulation.
     const onAbort = () => { void terminalService.killProcess(jobId); };
@@ -98,7 +105,12 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
     await new Promise<void>((r) => setTimeout(r, 250));
     const job = terminalService.getJob(jobId);
     if (!job) return { output: `Erreur: le travail ${jobId} n'a pas pu être lancé.`, isError: true };
-    return { output: renderJob(job, jobId), isError: job.status === 'failed', failed: job.status === 'failed' };
+    const rendered = renderJob(job, jobId);
+    return {
+      output: endless ? `${backgroundedNotice(endless)}\n\n${rendered}` : rendered,
+      isError: job.status === 'failed',
+      failed: job.status === 'failed',
+    };
   }
 
   const result = await terminalService.execShell(command, { cwd, timeout, signal: ctx.signal, escalated, escalationReason });
@@ -109,7 +121,7 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
     };
   }
   return {
-    output: renderFinished(result, workdirArg, timeout),
+    output: renderFinished(result, workdirArg, timeout, command),
     isError: result.denied === true,
     failed: result.exitCode !== 0,
   };

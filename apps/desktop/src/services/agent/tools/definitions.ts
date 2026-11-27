@@ -497,7 +497,11 @@ export const BASH_TOOLS: ToolDefinition[] = [
         "Chaque appel ouvre un shell neuf : passe workdir plutôt que d'enchaîner les cd. Les pipes, redirections, && et les scripts fonctionnent. " +
         "La frontière est l'isolation du système (écriture limitée au projet, aux temporaires et aux caches) : une écriture refusée est un fait, " +
         "ne la contourne pas par un autre outil. Pour un travail long, run_in_background rend un job_id, puis job_output lit la suite et job_kill l'arrête. " +
-        "Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer.",
+        "Les serveurs et modes surveillance (npm run dev, --watch, tail -f…) partent d'office en arrière-plan. " +
+        "Commande longue (suite de tests complète, build, installation) : arrière-plan + job_output pour voir la progression ; au premier plan, n'ajoute pas | tail ou | head, qui n'affichent rien avant la fin. " +
+        "Avec un pipe, le code de sortie est celui du dernier programme : mets « set -o pipefail; » devant si tu dois savoir si le premier a échoué. " +
+        "Pas d'invite interactive : passe les options qui évitent les questions (-y, --yes, -m pour git commit). " +
+        "Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer. Un délai dépassé signifie le plus souvent une commande bloquée : n'allonge pas le délai, cherche pourquoi.",
       parameters: {
         type: 'object',
         properties: {

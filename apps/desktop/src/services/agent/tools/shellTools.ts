@@ -6,11 +6,23 @@ import { toolsCatalog, toolInstall, confirmToolInstall } from '@/services/runtim
 import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_CHARS, resolvePath, truncate } from './shared';
 import { ToolExecutionContext, ToolResult } from './types';
 import { unconfinedCommandRefusal } from '../policy/isolation';
+import { neverEndingCommand, timeoutAdvice } from './commandHints';
 
 export async function execRunCommand(args: any, ctx: ToolExecutionContext): Promise<ToolResult> {
   // Windows : pas d'isolation, donc pas de lancement silencieux hors Accès complet.
   const unconfined = unconfinedCommandRefusal(ctx.permissionMode, ctx.escalated === true);
   if (unconfined) return { output: unconfined, isError: true };
+  // run_command n'a pas d'arrière-plan : une commande sans fin bloquerait 2 minutes pour rien.
+  const endless = neverEndingCommand(String(args.command || ''));
+  if (endless) {
+    return {
+      output: `Commande non lancée : elle ne s'arrête jamais seule (${endless}) et run_command attend la fin. ` +
+        "Pour une app web, utilise start_dev_server (il lance le serveur, attend qu'il réponde et vérifie la page). " +
+        'Pour des tests, utilise la variante sans surveillance (par exemple vitest run). ' +
+        "Si ce script se termine en réalité, lance directement le programme qu'il appelle (par exemple node index.js).",
+      isError: true,
+    };
+  }
   const cwd = await resolvePath(ctx.projectRoot, args.cwd);
   const result = await terminalService.exec(args.command, {
     cwd,
@@ -32,7 +44,9 @@ export async function execRunCommand(args: any, ctx: ToolExecutionContext): Prom
 
   const parts = [
     `exit_code: ${result.exitCode} (${result.durationMs}ms)`,
-    result.timedOut ? `[délai dépassé] la commande a été arrêtée après ${Math.round(COMMAND_TIMEOUT_MS / 1000)} s ; découpe-la ou utilise bash avec un timeout plus long.` : '',
+    result.timedOut
+      ? timeoutAdvice({ command: String(args.command || ''), timeoutMs: COMMAND_TIMEOUT_MS, output: `${result.stdout}\n${result.stderr}`, backgroundAvailable: false })
+      : '',
     result.stdout ? `stdout:\n${truncate(result.stdout, MAX_COMMAND_OUTPUT_CHARS, 'stdout')}` : '',
     result.stderr ? `[stderr]\n${truncate(result.stderr, MAX_COMMAND_OUTPUT_CHARS, 'stderr')}` : '',
   ].filter(Boolean);

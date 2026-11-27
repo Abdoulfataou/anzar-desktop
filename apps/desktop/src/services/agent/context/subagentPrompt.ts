@@ -122,6 +122,7 @@ export function buildSubagentSystemPrompt(input: SubagentPromptInput): string {
     ...(writes ? ["Si un fichier a été modifié par un autre agent depuis ta lecture, l'écriture est refusée : relis-le, puis réapplique ta modification. N'écrase jamais le travail d'un autre."] : []),
     commandsFact(tools, input.permissionMode, input.windows, writes),
     'Ne contourne jamais un refus par un autre outil ou un script : signale-le, l\'agent principal décidera.',
+    ...(shell ? [`Commande longue : ${tools.has('job_output') ? 'en arrière-plan avec job_output, ou bornée' : 'bornée'} (un seul test, délai par test). Un délai dépassé signifie le plus souvent une commande bloquée : cherche pourquoi au lieu d'allonger le délai.`] : []),
     ...(writes ? ["Pas de commit, pas de changement de branche : l'agent principal consolide le travail."] : []),
     `Au plus ${input.maxSteps} étapes : va droit au but, regroupe les lectures${writes ? ' et les modifications' : ''}.`,
     'Écris ton rapport dans la langue de la tâche reçue. Le code, les noms de fichiers et les commandes restent tels quels.',

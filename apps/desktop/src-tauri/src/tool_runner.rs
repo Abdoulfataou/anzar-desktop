@@ -122,7 +122,29 @@ fn apply_base_env(cmd: &mut Command) {
         }
     }
     cmd.env("PATH", crate::mcp::enriched_path());
+    for (key, value) in NON_INTERACTIVE_ENV {
+        cmd.env(key, value);
+    }
 }
+
+/// Personne ne peut répondre à une invite pendant qu'un agent travaille (stdin est fermé) :
+/// ces variables font échouer vite ce qui, sinon, attendrait une réponse sans fin — éditeur
+/// ouvert par `git commit` sans message, mot de passe Git, mise à jour automatique de
+/// Homebrew, question d'installation de pip ou d'apt. Aucune ne change le résultat d'une
+/// commande qui fonctionne déjà sans intervention.
+pub(crate) const NON_INTERACTIVE_ENV: &[(&str, &str)] = &[
+    ("GIT_TERMINAL_PROMPT", "0"),
+    ("GIT_EDITOR", "true"),
+    ("GIT_SEQUENCE_EDITOR", "true"),
+    ("GIT_PAGER", "cat"),
+    ("PAGER", "cat"),
+    ("PIP_NO_INPUT", "1"),
+    ("DEBIAN_FRONTEND", "noninteractive"),
+    ("HOMEBREW_NO_AUTO_UPDATE", "1"),
+    ("HOMEBREW_NO_INSTALL_CLEANUP", "1"),
+    ("npm_config_update_notifier", "false"),
+    ("npm_config_fund", "false"),
+];
 
 fn spawn_reader<R: Read + Send + 'static>(pipe: R, id: String, stream: &'static str,
                                           app: AppHandle, target: Arc<Proc>) {
@@ -369,6 +391,28 @@ pub fn tool_kill(state: State<'_, ToolState>, id: String) -> Result<(), String> 
 #[cfg(test)]
 mod security_tests {
     use super::*;
+
+    #[test]
+    fn commands_never_wait_for_an_answer() {
+        let env: std::collections::HashMap<_, _> = NON_INTERACTIVE_ENV.iter().copied().collect();
+        // git commit sans -m : l'« éditeur » rend la main tout de suite (message vide → refus net)
+        assert_eq!(env.get("GIT_EDITOR"), Some(&"true"));
+        assert_eq!(env.get("GIT_TERMINAL_PROMPT"), Some(&"0"));
+        assert_eq!(env.get("PAGER"), Some(&"cat"));
+        // Aucune variable qui changerait le comportement des tests (CI, NODE_ENV…)
+        assert!(!env.contains_key("CI") && !env.contains_key("NODE_ENV"));
+    }
+
+    #[test]
+    fn base_env_applies_non_interactive_defaults() {
+        let mut cmd = Command::new("true");
+        apply_base_env(&mut cmd);
+        let set: Vec<String> = cmd.get_envs()
+            .filter_map(|(k, v)| v.map(|v| format!("{}={}", k.to_string_lossy(), v.to_string_lossy())))
+            .collect();
+        assert!(set.contains(&"GIT_EDITOR=true".to_string()));
+        assert!(set.contains(&"HOMEBREW_NO_AUTO_UPDATE=1".to_string()));
+    }
 
     #[test]
     fn connector_ports_and_audacity_are_still_blocked() {

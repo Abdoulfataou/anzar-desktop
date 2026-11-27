@@ -60,7 +60,8 @@ ${SUBAGENT_ROLES.map((r) => `  - ${r} : ${AGENT_PROFILES[r]?.description || ''}`
 - Pour exécuter un plan de plusieurs tâches, charge la skill developpement-par-sous-agents (lots, revue, corrections).
 - Lance-les, avance sur ta propre partie, puis attends-les ensemble avec un seul wait_agent (agents : [noms]).
 - Lis leurs rapports, vérifie l'ensemble toi-même (imports croisés, build, tests) et corrige avant de conclure. Ce qu'ils n'ont pas pu faire (accès hors projet, commande refusée), fais-le toi-même.
-- Un sous-agent au repos garde son historique : pour une correction ou une seconde passe, envoie-lui send_message plutôt que d'en lancer un nouveau.`;
+- Un sous-agent au repos garde son historique : pour une correction ou une seconde passe, envoie-lui send_message plutôt que d'en lancer un nouveau.
+- Un sous-agent qui n'avance plus (wait_agent « toujours en cours », list_agents : étapes figées) : arrête-le avec stop_agent, puis fais la sous-tâche toi-même ou relance-le avec une consigne plus précise.`;
 
 /** Consignes de dessin : l'application affiche ces blocs en image, au lieu du code. */
 export const VISUALS_GUIDE = `# Visuels
@@ -102,6 +103,7 @@ ${ctx.bashAvailable !== false ? `- bash : un vrai shell confiné. Il accepte les
 - Une écriture refusée par l'isolation est un fait : explique ce qui bloque à l'utilisateur, ou demande l'élévation prévue.
 - Une commande qui échoue n'est pas une panne de l'outil : lis son code de sortie et sa sortie, corrige, puis relance. Si tu répètes le même appel sans avancer, un rappel te le dira.
 - Si une commande échoue trois fois de la même façon, change d'approche au lieu de réessayer.
+- Commande longue (suite de tests, build, installation) : ${ctx.bashAvailable !== false ? 'en arrière-plan avec job_output, ou bornée' : 'bornée'} (un seul test, délai par test). Un délai dépassé signifie le plus souvent une commande bloquée : cherche pourquoi au lieu d'allonger le délai (skill commandes-longues).
 - Code de qualité production : gestion d'erreurs, types stricts, pas de TODO laissés.
 - Si un AGENTS.md existe dans un dossier où tu modifies du code, lis-le d'abord ; le plus proche du fichier l'emporte sur celui de la racine.
 - Enregistre les conventions durables avec remember, pas les détails de la tâche en cours.

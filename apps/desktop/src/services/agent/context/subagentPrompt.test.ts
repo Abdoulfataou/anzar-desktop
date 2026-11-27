@@ -116,4 +116,12 @@ describe('prompt des sous-agents', () => {
     expect(p).toContain('name: revue-de-code');
     expect(p).not.toContain('brainstorming');
   });
+
+  it('commande longue : arrière-plan seulement si job_output existe', () => {
+    const mac = buildSubagentSystemPrompt({ project, tools: [...devTools, 'job_output'], windows: false, maxSteps: 20 });
+    expect(mac).toContain('en arrière-plan avec job_output');
+    const win = buildSubagentSystemPrompt({ project, tools: ['read_file', 'edit_file', 'run_command', 'task_done'], permissionMode: 'full', windows: true, maxSteps: 20 });
+    expect(win).toContain('Commande longue : bornée');
+    expect(win).not.toContain('job_output');
+  });
 });

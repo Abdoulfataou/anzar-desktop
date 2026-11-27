@@ -49,4 +49,19 @@ describe('pack de skills intégré', () => {
       expect(md.length, name).toBeLessThan(20_000);
     }
   });
+
+  it('commandes longues : arrière-plan, pas de filtre, tests bornés par outil, pas d’invite', () => {
+    const md = BUILTIN_SKILLS.find((s) => s.name === 'commandes-longues')!.markdown;
+    for (const attendu of ['run_in_background', 'job_output', '| tail', 'set -o pipefail;', '--timeout 30s', '--detectOpenHandles', 'CI=true', 'git commit -m', 'EADDRINUSE']) {
+      expect(md, attendu).toContain(attendu);
+    }
+  });
+
+  it('débogage : un test qui expire peut bloquer dans son nettoyage (cas du flux Dart jamais écouté)', () => {
+    const md = BUILTIN_SKILLS.find((s) => s.name === 'debogage-systematique')!.markdown;
+    expect(md).toContain('tearDown');
+    expect(md).toContain('`await controller.close()`');
+    const racine = BUILTIN_SKILLS.find((s) => s.name === 'cause-racine')!.markdown;
+    expect(racine).toContain('doit d\'abord compiler');
+  });
 });

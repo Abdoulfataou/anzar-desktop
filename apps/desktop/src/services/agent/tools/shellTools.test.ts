@@ -117,4 +117,11 @@ describe('execRunCommand — contrat de résultat', () => {
       Object.defineProperty(navigator, 'userAgent', { value: ua, configurable: true });
     }
   });
+
+  it('refuse de bloquer 2 minutes sur une commande sans fin, et oriente vers start_dev_server', async () => {
+    const result = await execRunCommand({ command: 'npm run dev' }, ctx);
+    expect(exec).not.toHaveBeenCalled();
+    expect(result.isError).toBe(true);
+    expect(result.output).toContain('start_dev_server');
+  });
 });

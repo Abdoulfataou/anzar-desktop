@@ -100,7 +100,12 @@ Erreur, crash, résultat faux, « ça ne marche pas », test qui échoue sans ra
 - « Ça marche chez moi » : compare les environnements (versions, variables, données).
 - Tu modifies du code que tu n'as pas lu : lis-le d'abord.
 - L'erreur se voit loin de l'endroit où elle naît (valeur vide ou fausse) : skill cause-racine.
-- Un test passe une fois sur deux : skill attente-par-condition.`;
+- Un test passe une fois sur deux : skill attente-par-condition.
+
+## Test ou commande qui ne se termine pas
+- Le délai d'un test couvre sa préparation (setUp), son corps et son nettoyage (tearDown) : mesure les trois séparément avant d'accuser le corps du test.
+- Cherche d'abord une ressource jamais fermée ou un await qui n'aboutit jamais : flux, socket, base, minuteur, serveur, transaction. Pièges connus : fermer un flux que personne n'écoute (en Dart, \`await controller.close()\` sur un StreamController à abonnement unique attend pour toujours), une promesse jamais résolue, un handle ouvert qui empêche Node de quitter (jest --detectOpenHandles), un thread non daemon en Python, deux verrous pris dans un ordre différent.
+- Réduis : un seul test, avec un délai court (skill commandes-longues), puis élargis.`;
 
 const verify = `---
 name: verification-avant-de-conclure
@@ -681,6 +686,7 @@ Complète debogage-systematique : celle-ci sert quand la pile d'appels ne montre
 2. Trouve qui produit cette valeur juste avant : l'appelant, la fonction, la requête, l'état (search_files sur la variable ou le champ).
 3. À chaque maillon, pose une seule question : la valeur est-elle déjà fausse en entrée ? Si oui, remonte d'un cran. Sinon, le problème naît ici.
 4. Quand la lecture ne suffit pas, instrumente : un log temporaire juste avant l'endroit suspect, qui affiche la valeur, le contexte et la provenance (\`console.error('[debug]', valeur, new Error().stack)\`). Lance, lis, puis retire-le.
+   Un fichier de diagnostic temporaire (test jetable, script) doit d'abord compiler : vérifie-le avec l'analyseur du langage avant de l'exécuter, sinon la mesure ne donne rien. Respecte les interdits du projet (AGENTS.md : print, logger imposé) et supprime-le avant de conclure.
 5. Arrête-toi au premier maillon où une entrée correcte donne une sortie fausse : c'est la cause racine.
 
 ## Corriger
@@ -735,6 +741,44 @@ Pour tester un comportement lié au temps lui-même (anti-rebond, expiration, no
 - Attendre sans délai maximum : un test bloqué est pire qu'un test qui échoue.
 - Masquer l'instabilité en relançant automatiquement les tests en échec.`;
 
+const longCommands = `---
+name: commandes-longues
+description: Lancer, suivre et arrêter les commandes longues ou bloquées (suites de tests, builds, installations, serveurs) sans attendre pour rien.
+---
+
+## Quand l'utiliser
+- Une commande peut durer plus d'une minute : suite de tests complète, build mobile, première compilation, installation de dépendances.
+- Une commande a dépassé son délai, ou ne rend rien.
+- Il faut un serveur qui tourne pendant qu'on teste.
+
+## Règles
+1. **Serveur ou surveillance** (dev, --watch, tail -f) : jamais au premier plan. ANZAR les passe d'office en arrière-plan ; pour une app web, start_dev_server lance, attend et vérifie la page.
+2. **Commande longue** : bash avec run_in_background, puis job_output avec wait_ms (par exemple 30 000) pour lire la sortie au fur et à mesure. Si la sortie n'avance plus entre deux lectures, la commande est bloquée : job_kill, puis cherche pourquoi.
+3. **Jamais de filtre sur une commande longue au premier plan** : \`| tail\`, \`| head\` ou \`| grep\` n'affichent rien avant la fin. Écris plutôt dans un fichier (\`> /tmp/sortie.txt 2>&1\`) et lis-le.
+4. **Code de sortie** : avec un pipe, c'est celui du dernier programme. Mets \`set -o pipefail;\` devant quand tu dois savoir si le premier a échoué.
+5. **Délai dépassé** : ne relance pas avec un délai plus long. Réduis d'abord la commande (un seul test, un seul module), mesure, puis élargis.
+
+## Borner les tests
+| Outil | Délai par test et un seul test |
+|---|---|
+| flutter test | \`--timeout 30s\`, \`--plain-name "nom"\` |
+| dart test | \`--timeout 30s\`, \`--name "nom"\` |
+| vitest | \`vitest run --testTimeout=20000 -t "nom"\` (jamais le mode surveillance) |
+| jest | \`--testTimeout=20000 -t "nom"\`, \`--detectOpenHandles\` pour voir ce qui empêche la fin |
+| pytest | \`-x --timeout=60 -k "nom"\` (extension pytest-timeout) |
+| go test | \`-timeout 60s -run Nom\` (affiche les goroutines bloquées) |
+| cargo test | \`cargo test nom -- --nocapture\` |
+| npm test | lis le script : react-scripts surveille par défaut, lance-le avec \`CI=true\` |
+
+## Pas d'invite interactive
+Personne ne peut répondre pendant que tu travailles. Passe toujours les options non interactives : \`git commit -m "…"\`, \`npm init -y\`, \`npx --yes\`, \`flutter create --project-name x .\`, \`pip install\` sans question, \`apt-get -y\`. Une commande qui demande un mot de passe ou une confirmation échouera : signale-le à l'utilisateur au lieu d'insister.
+
+## Cas fréquents
+- **Port déjà utilisé** (EADDRINUSE, address already in use) : c'est souvent un serveur que tu as lancé plus tôt. Arrête ton propre travail (job_kill) ou choisis un autre port ; ne tue pas un processus que tu n'as pas lancé.
+- **Première compilation très longue** (Gradle, Xcode, CocoaPods, Rust) : normal. Arrière-plan + job_output, sans relancer pendant qu'elle tourne.
+- **Installation qui ne finit pas** : regarde la dernière ligne (réseau, verrou d'un autre gestionnaire, question en attente) avant de relancer.
+- **Commande qui ne rend rien du tout** : elle attend peut-être une entrée ; relance avec l'option non interactive.`;
+
 export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'brainstorming', markdown: brainstorming },
   { name: 'ecrire-un-plan', markdown: plan },
@@ -743,6 +787,7 @@ export const BUILTIN_SKILLS: BuiltinSkill[] = [
   { name: 'debogage-systematique', markdown: debug },
   { name: 'cause-racine', markdown: rootCause },
   { name: 'attente-par-condition', markdown: conditionWait },
+  { name: 'commandes-longues', markdown: longCommands },
   { name: 'verification-avant-de-conclure', markdown: verify },
   { name: 'verifier-une-app-web', markdown: verifyWeb },
   { name: 'revue-de-code', markdown: review },

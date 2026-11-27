@@ -109,6 +109,28 @@ describe('execBash', () => {
     expect(result.output).toContain('job_output');
   });
 
+  it('passe d’office en arrière-plan une commande qui ne s’arrête jamais seule', async () => {
+    shell.runShell.mockResolvedValue('job-auto');
+    shell.getJob.mockReturnValue({ status: 'running', output: 'VITE ready', command: 'npm run dev' });
+
+    const result = await execBash({ command: 'npm run dev' }, ctx);
+
+    expect(shell.execShell).not.toHaveBeenCalled();
+    expect(shell.runShell).toHaveBeenCalledWith('npm run dev', expect.anything());
+    expect(result.output).toContain('[lancée en arrière-plan]');
+    expect(result.output).toContain('job_id: job-auto');
+  });
+
+  it('délai dépassé : conseils utiles, jamais « allonge le délai »', async () => {
+    shell.execShell.mockResolvedValue({
+      success: false, exitCode: 130, stdout: '', stderr: '', durationMs: 300_000, ran: true, timedOut: true,
+    });
+    const result = await execBash({ command: 'flutter test 2>&1 | tail -40', timeoutMs: 300_000 }, ctx);
+    expect(result.output).toContain('ne la relance pas avec un délai plus long');
+    expect(result.output).toContain('--timeout 30s');
+    expect(result.output).not.toContain('timeoutMs plus grand');
+  });
+
   it('arrête le travail en arrière-plan quand le tour est annulé', async () => {
     shell.runShell.mockResolvedValue('job-stop');
     shell.getJob.mockReturnValue({ status: 'running', output: '', command: 'npm run dev' });
