@@ -55,6 +55,7 @@ import { startTurn } from './turnStart';
 import { beginTurn } from '@/services/workspace/gitChanges';
 import { createTurnVerifier } from './turnVerify';
 import { estimateFcfa, newServerCost, type ServerCost } from './turnAccounting';
+import { commandShell } from '@/lib/platform';
 import type {
   AgentChatResult, TurnHost, TurnInput,
 } from './turnTypes';
@@ -119,7 +120,8 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
           platform: isWindows ? 'windows' : 'macos',
           personalSpaceContext: personalSpace && agentRoot ? personalSpaceContext(agentRoot) : '',
           permissionMode: host.mode,
-          shellAvailable: !isWindows,
+          shellAvailable: commandShell() !== null,
+          shell: commandShell(),
           sandboxed: sandboxEnabled(),
         });
         setupNewTurn({

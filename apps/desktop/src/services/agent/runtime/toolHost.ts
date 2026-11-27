@@ -15,6 +15,7 @@ import type { AgentToolOutcome } from '../engine/agentSession';
 import { approvalDecision } from '../policy/toolPolicy';
 import { type ExternalSource } from '../policy/untrusted';
 import { executeGenericTool } from '../tools/toolExecution';
+import { SHELL_TOOL_NAMES } from '../tools/definitions';
 import { summarizeArgs, toolDelta, toolFilePath } from '../tools/toolDisplay';
 import { patchTouchedPaths, isProtectedPatchPath } from '../tools/patchTool';
 import { askUser, loadSkill, parsePlan } from '../tools/specialTools';
@@ -33,7 +34,7 @@ const MAX_TOOL_OUTPUT_DISPLAY = 600;
 /** Outils qui écrivent sur le disque (déclenchent la vérification au task_done). */
 const WRITE_TOOLS = ['write_file', 'edit_file', 'apply_patch', 'delete_file', 'spawn_agent', 'send_message'];
 /** Outils susceptibles de modifier le projet : leurs commandes comptent dans la carte. */
-const MUTATING_TOOLS = new Set([...WRITE_TOOLS, 'run_command', 'bash', 'start_dev_server']);
+const MUTATING_TOOLS = new Set([...WRITE_TOOLS, 'run_command', ...SHELL_TOOL_NAMES, 'start_dev_server']);
 
 // ============================================================================
 // ÉVÉNEMENT D'OUTIL (affichage)
@@ -156,7 +157,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
   // Élévation à usage unique demandée par le modèle après un refus d'isolation.
   // Elle ne contourne jamais la politique statique (pré-contrôle ci-dessus) : elle ne
   // fait que désactiver Seatbelt pour CET appel, après accord explicite hors Full.
-  const wantsEscalation = (call.function.name === 'bash' || call.function.name === 'run_command')
+  const wantsEscalation = (SHELL_TOOL_NAMES.has(call.function.name) || call.function.name === 'run_command')
     && args.sandbox_permissions === 'danger-full-access';
   let escalated = false;
   if (wantsEscalation) {
@@ -317,7 +318,7 @@ export async function runToolCall(call: ToolCall, ctx: ToolRunContext): Promise<
 
   // Suivi des erreurs : échec qui peut venir d'ANZAR (environnement, isolation),
   // pas une erreur du code du projet. Envoi nettoyé, par lots, coupable dans les Paramètres.
-  if (allowed && (call.function.name === 'run_command' || call.function.name === 'bash') && result.isError && !ctx.signal.aborted) {
+  if (allowed && (call.function.name === 'run_command' || SHELL_TOOL_NAMES.has(call.function.name)) && result.isError && !ctx.signal.aborted) {
     const out = result.output || '';
     const code = Number(/exit_code:\s*(-?\d+)/.exec(out)?.[1]);
     const exit = Number.isFinite(code) ? code : undefined;

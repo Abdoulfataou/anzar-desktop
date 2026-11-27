@@ -38,7 +38,7 @@ describe('Windows sans isolation : fail-closed comme Harness', () => {
     });
 
     it('serveur de développement : message dédié ; vérifications automatiques seulement en Accès complet', () => {
-      expect(unconfinedCommandRefusal('ask', false, 'start_dev_server')).toContain('run_command en élévation');
+      expect(unconfinedCommandRefusal('ask', false, 'start_dev_server')).toContain('powershell en arrière-plan');
       expect(autoVerifyAllowed('ask')).toBe(false);
       expect(autoVerifyAllowed('auto')).toBe(false);
       expect(autoVerifyAllowed('full')).toBe(true);

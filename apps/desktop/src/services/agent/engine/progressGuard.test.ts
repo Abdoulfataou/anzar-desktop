@@ -28,6 +28,14 @@ describe('famille d’une commande', () => {
     expect(commandFamily('cd lib && sed -n 150,250p a.dart')).toBeNull();
     expect(commandFamily('git status --short')).toBeNull();
   });
+
+  it('PowerShell : .cmd, appel par &, affectations et exploration', () => {
+    expect(commandFamily('npm.cmd run build; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }')).toBe('npm run build');
+    expect(commandFamily('& "C:\\tools\\flutter\\bin\\flutter.bat" test test\\a_test.dart')).toBe('flutter test');
+    expect(commandFamily('$env:CI = "true"; npx vitest run')).toBe('vitest run');
+    expect(commandFamily('Get-ChildItem -Recurse src | Select-String "TODO"')).toBeNull();
+    expect(commandFamily('Test-Path package.json')).toBeNull();
+  });
 });
 
 describe('point d’étape', () => {

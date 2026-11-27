@@ -9,6 +9,7 @@ describe('commandes qui ne s’arrêtent jamais seules', () => {
       'npm run dev', 'pnpm dev', 'yarn start', 'bun run watch', 'npx next dev -p 3001', 'npx vite', 'vite --port 5173',
       'ng serve', 'npx expo start', 'flutter run -d chrome', 'python3 -m http.server 8000', 'python manage.py runserver',
       'uvicorn app:app --reload', 'php artisan serve', 'docker compose up', 'tail -f logs/app.log', 'tsc --watch', 'jest --watch',
+      'Get-Content logs\\app.log -Wait', 'gc app.log -Tail 20 -Wait',
     ]) {
       expect(neverEndingCommand(c), c).not.toBeNull();
     }
@@ -54,6 +55,9 @@ describe('conseils quand une commande dépasse son délai', () => {
   it('outils annexes', () => {
     expect(hidesProgress('pytest | tail -20')).toBe(true);
     expect(hidesProgress('pytest -x')).toBe(false);
+    expect(hidesProgress('npm test 2>&1 | Select-Object -Last 20')).toBe(true);
+    expect(hidesProgress('npm test | Select-String FAIL')).toBe(true);
+    expect(hidesProgress('Get-ChildItem | Select-Object Name')).toBe(false);
     expect(lastLines('a\n\nb\nc\n', 2)).toBe('b\nc');
     expect(testRunnerHint('go test ./...')).toContain('-timeout');
     expect(testRunnerHint('ls')).toBeNull();

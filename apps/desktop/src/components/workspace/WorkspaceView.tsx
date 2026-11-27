@@ -422,7 +422,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-ui-caption text-text-primary">L'agent demande ton accord</p>
                   <p className="text-ui-sm font-mono text-text-secondary truncate" title={approval.summary}>
-                    {approval.name === 'run_command' ? '$ ' : `${approval.name}  `}{approval.summary}
+                    {['run_command', 'bash', 'powershell'].includes(approval.name) ? '$ ' : `${approval.name}  `}{approval.summary}
                   </p>
                   {approval.reason && (
                     <p className="mt-0.5 text-ui-sm text-accent-warning">Vérifie avant d'autoriser : {approval.reason}.</p>
@@ -430,7 +430,7 @@ export default function WorkspaceView(_props: { onlineStatus?: boolean }) {
                   {approval.detail && (
                     <pre className="mt-1 max-h-24 overflow-auto rounded-md bg-hover-fill px-2 py-1 font-mono text-ui-sm text-text-primary whitespace-pre-wrap break-all">{approval.detail}</pre>
                   )}
-                  {(approval.name === 'run_command' || approval.name === 'start_dev_server') && platform() === 'windows' && (
+                  {['run_command', 'powershell', 'start_dev_server'].includes(approval.name) && platform() === 'windows' && (
                     <p className="mt-0.5 text-ui-sm text-text-muted">
                       Sur Windows, les commandes ne sont pas isolées : celle-ci pourra modifier tous les fichiers de ton compte. Autorise seulement si tu sais ce qu'elle fait.
                     </p>

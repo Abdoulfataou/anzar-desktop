@@ -9,7 +9,7 @@ Ce document tient la matrice à jour ; le plan complet (6 phases) est dans le do
 | Capacité | Mac | Windows | Phase qui comble l'écart |
 | --- | --- | --- | --- |
 | Isolation des commandes | Seatbelt, écritures limitées au projet | Aucune : « fail closed » | 3 |
-| Terminal de l'agent | `bash` (pipes, arrière-plan, `job_output`, bascule au délai) | `run_command` seul | 2 |
+| Terminal de l'agent | `bash` (pipes, arrière-plan, `job_output`, bascule au délai) | `powershell`, même contrat que `bash` ; sans isolation : Accès complet ou accord par commande | 2 (fait) |
 | Mode auto | Commandes dans le bac à sable | Commandes refusées | 4 |
 | Mode « ask » | Accord seulement pour sortir du bac à sable | Accord à chaque commande | 4 |
 | `start_dev_server` | Oui | Refusé hors Accès complet | 4 |

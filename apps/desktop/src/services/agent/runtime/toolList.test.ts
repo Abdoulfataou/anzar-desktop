@@ -27,7 +27,7 @@ describe('buildToolsForStep', () => {
     expect(list).toContain('wait_agent');
     expect(list).toContain('list_agents');
     // Selon la plateforme : shell confiné (macOS) ou run_command (Windows).
-    expect(list.some((n) => n === 'bash' || n === 'run_command')).toBe(true);
+    expect(list.some((n) => n === 'bash' || n === 'powershell' || n === 'run_command')).toBe(true);
     expect(list).toContain('ask_user');
     expect(list).not.toContain('propose_plan');
   });
@@ -48,14 +48,17 @@ describe('buildToolsForStep', () => {
     }
   });
 
-  it('Windows : run_command seul, jamais bash absent', () => {
+  it('Windows : powershell remplace run_command, jamais bash', () => {
     const platform = navigator.platform;
     const ua = navigator.userAgent;
     Object.defineProperty(navigator, 'platform', { value: 'Win32', configurable: true });
     Object.defineProperty(navigator, 'userAgent', { value: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)', configurable: true });
     try {
       const list = names(buildToolsForStep(base));
-      expect(list).toContain('run_command');
+      expect(list).toContain('powershell');
+      expect(list).toContain('job_output');
+      expect(list).toContain('job_kill');
+      expect(list).not.toContain('run_command');
       expect(list).not.toContain('bash');
     } finally {
       Object.defineProperty(navigator, 'platform', { value: platform, configurable: true });
@@ -68,7 +71,7 @@ describe('buildToolsForStep', () => {
     expect(list).toContain('read_file');
     expect(list).toContain('propose_plan');
     expect(list).toContain('write_file');
-    expect(list.some((n) => n === 'bash' || n === 'run_command')).toBe(true);
+    expect(list.some((n) => n === 'bash' || n === 'powershell' || n === 'run_command')).toBe(true);
     expect(list).toContain('spawn_agent');
     expect(list).toContain('apply_patch');
   });

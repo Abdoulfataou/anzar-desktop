@@ -6,6 +6,7 @@ mod node_runtime;
 mod tool_runtime;
 mod programs;
 mod tool_runner;
+mod powershell;
 mod sandbox;
 mod command_policy;
 mod roots;

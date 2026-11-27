@@ -10,6 +10,7 @@ vi.mock('../tools', () => {
   return {
     AGENT_TOOLS: [def('read_file'), def('run_command'), def('start_dev_server'), def('task_done')],
     BASH_TOOLS: [],
+    POWERSHELL_TOOLS: [def('powershell'), def('job_output'), def('job_kill')],
     executeToolCall: vi.fn(),
   };
 });
@@ -219,7 +220,7 @@ describe('runAgentSession — budget du sous-agent', () => {
         return opts.tools.map((t: any) => t.function.name);
       };
       expect(await toolNames('auto')).toEqual(['read_file', 'task_done']);
-      expect(await toolNames('full')).toEqual(['read_file', 'run_command', 'start_dev_server', 'task_done']);
+      expect(await toolNames('full')).toEqual(['read_file', 'run_command', 'start_dev_server', 'task_done', 'powershell', 'job_output', 'job_kill']);
       const prompt = (chatStream.mock.calls[0] as any[])[0][0].content as string;
       expect(prompt).toContain('Sur cet ordinateur (Windows), tes commandes sont refusées');
     } finally {

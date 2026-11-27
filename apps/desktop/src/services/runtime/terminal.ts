@@ -18,6 +18,12 @@ import { parseExecutable } from '@/services/agent/policy/commandPolicy';
 import { isPathWithin } from '@/lib/pathGuard';
 import { ensureNode, manualNodeHelp, needsNode } from '@/services/runtime/nodeRuntime';
 import { checkPython, ensureGit, isPython } from '@/services/runtime/programs';
+import { commandShell } from '@/lib/platform';
+
+/** Shell des commandes de l'agent : bash sur macOS, PowerShell sous Windows. */
+export function shellName(): 'bash' | 'powershell' {
+  return commandShell() === 'powershell' ? 'powershell' : 'bash';
+}
 
 /** Isolation des commandes (macOS) : activée sauf si coupée dans les Paramètres. */
 export const sandboxEnabled = (): boolean => useSettingsStore.getState().settings.sandboxCommands !== false;
@@ -260,6 +266,7 @@ class TerminalService {
     shellCommand?: string,
     escalated = false,
     escalationReason?: string,
+    unconfined = false,
   ): Promise<{ code: number; stdout: string; stderr: string; durationMs: number; timedOut: boolean }> {
     const start = Date.now();
     if (signal?.aborted) return { code: 130, stdout: '', stderr: STOPPED_MESSAGE, durationMs: 0, timedOut: false };
@@ -268,6 +275,8 @@ class TerminalService {
       id, program, args, cwd, root: this.rootFor(cwd), sandbox: sandboxEnabled(),
       shell: shellCommand !== undefined, shellCommand: shellCommand ?? null,
       escalated, escalationReason: escalationReason ?? null,
+      shellKind: shellCommand !== undefined ? shellName() : null,
+      unconfined,
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     let timedOut = false;
@@ -473,7 +482,7 @@ class TerminalService {
    */
   async execShell(
     command: string,
-    options: { cwd?: string; timeout?: number; signal?: AbortSignal; escalated?: boolean; escalationReason?: string } = {}
+    options: { cwd?: string; timeout?: number; signal?: AbortSignal; escalated?: boolean; escalationReason?: string; unconfined?: boolean } = {}
   ): Promise<CommandResult> {
     const startTime = Date.now();
     const trimmed = String(command || '').trim();
@@ -485,7 +494,7 @@ class TerminalService {
     }
     const id = `shell-${++this.processCounter}-${Date.now()}`;
     try {
-      const r = await this.runTool(id, 'bash', [], options.cwd, options.timeout, options.signal, trimmed, options.escalated === true, options.escalationReason);
+      const r = await this.runTool(id, shellName(), [], options.cwd, options.timeout, options.signal, trimmed, options.escalated === true, options.escalationReason, options.unconfined === true);
       const stderr = r.stderr.trim();
       return {
         success: r.code === 0,
@@ -515,7 +524,7 @@ class TerminalService {
    */
   async runShell(
     command: string,
-    options: { cwd?: string; silent?: boolean; onProcessId?: (id: string) => void; escalated?: boolean; escalationReason?: string } = {}
+    options: { cwd?: string; silent?: boolean; onProcessId?: (id: string) => void; escalated?: boolean; escalationReason?: string; unconfined?: boolean } = {}
   ): Promise<string> {
     const processId = `job-${++this.processCounter}-${Date.now()}`;
     options.onProcessId?.(processId);
@@ -527,7 +536,7 @@ class TerminalService {
   private async spawnJob(
     processId: string,
     command: string,
-    options: { cwd?: string; silent?: boolean; escalated?: boolean; escalationReason?: string },
+    options: { cwd?: string; silent?: boolean; escalated?: boolean; escalationReason?: string; unconfined?: boolean },
   ): Promise<boolean> {
     const trimmed = String(command || '').trim();
     if (!trimmed || !options.cwd) {
@@ -536,7 +545,7 @@ class TerminalService {
     }
     const process: RunningProcess = {
       id: processId,
-      command: 'bash',
+      command: shellName(),
       args: [trimmed],
       cwd: options.cwd,
       startedAt: Date.now(),
@@ -550,7 +559,7 @@ class TerminalService {
       await this.ensureToolEvents();
       const pid = await invoke<number>('tool_spawn', {
         id: processId,
-        program: 'bash',
+        program: shellName(),
         args: [],
         cwd: options.cwd,
         root: this.rootFor(options.cwd),
@@ -559,6 +568,8 @@ class TerminalService {
         shellCommand: trimmed,
         escalated: options.escalated === true,
         escalationReason: options.escalationReason ?? null,
+        shellKind: shellName(),
+        unconfined: options.unconfined === true,
       });
       process.pid = pid;
       return true;
@@ -579,7 +590,7 @@ class TerminalService {
    */
   async execShellYield(
     command: string,
-    options: { cwd?: string; yieldMs: number; signal?: AbortSignal; escalated?: boolean; escalationReason?: string },
+    options: { cwd?: string; yieldMs: number; signal?: AbortSignal; escalated?: boolean; escalationReason?: string; unconfined?: boolean },
   ): Promise<
     | { kind: 'finished'; result: CommandResult }
     | { kind: 'running'; jobId: string; output: string; durationMs: number }
@@ -596,7 +607,7 @@ class TerminalService {
       return { kind: 'finished', result: { success: false, exitCode: 130, stdout: '', stderr: STOPPED_MESSAGE, durationMs: 0, ran: true } };
     }
     const id = `job-${++this.processCounter}-${Date.now()}`;
-    const started = await this.spawnJob(id, trimmed, { cwd: options.cwd, silent: true, escalated: options.escalated, escalationReason: options.escalationReason });
+    const started = await this.spawnJob(id, trimmed, { cwd: options.cwd, silent: true, escalated: options.escalated, escalationReason: options.escalationReason, unconfined: options.unconfined });
     if (!started) {
       const job = this.getJob(id);
       this.forgetJob(id);

@@ -22,6 +22,8 @@ export interface AgentPromptContext {
   platform?: string;
   /** Le shell bash est réellement proposé sur cette plateforme. */
   bashAvailable?: boolean;
+  /** Le shell PowerShell est réellement proposé (Windows). */
+  powershellAvailable?: boolean;
   /** run_command est réellement proposé (Windows, ou espace ANZAR). */
   runCommandAvailable?: boolean;
 }
@@ -89,6 +91,7 @@ export function buildAgentSystemPrompt(ctx: AgentPromptContext): string {
 
 # Outils
 ${ctx.bashAvailable !== false ? `- bash : un vrai shell confiné. Il accepte les pipes, les redirections, && et plusieurs commandes, ainsi qu'un dossier de travail. Utilise-le pour les enchaînements, les scripts et les builds. Avec run_in_background, il rend un job_id : job_output lit la suite et job_kill arrête le travail. Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer.
+` : ''}${ctx.powershellAvailable ? `- powershell : le shell de Windows (PowerShell, pas bash : enchaîne avec ; et vérifie $LASTEXITCODE, jamais && ni ||). Il accepte les pipes, les scripts et un dossier de travail. Avec run_in_background, il rend un job_id : job_output lit la suite et job_kill arrête le travail. Les commandes n'y sont pas isolées : hors Accès complet, chacune demande l'accord de l'utilisateur, donc regroupe le travail en peu de commandes. Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer.
 ` : ''}${ctx.runCommandAvailable !== false ? `- run_command : un seul programme avec ses arguments, sans shell intermédiaire. Utilise-le pour les commandes simples.` : ''}
 - read_file, write_file, edit_file, apply_patch, delete_file, list_dir, glob, search_files, get_diagnostics.
 - glob trouve des fichiers par motif de chemin (par exemple **/*.ts) ; search_files cherche un motif dans leur contenu.
@@ -103,7 +106,7 @@ ${ctx.bashAvailable !== false ? `- bash : un vrai shell confiné. Il accepte les
 - Une écriture refusée par l'isolation est un fait : explique ce qui bloque à l'utilisateur, ou demande l'élévation prévue.
 - Une commande qui échoue n'est pas une panne de l'outil : lis son code de sortie et sa sortie, corrige, puis relance. Si tu répètes le même appel sans avancer, un rappel te le dira.
 - Si une commande échoue trois fois de la même façon, change d'approche au lieu de réessayer.
-- Commande longue (suite de tests, build, installation) : ${ctx.bashAvailable !== false ? 'en arrière-plan avec job_output, ou bornée' : 'bornée'} (un seul test, délai par test). Un délai dépassé signifie le plus souvent une commande bloquée : cherche pourquoi au lieu d'allonger le délai (skill commandes-longues).
+- Commande longue (suite de tests, build, installation) : ${ctx.bashAvailable !== false || ctx.powershellAvailable ? 'en arrière-plan avec job_output, ou bornée' : 'bornée'} (un seul test, délai par test). Un délai dépassé signifie le plus souvent une commande bloquée : cherche pourquoi au lieu d'allonger le délai (skill commandes-longues).
 - Code de qualité production : gestion d'erreurs, types stricts, pas de TODO laissés.
 - Si un AGENTS.md existe dans un dossier où tu modifies du code, lis-le d'abord ; le plus proche du fichier l'emporte sur celui de la racine.
 - Enregistre les conventions durables avec remember, pas les détails de la tâche en cours.
@@ -151,6 +154,8 @@ export interface RuntimeFacts {
   platform?: string;
   permissionMode?: 'ask' | 'auto' | 'plan' | 'full';
   shellAvailable?: boolean;
+  /** Shell proposé (bash sur macOS, powershell sous Windows). Défaut : bash si shellAvailable. */
+  shell?: 'bash' | 'powershell' | null;
   /** L'isolation des commandes est active (false = choix « sans isolation »). */
   sandboxed?: boolean;
 }
@@ -166,7 +171,9 @@ export function runtimeFactsSection(facts: RuntimeFacts): string {
   const lines = [
     facts.projectRoot ? `Dossier de travail : ${facts.projectRoot}` : '',
     facts.platform ? `Plateforme : ${facts.platform}` : '',
-    facts.shellAvailable
+    facts.shell === 'powershell'
+      ? 'Commandes : powershell disponible (pipes, scripts, arrière-plan ; syntaxe PowerShell, pas bash).'
+      : facts.shellAvailable
       ? (facts.sandboxed === false
         ? "Commandes : bash disponible, mais l'isolation est désactivée : le système ne confine plus les commandes."
         : 'Commandes : bash confiné disponible (pipes, &&, redirections, arrière-plan).')

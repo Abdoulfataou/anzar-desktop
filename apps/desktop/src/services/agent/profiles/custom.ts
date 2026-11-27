@@ -19,7 +19,7 @@
 import { fileSystemService } from '@/services/filesystem/fileSystem';
 import { ensureDir, removeEntry, storeRoot, writeText } from '@/lib/fileStore';
 import { parseFrontmatter, parseToolList, slugifySkillName } from '@/services/skills/format';
-import { AGENT_TOOLS, BASH_TOOLS } from '../tools/definitions';
+import { AGENT_TOOLS, ALL_SHELL_TOOLS } from '../tools/definitions';
 import { AGENT_PROFILES, LEAD_ONLY_SKILLS, parseProfile, type AgentProfile } from './index';
 import { validateProfile } from './validate';
 
@@ -45,7 +45,7 @@ const RESERVED = new Set(['explorer', 'lead']);
 const MAX_AGENTS_PER_DIR = 50;
 const MAX_PROMPT_CHARS = 12_000;
 
-const KNOWN_TOOLS = new Set([...AGENT_TOOLS, ...BASH_TOOLS].map((t) => t.function.name));
+const KNOWN_TOOLS = new Set([...AGENT_TOOLS, ...ALL_SHELL_TOOLS].map((t) => t.function.name));
 
 /** Outils de Claude Code → outils ANZAR. Les outils sans équivalent sont ignorés. */
 const CLAUDE_TOOLS: Record<string, string[]> = {
@@ -56,7 +56,8 @@ const CLAUDE_TOOLS: Record<string, string[]> = {
   edit: ['edit_file', 'apply_patch'],
   multiedit: ['edit_file', 'apply_patch'],
   write: ['write_file'],
-  bash: ['bash', 'run_command', 'job_output', 'job_kill'],
+  bash: ['bash', 'powershell', 'run_command', 'job_output', 'job_kill'],
+  powershell: ['bash', 'powershell', 'run_command', 'job_output', 'job_kill'],
   bashoutput: ['job_output'],
   killshell: ['job_kill'],
   notebookedit: ['edit_file'],

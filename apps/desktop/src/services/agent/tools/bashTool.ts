@@ -1,5 +1,7 @@
 /**
- * Outil `bash` : un vrai shell, confiné par l'isolation du système (Seatbelt sur macOS).
+ * Outils `bash` (macOS) et `powershell` (Windows) : un vrai shell. bash est confiné par
+ * l'isolation du système (Seatbelt) ; powershell, sans isolation sous Windows, ne part
+ * qu'en Accès complet ou après accord (voir execPowerShell).
  *
  * Il remplace `run_command` pour les tâches qui demandent un enchaînement (`&&`, pipes,
  * redirections), un `cd` local à la commande, ou un travail en arrière-plan. La frontière
@@ -15,6 +17,7 @@ import { terminalService } from '@/services/runtime/terminal';
 import { COMMAND_TIMEOUT_MS, MAX_COMMAND_OUTPUT_CHARS, resolvePath, truncate } from './shared';
 import type { ToolExecutionContext, ToolResult } from './types';
 import { backgroundedNotice, neverEndingCommand, stillRunningAdvice, timeoutAdvice } from './commandHints';
+import { unconfinedCommandRefusal } from '../policy/isolation';
 
 /** Durée maximale d'une commande au premier plan (le shell peut demander moins). */
 const MAX_TIMEOUT_MS = 600_000;
@@ -74,10 +77,33 @@ function renderJob(job: { status: string; exitCode?: number; output: string }, j
   ].join('\n\n');
 }
 
-export async function execBash(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
+export function execBash(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
+  return execShellLine(args, ctx, { maxChars: 20_000, unconfined: false });
+}
+
+/**
+ * Outil `powershell` (Windows) : même contrat que bash — premier plan qui rend la main au
+ * délai, arrière-plan, job_output, job_kill. Windows n'ayant pas encore d'isolation des
+ * commandes, la règle « fail closed » s'applique d'abord : hors Accès complet, la commande
+ * ne part qu'après l'accord de l'utilisateur (élévation), et jamais en mode sans accord.
+ */
+export async function execPowerShell(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
+  const refusal = unconfinedCommandRefusal(ctx.permissionMode, ctx.escalated === true);
+  if (refusal) return { output: refusal, isError: true };
+  return execShellLine(args, ctx, { maxChars: 10_000, unconfined: ctx.permissionMode === 'full' });
+}
+
+async function execShellLine(
+  args: Record<string, any>,
+  ctx: ToolExecutionContext,
+  opts: { maxChars: number; unconfined: boolean },
+): Promise<ToolResult> {
   const command = String(args.command || '').trim();
   if (!command) return { output: 'Erreur: commande vide.', isError: true };
-  if (command.length > 20_000) return { output: 'Erreur: commande trop longue (max 20 000 caractères).', isError: true };
+  if (command.length > opts.maxChars) {
+    return { output: `Erreur: commande trop longue (max ${opts.maxChars.toLocaleString('fr-FR')} caractères). Mets le travail dans un script du projet avec write_file, puis lance-le.`, isError: true };
+  }
+  const unconfined = opts.unconfined;
   // `workdir` est relatif au projet ; le shell démarre dans ce dossier pour cette commande.
   const workdirArg = typeof args.workdir === 'string' && args.workdir.trim() ? args.workdir.trim() : '.';
   let cwd: string;
@@ -96,7 +122,7 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
   const endless = args.run_in_background === true ? null : neverEndingCommand(command);
 
   if (args.run_in_background === true || endless) {
-    const jobId = await terminalService.runShell(command, { cwd, escalated, escalationReason });
+    const jobId = await terminalService.runShell(command, { cwd, escalated, escalationReason, unconfined });
     // Bouton Stop : un travail lancé par ce tour ne doit pas survivre à l'annulation.
     const onAbort = () => { void terminalService.killProcess(jobId); };
     if (ctx.signal?.aborted) onAbort();
@@ -116,7 +142,7 @@ export async function execBash(args: Record<string, any>, ctx: ToolExecutionCont
   // Au délai, la commande n'est pas tuée : elle continue en arrière-plan et l'agent reprend
   // la main avec son identifiant (comme Codex et Claude Code). Un build légitime de
   // plusieurs minutes n'est jamais perdu ; une commande bloquée s'arrête avec job_kill.
-  const run = await terminalService.execShellYield(command, { cwd, yieldMs: timeout, signal: ctx.signal, escalated, escalationReason });
+  const run = await terminalService.execShellYield(command, { cwd, yieldMs: timeout, signal: ctx.signal, escalated, escalationReason, unconfined });
   if (run.kind === 'running') {
     noteJobOutput(run.jobId, run.output);
     return {
@@ -152,7 +178,7 @@ export const DEFAULT_JOB_WAIT_MS = 30_000;
 
 export async function execJobOutput(args: Record<string, any>, ctx: ToolExecutionContext): Promise<ToolResult> {
   const id = String(args.job_id || args.id || '').trim();
-  if (!id) return { output: 'Erreur: indique job_id (l’identifiant rendu par bash).', isError: true };
+  if (!id) return { output: 'Erreur: indique job_id (l’identifiant rendu par la commande).', isError: true };
   const requested = Number(args.wait_ms);
   const waitMs = Math.min(Math.max(0, Number.isFinite(requested) && args.wait_ms !== undefined ? requested : DEFAULT_JOB_WAIT_MS), 300_000);
   const job = await terminalService.waitForJob(id, waitMs, ctx.signal);
@@ -171,7 +197,7 @@ export async function execJobOutput(args: Record<string, any>, ctx: ToolExecutio
 
 export async function execJobKill(args: Record<string, any>): Promise<ToolResult> {
   const id = String(args.job_id || args.id || '').trim();
-  if (!id) return { output: 'Erreur: indique job_id (l’identifiant rendu par bash).', isError: true };
+  if (!id) return { output: 'Erreur: indique job_id (l’identifiant rendu par la commande).', isError: true };
   const ok = await terminalService.killProcess(id);
   return ok
     ? { output: `Travail ${id} arrêté.` }

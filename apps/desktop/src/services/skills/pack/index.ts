@@ -753,7 +753,7 @@ description: Lancer, suivre et arrêter les commandes longues ou bloquées (suit
 
 ## Règles
 1. **Serveur ou surveillance** (dev, --watch, tail -f) : jamais au premier plan. ANZAR les passe d'office en arrière-plan ; pour une app web, start_dev_server lance, attend et vérifie la page.
-2. **Commande longue** : bash avec run_in_background, puis job_output avec wait_ms (par exemple 30 000) pour lire la sortie au fur et à mesure. Si la sortie n'avance plus entre deux lectures, la commande est bloquée : job_kill, puis cherche pourquoi.
+2. **Commande longue** : bash (ou powershell sous Windows) avec run_in_background, puis job_output avec wait_ms (par exemple 30 000) pour lire la sortie au fur et à mesure. Si la sortie n'avance plus entre deux lectures, la commande est bloquée : job_kill, puis cherche pourquoi.
 3. **Jamais de filtre sur une commande longue au premier plan** : \`| tail\`, \`| head\` ou \`| grep\` n'affichent rien avant la fin. Écris plutôt dans un fichier (\`> /tmp/sortie.txt 2>&1\`) et lis-le.
 4. **Code de sortie** : avec un pipe, c'est celui du dernier programme. Mets \`set -o pipefail;\` devant quand tu dois savoir si le premier a échoué.
 5. **Délai dépassé** : ne relance pas avec un délai plus long. Réduis d'abord la commande (un seul test, un seul module), mesure, puis élargis.
@@ -769,6 +769,12 @@ description: Lancer, suivre et arrêter les commandes longues ou bloquées (suit
 | go test | \`-timeout 60s -run Nom\` (affiche les goroutines bloquées) |
 | cargo test | \`cargo test nom -- --nocapture\` |
 | npm test | lis le script : react-scripts surveille par défaut, lance-le avec \`CI=true\` |
+
+## Sous Windows (powershell)
+- Pas de \`&&\`, \`||\` ni \`set -o pipefail\` : enchaîne avec \`;\` et teste \`$LASTEXITCODE\` après chaque programme important (\`npm run build; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }\`).
+- Écrire la sortie dans un fichier : \`npm test *> sortie.txt\` (tous les flux), puis lis-le avec read_file.
+- Suivi de journal : \`Get-Content fichier -Wait\` ne s'arrête jamais, comme \`tail -f\` : arrière-plan seulement.
+- Variable pour une commande : \`$env:CI = 'true'; npm test\`.
 
 ## Pas d'invite interactive
 Personne ne peut répondre pendant que tu travailles. Passe toujours les options non interactives : \`git commit -m "…"\`, \`npm init -y\`, \`npx --yes\`, \`flutter create --project-name x .\`, \`pip install\` sans question, \`apt-get -y\`. Une commande qui demande un mot de passe ou une confirmation échouera : signale-le à l'utilisateur au lieu d'insister.

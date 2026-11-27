@@ -15,7 +15,7 @@ import type { ToolCall } from '@/types';
 import { STILL_RUNNING_MARKER, TIMEOUT_MARKER } from '../tools/commandHints';
 
 /** Outils de commande suivis. */
-const COMMAND_TOOLS = new Set(['bash', 'run_command']);
+const COMMAND_TOOLS = new Set(['bash', 'powershell', 'run_command']);
 
 /**
  * Programmes d'exploration : leur « échec » n'en est pas un (grep sans résultat rend 1,
@@ -24,11 +24,17 @@ const COMMAND_TOOLS = new Set(['bash', 'run_command']);
 const EXPLORATION = new Set([
   'grep', 'rg', 'find', 'ls', 'cat', 'head', 'tail', 'sed', 'awk', 'wc', 'test', '[', 'which', 'command',
   'echo', 'printf', 'stat', 'file', 'diff', 'cmp', 'sort', 'uniq', 'git', 'pwd', 'true', 'false', 'sleep',
+  // PowerShell (comparés en minuscules)
+  'get-childitem', 'dir', 'gci', 'get-content', 'gc', 'type', 'select-string', 'sls', 'test-path',
+  'get-item', 'get-command', 'write-output', 'write-host', 'get-location', 'set-location', 'sl',
+  'measure-object', 'sort-object', 'select-object', 'where-object', 'compare-object', 'start-sleep',
+  'if', 'else', 'elseif', 'exit', 'foreach', 'for', 'while', 'try', 'catch', 'throw', 'write-error',
 ]);
 /** Préfixes à sauter pour trouver le vrai programme. */
 const WRAPPERS = new Set(['sudo', 'npx', 'env', 'time', 'timeout', 'nice', 'exec', 'command', 'bunx', 'pnpx', 'xvfb-run']);
 
-const base = (p: string) => p.replace(/^.*[\\/]/, '');
+/** Nom du programme sans dossier ni extension Windows (npm.cmd → npm). */
+const base = (p: string) => p.replace(/^[&"']+|["']+$/g, '').replace(/^.*[\\/]/, '').replace(/\.(?:exe|cmd|bat|ps1)$/i, '');
 
 /**
  * Famille d'une commande : son programme et sa sous-commande (« flutter test »,
@@ -45,9 +51,12 @@ export function commandFamily(command: string): string | null {
     const tokens = segment.split(/\s+/).filter((t) => !/^[A-Za-z_][A-Za-z0-9_]*=/.test(t));
     while (tokens.length && (WRAPPERS.has(base(tokens[0])) || /^\d+[smh]?$/.test(tokens[0]) || tokens[0].startsWith('-'))) tokens.shift();
     if (!tokens.length) continue;
+    if (tokens[0] === '&') tokens.shift();
+    // Affectation PowerShell ($x = …) ou bloc : pas un programme.
+    if (!tokens.length || tokens[0].startsWith('$') || tokens[0].startsWith('{') || tokens[0].startsWith('}')) continue;
     const program = base(tokens[0]);
     if (program === 'cd') continue;
-    if (EXPLORATION.has(program)) {
+    if (EXPLORATION.has(program.toLowerCase())) {
       // « git » seul est de l'exploration ; une commande de build après lui ne l'est pas.
       continue;
     }

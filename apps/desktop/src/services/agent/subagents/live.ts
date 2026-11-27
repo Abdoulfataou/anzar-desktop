@@ -18,7 +18,7 @@ import { availableRoles, resolveRole } from '../profiles/custom';
 import type { Skill } from '@/services/skills';
 import { READ_ONLY_TOOLS, type PermissionMode } from '../policy/permissions';
 import { subagentAllowedTools } from '../policy/subagentPolicy';
-import { AGENT_TOOLS, BASH_TOOLS } from '../tools/definitions';
+import { AGENT_TOOLS, ALL_SHELL_TOOLS } from '../tools/definitions';
 import type { ToolExecutionContext } from '../tools/types';
 
 export const MAX_LIVE_AGENTS = 8;
@@ -567,7 +567,7 @@ export function spawnLiveAgent(
   const name = requested || nextName(reg);
   if (reg.byName.has(name)) return { error: `Un sous-agent nommé « ${name} » existe déjà.` };
 
-  const allNames = [...AGENT_TOOLS, ...BASH_TOOLS].map((t) => t.function.name);
+  const allNames = [...AGENT_TOOLS, ...ALL_SHELL_TOOLS].map((t) => t.function.name);
   const allowedTools = subagentAllowedTools({
     allToolNames: allNames,
     mode: ctx.permissionMode as PermissionMode | undefined,
@@ -621,7 +621,7 @@ export function sendToLiveAgent(
   const profile = agent.profile ?? resolveRole(agent.role, ctx.customAgents);
   if (profile && !agent.profile) agent.profile = profile;
   if (agent.allowedTools.size === 0) {
-    const allNames = [...AGENT_TOOLS, ...BASH_TOOLS].map((t) => t.function.name);
+    const allNames = [...AGENT_TOOLS, ...ALL_SHELL_TOOLS].map((t) => t.function.name);
     agent.allowedTools = subagentAllowedTools({
       allToolNames: allNames,
       mode: ctx.permissionMode as PermissionMode | undefined,

@@ -16,7 +16,8 @@
 import { APIMessage, AIModel, AIProvider, ReasoningEffort } from '@/types';
 import { aiService } from '@/services/ai/ai';
 import { terminalService } from '@/services/runtime/terminal';
-import { AGENT_TOOLS, BASH_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from '../tools';
+import { AGENT_TOOLS, BASH_TOOLS, POWERSHELL_TOOLS, executeToolCall, ToolExecutionContext, ToolResult } from '../tools';
+import { commandShell } from '@/lib/platform';
 import { fileConflict, noteFileRead, noteFileWrite } from '../policy/fileConflicts';
 import { readPathForTool, writePathsForTool } from '../tools/filePaths';
 import { buildAgentSystemPrompt, taskHintsSection, AgentPromptContext } from '../context/agentPrompts';
@@ -209,17 +210,20 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
   }
 
   // ─── Outils réellement proposés ───
-  // Sur macOS, le shell confiné (bash) existe ; ailleurs, seul run_command. Sous Windows hors
-  // Accès complet, les commandes d'une session sans écran d'accord sont toujours refusées
-  // (pas d'isolation) : on ne les propose pas, plutôt que de laisser l'agent s'y user.
+  // Shell de la plateforme : bash (confiné) sur macOS, powershell sous Windows ; run_command
+  // reste en repli. Sous Windows hors Accès complet, les commandes d'une session sans écran
+  // d'accord sont toujours refusées (pas d'isolation) : on ne les propose pas, plutôt que de
+  // laisser l'agent s'y user.
   const windows = isWindowsPlatform();
   const sessionTools = (() => {
-    const shellAvailable = typeof navigator !== 'undefined' && /Mac|Darwin/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-    const all = shellAvailable ? [...AGENT_TOOLS, ...BASH_TOOLS] : AGENT_TOOLS;
+    const platformShell = commandShell();
+    const shellTools = platformShell === 'bash' ? BASH_TOOLS : platformShell === 'powershell' ? POWERSHELL_TOOLS : [];
+    const all = [...AGENT_TOOLS, ...shellTools];
     const noCommands = windows && options.permissionMode !== 'full';
+    const commandTools = new Set(['run_command', 'start_dev_server', 'powershell', 'job_output', 'job_kill']);
     const list = all.filter((t) =>
       (!options.allowedTools || options.allowedTools.has(t.function.name))
-      && !(noCommands && (t.function.name === 'run_command' || t.function.name === 'start_dev_server')));
+      && !(noCommands && commandTools.has(t.function.name)));
     return options.skills?.length ? [...list, LOAD_SKILL_TOOL] : list;
   })();
   const sessionToolNames = new Set(sessionTools.map((t) => t.function.name));
@@ -235,7 +239,13 @@ export async function runAgentSession(options: AgentLoopOptions): Promise<AgentS
         skills: options.skills,
         maxSteps,
       })
-    : buildAgentSystemPrompt(effectivePrompt);
+    : buildAgentSystemPrompt({
+        ...effectivePrompt,
+        // Ne décrire que les outils de commande réellement proposés à cette session.
+        bashAvailable: sessionToolNames.has('bash'),
+        powershellAvailable: sessionToolNames.has('powershell'),
+        runCommandAvailable: sessionToolNames.has('run_command'),
+      });
   const messages: APIMessage[] = [
     { role: 'system', content: systemPrompt + (options.systemPromptExtra || '') },
     ...history,

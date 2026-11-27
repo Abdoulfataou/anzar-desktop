@@ -35,7 +35,7 @@ export interface SubagentPromptInput {
 const TOOL_GROUPS: { label: string; tools: string[]; note?: string }[] = [
   { label: 'Lire et chercher', tools: ['read_file', 'list_dir', 'glob', 'search_files', 'get_diagnostics', 'explore'] },
   { label: 'Écrire', tools: ['edit_file', 'write_file', 'apply_patch', 'delete_file'], note: 'edit_file pour modifier, write_file pour créer, apply_patch pour plusieurs fichiers d’un coup' },
-  { label: 'Commandes', tools: ['bash', 'run_command', 'job_output', 'job_kill'] },
+  { label: 'Commandes', tools: ['bash', 'powershell', 'run_command', 'job_output', 'job_kill'] },
   { label: 'App web', tools: ['start_dev_server', 'dev_server_logs', 'stop_dev_server', 'check_page', 'capture_page', 'page_action'] },
   { label: 'Médias', tools: ['vendor_lib', 'install_tool', 'export_animation'] },
   { label: 'Skills', tools: ['load_skill'] },
@@ -53,7 +53,7 @@ export function toolsSection(available: Iterable<string>): string {
 
 /** Ce que les commandes peuvent faire pour ce sous-agent, sans promesse fausse. */
 export function commandsFact(tools: Set<string>, mode: PermissionMode | undefined, windows: boolean, writes = true): string {
-  const shell = tools.has('bash') || tools.has('run_command');
+  const shell = tools.has('bash') || tools.has('powershell') || tools.has('run_command');
   const fallback = tools.has('get_diagnostics') ? 'vérifie avec get_diagnostics et indique' : 'indique';
   if (!shell) {
     return windows && mode !== 'full'
@@ -100,7 +100,7 @@ export function buildSubagentSystemPrompt(input: SubagentPromptInput): string {
   const tools = new Set(input.tools);
   const role = input.profile;
   const writes = ['edit_file', 'write_file', 'apply_patch'].some((t) => tools.has(t));
-  const shell = tools.has('bash') || tools.has('run_command');
+  const shell = tools.has('bash') || tools.has('powershell') || tools.has('run_command');
   const diagnostics = tools.has('get_diagnostics');
 
   const method = writes

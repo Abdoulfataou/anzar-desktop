@@ -7,7 +7,8 @@
  * le nettoyage), `tail` n'affiche rien avant la fin, et l'outil répondait « relance avec un
  * délai plus grand ». L'agent a attendu deux fois 5 minutes sans rien apprendre.
  *
- * Tout ici est pur (pas d'accès au système) : testable et partagé par bash et run_command.
+ * Tout ici est pur (pas d'accès au système) : testable et partagé par bash, powershell et
+ * run_command.
  */
 
 /** Commandes qui tournent jusqu'à ce qu'on les arrête : serveurs, mode surveillance, suivi de journal. */
@@ -24,6 +25,7 @@ const NEVER_ENDING: { pattern: RegExp; label: string }[] = [
   { pattern: /\b(?:bin\/)?rails\s+s(?:erver)?\b|\bphp\s+artisan\s+serve\b|\bphp\s+-S\b/, label: 'serveur web' },
   { pattern: /\bdocker(?:-compose|\s+compose)\s+up\b(?![^|;&]*(?:\s-d\b|--detach))/, label: 'conteneurs au premier plan (docker compose up sans -d)' },
   { pattern: /\btail\s+-[a-zA-Z]*[fF]\b/, label: 'suivi de journal (tail -f)' },
+  { pattern: /\b(?:Get-Content|gc|cat|type)\b[^|;&]*\s-Wait\b/i, label: 'suivi de journal (Get-Content -Wait)' },
   { pattern: /\bnodemon\b|\bwebpack(?:-dev-server|\s+serve)\b|\bhugo\s+server\b|\bjekyll\s+serve\b/, label: 'serveur ou surveillance' },
   { pattern: /(?:^|\s)--watch(?:All)?\b|\bjest\b[^|;&]*\s--watch\b|\bvitest\s+(?:watch|dev)\b/, label: 'mode surveillance (--watch)' },
 ];
@@ -57,7 +59,8 @@ export function testRunnerHint(command: string): string | null {
 
 /** La sortie passe par un filtre qui n'affiche rien avant la fin (tail, head, grep, sort…). */
 export function hidesProgress(command: string): boolean {
-  return /\|\s*(?:tail|head|grep|sort|uniq|wc|less|more)\b/.test(command);
+  return /\|\s*(?:tail|head|grep|sort|uniq|wc|less|more)\b/.test(command)
+    || /\|\s*(?:Select-Object|select)\b[^|]*-(?:Last|First)\b|\|\s*(?:Sort-Object|Measure-Object|Select-String|sls)\b/i.test(command);
 }
 
 /** Dernières lignes non vides d'une sortie, pour montrer où la commande en était. */

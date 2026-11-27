@@ -7,7 +7,8 @@
  */
 import type { ToolDefinition } from '@/types';
 import type { PermissionMode } from '../policy/permissions';
-import { AGENT_TOOLS, BASH_TOOLS } from '../tools/definitions';
+import { AGENT_TOOLS, BASH_TOOLS, POWERSHELL_TOOLS } from '../tools/definitions';
+import { commandShell } from '@/lib/platform';
 import { WEB_TOOLS } from '../tools/webTools';
 import { PERSONAL_SPACE_TOOLS } from '@/services/workspace/personalSpace';
 import { ASK_USER_TOOL, LOAD_SKILL_TOOL, PROPOSE_PLAN_TOOL } from '../tools/specialDefinitions';
@@ -26,12 +27,6 @@ export interface ToolListInput {
   mcpTools: ToolDefinition[];
 }
 
-/** Le shell confiné n'est proposé que là où l'isolation système existe (macOS aujourd'hui). */
-function shellToolAvailable(): boolean {
-  if (typeof navigator === 'undefined') return false;
-  return /Mac|Darwin/i.test(`${navigator.platform || ''} ${navigator.userAgent || ''}`);
-}
-
 /** Outils envoyés au modèle pour l'étape suivante. */
 export function buildToolsForStep(input: ToolListInput): ToolDefinition[] | undefined {
   const web = input.webEnabled ? WEB_TOOLS : [];
@@ -44,13 +39,14 @@ export function buildToolsForStep(input: ToolListInput): ToolDefinition[] | unde
     const tools = [...personalTools, ...web, ...ask, ...input.mcpTools];
     return tools.length ? tools : undefined;
   }
-  const shellAvailable = shellToolAvailable();
-  // Sur macOS, le shell confiné remplace run_command : une seule façon de lancer une
-  // commande, avec les pipes et les enchaînements. Windows garde run_command et sa liste.
-  const agentTools = shellAvailable
+  // Le shell de la plateforme remplace run_command : une seule façon de lancer une
+  // commande, avec les pipes et les enchaînements. bash (confiné) sur macOS, powershell sous
+  // Windows (sans isolation : Accès complet ou accord pour chaque commande).
+  const platformShell = commandShell();
+  const agentTools = platformShell
     ? AGENT_TOOLS.filter((t) => t.function.name !== 'run_command')
     : AGENT_TOOLS;
-  const shell = shellAvailable ? BASH_TOOLS : [];
+  const shell = platformShell === 'bash' ? BASH_TOOLS : platformShell === 'powershell' ? POWERSHELL_TOOLS : [];
   const plan = input.mode === 'plan' ? [PROPOSE_PLAN_TOOL] : [];
   return [...agentTools, ...shell, ...web, ...plan, ...(input.hasSkills ? [LOAD_SKILL_TOOL] : []), ...ask, ...input.mcpTools];
 }

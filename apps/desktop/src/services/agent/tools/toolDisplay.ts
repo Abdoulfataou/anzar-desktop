@@ -60,6 +60,7 @@ export function summarizeArgs(name: string, args: Record<string, any>): string {
       return args.url || '';
     case 'run_command':
     case 'bash':
+    case 'powershell':
       return args.command || '';
     case 'job_output':
     case 'job_kill':

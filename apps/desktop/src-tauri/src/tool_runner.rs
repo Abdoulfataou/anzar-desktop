@@ -5,7 +5,9 @@
 //! appliquée ici, avant tout `Command::new`. Deux chemins existent :
 //! - `run_command` : un programme de la liste, sans shell intermédiaire ;
 //! - `bash` : une ligne `bash -c`, acceptée seulement quand l'isolation système est
-//!   disponible (macOS). La frontière est alors le profil Seatbelt, pas une liste blanche.
+//!   disponible (macOS). La frontière est alors le profil Seatbelt, pas une liste blanche ;
+//! - `powershell` (Windows) : une ligne PowerShell. Sans isolation des commandes sous
+//!   Windows, elle n'est acceptée qu'en Accès complet ou après l'accord de l'utilisateur.
 
 use serde::Serialize;
 use std::collections::HashMap;
@@ -55,7 +57,7 @@ fn validate_id(id: &str) -> Result<(), String> {
 
 /// Cherche `program` dans `path` en essayant les extensions données (Windows : .exe, .cmd, .bat).
 #[cfg_attr(not(windows), allow(dead_code))]
-fn resolve_with_exts(program: &str, path: &str, exts: &[&str]) -> Option<std::path::PathBuf> {
+pub(crate) fn resolve_with_exts(program: &str, path: &str, exts: &[&str]) -> Option<std::path::PathBuf> {
     std::env::split_paths(path).find_map(|dir| {
         exts.iter().map(|e| dir.join(format!("{program}{e}"))).find(|p| p.is_file())
     })
@@ -191,9 +193,16 @@ pub fn tool_spawn(
     shell_command: Option<String>,
     escalated: Option<bool>,
     escalation_reason: Option<String>,
+    shell_kind: Option<String>,
+    unconfined: Option<bool>,
 ) -> Result<u32, String> {
     validate_id(&id)?;
     let use_shell = shell.unwrap_or(false);
+    let powershell = match shell_kind.as_deref().unwrap_or("bash") {
+        "bash" => false,
+        "powershell" => true,
+        other => return Err(format!("Shell inconnu : {other}.")),
+    };
     let escalated = escalated.unwrap_or(false);
     if escalated && escalation_reason.as_deref().unwrap_or("").trim().is_empty() {
         return Err("Élévation refusée : une justification est obligatoire.".into());
@@ -201,8 +210,21 @@ pub fn tool_spawn(
     let (program, args) = if use_shell {
         // Shell confiné : la frontière est l'isolation du système d'exploitation. Sans
         // elle, un shell complet serait une porte ouverte : on refuse plutôt que de
-        // laisser croire que la commande est isolée.
-        if !crate::sandbox::available() {
+        // laisser croire que la commande est isolée. Seule exception, PowerShell sous
+        // Windows, lancé seulement quand l'utilisateur a accepté l'absence d'isolation
+        // (Accès complet) ou approuvé cette commande précise (élévation).
+        if powershell {
+            if !cfg!(windows) {
+                return Err("PowerShell n'est proposé que sous Windows.".into());
+            }
+            if !crate::sandbox::available() && !escalated && !unconfined.unwrap_or(false) {
+                return Err(
+                    "Sans isolation des commandes sur cet ordinateur, PowerShell demande l'Accès complet \
+                     ou l'accord de l'utilisateur pour cette commande."
+                        .into(),
+                );
+            }
+        } else if !crate::sandbox::available() {
             return Err("Le shell confiné n'est pas disponible sur cet ordinateur : utilise run_command.".into());
         }
         let command = shell_command.unwrap_or_default();
@@ -210,8 +232,9 @@ pub fn tool_spawn(
         if trimmed.is_empty() {
             return Err("Commande vide.".into());
         }
-        if trimmed.chars().count() > 20_000 {
-            return Err("Commande trop longue (max 20 000 caractères).".into());
+        let max = if powershell { crate::powershell::MAX_COMMAND_CHARS } else { 20_000 };
+        if trimmed.chars().count() > max {
+            return Err(format!("Commande trop longue (max {max} caractères)."));
         }
         if trimmed.contains('\0') {
             return Err("Commande invalide (caractère NUL).".into());
@@ -223,10 +246,23 @@ pub fn tool_spawn(
                     .into(),
             );
         }
-        if find_in_path("bash").is_none() && !std::path::Path::new("/bin/bash").exists() {
-            return Err("bash est introuvable sur cet ordinateur.".into());
+        if powershell {
+            #[cfg(windows)]
+            {
+                let interp = crate::powershell::interpreter(&crate::mcp::enriched_path())
+                    .ok_or("PowerShell est introuvable sur cet ordinateur.")?;
+                (interp.to_string_lossy().into_owned(), crate::powershell::args(trimmed))
+            }
+            #[cfg(not(windows))]
+            {
+                return Err("PowerShell n'est proposé que sous Windows.".into());
+            }
+        } else {
+            if find_in_path("bash").is_none() && !std::path::Path::new("/bin/bash").exists() {
+                return Err("bash est introuvable sur cet ordinateur.".into());
+            }
+            ("bash".to_string(), vec!["-c".to_string(), command])
         }
-        ("bash".to_string(), vec!["-c".to_string(), command])
     } else {
         // macOS n'a que `python3` / `pip3` : l'agent écrit souvent `python` ou `pip`.
         let program = python3_fallback(program.trim().to_lowercase(), |p| find_in_path(p).is_some());
@@ -260,7 +296,9 @@ pub fn tool_spawn(
     if isolated && !use_shell && gradlew_path.is_none() && find_in_path(&program).is_none() {
         return Err(format!("« {program} » est introuvable sur cet ordinateur."));
     }
-    let exe: String = if use_shell {
+    let exe: String = if use_shell && powershell {
+        program.clone()
+    } else if use_shell {
         "/bin/bash".to_string()
     } else {
         match &gradlew_path {

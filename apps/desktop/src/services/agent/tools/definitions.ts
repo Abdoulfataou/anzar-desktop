@@ -483,9 +483,45 @@ export const AGENT_TOOLS: ToolDefinition[] = [
   },
 ];
 
+/** Travaux en arrière-plan : communs à bash (macOS) et powershell (Windows). */
+const JOB_TOOLS: ToolDefinition[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'job_output',
+      description:
+        "Lit l'état et la sortie d'un travail en arrière-plan (bash ou powershell) (lancé avec run_in_background, ou commande qui a atteint son délai et continue). " +
+        "Attend la fin, ou wait_ms (30 s par défaut), avant de répondre : inutile de le rappeler en boucle. " +
+        "S'il signale « aucune nouvelle sortie depuis N s » pour une commande qui devait finir, elle est probablement bloquée : job_kill, puis cherche pourquoi.",
+      parameters: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Identifiant rendu par la commande (job_id).' },
+          wait_ms: { type: 'number', description: 'Délai d’attente maximal en millisecondes (défaut 30 000, 0 pour lire tout de suite, plafond 300 000).' },
+        },
+        required: ['job_id'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'job_kill',
+      description: "Arrête un travail en arrière-plan (bash ou powershell) (run_in_background, ou commande qui a atteint son délai). Tous les processus lancés par la commande sont arrêtés, pas seulement le shell.",
+      parameters: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'Identifiant rendu par la commande (job_id).' },
+        },
+        required: ['job_id'],
+      },
+    },
+  },
+];
+
 /**
  * Outils du shell confiné, proposés seulement là où l'isolation système existe
- * (macOS aujourd'hui). `run_command` reste disponible comme repli et pour Windows.
+ * (macOS aujourd'hui). `run_command` reste disponible comme repli.
  */
 export const BASH_TOOLS: ToolDefinition[] = [
   {
@@ -536,36 +572,66 @@ export const BASH_TOOLS: ToolDefinition[] = [
       },
     },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'job_output',
-      description:
-        "Lit l'état et la sortie d'un travail bash en arrière-plan (lancé avec run_in_background, ou commande qui a atteint son délai et continue). " +
-        "Attend la fin, ou wait_ms (30 s par défaut), avant de répondre : inutile de le rappeler en boucle. " +
-        "S'il signale « aucune nouvelle sortie depuis N s » pour une commande qui devait finir, elle est probablement bloquée : job_kill, puis cherche pourquoi.",
-      parameters: {
-        type: 'object',
-        properties: {
-          job_id: { type: 'string', description: 'Identifiant rendu par bash (job_id).' },
-          wait_ms: { type: 'number', description: 'Délai d’attente maximal en millisecondes (défaut 30 000, 0 pour lire tout de suite, plafond 300 000).' },
-        },
-        required: ['job_id'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'job_kill',
-      description: "Arrête un travail bash en arrière-plan (run_in_background, ou commande qui a atteint son délai). Le groupe de processus est arrêté (pas seulement le shell).",
-      parameters: {
-        type: 'object',
-        properties: {
-          job_id: { type: 'string', description: 'Identifiant rendu par bash (job_id).' },
-        },
-        required: ['job_id'],
-      },
-    },
-  },
+  ...JOB_TOOLS,
 ];
+
+const POWERSHELL_TOOL: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'powershell',
+    description:
+      "Exécute une commande PowerShell sous Windows (PowerShell 7 s'il est installé, sinon Windows PowerShell 5.1) et renvoie stdout/stderr, le code de sortie et le dossier. " +
+      "Chaque appel ouvre une session neuve, sans profil : passe workdir plutôt que Set-Location. " +
+      "C'est PowerShell, pas bash : enchaîne avec ; (&& et || n'existent pas en 5.1) et vérifie $LASTEXITCODE après un programme, par exemple « npm run build; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ». " +
+      "Variables : $env:NOM. Chemins entre guillemets s'ils contiennent des espaces. Équivalents : Remove-Item -Recurse -Force (rm -rf), Select-String (grep), Get-Content (cat), Get-ChildItem (ls). " +
+      "Pour écrire ou modifier un fichier, utilise write_file ou edit_file, pas Set-Content ni Out-File (encodage). npm, npx et les autres programmes .cmd se lancent directement. " +
+      "Sur cet ordinateur, les commandes ne sont pas isolées dans le projet : hors Accès complet, chaque commande passe par sandbox_permissions + justification, donc par l'accord de l'utilisateur ; regroupe le travail en peu de commandes. " +
+      "Pour un travail long, run_in_background rend un job_id, puis job_output lit la suite et job_kill l'arrête. Les serveurs et modes surveillance (npm run dev, --watch, Get-Content -Wait…) partent d'office en arrière-plan. " +
+      "Pas d'invite interactive : passe -y, --yes, -Force ou -Confirm:$false. " +
+      "Un code de sortie non nul signifie que la commande a tourné et a échoué : lis la sortie avant de réessayer. Une commande qui atteint son délai continue en arrière-plan (job_id) : lis la suite avec job_output, ou arrête-la avec job_kill si elle est bloquée ; ne la relance pas.",
+    parameters: {
+      type: 'object',
+      properties: {
+        command: { type: 'string', description: 'La commande PowerShell à exécuter (10 000 caractères au plus).' },
+        description: {
+          type: 'string',
+          description: 'Description courte de ce que fait la commande (5 à 10 mots), affichée dans l’interface.',
+        },
+        workdir: {
+          type: 'string',
+          description: 'Dossier de travail, relatif au projet. Défaut : la racine du projet.',
+        },
+        timeoutMs: {
+          type: 'number',
+          description: 'Temps d’attente au premier plan en millisecondes (défaut 120 000, plafond 600 000). Au-delà, la commande n’est pas tuée : elle continue en arrière-plan et tu reçois son job_id.',
+        },
+        run_in_background: {
+          type: 'boolean',
+          description: 'Lance le travail en arrière-plan et rend un job_id immédiatement (à lire avec job_output, arrêter avec job_kill).',
+        },
+        sandbox_permissions: {
+          type: 'string',
+          enum: ['danger-full-access'],
+          description: "Hors Accès complet, obligatoire pour lancer une commande sur cet ordinateur (pas d'isolation sous Windows) : relance la MÊME commande avec ce champ et une justification ; l'utilisateur doit approuver.",
+        },
+        justification: {
+          type: 'string',
+          description: "Obligatoire avec sandbox_permissions : une phrase expliquant pourquoi cette commande est nécessaire.",
+        },
+      },
+      required: ['command'],
+    },
+  },
+};
+
+/**
+ * Outils du shell sous Windows. Sans isolation des commandes sous Windows (phase 3 du plan
+ * de parité), powershell ne s'exécute qu'en Accès complet ou après l'accord de l'utilisateur.
+ */
+export const POWERSHELL_TOOLS: ToolDefinition[] = [POWERSHELL_TOOL, ...JOB_TOOLS];
+
+/** Noms des outils qui lancent une ligne de shell (même contrat de résultat). */
+export const SHELL_TOOL_NAMES: ReadonlySet<string> = new Set(['bash', 'powershell']);
+
+/** Tous les outils de commandes connus, toutes plateformes confondues (sans doublon). */
+export const ALL_SHELL_TOOLS: ToolDefinition[] = [...BASH_TOOLS, POWERSHELL_TOOL];

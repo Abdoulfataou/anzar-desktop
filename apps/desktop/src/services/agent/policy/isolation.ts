@@ -31,8 +31,8 @@ export function unconfinedCommandRefusal(
   }
   if (tool === 'start_dev_server') {
     return "Refusé : sur cet ordinateur (Windows), un serveur de développement ne peut pas être isolé dans le projet. "
-      + "Lance la commande du serveur avec run_command en élévation (une carte d'accord s'affichera), ou demande à "
-      + "l'utilisateur de passer en « Accès complet ».";
+      + "Lance la commande du serveur avec powershell en arrière-plan (run_in_background), en élévation : une carte "
+      + "d'accord s'affichera. Ou demande à l'utilisateur de passer en « Accès complet ».";
   }
   return `[sandbox: unavailable on this computer (Windows) — commands cannot be confined to the project]\n${ESCALATION_HINT}`;
 }

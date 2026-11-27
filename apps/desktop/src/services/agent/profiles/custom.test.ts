@@ -44,7 +44,7 @@ describe('agents personnalisés', () => {
     const a = parseCustomAgent(CLAUDE_AGENT, 'x', where)!;
     expect(a.name).toBe('code-reviewer');
     expect(a.kind).toBe('subagent');
-    expect(a.tools.sort()).toEqual(['bash', 'glob', 'job_kill', 'job_output', 'read_file', 'run_command', 'search_files'].sort());
+    expect(a.tools.sort()).toEqual(['bash', 'glob', 'job_kill', 'job_output', 'powershell', 'read_file', 'run_command', 'search_files'].sort());
     expect(a.model).toBe('fast');
     expect(a.prompt).toContain('senior code reviewer');
     expect(a.warnings.join(' ')).toContain('WebFetch');

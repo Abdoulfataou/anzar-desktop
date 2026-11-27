@@ -38,6 +38,8 @@ export interface SessionPromptInput {
   permissionMode?: 'ask' | 'auto' | 'plan' | 'full';
   /** Un shell confiné est proposé sur cette plateforme. */
   shellAvailable?: boolean;
+  /** Shell de la plateforme : bash (macOS), powershell (Windows). Défaut : bash si shellAvailable. */
+  shell?: 'bash' | 'powershell' | null;
   /** Le réseau des commandes est ouvert (aucun filtrage, comme Harness). */
   /** L'isolation des commandes est active. */
   sandboxed?: boolean;
@@ -60,14 +62,19 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
   let turnContext = '';
 
   if (input.workspacePath) {
-    const bashAvailable = input.shellAvailable !== false && !input.personalSpaceContext;
-    const runCommandAvailable = !bashAvailable;
+    const shell = input.personalSpaceContext || input.shellAvailable === false
+      ? null
+      : input.shell ?? 'bash';
+    const bashAvailable = shell === 'bash';
+    const powershellAvailable = shell === 'powershell';
+    const runCommandAvailable = !shell;
     const promptCtx = {
       projectName: input.workspaceName || input.workspacePath.split('/').pop() || 'projet',
       projectRoot: input.workspacePath,
       memory: input.memory,
       platform: input.platform,
       bashAvailable,
+      powershellAvailable,
       runCommandAvailable,
     };
     system = {
@@ -120,6 +127,7 @@ export function buildSessionSystemPrompt(input: SessionPromptInput): SessionProm
     platform: input.platform,
     permissionMode: input.permissionMode,
     shellAvailable: input.shellAvailable,
+    shell: input.shell,
     sandboxed: input.sandboxed,
   });
   return { system, systemHead, systemRefresh, turnContext };

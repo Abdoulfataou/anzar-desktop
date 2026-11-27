@@ -13,11 +13,11 @@ import { execApplyPatch } from './patchTool';
 import { execExportAnimation, execVendorLib } from './mediaTools';
 import { execExplore, execRemember, execTaskDone } from './metaTools';
 import { execInstallTool, execRunCommand } from './shellTools';
-import { execBash, execJobKill, execJobOutput } from './bashTool';
+import { execBash, execJobKill, execJobOutput, execPowerShell } from './bashTool';
 import { execListAgents, execSendMessage, execSpawnAgent, execStopAgent, execWaitAgent } from '../subagents/liveTools';
 
 export type { ToolExecutionContext, ToolResult } from './types';
-export { AGENT_TOOLS, BASH_TOOLS } from './definitions';
+export { AGENT_TOOLS, ALL_SHELL_TOOLS, BASH_TOOLS, POWERSHELL_TOOLS, SHELL_TOOL_NAMES } from './definitions';
 export { resolvePath, isProtectedWritePath } from './shared';
 export { compileSearchPattern } from './fsTools';
 export { execGlob, globToRegExp, globToRegExpSource } from './globTool';
@@ -47,6 +47,7 @@ const EXECUTORS: Record<string, ToolExecutor> = {
   page_action: execPageAction,
   run_command: execRunCommand,
   bash: execBash,
+  powershell: execPowerShell,
   job_output: execJobOutput,
   job_kill: execJobKill,
   spawn_agent: execSpawnAgent,
