@@ -1,0 +1,16 @@
+{
+  "name": "anzar-desktop-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Tests de bout en bout d'ANZAR (vraie fenêtre, via tauri-driver). Windows et Linux seulement : macOS n'a pas de pilote WebDriver pour WKWebView.",
+  "scripts": {
+    "test": "wdio run wdio.conf.js"
+  },
+  "devDependencies": {
+    "@wdio/cli": "^9.19.0",
+    "@wdio/local-runner": "^9.19.0",
+    "@wdio/mocha-framework": "^9.19.0",
+    "@wdio/spec-reporter": "^9.19.0"
+  }
+}

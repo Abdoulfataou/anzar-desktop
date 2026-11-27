@@ -20,7 +20,10 @@ import { terminalService } from '@/services/runtime/terminal';
 import { execRunCommand } from './shellTools';
 
 const exec = vi.mocked(terminalService.exec);
-const ctx = { projectRoot: '/tmp/projet' } as any;
+// Accès complet : ces tests portent sur la forme du résultat, pas sur l'isolation. Sans ce
+// mode, Windows (ANZAR_TEST_PLATFORM=windows ou vrai runner) refuse avant d'exécuter — ce
+// refus est testé à part plus bas.
+const ctx = { projectRoot: '/tmp/projet', permissionMode: 'full' } as any;
 
 describe('execRunCommand — contrat de résultat', () => {
   beforeEach(() => vi.clearAllMocks());
