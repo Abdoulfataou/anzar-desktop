@@ -22,7 +22,7 @@ vi.mock('@tauri-apps/api/path', () => ({ homeDir: async () => '/home/abdoul' }))
 
 import {
   availableRoles, customAgentsPromptSection, listCustomAgents, normalizeTools, parseCustomAgent,
-  resolveRole, savePersonalAgent, serializeAgent,
+  readCustomAgent, resolveRole, savePersonalAgent, scanCustomAgents, serializeAgent,
 } from './custom';
 import { detectSubagentRole } from './index';
 
@@ -130,5 +130,35 @@ describe('agents personnalisés', () => {
     expect(section).toContain('# Agents du projet et personnels');
     expect(section).toContain('- code-reviewer : Expert code review specialist.');
     expect(customAgentsPromptSection([])).toBe('');
+  });
+
+  it('donne la raison exacte d’un fichier inutilisable', () => {
+    const reason = (md: string) => readCustomAgent(md, 'fichier', where).reason;
+    expect(reason('   ')).toBe('fichier vide');
+    expect(reason('Tu es un expert.')).toMatch(/^pas d'en-tête/);
+    expect(reason('---\nname: a\ndescription: x\n---\ny')).toMatch(/^nom invalide/);
+    expect(reason('---\nname: lead\ndescription: x\n---\ny')).toMatch(/« lead » est un nom réservé/);
+    expect(reason('---\nname: sans-desc\n---\ny')).toMatch(/^description manquante/);
+    expect(reason('---\nname: web\ndescription: x\ntools: WebFetch, WebSearch\n---\ny')).toMatch(/aucun outil reconnu dans tools \(WebFetch, WebSearch\)/);
+    expect(readCustomAgent(CLAUDE_AGENT, 'x', where).agent?.name).toBe('code-reviewer');
+  });
+
+  it('liste les fichiers ignorés et les agents masqués par un plus prioritaire', async () => {
+    files.set('/p/.anzar/agents/testeur.md', '---\nname: testeur\ndescription: Version projet\n---\nA');
+    files.set('/data/store/agents/testeur.md', '---\nname: testeur\ndescription: Version perso\n---\nB');
+    files.set('/p/.claude/agents/casse.md', 'Juste des consignes, sans en-tête.');
+    files.set('/home/abdoul/.claude/agents/vide.md', '');
+    const scan = await scanCustomAgents('/p');
+    expect(scan.agents.map((a) => `${a.name}:${a.description}`)).toEqual(['testeur:Version projet']);
+    const byName = Object.fromEntries(scan.ignored.map((f) => [f.name, f]));
+    expect(byName.casse.kind).toBe('invalid');
+    expect(byName.casse.reason).toMatch(/^pas d'en-tête/);
+    expect(byName.casse.origin).toBe('.claude/agents');
+    expect(byName.vide.reason).toBe('fichier vide');
+    expect(byName.testeur.kind).toBe('shadowed');
+    expect(byName.testeur.reason).toBe("masqué par l'agent du même nom dans .anzar/agents, prioritaire");
+    expect(byName.testeur.editable).toBe(true);
+    // Ce que reçoit l'agent principal : les agents utilisables seulement
+    expect((await listCustomAgents('/p')).map((a) => a.name)).toEqual(['testeur']);
   });
 });

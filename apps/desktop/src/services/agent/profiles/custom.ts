@@ -89,32 +89,50 @@ export function normalizeTools(raw: string[]): { tools: string[]; ignored: strin
   return { tools: [...tools], ignored };
 }
 
-/**
- * Lit un fichier d'agent. Rend `null` quand il n'est pas utilisable (pas de description,
- * nom réservé, aucun outil reconnu alors qu'une liste était donnée).
- */
-export function parseCustomAgent(
+type AgentLocation = { source: CustomAgentSource; origin: string; path: string; editable: boolean };
+
+/** Fichier d'agent écarté, avec la raison en clair (affiché dans la page Agents). */
+export interface IgnoredAgentFile extends AgentLocation {
+  /** Nom de fichier (ou nom déclaré, quand il a pu être lu). */
+  name: string;
+  reason: string;
+  /** « shadowed » : valide mais remplacé par un agent du même nom plus prioritaire. */
+  kind: 'invalid' | 'shadowed';
+}
+
+/** Lit un fichier d'agent et rend l'agent, ou la raison pour laquelle il est inutilisable. */
+export function readCustomAgent(
   markdown: string,
   fallbackName: string,
-  where: { source: CustomAgentSource; origin: string; path: string; editable: boolean },
-): CustomAgent | null {
-  const text = markdown.replace(/^﻿/, '');
+  where: AgentLocation,
+): { agent: CustomAgent; reason?: undefined } | { agent?: undefined; reason: string } {
+  const text = markdown.replace(/^\uFEFF/, '');
+  if (!text.trim()) return { reason: 'fichier vide' };
   const fm = /^---\s*\r?\n([\s\S]*?)\r?\n---\s*(?:\r?\n|$)/.exec(text);
-  if (!fm) return null;
+  if (!fm) {
+    return { reason: "pas d'en-tête : le fichier doit commencer par une ligne ---, puis name: et description:, puis une ligne ---" };
+  }
   const meta = parseFrontmatter(fm[1]);
   const warnings: string[] = [];
 
   const name = slugifySkillName(meta.name || fallbackName);
-  if (!name || name.length < 2 || RESERVED.has(name)) return null;
+  if (!name || name.length < 2) return { reason: 'nom invalide : au moins 2 caractères, lettres, chiffres et tirets' };
+  if (RESERVED.has(name)) return { reason: `« ${name} » est un nom réservé par ANZAR : choisis un autre nom` };
   const description = (meta.description || '').replace(/\s+/g, ' ').trim().slice(0, 500);
-  if (!description) return null;
+  if (!description) {
+    return { reason: "description manquante : ajoute description: dans l'en-tête, l'agent principal la lit pour choisir ce spécialiste" };
+  }
 
   // Le reste du frontmatter suit le format des profils intégrés
   const base = parseProfile(text, name);
   const declared = parseToolList(meta.tools);
   const { tools, ignored } = normalizeTools(declared);
   if (ignored.length) warnings.push(`outils ignorés (sans équivalent dans ANZAR) : ${ignored.join(', ')}`);
-  if (declared.length && tools.length === 0) return null;
+  if (declared.length && tools.length === 0) {
+    return {
+      reason: `aucun outil reconnu dans tools (${ignored.join(', ')}) : utilise des noms ANZAR ou de Claude Code (Read, Edit, Bash…), ou retire la ligne pour donner tous les outils du mode`,
+    };
+  }
 
   const rawModel = (meta.model || '').trim().toLowerCase();
   let model: AgentProfile['model'];
@@ -142,11 +160,18 @@ export function parseCustomAgent(
     if (!/^outil inconnu/.test(issue)) warnings.push(issue);
   }
   return {
-    ...profile,
-    ...where,
-    overridesBuiltin: AGENT_PROFILES[name]?.kind === 'subagent',
-    warnings,
+    agent: {
+      ...profile,
+      ...where,
+      overridesBuiltin: AGENT_PROFILES[name]?.kind === 'subagent',
+      warnings,
+    },
   };
+}
+
+/** Comme readCustomAgent, sans la raison : `null` quand le fichier est inutilisable. */
+export function parseCustomAgent(markdown: string, fallbackName: string, where: AgentLocation): CustomAgent | null {
+  return readCustomAgent(markdown, fallbackName, where).agent ?? null;
 }
 
 const join = (...parts: string[]) => parts.map((p, i) => (i === 0 ? p.replace(/[\\/]+$/, '') : p.replace(/^[\\/]+|[\\/]+$/g, ''))).join('/');
@@ -156,20 +181,31 @@ async function readAgentsDir(
   source: CustomAgentSource,
   origin: string,
   editable: boolean,
-): Promise<CustomAgent[]> {
-  if (!(await fileSystemService.exists(dir).catch(() => false))) return [];
+): Promise<{ agents: CustomAgent[]; ignored: IgnoredAgentFile[] }> {
+  const agents: CustomAgent[] = [];
+  const ignored: IgnoredAgentFile[] = [];
+  if (!(await fileSystemService.exists(dir).catch(() => false))) return { agents, ignored };
   const nodes = await fileSystemService.readDirectoryTree(dir, 1).catch(() => []);
-  const out: CustomAgent[] = [];
   for (const n of nodes) {
-    if (out.length >= MAX_AGENTS_PER_DIR) break;
     if (n.type !== 'file' || !/\.md$/i.test(n.name)) continue;
-    const text = await fileSystemService.readFile(n.path).catch(() => '');
-    const agent = text.trim()
-      ? parseCustomAgent(text, n.name.replace(/\.md$/i, ''), { source, origin, path: n.path, editable })
-      : null;
-    if (agent) out.push(agent);
+    const where = { source, origin, path: n.path, editable };
+    const fileName = n.name.replace(/\.md$/i, '');
+    if (agents.length >= MAX_AGENTS_PER_DIR) {
+      ignored.push({ ...where, name: fileName, kind: 'invalid', reason: `plus de ${MAX_AGENTS_PER_DIR} agents dans ce dossier : les suivants ne sont pas lus` });
+      continue;
+    }
+    let text: string;
+    try {
+      text = await fileSystemService.readFile(n.path);
+    } catch (e: any) {
+      ignored.push({ ...where, name: fileName, kind: 'invalid', reason: `lecture impossible — ${e?.message || e}` });
+      continue;
+    }
+    const read = readCustomAgent(text, fileName, where);
+    if (read.agent) agents.push(read.agent);
+    else ignored.push({ ...where, name: fileName, kind: 'invalid', reason: read.reason });
   }
-  return out;
+  return { agents, ignored };
 }
 
 async function homeDirectory(): Promise<string | null> {
@@ -187,23 +223,45 @@ export async function personalAgentsRoot(): Promise<string | null> {
   return root ? `${root}/agents` : null;
 }
 
-/** Agents personnalisés d'un projet et personnels, dédoublonnés par nom (le plus prioritaire gagne). */
-export async function listCustomAgents(workspacePath: string | null): Promise<CustomAgent[]> {
+export interface CustomAgentScan {
+  agents: CustomAgent[];
+  /** Fichiers écartés (invalides ou masqués par un agent du même nom), pour les expliquer. */
+  ignored: IgnoredAgentFile[];
+}
+
+/**
+ * Agents personnalisés d'un projet et personnels, dédoublonnés par nom (le plus prioritaire
+ * gagne), avec les fichiers écartés et la raison.
+ */
+export async function scanCustomAgents(workspacePath: string | null): Promise<CustomAgentScan> {
   const home = await homeDirectory();
   const personalRoot = await personalAgentsRoot();
+  const empty = { agents: [] as CustomAgent[], ignored: [] as IgnoredAgentFile[] };
   const batches = await Promise.all([
     ...(workspacePath ? PROJECT_AGENT_DIRS.map((d) => readAgentsDir(join(workspacePath, d), 'project', d, false)) : []),
-    personalRoot ? readAgentsDir(personalRoot, 'personal', 'ANZAR', true) : Promise.resolve([]),
+    personalRoot ? readAgentsDir(personalRoot, 'personal', 'ANZAR', true) : Promise.resolve(empty),
     ...(home ? HOME_AGENT_DIRS.map((d) => readAgentsDir(join(home, d), 'personal', `~/${d}`, false)) : []),
   ]);
-  const seen = new Set<string>();
-  const result: CustomAgent[] = [];
-  for (const agent of batches.flat()) {
-    if (seen.has(agent.name)) continue;
-    seen.add(agent.name);
-    result.push(agent);
+  const winners = new Map<string, CustomAgent>();
+  const ignored: IgnoredAgentFile[] = batches.flatMap((b) => b.ignored);
+  for (const agent of batches.flatMap((b) => b.agents)) {
+    const winner = winners.get(agent.name);
+    if (!winner) { winners.set(agent.name, agent); continue; }
+    ignored.push({
+      source: agent.source, origin: agent.origin, path: agent.path, editable: agent.editable,
+      name: agent.name, kind: 'shadowed',
+      reason: `masqué par l'agent du même nom dans ${winner.origin}, prioritaire`,
+    });
   }
-  return result.sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    agents: [...winners.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    ignored,
+  };
+}
+
+/** Agents utilisables seulement (ce que reçoit l'agent principal). */
+export async function listCustomAgents(workspacePath: string | null): Promise<CustomAgent[]> {
+  return (await scanCustomAgents(workspacePath)).agents;
 }
 
 /** Profil d'un rôle : agent personnalisé d'abord, puis rôle intégré. */

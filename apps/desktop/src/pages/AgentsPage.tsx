@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Bot, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, Copy, AlertTriangle } from 'lucide-react';
+import { Bot, Plus, Pencil, Trash2, ChevronRight, FolderOpen, X, Copy, AlertTriangle, FileWarning } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useProjectStore } from '@/stores/projectStore';
@@ -17,7 +17,7 @@ import { useConfirmModal } from '@/components/ui/ConfirmModal';
 import { markdownComponents } from '@/components/chat/markdownComponents';
 import { AGENT_PROFILES, type AgentProfile } from '@/services/agent/profiles';
 import {
-  listCustomAgents, savePersonalAgent, deletePersonalAgent, type AgentDraft, type CustomAgent,
+  scanCustomAgents, savePersonalAgent, deletePersonalAgent, type AgentDraft, type CustomAgent, type IgnoredAgentFile,
 } from '@/services/agent/profiles/custom';
 import { listSkills, slugifySkillName, type Skill } from '@/services/skills';
 
@@ -100,6 +100,7 @@ export default function AgentsPage() {
   const activeProject = useProjectStore((s) => s.projects.find((p) => p.id === s.activeProjectId));
   const workspacePath = (activeProject?.metadata?.localPath as string | undefined) || null;
   const [agents, setAgents] = useState<CustomAgent[]>([]);
+  const [ignored, setIgnored] = useState<IgnoredAgentFile[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
@@ -109,11 +110,12 @@ export default function AgentsPage() {
 
   const reload = useCallback(async () => {
     setLoading(true);
-    const [a, s] = await Promise.all([
-      listCustomAgents(workspacePath).catch(() => []),
+    const [scan, s] = await Promise.all([
+      scanCustomAgents(workspacePath).catch(() => ({ agents: [], ignored: [] })),
       listSkills(workspacePath).catch(() => []),
     ]);
-    setAgents(a);
+    setAgents(scan.agents);
+    setIgnored(scan.ignored);
     setSkills(s);
     setLoading(false);
   }, [workspacePath]);
@@ -160,6 +162,18 @@ export default function AgentsPage() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const removeIgnored = async (file: IgnoredAgentFile) => {
+    const ok = await confirm({
+      title: 'Supprimer le fichier',
+      message: `Supprimer le fichier d'agent « ${file.name} » ? Il est inutilisable en l'état.`,
+      confirmLabel: 'Supprimer',
+      variant: 'danger',
+    });
+    if (!ok) return;
+    await deletePersonalAgent(file.name);
+    await reload();
   };
 
   const remove = async (agent: CustomAgent) => {
@@ -253,6 +267,10 @@ export default function AgentsPage() {
 
         {form && (
           <AgentForm form={form} setForm={setForm} skills={skills} saving={saving} onSave={() => void save()} onCancel={() => setForm(null)} />
+        )}
+
+        {!loading && ignored.length > 0 && (
+          <IgnoredFiles files={ignored} onDelete={(f) => void removeIgnored(f)} />
         )}
 
         <Section title="Mes agents" hint={<>Disponibles dans tous tes projets. ANZAR lit aussi <span className="font-mono">~/.claude/agents</span> (format Claude Code).</>}>
@@ -359,6 +377,43 @@ function AgentForm({ form, setForm, skills, saving, onSave, onCancel }: {
         <button onClick={onSave} disabled={saving} className={btnPrimary}>{saving ? 'Enregistrement…' : 'Enregistrer'}</button>
       </div>
     </div>
+  );
+}
+
+/** Fichiers d'agents écartés : la raison en clair, pour que l'utilisateur puisse corriger. */
+function IgnoredFiles({ files, onDelete }: { files: IgnoredAgentFile[]; onDelete: (f: IgnoredAgentFile) => void }) {
+  const invalid = files.filter((f) => f.kind === 'invalid');
+  return (
+    <section className={cn('mt-6 rounded-xl border px-4 py-3',
+      invalid.length ? 'border-accent-error/50 bg-accent-error/10' : 'border-border-medium bg-hover-fill/40')}>
+      <h2 className="flex items-center gap-2 text-ui-base font-semibold text-text-primary">
+        <FileWarning size={16} className={invalid.length ? 'text-accent-error' : 'text-text-secondary'} />
+        {invalid.length
+          ? `${invalid.length} fichier${invalid.length > 1 ? 's' : ''} d'agent ignoré${invalid.length > 1 ? 's' : ''}`
+          : 'Agents masqués par un autre du même nom'}
+      </h2>
+      <p className="text-ui-sm text-text-secondary mt-0.5 mb-2">
+        L'agent principal ne les voit pas. Corrige le fichier : il sera pris en compte au prochain message.
+      </p>
+      <ul className="space-y-2">
+        {files.map((f) => (
+          <li key={`${f.path}:${f.kind}`} className="flex items-start gap-2">
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-ui-sm text-text-primary">{f.name}</span>
+                <span className="text-ui-caption font-mono px-1.5 rounded bg-hover-fill text-text-muted">{f.origin}</span>
+                {f.kind === 'shadowed' && <span className="text-ui-caption text-text-muted">masqué</span>}
+              </span>
+              <span className={cn('block text-ui-sm', f.kind === 'invalid' ? 'text-accent-error' : 'text-text-secondary')}>{f.reason}</span>
+              <span className="block text-ui-caption font-mono text-text-muted break-all">{f.path}</span>
+            </span>
+            {f.editable && f.kind === 'invalid' && (
+              <button onClick={() => onDelete(f)} className={cn(iconBtn, 'hover:text-accent-error')} title="Supprimer le fichier"><Trash2 size={14} /></button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -2,10 +2,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createElement } from 'react';
 
-const listCustomAgents = vi.fn(async () => [] as any[]);
+const scanCustomAgents = vi.fn(async () => ({ agents: [] as any[], ignored: [] as any[] }));
 const savePersonalAgent = vi.fn(async () => undefined);
 vi.mock('@/services/agent/profiles/custom', () => ({
-  listCustomAgents: (...a: unknown[]) => listCustomAgents(...(a as [])),
+  scanCustomAgents: (...a: unknown[]) => scanCustomAgents(...(a as [])),
   savePersonalAgent: (...a: unknown[]) => savePersonalAgent(...(a as [])),
   deletePersonalAgent: vi.fn(),
 }));
@@ -24,19 +24,34 @@ vi.mock('react-hot-toast', () => {
 import AgentsPage from './AgentsPage';
 
 describe('page Agents', () => {
-  beforeEach(() => { listCustomAgents.mockClear(); savePersonalAgent.mockClear(); });
+  beforeEach(() => { scanCustomAgents.mockClear(); savePersonalAgent.mockClear(); });
 
   it('montre les rôles intégrés et les agents du projet', async () => {
-    listCustomAgents.mockResolvedValueOnce([{
+    scanCustomAgents.mockResolvedValueOnce({ ignored: [], agents: [{
       name: 'expert-flutter', description: 'Expert Flutter', kind: 'subagent', tools: [], maxSteps: 25, skills: [], keywords: [],
       deny: [], prompt: 'Riverpod.', source: 'project', origin: '.anzar/agents', path: '/p/.anzar/agents/expert-flutter.md',
       editable: false, overridesBuiltin: false, warnings: ['outils ignorés (sans équivalent dans ANZAR) : WebFetch'],
-    }]);
+    }] });
     render(createElement(AgentsPage));
     await waitFor(() => expect(screen.getByText('expert-flutter')).toBeTruthy());
     for (const role of ['dev', 'revue', 'redaction', 'motion-designer']) expect(screen.getByText(role)).toBeTruthy();
     expect(screen.getByText('à vérifier')).toBeTruthy();
-    expect(listCustomAgents).toHaveBeenCalledWith('/p');
+    expect(scanCustomAgents).toHaveBeenCalledWith('/p');
+    expect(screen.queryByText(/ignoré/)).toBeNull();
+  });
+
+  it('explique les fichiers ignorés et masqués', async () => {
+    scanCustomAgents.mockResolvedValueOnce({ agents: [], ignored: [
+      { name: 'vieux', reason: "description manquante : ajoute description: dans l'en-tête", kind: 'invalid', source: 'project', origin: '.claude/agents', path: '/p/.claude/agents/vieux.md', editable: false },
+      { name: 'testeur', reason: "masqué par l'agent du même nom dans .anzar/agents, prioritaire", kind: 'shadowed', source: 'personal', origin: 'ANZAR', path: '/data/agents/testeur.md', editable: true },
+    ] });
+    render(createElement(AgentsPage));
+    expect(await screen.findByText("1 fichier d'agent ignoré")).toBeTruthy();
+    expect(screen.getByText(/description manquante/)).toBeTruthy();
+    expect(screen.getByText(/masqué par l'agent du même nom/)).toBeTruthy();
+    expect(screen.getByText('/p/.claude/agents/vieux.md')).toBeTruthy();
+    // Un fichier masqué n'est pas cassé : pas de bouton de suppression
+    expect(screen.queryByTitle('Supprimer le fichier')).toBeNull();
   });
 
   it('crée un agent personnel depuis le formulaire', async () => {
