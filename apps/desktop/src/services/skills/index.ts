@@ -42,6 +42,8 @@ export interface Skill {
   editable: boolean;
   /** Outils pré-approuvés déclarés dans le frontmatter (`allowed-tools`) */
   allowedTools?: string[];
+  /** Contenu des fichiers joints d'une skill servie par le serveur (pas de dossier sur le disque) */
+  inlineFiles?: Record<string, string>;
 }
 
 export const MAX_SKILL_BODY_CHARS = 20_000;
@@ -131,7 +133,10 @@ export async function listSkills(workspacePath: string | null): Promise<Skill[]>
   const builtin: Skill[] = BUILTIN_SKILLS.map((s) => ({ ...parseSkill(s.markdown, s.name), source: 'builtin', origin: 'ANZAR', files: [], editable: false }));
   // Skills du serveur : prioritaires sur celles intégrées à l'app (versions plus récentes)
   const remote: Skill[] = (await getRemoteSkills().catch(() => []))
-    .map((s) => ({ ...parseSkill(s.markdown, s.name), source: 'builtin' as const, origin: 'ANZAR', files: [], editable: false }));
+    .map((s) => ({
+      ...parseSkill(s.markdown, s.name), source: 'builtin' as const, origin: 'ANZAR', editable: false,
+      files: Object.keys(s.files ?? {}).sort(), inlineFiles: s.files,
+    }));
 
   const seen = new Set<string>();
   const result: Skill[] = [];
@@ -152,14 +157,16 @@ export function findSkill(skills: Skill[], wanted: string): Skill | undefined {
 /** Lit un fichier joint d'une skill. Refuse tout chemin qui sortirait du dossier de la skill. */
 export async function readSkillFile(skill: Skill, rel: string): Promise<string> {
   const clean = rel.trim().replace(/\\/g, '/').replace(/^\.\/+/, '');
-  if (!skill.dir) throw new Error('cette skill n\'a pas de fichiers joints');
+  if (!skill.dir && !skill.inlineFiles) throw new Error('cette skill n\'a pas de fichiers joints');
   if (!clean || clean.startsWith('/') || clean.split('/').includes('..') || /^[a-z]:/i.test(clean)) {
     throw new Error('chemin invalide');
   }
   if (!skill.files.includes(clean)) {
     throw new Error(`fichier absent de la skill. Fichiers : ${skill.files.join(', ') || 'aucun'}`);
   }
-  const text = await fileSystemService.readFile(join(skill.dir, clean));
+  const text = skill.inlineFiles
+    ? skill.inlineFiles[clean]
+    : await fileSystemService.readFile(join(skill.dir!, clean));
   return text.length > MAX_SKILL_FILE_CHARS
     ? `${text.slice(0, MAX_SKILL_FILE_CHARS)}\n… [fichier tronqué : ${text.length.toLocaleString('fr-FR')} caractères]`
     : text;

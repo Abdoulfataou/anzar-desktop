@@ -7,7 +7,13 @@
  */
 import { useSettingsStore } from '@/stores/settingsStore';
 
-export interface RemoteSkill { name: string; description: string; markdown: string }
+export interface RemoteSkill {
+  name: string;
+  description: string;
+  markdown: string;
+  /** Fichiers joints (références, modèles), lus par l'agent à la demande : { chemin relatif: contenu } */
+  files?: Record<string, string>;
+}
 interface Cached { etag: string; at: number; skills: RemoteSkill[] }
 
 const KEY = 'anzar.remoteSkills.v1';
@@ -24,9 +30,19 @@ function writeCache(c: Cached) {
   try { localStorage.setItem(KEY, JSON.stringify(c)); } catch { /* stockage plein : on garde la version en mémoire */ }
 }
 
+const SAFE_PATH = /^(?!.*(^|\/)\.\.?(\/|$))[A-Za-z0-9_][A-Za-z0-9_./-]{0,199}$/;
+
+function validFiles(f: unknown): boolean {
+  if (f === undefined) return true;
+  if (!f || typeof f !== 'object' || Array.isArray(f)) return false;
+  const entries = Object.entries(f as Record<string, unknown>);
+  return entries.length <= 60 && entries.every(([k, v]) => SAFE_PATH.test(k) && typeof v === 'string' && v.length <= 40_000);
+}
+
 function valid(s: any): s is RemoteSkill {
   return s && typeof s.name === 'string' && /^[a-z0-9][a-z0-9-]{1,63}$/.test(s.name)
-    && typeof s.description === 'string' && typeof s.markdown === 'string' && s.markdown.length < 200_000;
+    && typeof s.description === 'string' && typeof s.markdown === 'string' && s.markdown.length < 200_000
+    && validFiles(s.files);
 }
 
 let inflight: Promise<RemoteSkill[]> | null = null;
