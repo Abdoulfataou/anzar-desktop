@@ -216,6 +216,18 @@ export async function runTurn(host: TurnHost, input: TurnInput): Promise<AgentCh
       const session = await runAgentEngine({
         messages: host.apiHistory,
         tools: toolsForStep,
+        // L'agent piétine sur une même vérification : en mode Auto, un cran au-dessus
+        // (deux fois au plus par demande), comme après des échecs d'outils.
+        onStuck: (point) => {
+          if (!p.route || p.escalations >= 2) return;
+          const up = escalate(p.route, `monté : « ${point.family} » échoue à répétition (${p.route.reason})`);
+          if (!up) return;
+          p.route = up;
+          p.escalations++;
+          p.toolErrors = 0;
+          updateMessage(assistantId, { autoRoute: { ...up, escalated: true } });
+          host.lastRoute = up;
+        },
         maxSteps: MAX_STEPS,
         budget,
         // Le chat principal n'impose pas de plafond d'erreurs d'outils : le mode Auto escalade.

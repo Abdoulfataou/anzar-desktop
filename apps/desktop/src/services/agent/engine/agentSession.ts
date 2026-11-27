@@ -10,6 +10,7 @@ import type { APIMessage, StreamDelta, ToolCall, ToolDefinition } from '@/types'
 import { ToolCallAssembler } from './toolCallAssembler';
 import { budgetStopMessage, type BudgetLedger } from './budget';
 import { LoopGuard } from './loopGuard';
+import { ProgressGuard, type ProgressPoint } from './progressGuard';
 import { isConcurrencySafe, MAX_PARALLEL_TOOL_CALLS } from '../policy/toolConcurrency';
 
 export type AgentStopReason =
@@ -65,6 +66,13 @@ export interface AgentSessionOptions {
    * de compteur partagé ; absent, un garde par défaut protège quand même la session.
    */
   loopGuard?: LoopGuard;
+  /**
+   * Point d'étape : la même commande de vérification échoue ou expire à répétition.
+   * Fourni, il sert de compteur partagé ; absent, un garde par défaut s'applique.
+   */
+  progressGuard?: ProgressGuard;
+  /** Appelé à chaque point d'étape (le mode Auto peut passer à un modèle plus fort). */
+  onStuck?: (point: ProgressPoint) => void;
   maxConsecutiveErrors?: number;
   signal?: AbortSignal;
   retry?: AgentRetryPolicy;
@@ -116,6 +124,8 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     maxSteps = DEFAULT_MAX_STEPS,
     budget,
     loopGuard,
+    progressGuard,
+    onStuck,
     maxConsecutiveErrors = 0,
     signal,
     retry,
@@ -153,6 +163,9 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
   });
 
   const loop = loopGuard ?? new LoopGuard();
+  const progress = progressGuard ?? new ProgressGuard();
+  /** Outils proposés à ce pas : le point d'étape ne cite que ceux qui existent. */
+  const offeredTools = (): Set<string> => new Set((toolsFor() ?? []).map((t) => t.function.name));
   const stepLimit = budget?.spec.steps ?? maxSteps;
   const verificationNeeded = (): boolean => Boolean(verify) && (shouldVerify ? shouldVerify() : true);
 
@@ -301,6 +314,11 @@ export async function runAgentEngine(options: AgentSessionOptions): Promise<Agen
     const applyOutcome = (call: ToolCall, outcome: AgentToolOutcome): AgentEngineResult | null => {
       const reminder = loop.after(call, outcome);
       if (reminder) reminders.push(reminder);
+      const point = progress.after(call, outcome, offeredTools());
+      if (point) {
+        reminders.push(point.message);
+        onStuck?.(point);
+      }
       onToolResult?.(call, outcome, step);
 
       messages.push({ role: 'tool', tool_call_id: call.id, content: outcome.output || '(vide)' });

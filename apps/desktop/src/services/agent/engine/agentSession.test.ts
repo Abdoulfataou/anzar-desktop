@@ -336,4 +336,28 @@ describe('runAgentEngine — rappels de boucle', () => {
     expect(executeTool).toHaveBeenCalledTimes(2);
     expect(result.summary).toBe('Corrigé');
   });
+
+  it('point d’étape : la même vérification échoue à répétition → rappel de méthode et signal au tour', async () => {
+    const messages = [userMessage()];
+    const cmd = (n: number) => ({
+      index: 0, id: `c${n}`, type: 'function' as const,
+      function: { name: 'bash', arguments: JSON.stringify({ command: `flutter test test/t${n}_test.dart | tail -40` }) },
+    });
+    let i = 0;
+    const onStuck = vi.fn();
+    const result = await runAgentEngine({
+      messages,
+      tools: [{ type: 'function', function: { name: 'bash', description: '', parameters: { type: 'object', properties: {} } } }],
+      stream: () => (i < 3 ? stream({ tool_calls: [cmd(++i)] }) : stream({ content: 'Rapport : ce qui est écarté…' })),
+      executeTool: vi.fn().mockResolvedValue({ output: 'exit_code: 1\n2 tests en échec', failed: true }),
+      onStuck,
+    });
+    expect(result.stopReason).toBe('final_answer');
+    expect(onStuck).toHaveBeenCalledTimes(1);
+    expect(onStuck.mock.calls[0][0]).toMatchObject({ family: 'flutter test', failures: 3, level: 1 });
+    const reminder = messages.find((m) => m.role === 'user' && String(m.content).includes("[Point d'étape]"));
+    expect(reminder).toBeTruthy();
+    // Seul bash est proposé : pas de délégation ni de skill suggérées
+    expect(String(reminder!.content)).not.toContain('spawn_agent');
+  });
 });

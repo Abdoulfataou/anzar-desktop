@@ -66,6 +66,9 @@ export function lastLines(text: string, count = 15): string {
   return lines.slice(-count).join('\n');
 }
 
+/** Marqueur de début du message de délai dépassé (repéré par le point d'étape). */
+export const TIMEOUT_MARKER = '[délai dépassé]';
+
 /**
  * Message rendu quand une commande a été arrêtée parce qu'elle dépassait son délai.
  * Il ne conseille JAMAIS d'allonger le délai : une commande bloquée le reste.
@@ -74,7 +77,7 @@ export function timeoutAdvice(input: { command: string; timeoutMs: number; outpu
   const seconds = Math.round(input.timeoutMs / 1000);
   const shown = lastLines(input.output);
   const lines: string[] = [
-    `[délai dépassé] arrêtée après ${seconds} s. Elle est probablement bloquée (attente sans fin, ressource jamais fermée, invite qui attend une réponse, mode surveillance) : ne la relance pas avec un délai plus long, trouve pourquoi elle ne se termine pas.`,
+    `${TIMEOUT_MARKER} arrêtée après ${seconds} s. Elle est probablement bloquée (attente sans fin, ressource jamais fermée, invite qui attend une réponse, mode surveillance) : ne la relance pas avec un délai plus long, trouve pourquoi elle ne se termine pas.`,
   ];
   const server = neverEndingCommand(input.command);
   if (server) {
